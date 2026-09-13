@@ -20,8 +20,8 @@
 // since one customer can now have many active subscriptions at once.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
-import type { Bracket } from "../_shared/pricing.ts";
-import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
+import type { Bracket, Tier } from "../_shared/pricing.ts";
+import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -332,7 +332,7 @@ Deno.serve(async (req: Request) => {
       const subscription = event.data.object as Stripe.Subscription;
       const { data: property } = await adminClient
         .from("properties")
-        .select("id, user_id")
+        .select("id, user_id, plan_tier, value_bracket")
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
       if (property) {
@@ -345,6 +345,12 @@ Deno.serve(async (req: Request) => {
           })
           .eq("id", property.id);
         await syncProfilePlan(adminClient, property.user_id as string);
+        await sendCancellationEmail(adminClient, {
+          userId: property.user_id as string,
+          propertyId: property.id as string,
+          tier: property.plan_tier as Tier | null,
+          bracket: property.value_bracket as Bracket | null,
+        });
       }
     }
     // All other event types are intentionally ignored but still return 200 below so
