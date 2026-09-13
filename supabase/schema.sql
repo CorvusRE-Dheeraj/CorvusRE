@@ -32,6 +32,11 @@ create unique index if not exists profiles_calendar_feed_token_key
   on public.profiles (calendar_feed_token)
   where calendar_feed_token is not null;
 
+-- Set exactly once, atomically (see send-welcome-email's UPDATE ... WHERE
+-- welcome_email_sent_at IS NULL), so a welcome email never goes out twice
+-- even if multiple tabs/devices race to fire it on the same first sign-in.
+alter table public.profiles add column if not exists welcome_email_sent_at timestamptz;
+
 alter table public.profiles enable row level security;
 
 -- Real, continuous, per-user Google Calendar sync (OAuth, not the read-only
