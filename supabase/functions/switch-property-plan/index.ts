@@ -31,6 +31,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
+import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 import {
   bracketForValue,
   isTier,
@@ -155,6 +156,7 @@ Deno.serve(async (req: Request) => {
       ...(address ? { description: address } : {}),
       proration_behavior: "always_invoice",
       payment_behavior: "error_if_incomplete",
+      expand: ["latest_invoice"],
     });
 
     // Immediate write for the UI — see the file comment on why this doesn't
@@ -163,6 +165,26 @@ Deno.serve(async (req: Request) => {
       .from("properties")
       .update({ plan_tier: tier, value_bracket: bracket })
       .eq("id", propertyId);
+
+    // The real, precise amount 'always_invoice' just settled — its own
+    // finalized invoice total, not the plain sticker-price difference (which
+    // would ignore however many days are actually left in the billing
+    // period). Positive = charged today; a downgrade's negative proration
+    // floors this invoice's amount_due at $0 while the credit itself lands
+    // on the customer's balance, which is exactly why this reads .total
+    // (the real, possibly-negative settled figure) rather than amount_due.
+    const latestInvoice =
+      typeof updated.latest_invoice === "object" ? updated.latest_invoice : null;
+    const settledCents = latestInvoice?.total ?? unitAmount;
+    await sendPurchaseConfirmationEmail(stripe, adminClient, {
+      userId: user.id,
+      propertyId,
+      subscriptionId: property.stripe_subscription_id,
+      tier,
+      bracket,
+      amountCents: settledCents,
+      kind: "plan_switch",
+    });
 
     return new Response(
       JSON.stringify({ ok: true, tier, bracket, amountCents: unitAmount, status: updated.status }),

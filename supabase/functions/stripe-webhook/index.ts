@@ -20,6 +20,8 @@
 // since one customer can now have many active subscriptions at once.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import type { Bracket } from "../_shared/pricing.ts";
+import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -147,8 +149,7 @@ Deno.serve(async (req: Request) => {
   // test/live toggle. Verify the signature against whichever signing secret
   // matches, then key the OUTBOUND Stripe client (grantReferralRewardIfDue's
   // retrieve/createBalanceTransaction) off the event's own livemode flag.
-  const testSecretKey =
-    Deno.env.get("STRIPE_SECRET_KEY_TEST") ?? Deno.env.get("STRIPE_SECRET_KEY");
+  const testSecretKey = Deno.env.get("STRIPE_SECRET_KEY_TEST") ?? Deno.env.get("STRIPE_SECRET_KEY");
   const liveSecretKey = Deno.env.get("STRIPE_SECRET_KEY_LIVE");
   const webhookSecrets = [
     Deno.env.get("STRIPE_WEBHOOK_SECRET"),
@@ -237,6 +238,15 @@ Deno.serve(async (req: Request) => {
 
         await syncProfilePlan(adminClient, userId);
         await grantReferralRewardIfDue(stripe, adminClient, userId);
+        await sendPurchaseConfirmationEmail(stripe, adminClient, {
+          userId,
+          propertyId,
+          subscriptionId: session.subscription,
+          tier,
+          bracket: bracket as Bracket | null,
+          amountCents: session.amount_total ?? 0,
+          kind: "new_subscription",
+        });
       }
     } else if (event.type === "customer.subscription.created") {
       // bulk-subscribe creates subscriptions via the API (no Checkout, so no
