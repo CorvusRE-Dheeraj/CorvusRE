@@ -20,6 +20,8 @@
 // since one customer can now have many active subscriptions at once.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import type { Bracket, Tier } from "../_shared/pricing.ts";
+import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -147,8 +149,7 @@ Deno.serve(async (req: Request) => {
   // test/live toggle. Verify the signature against whichever signing secret
   // matches, then key the OUTBOUND Stripe client (grantReferralRewardIfDue's
   // retrieve/createBalanceTransaction) off the event's own livemode flag.
-  const testSecretKey =
-    Deno.env.get("STRIPE_SECRET_KEY_TEST") ?? Deno.env.get("STRIPE_SECRET_KEY");
+  const testSecretKey = Deno.env.get("STRIPE_SECRET_KEY_TEST") ?? Deno.env.get("STRIPE_SECRET_KEY");
   const liveSecretKey = Deno.env.get("STRIPE_SECRET_KEY_LIVE");
   const webhookSecrets = [
     Deno.env.get("STRIPE_WEBHOOK_SECRET"),
@@ -237,6 +238,15 @@ Deno.serve(async (req: Request) => {
 
         await syncProfilePlan(adminClient, userId);
         await grantReferralRewardIfDue(stripe, adminClient, userId);
+        await sendPurchaseConfirmationEmail(stripe, adminClient, {
+          userId,
+          propertyId,
+          subscriptionId: session.subscription,
+          tier,
+          bracket: bracket as Bracket | null,
+          amountCents: session.amount_total ?? 0,
+          kind: "new_subscription",
+        });
       }
     } else if (event.type === "customer.subscription.created") {
       // bulk-subscribe creates subscriptions via the API (no Checkout, so no
@@ -287,10 +297,22 @@ Deno.serve(async (req: Request) => {
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
       if (property) {
+        // tier/bracket re-derived from metadata on every update, not just at
+        // creation — switch-property-plan changes a subscription's price and
+        // metadata.tier in place (same subscription id, no new checkout/
+        // 'created' event), so this is what actually lands the new tier on
+        // the properties row. A harmless no-op re-write of the same values
+        // for every other kind of update (cancel/resume/payment retry, none
+        // of which touch metadata.tier).
+        const tier =
+          subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
+        const bracket = subscription.metadata?.bracket ?? null;
         await adminClient
           .from("properties")
           .update({
             subscription_status: subscription.status,
+            plan_tier: tier,
+            value_bracket: bracket,
             cancel_at_period_end: subscription.cancel_at_period_end,
             cancel_at: subscription.cancel_at
               ? new Date(subscription.cancel_at * 1000).toISOString()
@@ -310,7 +332,7 @@ Deno.serve(async (req: Request) => {
       const subscription = event.data.object as Stripe.Subscription;
       const { data: property } = await adminClient
         .from("properties")
-        .select("id, user_id")
+        .select("id, user_id, plan_tier, value_bracket")
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
       if (property) {
@@ -323,6 +345,12 @@ Deno.serve(async (req: Request) => {
           })
           .eq("id", property.id);
         await syncProfilePlan(adminClient, property.user_id as string);
+        await sendCancellationEmail(adminClient, {
+          userId: property.user_id as string,
+          propertyId: property.id as string,
+          tier: property.plan_tier as Tier | null,
+          bracket: property.value_bracket as Bracket | null,
+        });
       }
     }
     // All other event types are intentionally ignored but still return 200 below so

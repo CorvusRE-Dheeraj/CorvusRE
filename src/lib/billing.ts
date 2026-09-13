@@ -16,6 +16,15 @@ export type PlanValue =
 
 export type Tier = "owner_managed" | "corvusrf_managed";
 
+// Short, plain tier names — for a label next to a price or a "Switch to X"
+// action, where PLAN_OPTIONS' own longer price-range labels below would be
+// too much. Mirrors _shared/pricing.ts's own TIER_LABEL (Deno functions
+// can't import from src/lib).
+export const TIER_LABEL: Record<Tier, string> = {
+  owner_managed: "Owner-Managed",
+  corvusrf_managed: "CorvusPT-Managed",
+};
+
 // Property-value-tiered pricing — each paid tier has 3 monthly price points
 // instead of one flat per-property rate, keyed by which value bracket a
 // given property falls in. The real amount charged is computed dynamically by
@@ -187,6 +196,17 @@ export async function cancelPropertySubscription(propertyId: string): Promise<vo
 // Portal to find the "renew" option.
 export async function resumePropertySubscription(propertyId: string): Promise<void> {
   await invokeEdgeFunction<{ ok: boolean }>("resume-subscription", { propertyId });
+}
+
+// Switches an already-active property subscription to the other tier in
+// place (same Stripe subscription id, same value bracket, prorated) —
+// see switch-property-plan/index.ts. Previously the only way to change
+// tiers was to fully cancel and start a brand-new checkout.
+export async function switchPropertyPlan(
+  propertyId: string,
+  tier: Tier,
+): Promise<{ tier: Tier; bracket: PropertyValueBracket; amountCents: number }> {
+  return invokeEdgeFunction("switch-property-plan", { propertyId, tier });
 }
 
 // One live Stripe subscription, as returned by the list-my-subscriptions edge

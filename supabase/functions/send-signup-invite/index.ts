@@ -198,7 +198,13 @@ Deno.serve(async (req: Request) => {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Resend error ${res.status}: ${text.slice(0, 300)}`);
+      // Logged in full for debugging, but never shown to the caller — this is
+      // Resend's own raw API response (HTTP status, its internal error
+      // schema/terminology), not something an admin sending an invite should
+      // see verbatim (see invokeEdgeFunction in src/lib/edge-functions.ts,
+      // which surfaces this Error's message as-is in the toast).
+      console.error(`Resend error ${res.status} sending signup invite:`, text.slice(0, 500));
+      throw new Error("Could not send this invite — please check the email address and try again.");
     }
 
     // Record/update the pending invite — the only trace of this invite

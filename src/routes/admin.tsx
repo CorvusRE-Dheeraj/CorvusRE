@@ -111,13 +111,25 @@ function AdminPanel() {
       nav({ to: "/admin-login" });
       return;
     }
-    checkIsAdmin(user.id).then((ok) => {
-      if (!ok) {
+    checkIsAdmin(user.id)
+      .then((ok) => {
+        if (!ok) {
+          nav({ to: "/admin-login" });
+          return;
+        }
+        setIsAdmin(true);
+      })
+      // Without this, a transient failure here (a dropped request, a fresh
+      // JWT's clock-skew check tripping) leaves isAdmin stuck at its initial
+      // null forever — the render guard below treats null the same as
+      // "not admin yet" and just renders nothing, with no error and no
+      // retry, instead of either granting access or redirecting out. Fail
+      // closed the same way an actual non-admin does, so at least there's a
+      // real outcome instead of a silent, permanent blank page.
+      .catch((err) => {
+        console.error("Could not verify admin status:", err);
         nav({ to: "/admin-login" });
-        return;
-      }
-      setIsAdmin(true);
-    });
+      });
   }, [loading, user, nav]);
 
   // Shared by the initial load and the manual "Refresh" button next to the
@@ -1549,6 +1561,18 @@ function UserRow({
   onProtestNotesChange: (protestId: string, notes: string) => Promise<void>;
   onOpenCase: (record: AdminProtestRecord) => void;
 }) {
+  // A real signup (Google OAuth, or a form abandoned before the name step)
+  // can carry null firstName/lastName — without this fallback, the h3 below
+  // renders as pure whitespace with zero height, and the row loses its
+  // header line entirely. Falls back to the email as the heading, then
+  // drops it from the line below (rather than showing it twice) and skips
+  // the trailing " • " separator when there's no phone to pair it with.
+  const hasName = Boolean(record.firstName || record.lastName);
+  const displayName = hasName
+    ? `${record.firstName ?? ""} ${record.lastName ?? ""}`.trim()
+    : record.email;
+  const subLine = [hasName ? record.email : null, record.phone].filter(Boolean).join(" • ");
+
   return (
     <div className="card-elev row-hover p-6" style={{ animationDelay: `${delayMs}ms` }}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -1567,15 +1591,13 @@ function UserRow({
           )}
           <div>
             <h3 className="font-serif text-lg font-semibold">
-              {record.firstName} {record.lastName}
+              {displayName}
               {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
               {record.isAdmin && (
                 <span className="ml-2 badge-soft text-[10px] align-middle">Admin</span>
               )}
             </h3>
-            <p className="text-sm text-muted-foreground">
-              {record.email} • {record.phone}
-            </p>
+            {subLine && <p className="text-sm text-muted-foreground">{subLine}</p>}
             <p className="text-xs text-muted-foreground mt-1">
               Joined {new Date(record.createdAt).toLocaleDateString()}
             </p>
@@ -2210,6 +2232,11 @@ function FinancialsTab({
               <span className="font-medium">{v}</span>
             </div>
           ))}
+          <p className="mt-2 text-xs text-muted-foreground">
+            From our database, independent of Stripe mode — this can include subscriptions created
+            by an admin with a personal test-mode override, so it won't always match the{" "}
+            {data.mode === "live" ? "live" : "test-mode"} Stripe numbers above.
+          </p>
         </div>
       </div>
 

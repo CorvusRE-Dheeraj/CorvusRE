@@ -6,7 +6,11 @@ import { Fragment, type ReactNode } from "react";
 // "1." lists, GFM pipe tables, **bold**, `code`, and plain paragraphs —
 // and nothing else. No dependency, no arbitrary HTML.
 
-function renderInline(text: string, keyBase: string): ReactNode[] {
+// Exported for callers that need to drop a short, single-line AI string
+// (e.g. one already inside a flex/label row) inline without MarkdownLite's
+// own block wrapper — same **bold**/`code` parsing, no paragraph/list/table
+// handling, since a one-liner never has those anyway.
+export function renderInline(text: string, keyBase: string): ReactNode[] {
   // Split on **bold** and `code`, keeping the delimiters.
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
   return parts.map((p, i) => {

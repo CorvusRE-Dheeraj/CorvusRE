@@ -1151,6 +1151,13 @@ export function getNoticeOfProtestDefaults(
         : authorization
           ? `${authorization.firstName} ${authorization.lastName}`
           : (property.ownerName ?? ""),
+    // Same real value the "Today" suggestion chip computes (todaySuggestion())
+    // — signing a Notice of Protest today is the overwhelmingly common case,
+    // and leaving this blank by default meant every single filer had to
+    // manually click the chip or type today's own date before this required
+    // field would stop blocking Download/Continue. Still fully editable if
+    // the actual signing date differs.
+    "Date of Signature": formatDateSuggestion(new Date()),
   };
 
   if (property.totalValue != null) {
@@ -1228,6 +1235,11 @@ export function getAppointmentOfAgentDefaults(
     "Name of Property Owner": ownerName,
     Title: authorization.isEntity ? (authorization.entityRelationship ?? "") : "",
     "the property owner": !authorization.isEntity,
+    // Same reasoning as getNoticeOfProtestDefaults' own "Date of Signature"
+    // — defaults to today (matching this field's own "Today" suggestion
+    // chip) instead of leaving a required field blank for every filer to
+    // fill in by hand. Still fully editable.
+    Date: formatDateSuggestion(new Date()),
   };
 }
 

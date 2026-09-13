@@ -36,7 +36,12 @@ export async function getMyProfile(userId: string): Promise<MyProfile> {
 
 export async function updateMyProfile(
   userId: string,
-  patch: { firstName?: string; lastName?: string; phone?: string; companyName?: string | null },
+  patch: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string | null;
+    companyName?: string | null;
+  },
 ): Promise<void> {
   const update: Record<string, string | null> = {};
   if (patch.firstName !== undefined) update.first_name = patch.firstName;

@@ -14,10 +14,12 @@ import {
   startPropertyCheckout,
   cancelPropertySubscription,
   resumePropertySubscription,
+  switchPropertyPlan,
   syncMySubscriptions,
   bracketForValue,
   formatMoney,
   TIER_BRACKET_PRICES,
+  TIER_LABEL,
   type BillingInfo,
   type BulkSubResult,
   type Tier,
@@ -30,6 +32,7 @@ import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
+import { renderInline as renderMarkdownInline } from "@/components/MarkdownLite";
 import { ProtestAuthorizationFlow } from "@/components/ProtestAuthorizationFlow";
 import { Modal } from "@/components/Modal";
 import { generateCasePrep } from "@/lib/protest-case";
@@ -68,6 +71,7 @@ import {
   Trash2,
   Ban,
   RotateCcw,
+  ArrowLeftRight,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -84,10 +88,6 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
 });
 
 const CURRENT_YEAR = new Date().getFullYear();
-const TIER_LABEL: Record<Tier, string> = {
-  owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
-};
 
 // --- List view / sort / filter toolbar -----------------------------------
 // All client-side over the already-loaded `properties` array — no refetch.
@@ -221,6 +221,7 @@ function Properties() {
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<{ propertyId: string; tier: Tier } | null>(null);
   // The property the "Protest Property" button opened the plan chooser for.
   const [protestingProperty, setProtestingProperty] = useState<PropertyRecord | null>(null);
@@ -408,6 +409,49 @@ function Properties() {
       toast.error(err instanceof Error ? err.message : "Could not resume this subscription.");
     } finally {
       setResumingId(null);
+    }
+  }
+
+  // Switches an already-active subscription to the other tier in place
+  // (same subscription) — previously the only way to change tiers was to
+  // fully cancel and start a brand-new checkout for this property. Settles
+  // immediately (switch-property-plan's own proration_behavior:
+  // 'always_invoice'), not deferred to the next regular invoice — an
+  // upgrade charges the card today, a downgrade credits the account today
+  // (not a literal refund transaction to the card; see that function's own
+  // comment on why). The confirm copy below says which, so this doesn't
+  // read as a silent, ambiguous "prorate" to someone about to authorize a
+  // real charge.
+  async function handleSwitchPlan(p: PropertyRecord, tier: Tier) {
+    const bracket = bracketForValue(p.totalValue ?? undefined);
+    const currentPrice = p.planTier ? TIER_BRACKET_PRICES[p.planTier][bracket] : null;
+    const newPrice = TIER_BRACKET_PRICES[tier][bracket];
+    const settlementNote =
+      currentPrice != null && newPrice > currentPrice
+        ? "This is an upgrade — Stripe will charge your card today for the prorated difference."
+        : currentPrice != null && newPrice < currentPrice
+          ? "This is a downgrade — Stripe will credit your account today for the prorated difference (applied to your next invoice, not refunded directly to your card)."
+          : "Stripe will settle the prorated difference today.";
+    const confirmed = window.confirm(
+      `Switch ${p.address} from ${TIER_LABEL[p.planTier as Tier] ?? "its current plan"} to ${TIER_LABEL[tier]}? ${settlementNote}`,
+    );
+    if (!confirmed) return;
+    setSwitchingId(p.id);
+    try {
+      const result = await switchPropertyPlan(p.id, tier);
+      toast.success(`Switched to ${TIER_LABEL[tier]}.`);
+      // Reflects immediately rather than waiting on the customer.
+      // subscription.updated webhook round trip; the webhook confirms the
+      // same values a moment later (idempotent, not a conflict).
+      setProperties((prev) =>
+        prev.map((x) =>
+          x.id === p.id ? { ...x, planTier: result.tier, valueBracket: result.bracket } : x,
+        ),
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not switch plans.");
+    } finally {
+      setSwitchingId(null);
     }
   }
 
@@ -993,6 +1037,7 @@ function Properties() {
                             deletingId={deletingId}
                             cancelingId={cancelingId}
                             resumingId={resumingId}
+                            switchingId={switchingId}
                             subscribing={subscribing}
                             compact
                             onDocuments={() => setDocsProperty(p)}
@@ -1000,6 +1045,7 @@ function Properties() {
                             onProtest={() => setProtestingProperty(p)}
                             onResume={() => handleResumeSubscription(p)}
                             onCancel={() => handleCancelSubscription(p)}
+                            onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
                             onDelete={() => handleDelete(p, isPaid)}
                           />
                         </div>
@@ -1080,12 +1126,14 @@ function Properties() {
                       deletingId={deletingId}
                       cancelingId={cancelingId}
                       resumingId={resumingId}
+                      switchingId={switchingId}
                       subscribing={subscribing}
                       onDocuments={() => setDocsProperty(p)}
                       onAuthorize={() => setAuthorizingProperty(p)}
                       onProtest={() => setProtestingProperty(p)}
                       onResume={() => handleResumeSubscription(p)}
                       onCancel={() => handleCancelSubscription(p)}
+                      onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
                       onDelete={() => handleDelete(p, isPaid)}
                     />
                   </div>
@@ -1218,6 +1266,7 @@ function PropertyActionsMenu({
   deletingId,
   cancelingId,
   resumingId,
+  switchingId,
   subscribing,
   compact,
   onDocuments,
@@ -1225,6 +1274,7 @@ function PropertyActionsMenu({
   onProtest,
   onResume,
   onCancel,
+  onSwitchPlan,
   onDelete,
 }: {
   p: PropertyRecord;
@@ -1239,6 +1289,7 @@ function PropertyActionsMenu({
   deletingId: string | null;
   cancelingId: string | null;
   resumingId: string | null;
+  switchingId: string | null;
   subscribing: { propertyId: string; tier: Tier } | null;
   compact?: boolean;
   onDocuments: () => void;
@@ -1246,6 +1297,7 @@ function PropertyActionsMenu({
   onProtest: () => void;
   onResume: () => void;
   onCancel: () => void;
+  onSwitchPlan: (tier: Tier) => void;
   onDelete: () => void;
 }) {
   const { existingProtest, canReFile, cad, recordUrl, isPaid } = info;
@@ -1253,6 +1305,15 @@ function PropertyActionsMenu({
   const showRefile = isPaid && !!existingProtest && canReFile;
   const showProtest = !isPaid;
   const showSubMgmt = isPaid && !isBeta;
+  // Only offer a switch when the property's real tier is known — a property
+  // subscribed before plan_tier existed, or mid-webhook-lag, shouldn't get a
+  // "Switch to X" that can't tell what X should be.
+  const otherTier: Tier | null =
+    showSubMgmt && p.planTier
+      ? p.planTier === "owner_managed"
+        ? "corvusrf_managed"
+        : "owner_managed"
+      : null;
   const hasMiddle = showRequestFiling || showRefile || showProtest || showSubMgmt;
   return (
     <DropdownMenu>
@@ -1307,6 +1368,16 @@ function PropertyActionsMenu({
           <DropdownMenuItem onClick={onProtest} disabled={!!subscribing}>
             <Gavel className="mr-2 h-4 w-4" />
             {subscribing?.propertyId === p.id ? "Redirecting…" : "Protest Property"}
+          </DropdownMenuItem>
+        )}
+        {/* Switching plans mid-cancellation (cancelAtPeriodEnd) would fight
+            with the scheduled cancellation, so this only offers once the
+            subscription is on its normal, renewing path — same gate as
+            Cancel Subscription just below. */}
+        {otherTier && !p.cancelAtPeriodEnd && (
+          <DropdownMenuItem onClick={() => onSwitchPlan(otherTier)} disabled={switchingId === p.id}>
+            <ArrowLeftRight className="mr-2 h-4 w-4" />
+            {switchingId === p.id ? "Switching…" : `Switch to ${TIER_LABEL[otherTier]}`}
           </DropdownMenuItem>
         )}
         {showSubMgmt && p.cancelAtPeriodEnd && (
@@ -1556,9 +1627,15 @@ function PaymentStatusBadge({ property }: { property: PropertyRecord }) {
 // this feature shipped will simply never have a score and that's fine.
 function AiScoreBadge({ score }: { score: PropertyAiScore | undefined }) {
   if (!score) return null;
+  // score.summary is the AI's own executiveConclusion text, which its prompt
+  // is told it "may bold the one key number" in (see ai-health-score/index.ts)
+  // — a bare string interpolation left literal **asterisks** showing up
+  // instead of rendering as bold. renderMarkdownInline is MarkdownLite's own
+  // inline bold/code parser, used directly (no block wrapper) to keep this
+  // as one line, matching the label it's appended to.
   return (
     <p className="mt-1 text-sm text-accent">
-      AI Score: {score.score}/100 — {score.summary}
+      AI Score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
     </p>
   );
 }
