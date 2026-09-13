@@ -1549,6 +1549,18 @@ function UserRow({
   onProtestNotesChange: (protestId: string, notes: string) => Promise<void>;
   onOpenCase: (record: AdminProtestRecord) => void;
 }) {
+  // A real signup (Google OAuth, or a form abandoned before the name step)
+  // can carry null firstName/lastName — without this fallback, the h3 below
+  // renders as pure whitespace with zero height, and the row loses its
+  // header line entirely. Falls back to the email as the heading, then
+  // drops it from the line below (rather than showing it twice) and skips
+  // the trailing " • " separator when there's no phone to pair it with.
+  const hasName = Boolean(record.firstName || record.lastName);
+  const displayName = hasName
+    ? `${record.firstName ?? ""} ${record.lastName ?? ""}`.trim()
+    : record.email;
+  const subLine = [hasName ? record.email : null, record.phone].filter(Boolean).join(" • ");
+
   return (
     <div className="card-elev row-hover p-6" style={{ animationDelay: `${delayMs}ms` }}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -1567,15 +1579,13 @@ function UserRow({
           )}
           <div>
             <h3 className="font-serif text-lg font-semibold">
-              {record.firstName} {record.lastName}
+              {displayName}
               {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
               {record.isAdmin && (
                 <span className="ml-2 badge-soft text-[10px] align-middle">Admin</span>
               )}
             </h3>
-            <p className="text-sm text-muted-foreground">
-              {record.email} • {record.phone}
-            </p>
+            {subLine && <p className="text-sm text-muted-foreground">{subLine}</p>}
             <p className="text-xs text-muted-foreground mt-1">
               Joined {new Date(record.createdAt).toLocaleDateString()}
             </p>
@@ -2210,6 +2220,11 @@ function FinancialsTab({
               <span className="font-medium">{v}</span>
             </div>
           ))}
+          <p className="mt-2 text-xs text-muted-foreground">
+            From our database, independent of Stripe mode — this can include subscriptions created
+            by an admin with a personal test-mode override, so it won't always match the{" "}
+            {data.mode === "live" ? "live" : "test-mode"} Stripe numbers above.
+          </p>
         </div>
       </div>
 
