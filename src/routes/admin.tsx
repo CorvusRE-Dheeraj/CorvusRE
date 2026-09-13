@@ -111,13 +111,25 @@ function AdminPanel() {
       nav({ to: "/admin-login" });
       return;
     }
-    checkIsAdmin(user.id).then((ok) => {
-      if (!ok) {
+    checkIsAdmin(user.id)
+      .then((ok) => {
+        if (!ok) {
+          nav({ to: "/admin-login" });
+          return;
+        }
+        setIsAdmin(true);
+      })
+      // Without this, a transient failure here (a dropped request, a fresh
+      // JWT's clock-skew check tripping) leaves isAdmin stuck at its initial
+      // null forever — the render guard below treats null the same as
+      // "not admin yet" and just renders nothing, with no error and no
+      // retry, instead of either granting access or redirecting out. Fail
+      // closed the same way an actual non-admin does, so at least there's a
+      // real outcome instead of a silent, permanent blank page.
+      .catch((err) => {
+        console.error("Could not verify admin status:", err);
         nav({ to: "/admin-login" });
-        return;
-      }
-      setIsAdmin(true);
-    });
+      });
   }, [loading, user, nav]);
 
   // Shared by the initial load and the manual "Refresh" button next to the

@@ -58,7 +58,7 @@ function Settings() {
       await updateMyProfile(user.id, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        phone: phone.trim(),
+        phone: phone.trim() || null,
         companyName: companyName.trim() || null,
       });
       toast.success("Profile updated.");
@@ -163,11 +163,15 @@ function Settings() {
             </label>
           </div>
           <label className="grid gap-1">
+            {/* Optional here too, matching sign-up's own "(optional)" phone
+                field — this was marked required, which blocked saving ANY
+                profile edit (even just fixing a typo in your name) for any
+                account that signed up without a phone, since sign-up itself
+                never requires one. */}
             <span className="text-xs font-medium text-muted-foreground">
-              Phone<span className="text-destructive"> *</span>
+              Phone <span className="font-normal">(optional)</span>
             </span>
             <input
-              required
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"

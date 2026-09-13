@@ -46,7 +46,18 @@ export function SiteNav() {
       setIsAdmin(false);
       return;
     }
-    checkIsAdmin(user.id).then(setIsAdmin);
+    // Swallow failures instead of leaving an unhandled rejection — this runs
+    // on every page for every signed-in user, so any transient hiccup (a
+    // fresh JWT's clock-skew check tripping right after sign-up, a dropped
+    // request) would otherwise throw site-wide. Non-critical either way:
+    // it only gates showing the Admin nav link, so falling back to "not
+    // admin" is always the safe default.
+    checkIsAdmin(user.id)
+      .then(setIsAdmin)
+      .catch((err) => {
+        console.error("Could not check admin status:", err);
+        setIsAdmin(false);
+      });
   }, [user]);
 
   useEffect(() => {
