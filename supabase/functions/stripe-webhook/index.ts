@@ -287,10 +287,22 @@ Deno.serve(async (req: Request) => {
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
       if (property) {
+        // tier/bracket re-derived from metadata on every update, not just at
+        // creation — switch-property-plan changes a subscription's price and
+        // metadata.tier in place (same subscription id, no new checkout/
+        // 'created' event), so this is what actually lands the new tier on
+        // the properties row. A harmless no-op re-write of the same values
+        // for every other kind of update (cancel/resume/payment retry, none
+        // of which touch metadata.tier).
+        const tier =
+          subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
+        const bracket = subscription.metadata?.bracket ?? null;
         await adminClient
           .from("properties")
           .update({
             subscription_status: subscription.status,
+            plan_tier: tier,
+            value_bracket: bracket,
             cancel_at_period_end: subscription.cancel_at_period_end,
             cancel_at: subscription.cancel_at
               ? new Date(subscription.cancel_at * 1000).toISOString()

@@ -8,10 +8,13 @@ import {
   APPOINTMENT_OF_AGENT_SCHEMA,
   EVIDENCE_DECLARATION_SCHEMA,
   getEvidenceDeclarationDefaults,
+  getNoticeOfProtestDefaults,
+  getAppointmentOfAgentDefaults,
   type FieldSection,
   type FieldValues,
 } from "./protest-documents";
 import type { PropertyRecord } from "./properties";
+import type { AuthorizationRecord } from "./protest-authorizations";
 
 describe("mmddyyyyToIso", () => {
   it("converts a real MM/DD/YYYY date to ISO for the native date picker", () => {
@@ -210,5 +213,33 @@ describe("getEvidenceDeclarationDefaults", () => {
     const values = getEvidenceDeclarationDefaults(property, property.taxYear, 0);
     expect(values["Sect4-1"]).toBe("");
     expect(values.sect7_4).toBe("");
+  });
+
+  it("defaults Date of Signature / Date to today, not blank", () => {
+    // A required date field left blank by default meant every filer had to
+    // manually click the "Today" suggestion chip (or type today's own date)
+    // before the form would stop blocking Download/Continue — signing today
+    // is the overwhelmingly common case, so this should already be filled.
+    const today = new Date().toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
+    const noticeValues = getNoticeOfProtestDefaults(property, property.taxYear, null);
+    expect(noticeValues["Date of Signature"]).toBe(today);
+
+    const authorization: AuthorizationRecord = {
+      id: "auth-1",
+      protestId: null,
+      propertyId: property.id,
+      firstName: "Jamie",
+      lastName: "Rivera",
+      phone: "555-0100",
+      isEntity: false,
+      entityName: null,
+      entityRelationship: null,
+    };
+    const agentValues = getAppointmentOfAgentDefaults(authorization, property);
+    expect(agentValues.Date).toBe(today);
   });
 });

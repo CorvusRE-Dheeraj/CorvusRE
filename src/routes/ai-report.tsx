@@ -3745,9 +3745,9 @@ function ModuleVisual({
             </div>
           )}
           {d.executiveConclusion && (
-            <p className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
-              {d.executiveConclusion}
-            </p>
+            <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
+              <MarkdownLite text={d.executiveConclusion} />
+            </div>
           )}
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
             <ShieldCheck className="h-3 w-3" />
@@ -9673,7 +9673,9 @@ function ModulePreviewContent({
             <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
               Recommended Next Step
             </div>
-            <div className="mt-1 text-sm font-semibold">{data.nextStep}</div>
+            <div className="mt-1 text-sm font-semibold">
+              <MarkdownLite text={data.nextStep} />
+            </div>
           </div>
         )}
 
@@ -11626,7 +11628,17 @@ function AiVerdictLine({
   return (
     <div className={`min-w-0 flex items-start gap-2.5 rounded-lg p-3 ${color.bg}`}>
       <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${color.text}`} />
-      <p className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{text}</p>
+      {/* Every caller passes real AI-generated text (assessment/guidance/
+          executiveConclusion/nextAction/topStrategySummary) — the prompts
+          for these fields are told they "may bold the one key number" (see
+          ai-health-score/index.ts's own comment), so the raw string can
+          contain literal **bold** markdown. MarkdownLite is the same
+          renderer already used for methodology/confidenceReasoning just
+          below in this file; a bare {text} interpolation left those
+          asterisks showing up verbatim instead of rendering as bold. */}
+      <div className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">
+        <MarkdownLite text={text} />
+      </div>
     </div>
   );
 }
