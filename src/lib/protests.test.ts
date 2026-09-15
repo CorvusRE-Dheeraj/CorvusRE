@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mockQueryBuilder } from "./test-utils/supabase-query-mock";
 
 const mockFrom = vi.fn();
-const mockSubmitWeb3Form = vi.fn();
+const mockNotifyStaff = vi.fn();
 
 vi.mock("./supabase", () => ({ supabase: { from: (...args: unknown[]) => mockFrom(...args) } }));
-vi.mock("./web3forms", () => ({
-  submitWeb3Form: (...args: unknown[]) => mockSubmitWeb3Form(...args),
+vi.mock("./staff-notification", () => ({
+  notifyStaff: (...args: unknown[]) => mockNotifyStaff(...args),
 }));
 
 const { requestProtest, listProtests } = await import("./protests");
@@ -32,12 +32,12 @@ const ROW = {
 describe("requestProtest", () => {
   beforeEach(() => {
     mockFrom.mockReset();
-    mockSubmitWeb3Form.mockReset();
+    mockNotifyStaff.mockReset();
   });
 
   it("inserts into the protests table and maps the returned row", async () => {
     mockFrom.mockReturnValue(mockQueryBuilder({ data: ROW, error: null }));
-    mockSubmitWeb3Form.mockResolvedValue(undefined);
+    mockNotifyStaff.mockResolvedValue(undefined);
 
     const result = await requestProtest("user1", "prop1", {
       address: "123 Main St",
@@ -67,7 +67,7 @@ describe("requestProtest", () => {
 
   it("still resolves with the created record even when the staff notification fails", async () => {
     mockFrom.mockReturnValue(mockQueryBuilder({ data: ROW, error: null }));
-    mockSubmitWeb3Form.mockRejectedValue(new Error("Web3Forms is down"));
+    mockNotifyStaff.mockRejectedValue(new Error("Resend is down"));
 
     await expect(requestProtest("user1", "prop1")).resolves.toEqual(
       expect.objectContaining({ id: "pr1", status: "requested" }),
@@ -78,7 +78,7 @@ describe("requestProtest", () => {
     mockFrom.mockReturnValue(mockQueryBuilder({ data: null, error: new Error("insert failed") }));
 
     await expect(requestProtest("user1", "prop1")).rejects.toThrow("insert failed");
-    expect(mockSubmitWeb3Form).not.toHaveBeenCalled();
+    expect(mockNotifyStaff).not.toHaveBeenCalled();
   });
 });
 
