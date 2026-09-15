@@ -32,6 +32,7 @@ import { HouseIllustration } from "@/assets/illustrations/house";
 import { WavingBearIllustration } from "@/assets/illustrations/waving-bear";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ICON_COLORS } from "@/lib/icon-colors";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -55,6 +56,11 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const navigate = useNavigate();
+  // Already a signed-in user (so already a beta user) — the promo banner's
+  // "sign up as a beta user" pitch doesn't apply, and its link goes to
+  // /sign-in with no redirect target, which just bounces a signed-in visitor
+  // straight back here (looked like the link "did nothing").
+  const { user } = useAuth();
   const [address, setAddress] = useState("");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
   const [uploading, setUploading] = useState(false);
@@ -103,22 +109,24 @@ function Home() {
     <>
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)] flex flex-col justify-center">
         <HeroBackground />
-        <div className="beta-flyby-plane" aria-label="Beta signup announcement">
-          <Plane className="h-6 w-6 shrink-0 text-accent -rotate-[135deg]" aria-hidden="true" />
-          <span className="beta-flyby-rope" aria-hidden="true" />
-          <div className="beta-flyby-banner">
-            <span className="text-sm font-medium">
-              🎉 Sign up as a beta user and get a free property protest evaluation.
-            </span>
-            <span className="text-sm font-bold">Free to start. No card required.</span>
-            <Link
-              to="/sign-in"
-              className="text-sm font-semibold text-warning underline underline-offset-2"
-            >
-              Join the beta →
-            </Link>
+        {!user && (
+          <div className="beta-flyby-plane" aria-label="Beta signup announcement">
+            <Plane className="h-6 w-6 shrink-0 text-accent -rotate-[135deg]" aria-hidden="true" />
+            <span className="beta-flyby-rope" aria-hidden="true" />
+            <div className="beta-flyby-banner">
+              <span className="text-sm font-medium">
+                🎉 Sign up as a beta user and get a free property protest evaluation.
+              </span>
+              <span className="text-sm font-bold">Free to start. No card required.</span>
+              <Link
+                to="/sign-in"
+                className="text-sm font-semibold text-warning underline underline-offset-2"
+              >
+                Join the beta →
+              </Link>
+            </div>
           </div>
-        </div>
+        )}
         {/* pt-16 (not pt-8) below md — the flyby banner above is absolutely
             positioned at top: 1.5rem and stands ~40px tall, so on a mobile
             viewport (where the heading wraps to more, larger-relative-size

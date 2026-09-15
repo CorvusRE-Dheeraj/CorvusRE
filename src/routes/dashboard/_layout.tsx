@@ -29,7 +29,16 @@ function DashboardLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    if (!loading && !user) {
+    // The nav() call below doesn't unmount this layout synchronously — this
+    // effect re-fires once more with `path` already updated to "/sign-in"
+    // (confirmed live: {path: "/dashboard/deadlines"} then immediately
+    // {path: "/sign-in"}), and that second fire was overwriting the correct
+    // redirect target with "/sign-in" itself — every signed-out visit to a
+    // /dashboard/* page landed back on plain "/sign-in?redirect=/sign-in",
+    // silently dropping where they were actually headed. Path is never
+    // legitimately "/sign-in" while this dashboard-only guard is mounted, so
+    // skip firing again once it is.
+    if (!loading && !user && path !== "/sign-in") {
       nav({ to: "/sign-in", search: { redirect: path, reason: REDIRECT_REASONS[path] } });
     }
   }, [loading, user, nav, path]);
