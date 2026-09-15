@@ -15,6 +15,9 @@ import {
   ClipboardCheck,
   Bell,
   Gift,
+  ClipboardList,
+  NotebookPen,
+  HelpCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -31,6 +34,9 @@ const NAV = [
   { to: "/dashboard/city", label: "City", icon: MessagesSquare },
   { to: "/dashboard/documents", label: "Documents", icon: FolderOpen },
   { to: "/dashboard/approvals", label: "Approvals", icon: BadgeCheck },
+  { to: "/dashboard/inspections", label: "Inspections", icon: ClipboardList },
+  { to: "/dashboard/daily-log", label: "Daily Log", icon: NotebookPen },
+  { to: "/dashboard/rfis", label: "RFIs", icon: HelpCircle },
   { to: "/dashboard/notifications", label: "Alerts", icon: Bell },
   { to: "/dashboard/design", label: "Design", icon: DraftingCompass },
   { to: "/dashboard/referrals", label: "Referrals", icon: Gift },

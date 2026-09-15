@@ -33,14 +33,17 @@ import { Route as DashboardLayoutApprovalsRouteImport } from './routes/dashboard
 import { Route as DashboardLayoutChecklistRouteImport } from './routes/dashboard/_layout.checklist'
 import { Route as DashboardLayoutCityRouteImport } from './routes/dashboard/_layout.city'
 import { Route as DashboardLayoutConstraintsRouteImport } from './routes/dashboard/_layout.constraints'
+import { Route as DashboardLayoutDailyLogRouteImport } from './routes/dashboard/_layout.daily-log'
 import { Route as DashboardLayoutDesignRouteImport } from './routes/dashboard/_layout.design'
 import { Route as DashboardLayoutDocumentsRouteImport } from './routes/dashboard/_layout.documents'
 import { Route as DashboardLayoutFeesRouteImport } from './routes/dashboard/_layout.fees'
+import { Route as DashboardLayoutInspectionsRouteImport } from './routes/dashboard/_layout.inspections'
 import { Route as DashboardLayoutNotificationsRouteImport } from './routes/dashboard/_layout.notifications'
 import { Route as DashboardLayoutPermitsRouteImport } from './routes/dashboard/_layout.permits'
 import { Route as DashboardLayoutPrepareRouteImport } from './routes/dashboard/_layout.prepare'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutReviewsRouteImport } from './routes/dashboard/_layout.reviews'
+import { Route as DashboardLayoutRfisRouteImport } from './routes/dashboard/_layout.rfis'
 import { Route as DashboardLayoutRoadmapRouteImport } from './routes/dashboard/_layout.roadmap'
 import { Route as DashboardLayoutSettingsRouteImport } from './routes/dashboard/_layout.settings'
 import { Route as DashboardLayoutTimelineRouteImport } from './routes/dashboard/_layout.timeline'
@@ -168,6 +171,11 @@ const DashboardLayoutConstraintsRoute =
     path: '/constraints',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutDailyLogRoute = DashboardLayoutDailyLogRouteImport.update({
+  id: '/daily-log',
+  path: '/daily-log',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutDesignRoute = DashboardLayoutDesignRouteImport.update({
   id: '/design',
   path: '/design',
@@ -184,6 +192,12 @@ const DashboardLayoutFeesRoute = DashboardLayoutFeesRouteImport.update({
   path: '/fees',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutInspectionsRoute =
+  DashboardLayoutInspectionsRouteImport.update({
+    id: '/inspections',
+    path: '/inspections',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutNotificationsRoute =
   DashboardLayoutNotificationsRouteImport.update({
     id: '/notifications',
@@ -209,6 +223,11 @@ const DashboardLayoutReferralsRoute =
 const DashboardLayoutReviewsRoute = DashboardLayoutReviewsRouteImport.update({
   id: '/reviews',
   path: '/reviews',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
+const DashboardLayoutRfisRoute = DashboardLayoutRfisRouteImport.update({
+  id: '/rfis',
+  path: '/rfis',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
 const DashboardLayoutRoadmapRoute = DashboardLayoutRoadmapRouteImport.update({
@@ -251,14 +270,17 @@ export interface FileRoutesByFullPath {
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/constraints': typeof DashboardLayoutConstraintsRoute
+  '/dashboard/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/design': typeof DashboardLayoutDesignRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/fees': typeof DashboardLayoutFeesRoute
+  '/dashboard/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
+  '/dashboard/rfis': typeof DashboardLayoutRfisRoute
   '/dashboard/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/timeline': typeof DashboardLayoutTimelineRoute
@@ -287,14 +309,17 @@ export interface FileRoutesByTo {
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/constraints': typeof DashboardLayoutConstraintsRoute
+  '/dashboard/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/design': typeof DashboardLayoutDesignRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/fees': typeof DashboardLayoutFeesRoute
+  '/dashboard/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
+  '/dashboard/rfis': typeof DashboardLayoutRfisRoute
   '/dashboard/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/timeline': typeof DashboardLayoutTimelineRoute
@@ -325,14 +350,17 @@ export interface FileRoutesById {
   '/dashboard/_layout/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/_layout/city': typeof DashboardLayoutCityRoute
   '/dashboard/_layout/constraints': typeof DashboardLayoutConstraintsRoute
+  '/dashboard/_layout/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/_layout/design': typeof DashboardLayoutDesignRoute
   '/dashboard/_layout/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/_layout/fees': typeof DashboardLayoutFeesRoute
+  '/dashboard/_layout/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/_layout/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/_layout/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/_layout/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/reviews': typeof DashboardLayoutReviewsRoute
+  '/dashboard/_layout/rfis': typeof DashboardLayoutRfisRoute
   '/dashboard/_layout/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/_layout/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/_layout/timeline': typeof DashboardLayoutTimelineRoute
@@ -364,14 +392,17 @@ export interface FileRouteTypes {
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/constraints'
+    | '/dashboard/daily-log'
     | '/dashboard/design'
     | '/dashboard/documents'
     | '/dashboard/fees'
+    | '/dashboard/inspections'
     | '/dashboard/notifications'
     | '/dashboard/permits'
     | '/dashboard/prepare'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
+    | '/dashboard/rfis'
     | '/dashboard/roadmap'
     | '/dashboard/settings'
     | '/dashboard/timeline'
@@ -400,14 +431,17 @@ export interface FileRouteTypes {
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/constraints'
+    | '/dashboard/daily-log'
     | '/dashboard/design'
     | '/dashboard/documents'
     | '/dashboard/fees'
+    | '/dashboard/inspections'
     | '/dashboard/notifications'
     | '/dashboard/permits'
     | '/dashboard/prepare'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
+    | '/dashboard/rfis'
     | '/dashboard/roadmap'
     | '/dashboard/settings'
     | '/dashboard/timeline'
@@ -437,14 +471,17 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/checklist'
     | '/dashboard/_layout/city'
     | '/dashboard/_layout/constraints'
+    | '/dashboard/_layout/daily-log'
     | '/dashboard/_layout/design'
     | '/dashboard/_layout/documents'
     | '/dashboard/_layout/fees'
+    | '/dashboard/_layout/inspections'
     | '/dashboard/_layout/notifications'
     | '/dashboard/_layout/permits'
     | '/dashboard/_layout/prepare'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/reviews'
+    | '/dashboard/_layout/rfis'
     | '/dashboard/_layout/roadmap'
     | '/dashboard/_layout/settings'
     | '/dashboard/_layout/timeline'
@@ -643,6 +680,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutConstraintsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/daily-log': {
+      id: '/dashboard/_layout/daily-log'
+      path: '/daily-log'
+      fullPath: '/dashboard/daily-log'
+      preLoaderRoute: typeof DashboardLayoutDailyLogRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/design': {
       id: '/dashboard/_layout/design'
       path: '/design'
@@ -662,6 +706,13 @@ declare module '@tanstack/react-router' {
       path: '/fees'
       fullPath: '/dashboard/fees'
       preLoaderRoute: typeof DashboardLayoutFeesRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
+    '/dashboard/_layout/inspections': {
+      id: '/dashboard/_layout/inspections'
+      path: '/inspections'
+      fullPath: '/dashboard/inspections'
+      preLoaderRoute: typeof DashboardLayoutInspectionsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
     '/dashboard/_layout/notifications': {
@@ -699,6 +750,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutReviewsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/rfis': {
+      id: '/dashboard/_layout/rfis'
+      path: '/rfis'
+      fullPath: '/dashboard/rfis'
+      preLoaderRoute: typeof DashboardLayoutRfisRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/roadmap': {
       id: '/dashboard/_layout/roadmap'
       path: '/roadmap'
@@ -728,14 +786,17 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutChecklistRoute: typeof DashboardLayoutChecklistRoute
   DashboardLayoutCityRoute: typeof DashboardLayoutCityRoute
   DashboardLayoutConstraintsRoute: typeof DashboardLayoutConstraintsRoute
+  DashboardLayoutDailyLogRoute: typeof DashboardLayoutDailyLogRoute
   DashboardLayoutDesignRoute: typeof DashboardLayoutDesignRoute
   DashboardLayoutDocumentsRoute: typeof DashboardLayoutDocumentsRoute
   DashboardLayoutFeesRoute: typeof DashboardLayoutFeesRoute
+  DashboardLayoutInspectionsRoute: typeof DashboardLayoutInspectionsRoute
   DashboardLayoutNotificationsRoute: typeof DashboardLayoutNotificationsRoute
   DashboardLayoutPermitsRoute: typeof DashboardLayoutPermitsRoute
   DashboardLayoutPrepareRoute: typeof DashboardLayoutPrepareRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutReviewsRoute: typeof DashboardLayoutReviewsRoute
+  DashboardLayoutRfisRoute: typeof DashboardLayoutRfisRoute
   DashboardLayoutRoadmapRoute: typeof DashboardLayoutRoadmapRoute
   DashboardLayoutSettingsRoute: typeof DashboardLayoutSettingsRoute
   DashboardLayoutTimelineRoute: typeof DashboardLayoutTimelineRoute
@@ -747,14 +808,17 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutChecklistRoute: DashboardLayoutChecklistRoute,
   DashboardLayoutCityRoute: DashboardLayoutCityRoute,
   DashboardLayoutConstraintsRoute: DashboardLayoutConstraintsRoute,
+  DashboardLayoutDailyLogRoute: DashboardLayoutDailyLogRoute,
   DashboardLayoutDesignRoute: DashboardLayoutDesignRoute,
   DashboardLayoutDocumentsRoute: DashboardLayoutDocumentsRoute,
   DashboardLayoutFeesRoute: DashboardLayoutFeesRoute,
+  DashboardLayoutInspectionsRoute: DashboardLayoutInspectionsRoute,
   DashboardLayoutNotificationsRoute: DashboardLayoutNotificationsRoute,
   DashboardLayoutPermitsRoute: DashboardLayoutPermitsRoute,
   DashboardLayoutPrepareRoute: DashboardLayoutPrepareRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutReviewsRoute: DashboardLayoutReviewsRoute,
+  DashboardLayoutRfisRoute: DashboardLayoutRfisRoute,
   DashboardLayoutRoadmapRoute: DashboardLayoutRoadmapRoute,
   DashboardLayoutSettingsRoute: DashboardLayoutSettingsRoute,
   DashboardLayoutTimelineRoute: DashboardLayoutTimelineRoute,

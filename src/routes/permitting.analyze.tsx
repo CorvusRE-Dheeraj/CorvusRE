@@ -674,6 +674,11 @@ function ReportStep({
       <Section
         title="Required permits"
         subtitle={`${permits.length} permits · ${complexity.level} complexity · ~${complexity.estimatedReviewCycles} review cycle(s)`}
+        right={
+          <button type="button" className="btn-outline text-sm" onClick={() => window.print()}>
+            Export / print
+          </button>
+        }
       >
         <div className="grid gap-4 sm:grid-cols-2">
           {Object.entries(grouped).map(([cat, items]) => (
@@ -797,7 +802,7 @@ function ReportStep({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <button className="btn-outline" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" /> Back
         </button>

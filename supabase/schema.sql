@@ -719,3 +719,67 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Competitor-inspired gap fill (2026-09-15) — PermitFlow's "Issuance Agent"
+-- tracks inspections through to closeout once a permit is approved; CorvusDP
+-- had permit approval/expiry but nothing for the inspection step in between.
+-- One row per inspection a user logs against an approved permit — manually
+-- added (never auto-guessed which inspections apply; that varies by permit
+-- type and jurisdiction), status advanced the same way permit status is.
+-- ---------------------------------------------------------------------------
+create table if not exists public.project_inspections (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  permit_id uuid references public.project_permits (id) on delete set null,
+  name text not null,
+  status text not null default 'scheduled', -- scheduled|passed|failed|re_inspection_needed
+  scheduled_date date,
+  notes text,
+  created_at timestamptz not null default now()
+);
+alter table public.project_inspections enable row level security;
+drop policy if exists "inspections: all" on public.project_inspections;
+create policy "inspections: all" on public.project_inspections
+  for all using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+-- Daily Construction Log (PRD 2.3.6.2, and already promised in the /construction
+-- marketing copy: "Weather, crews on site, work performed, deliveries, and
+-- issues — captured day by day"). Competitor-inspired: Buildertrend's daily
+-- log is one of its most-used features for residential/light-commercial
+-- builders, CorvusDP's own target market.
+create table if not exists public.project_daily_logs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  log_date date not null default current_date,
+  weather text,
+  crew_count int,
+  work_performed text not null,
+  deliveries text,
+  delays_issues text,
+  created_at timestamptz not null default now()
+);
+alter table public.project_daily_logs enable row level security;
+drop policy if exists "daily logs: all" on public.project_daily_logs;
+create policy "daily logs: all" on public.project_daily_logs
+  for all using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+-- RFI (Request for Information) tracker — competitor-inspired (Procore/
+-- Buildertrend's core submittals-and-RFIs workflow), also already promised
+-- in the /construction marketing copy ("Route shop drawings and RFIs to the
+-- right consultant, with status and turnaround visible to everyone").
+create table if not exists public.project_rfis (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  subject text not null,
+  question text not null,
+  submitted_to text,
+  status text not null default 'open', -- open|answered|closed
+  response text,
+  due_date date,
+  created_at timestamptz not null default now()
+);
+alter table public.project_rfis enable row level security;
+drop policy if exists "rfis: all" on public.project_rfis;
+create policy "rfis: all" on public.project_rfis
+  for all using (public.owns_project(project_id)) with check (public.owns_project(project_id));
