@@ -1,0 +1,7 @@
+{
+  "name": "corvusre",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ]
+}

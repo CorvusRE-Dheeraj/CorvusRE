@@ -1,0 +1,9 @@
+{
+  "name": "corvus-identity",
+  "private": true,
+  "description": "Placeholder — replaced by the shared sign-in app in migration Phase 5 (login bridge).",
+  "scripts": {
+    "test": "echo \"(placeholder) no tests yet\"",
+    "build": "node build.js"
+  }
+}

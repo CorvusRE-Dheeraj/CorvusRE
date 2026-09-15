@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CorvusRE — Corvus Real Estate</title>
+  <meta name="description" content="CorvusRE — the parent home for Corvus Property Tax, Buy/Sell/Lease, and more." />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/hub.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" />
+</head>
+<body class="doors-page">
+  <header>
+    <div class="container-page bar">
+      <a href="/" class="brand">
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 20c3-6 5-9 8-9s5 3 8 9" stroke-linecap="round" />
+            <circle cx="16" cy="7" r="2" fill="currentColor" />
+          </svg>
+        </span>
+        <span class="wordmark">CorvusRE</span>
+      </a>
+      <span class="header-tagline">All your real estate needs in one place</span>
+      <span class="doors-hint">Choose a door to enter</span>
+    </div>
+  </header>
+
+  <main class="doors-stage">
+    <!-- The whole home page IS the nav: five full-height doors, one per
+       Corvus product, painted flat in that product's own brand color. No
+       hero copy, no scrolling section — picking a door is the entire
+       interaction. Each door is a real link with its product's real href
+       (works with no JS as a plain navigation), but CorvusRE is currently
+       invite-only: with JS, clicking any door opens the "Request Beta
+       Access" lead-capture dialog (see the script below) instead of
+       navigating anywhere. -->
+    <nav class="doors" aria-label="Corvus products">
+      <a class="door door-pt" href="/corvuspt/" style="--i:0">
+        <span class="door-panel" aria-hidden="true">
+          <span class="door-hinge door-hinge-top" aria-hidden="true"></span>
+          <span class="door-hinge door-hinge-bottom" aria-hidden="true"></span>
+          <span class="door-panel-field-upper" aria-hidden="true"></span>
+          <span class="door-panel-field-lower" aria-hidden="true"></span>
+          <span class="door-handle" aria-hidden="true"></span>
+        </span>
+        <span class="door-medallion" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle class="medallion-ring" cx="12" cy="12" r="11" />
+            <path class="medallion-mark" d="M6 10 Q12 5 18 10" />
+            <path class="medallion-mark" d="M8 15 Q12 18 16 15" />
+            <circle class="medallion-eye" cx="8.5" cy="11" r="0.9" />
+            <circle class="medallion-eye" cx="15.5" cy="11" r="0.9" />
+          </svg>
+        </span>
+        <span class="door-kickplate" aria-hidden="true"></span>
+        <span class="door-torch left" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-torch right" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-label">Corvus<span class="door-label-pt">PT</span></span>
+        <span class="door-subtitle">
+          <span><span class="door-subtitle-letter">P</span>roperty</span>
+          <span><span class="door-subtitle-letter">T</span>ax</span>
+          <span>Management</span>
+        </span>
+      </a>
+
+      <a class="door door-bsl" href="/corvusbsl/" style="--i:1">
+        <span class="door-panel" aria-hidden="true">
+          <span class="door-hinge door-hinge-top" aria-hidden="true"></span>
+          <span class="door-hinge door-hinge-bottom" aria-hidden="true"></span>
+          <span class="door-panel-field-upper" aria-hidden="true"></span>
+          <span class="door-panel-field-lower" aria-hidden="true"></span>
+          <span class="door-handle" aria-hidden="true"></span>
+        </span>
+        <span class="door-medallion" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle class="medallion-ring" cx="12" cy="12" r="11" />
+            <path class="medallion-mark" d="M6 10 Q12 5 18 10" />
+            <path class="medallion-mark" d="M8 15 Q12 18 16 15" />
+            <circle class="medallion-eye" cx="8.5" cy="11" r="0.9" />
+            <circle class="medallion-eye" cx="15.5" cy="11" r="0.9" />
+          </svg>
+        </span>
+        <span class="door-kickplate" aria-hidden="true"></span>
+        <span class="door-torch left" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-torch right" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-label">Corvus<span class="door-label-accent">BSL</span></span>
+        <span class="door-subtitle">
+          <span><span class="door-subtitle-letter">B</span>uy</span>
+          <span><span class="door-subtitle-letter">S</span>ell</span>
+          <span><span class="door-subtitle-letter">L</span>ease</span>
+        </span>
+      </a>
+
+      <a class="door door-dp" href="/corvusdp/" style="--i:2">
+        <span class="door-panel" aria-hidden="true">
+          <span class="door-hinge door-hinge-top" aria-hidden="true"></span>
+          <span class="door-hinge door-hinge-bottom" aria-hidden="true"></span>
+          <span class="door-panel-field-upper" aria-hidden="true"></span>
+          <span class="door-panel-field-lower" aria-hidden="true"></span>
+          <span class="door-handle" aria-hidden="true"></span>
+        </span>
+        <span class="door-medallion" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle class="medallion-ring" cx="12" cy="12" r="11" />
+            <path class="medallion-mark" d="M6 10 Q12 5 18 10" />
+            <path class="medallion-mark" d="M8 15 Q12 18 16 15" />
+            <circle class="medallion-eye" cx="8.5" cy="11" r="0.9" />
+            <circle class="medallion-eye" cx="15.5" cy="11" r="0.9" />
+          </svg>
+        </span>
+        <span class="door-kickplate" aria-hidden="true"></span>
+        <span class="door-torch left" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-torch right" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-label">Corvus<span class="door-label-accent">D&amp;P</span></span>
+        <span class="door-subtitle">
+          <span><span class="door-subtitle-letter">D</span>esign</span>
+          <span>Plan</span>
+          <span><span class="door-subtitle-letter">P</span>ermit</span>
+        </span>
+      </a>
+
+      <a class="door door-co" href="/corvusco/" style="--i:3">
+        <span class="door-panel" aria-hidden="true">
+          <span class="door-hinge door-hinge-top" aria-hidden="true"></span>
+          <span class="door-hinge door-hinge-bottom" aria-hidden="true"></span>
+          <span class="door-panel-field-upper" aria-hidden="true"></span>
+          <span class="door-panel-field-lower" aria-hidden="true"></span>
+          <span class="door-handle" aria-hidden="true"></span>
+        </span>
+        <span class="door-medallion" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle class="medallion-ring" cx="12" cy="12" r="11" />
+            <path class="medallion-mark" d="M6 10 Q12 5 18 10" />
+            <path class="medallion-mark" d="M8 15 Q12 18 16 15" />
+            <circle class="medallion-eye" cx="8.5" cy="11" r="0.9" />
+            <circle class="medallion-eye" cx="15.5" cy="11" r="0.9" />
+          </svg>
+        </span>
+        <span class="door-kickplate" aria-hidden="true"></span>
+        <span class="door-torch left" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-torch right" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-label">Corvus<span class="door-label-accent">CO</span></span>
+        <span class="door-subtitle">
+          <span><span class="door-subtitle-letter">Co</span>nstruct</span>
+          <span>Operate</span>
+          <span>Manage</span>
+        </span>
+      </a>
+
+      <a class="door door-rf" href="/corvusrf/" style="--i:4">
+        <span class="door-panel" aria-hidden="true">
+          <span class="door-hinge door-hinge-top" aria-hidden="true"></span>
+          <span class="door-hinge door-hinge-bottom" aria-hidden="true"></span>
+          <span class="door-panel-field-upper" aria-hidden="true"></span>
+          <span class="door-panel-field-lower" aria-hidden="true"></span>
+          <span class="door-handle" aria-hidden="true"></span>
+        </span>
+        <span class="door-medallion" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle class="medallion-ring" cx="12" cy="12" r="11" />
+            <path class="medallion-mark" d="M6 10 Q12 5 18 10" />
+            <path class="medallion-mark" d="M8 15 Q12 18 16 15" />
+            <circle class="medallion-eye" cx="8.5" cy="11" r="0.9" />
+            <circle class="medallion-eye" cx="15.5" cy="11" r="0.9" />
+          </svg>
+        </span>
+        <span class="door-kickplate" aria-hidden="true"></span>
+        <span class="door-torch left" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-torch right" aria-hidden="true">
+          <svg viewBox="0 0 10 22">
+            <rect class="torch-sconce" x="3" y="12" width="4" height="9" rx="1" />
+            <path class="torch-flame" d="M5 0C5 0 8 4.5 8 7.5C8 9.5 6.7 11 5 11C3.3 11 2 9.5 2 7.5C2 4.5 5 0 5 0Z" />
+          </svg>
+        </span>
+        <span class="door-label">Corvus<span class="door-label-accent">RF</span></span>
+        <span class="door-subtitle">
+          <span><span class="door-subtitle-letter">R</span>eal</span>
+          <span>Estate</span>
+          <span><span class="door-subtitle-letter">F</span>inance</span>
+        </span>
+      </a>
+    </nav>
+  </main>
+
+  <footer>
+    <div class="container-page">
+      &copy; <span id="year"></span> CorvusRE.
+    </div>
+  </footer>
+
+  <!-- Invite-Only Beta lead form — every door opens this instead of
+       navigating, since there's no live product to send anyone to yet.
+       Each door's href stays in place only as a plain-link/no-JS
+       fallback. Submits via Web3Forms (same service the main app already
+       uses for staff notifications), so this needs no backend of its own. -->
+  <dialog class="beta-dialog" id="betaDialog" aria-labelledby="betaDialogTitle">
+    <button type="button" class="beta-dialog-close" id="betaDialogClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+    </button>
+    <div class="beta-dialog-panel">
+      <div id="betaFormView">
+        <h2 id="betaDialogTitle">Request Beta Access</h2>
+        <p class="beta-dialog-sub" id="betaDialogSub">CorvusRE is currently invite-only. Tell us a bit about you and we'll follow up.</p>
+        <form id="betaForm" novalidate>
+          <input type="hidden" name="access_key" value="5a66f800-1264-49a2-9696-2839afd02485" />
+          <input type="hidden" name="subject" value="New CorvusRE beta request" />
+          <input type="hidden" name="from_name" value="CorvusRE hub" />
+          <input type="hidden" name="source_door" id="betaSourceDoor" value="" />
+          <label class="beta-field">
+            <span>Full Name</span>
+            <input type="text" name="full_name" required autocomplete="name" />
+          </label>
+          <label class="beta-field">
+            <span>Work Email</span>
+            <input type="email" name="work_email" required autocomplete="email" />
+          </label>
+          <label class="beta-field">
+            <span>Company / Organization</span>
+            <input type="text" name="company" required autocomplete="organization" />
+          </label>
+          <fieldset class="beta-field beta-radio-group">
+            <legend>What area are you most interested in?</legend>
+            <label><input type="checkbox" name="area_of_interest" value="Property Tax Management" /><span>Property Tax Management</span></label>
+            <label><input type="checkbox" name="area_of_interest" value="Permitting, Design" /><span>Permitting, Design</span></label>
+            <label><input type="checkbox" name="area_of_interest" value="Buying, Selling &amp; Leasing" /><span>Buying, Selling &amp; Leasing</span></label>
+            <label><input type="checkbox" name="area_of_interest" value="Construction" /><span>Construction</span></label>
+            <label><input type="checkbox" name="area_of_interest" value="Real Estate Finance" /><span>Real Estate Finance</span></label>
+          </fieldset>
+          <label class="beta-field">
+            <span>What would you most like to use the platform for? <em>(short answer)</em></span>
+            <textarea name="use_case" rows="3"></textarea>
+          </label>
+          <p class="beta-form-error" id="betaFormError" role="alert" hidden></p>
+          <button type="submit" class="beta-submit" id="betaSubmit">Request Beta Access</button>
+        </form>
+      </div>
+      <div id="betaSuccessView" hidden>
+        <h2>Thanks — request received.</h2>
+        <p>We'll follow up at the email you provided as beta access opens up.</p>
+        <button type="button" class="beta-submit" id="betaSuccessClose">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    (function () {
+      var dialog = document.getElementById("betaDialog");
+      var closeBtn = document.getElementById("betaDialogClose");
+      var successCloseBtn = document.getElementById("betaSuccessClose");
+      var form = document.getElementById("betaForm");
+      var formView = document.getElementById("betaFormView");
+      var successView = document.getElementById("betaSuccessView");
+      var errorEl = document.getElementById("betaFormError");
+      var submitBtn = document.getElementById("betaSubmit");
+      var sourceDoorInput = document.getElementById("betaSourceDoor");
+      var subtitleEl = document.getElementById("betaDialogSub");
+      if (!dialog || !form) return;
+
+      // Each door maps to exactly one interest option except CorvusPT,
+      // which is deliberately left out here and opens with nothing
+      // pre-selected (no door-specific default chosen for it).
+      var DOOR_AREAS = {
+        "door-bsl": "Buying, Selling & Leasing",
+        "door-dp": "Permitting, Design",
+        "door-co": "Construction",
+        "door-rf": "Real Estate Finance"
+      };
+      var DOOR_NAMES = {
+        "door-pt": "CorvusPT",
+        "door-bsl": "CorvusBSL",
+        "door-dp": "CorvusD&P",
+        "door-co": "CorvusCO",
+        "door-rf": "CorvusRF"
+      };
+
+      function doorKey(door) {
+        for (var i = 0; i < door.classList.length; i++) {
+          if (DOOR_NAMES[door.classList[i]]) return door.classList[i];
+        }
+        return null;
+      }
+
+      function resetForm() {
+        form.reset();
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Request Beta Access";
+        formView.hidden = false;
+        successView.hidden = true;
+      }
+
+      function openForDoor(door) {
+        resetForm();
+        var key = doorKey(door);
+        var productName = (key && DOOR_NAMES[key]) || "CorvusRE";
+        sourceDoorInput.value = productName;
+        subtitleEl.textContent = "CorvusRE is currently invite-only. Tell us a bit about you and we'll follow up about " + productName + ".";
+        var area = key && DOOR_AREAS[key];
+        if (area) {
+          form.querySelectorAll('input[name="area_of_interest"]').forEach(function (radio) {
+            radio.checked = radio.value === area;
+          });
+        }
+        dialog.showModal();
+      }
+
+      document.querySelectorAll(".door").forEach(function (door) {
+        door.addEventListener("click", function (event) {
+          if (event.defaultPrevented || event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+          }
+          event.preventDefault();
+          openForDoor(door);
+        });
+      });
+
+      closeBtn.addEventListener("click", function () {
+        dialog.close();
+      });
+      successCloseBtn.addEventListener("click", function () {
+        dialog.close();
+      });
+      // A click that lands on the ::backdrop registers as a click on the
+      // dialog element itself (nothing inside it), so this alone
+      // distinguishes a backdrop click with no extra bookkeeping.
+      dialog.addEventListener("click", function (event) {
+        if (event.target === dialog) dialog.close();
+      });
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        errorEl.hidden = true;
+
+        // Checkboxes (not radios, now that multiple areas can be picked)
+        // have no native "at least one checked" validation, so that's
+        // enforced here instead.
+        var checkedAreas = Array.prototype.map.call(
+          form.querySelectorAll('input[name="area_of_interest"]:checked'),
+          function (el) { return el.value; }
+        );
+        if (checkedAreas.length === 0) {
+          errorEl.textContent = "Please select at least one area of interest.";
+          errorEl.hidden = false;
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Sending…";
+        var formData = new FormData(form);
+        var areaJoined = checkedAreas.join(", ");
+        // Replace the individual same-named checkbox entries with one
+        // clean, comma-joined value so the notification email shows a
+        // readable list instead of several repeated "area_of_interest"
+        // fields.
+        formData.delete("area_of_interest");
+        formData.set("area_of_interest", areaJoined);
+
+        // Best-effort — the submit-beta-lead edge function persists this
+        // to Supabase's beta_leads table (visible in the admin panel's
+        // "Beta Signups" section) so submissions are queryable in one
+        // place, not just scattered across inbox emails. Web3Forms (below)
+        // is the tested, already-relied-on path that actually gates the
+        // success/error UI, so a Supabase hiccup here never blocks or
+        // fails a real submission — it's only logged.
+        fetch("https://iotzuhuajbsxxuccuihn.supabase.co/functions/v1/submit-beta-lead", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: "sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3",
+          },
+          body: JSON.stringify({
+            fullName: formData.get("full_name"),
+            workEmail: formData.get("work_email"),
+            company: formData.get("company"),
+            areaOfInterest: areaJoined,
+            useCase: formData.get("use_case"),
+            sourceDoor: formData.get("source_door"),
+          }),
+        }).catch(function (err) {
+          console.error("Beta lead Supabase storage failed (non-blocking):", err);
+        });
+
+        fetch("https://api.web3forms.com/submit", { method: "POST", body: formData })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.success) throw new Error(data.message || "Submission failed.");
+            formView.hidden = true;
+            successView.hidden = false;
+          })
+          .catch(function (err) {
+            errorEl.textContent = "Something went wrong sending your request — please try again." + (err && err.message ? " (" + err.message + ")" : "");
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Request Beta Access";
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

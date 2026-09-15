@@ -1,0 +1,9 @@
+{
+  "name": "corvusdp",
+  "private": true,
+  "description": "Placeholder — replaced by CorvusDP's real app in migration Phase 2.",
+  "scripts": {
+    "test": "echo \"(placeholder) no tests yet\"",
+    "build": "node build.js"
+  }
+}

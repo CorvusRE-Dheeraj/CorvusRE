@@ -1,0 +1,113 @@
+name: Deploy CorvusRE
+
+# One push, one deploy — replaces CorvusDP's old ci.yml-dispatches-CorvusPT's-
+# deploy.yml setup, which rebuilt CorvusDP twice per push. Each door now
+# builds in its own parallel job (no cross-repo checkout needed, everything
+# lives in this one repo), and a single assemble-and-deploy job waits on all
+# of them before publishing exactly one artifact.
+#
+# Phase 0 scaffold: apps/pt, apps/dp, apps/identity are trivial placeholders
+# proving this pipeline end-to-end. Migration Phases 1/2/5 replace each
+# placeholder's package.json/build with the real app, without needing to
+# touch this workflow's shape.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-pt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/pt
+      - run: npm run build -w apps/pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pt-dist
+          path: apps/pt/dist/client
+
+  build-dp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/dp
+      - run: npm run build -w apps/dp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dp-dist
+          path: apps/dp/dist/client
+
+  build-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/identity
+      - run: npm run build -w apps/identity
+      - uses: actions/upload-artifact@v4
+        with:
+          name: identity-dist
+          path: apps/identity/dist/client
+
+  assemble-and-deploy:
+    needs: [build-pt, build-dp, build-identity]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pt-dist
+          path: pt-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: dp-dist
+          path: dp-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: identity-dist
+          path: identity-dist
+
+      - name: Assemble hub + all doors into one site
+        run: |
+          mkdir -p site
+          cp -r hub/. site/
+          mkdir -p site/corvuspt && cp -r pt-dist/. site/corvuspt/
+          mkdir -p site/corvusdp && cp -r dp-dist/. site/corvusdp/
+          mkdir -p site/auth && cp -r identity-dist/. site/auth/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
