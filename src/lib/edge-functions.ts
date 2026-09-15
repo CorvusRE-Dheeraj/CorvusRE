@@ -3,6 +3,18 @@ import { supabase } from "./supabase";
 const MAX_RETRIES_429 = 2;
 const BASE_DELAY_MS = 800;
 
+// A thrown error with no `context` (no Response object at all) means
+// supabase-js's own fetch() never got a reply — a FunctionsFetchError, seen
+// live and repeatedly this session as "Subscription reconcile failed:
+// FunctionsFetchError: Failed to send a request to the Edge Function" — while
+// calling the exact same function directly, back to back, succeeded every
+// time. That confirms it's a transient client-side network blip (not a
+// broken/undeployed function), yet this whole retry loop previously only
+// covered real HTTP status codes (401/429/504), so a FunctionsFetchError hit
+// zero retries and surfaced immediately. Small budget — this is "the fetch
+// itself glitched," not the congestion 504 already retries harder for.
+const MAX_RETRIES_NETWORK = 2;
+
 // A 504 (see below) gets more attempts and near-zero delay between them — it's
 // not a quota to back off from like 429, it's "that one connection to Gemini
 // was slow, try a fresh one now." Live testing while chasing the "modules
@@ -83,6 +95,12 @@ export async function invokeEdgeFunction<T>(
     if (context?.status === 401 && !refreshedOn401) {
       refreshedOn401 = true;
       await supabase.auth.refreshSession().catch(() => {});
+      continue;
+    }
+
+    if (!context) {
+      if (attempt >= MAX_RETRIES_NETWORK) throw thrown;
+      await sleep(300 + Math.random() * 300);
       continue;
     }
 
