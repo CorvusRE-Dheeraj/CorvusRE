@@ -36,6 +36,8 @@ export type BppAccountRecord = {
   valueBracket: PropertyValueBracket | null;
   cancelAtPeriodEnd: boolean;
   cancelAt: string | null;
+  autoRefile: boolean;
+  autoRefileAuthorizedAt: string | null;
 };
 
 type BppAccountRow = {
@@ -62,10 +64,12 @@ type BppAccountRow = {
   value_bracket: PropertyValueBracket | null;
   cancel_at_period_end: boolean;
   cancel_at: string | null;
+  auto_refile: boolean;
+  auto_refile_authorized_at: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at";
+  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
 
 function fromRow(row: BppAccountRow): BppAccountRecord {
   return {
@@ -92,6 +96,8 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     valueBracket: row.value_bracket,
     cancelAtPeriodEnd: row.cancel_at_period_end,
     cancelAt: row.cancel_at,
+    autoRefile: row.auto_refile,
+    autoRefileAuthorizedAt: row.auto_refile_authorized_at,
   };
 }
 
@@ -227,6 +233,22 @@ export async function markRenditionFiled(id: string): Promise<BppAccountRecord> 
   const { data, error } = await supabase
     .from("bpp_accounts")
     .update({ rendition_filed_at: new Date().toISOString() })
+    .eq("id", id)
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromRow(data as BppAccountRow);
+}
+
+// Opt-in year-over-year auto-refile — see the matching setAutoRefile() in
+// properties.ts for the full reasoning (same consent-timestamp convention).
+export async function setBppAutoRefile(id: string, enabled: boolean): Promise<BppAccountRecord> {
+  const { data, error } = await supabase
+    .from("bpp_accounts")
+    .update({
+      auto_refile: enabled,
+      auto_refile_authorized_at: enabled ? new Date().toISOString() : null,
+    })
     .eq("id", id)
     .select(SELECT_COLUMNS)
     .single();

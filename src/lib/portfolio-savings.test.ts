@@ -54,6 +54,8 @@ function bppAccount(overrides: Partial<BppAccountRecord> = {}): BppAccountRecord
     valueBracket: null,
     cancelAtPeriodEnd: false,
     cancelAt: null,
+    autoRefile: false,
+    autoRefileAuthorizedAt: null,
     ...overrides,
   };
 }

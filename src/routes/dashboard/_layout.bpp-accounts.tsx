@@ -7,6 +7,7 @@ import {
   addBppAccount,
   deleteBppAccount,
   bppNeedsProtest,
+  setBppAutoRefile,
   type BppAccountRecord,
 } from "@/lib/bpp-accounts";
 import {
@@ -167,6 +168,19 @@ function BppAccounts() {
       toast.success("Subscription resumed.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not resume this subscription.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleToggleAutoRefile(account: BppAccountRecord, enabled: boolean) {
+    setBusyId(account.id);
+    try {
+      const updated = await setBppAutoRefile(account.id, enabled);
+      updateAccount(updated);
+      toast.success(enabled ? "Auto re-file turned on." : "Auto re-file turned off.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update auto re-file.");
     } finally {
       setBusyId(null);
     }
@@ -374,6 +388,27 @@ function BppAccounts() {
                       {deletingId === a.id ? "Removing…" : "Delete"}
                     </button>
                   </div>
+
+                  {existingProtest?.status === "resolved" && (
+                    <div className="flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
+                      <input
+                        id={`auto-refile-${a.id}`}
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={!!a.autoRefile}
+                        disabled={busyId === a.id}
+                        onChange={(e) => handleToggleAutoRefile(a, e.target.checked)}
+                      />
+                      <label htmlFor={`auto-refile-${a.id}`}>
+                        <span className="font-medium">Auto re-file next year</span>
+                        <span className="block text-xs text-muted-foreground">
+                          When on, CorvusPT automatically starts next year&apos;s protest once a new
+                          notice value disagrees with what was rendered — no action needed beyond
+                          signing the actual protest when it's ready. Off by default.
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               );
             })}
