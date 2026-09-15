@@ -1,0 +1,59 @@
+name: CI
+
+# CorvusDP is published only at https://corvusre.com/corvusdp/ — that domain
+# lives on the CorvusPT repo, whose deploy workflow checks out this repo's `dev`
+# branch, builds it, and assembles it into the shared CorvusRE hub.
+#
+# This workflow: (1) guards that the tests + the production build pass, and
+# (2) on a green push to `dev`, kicks the CorvusPT deploy so corvusre.com/corvusdp/
+# always tracks this repo's `dev`.
+#
+# Deliberately triggers on `dev` only — same as the CorvusPT door's own
+# deploy.yml (push: branches: [dev] + workflow_dispatch, nothing on feature
+# branches or pull_request). Verification of a feature branch happens
+# locally (npm run test / npm run build) before it's merged, not via a
+# GitHub-side run on every push or PR.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Pure permitting / zoning / fee / timeline / design math.
+      - run: npm run test
+
+      # Same build the CorvusPT deploy runs (SITE_BASE=/corvusdp/), so a
+      # prerender/base regression surfaces here first.
+      - run: npm run build
+        env:
+          SITE_BASE: /corvusdp/
+          VITE_SUPABASE_URL: https://xzhilwwlfajxhklkiteb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF
+          # Optional — address suggestions fall back to keyless Nominatim if unset.
+          VITE_GOOGLE_MAPS_API_KEY: ${{ vars.VITE_GOOGLE_MAPS_API_KEY }}
+
+      # Push to dev + build passed -> trigger the CorvusPT deploy, which rebuilds
+      # https://corvusre.com/corvusdp/ from this repo's dev branch. Needs a token
+      # with Actions:write on the CorvusPT repo (repo secret CORVUSPT_DEPLOY_TOKEN);
+      # the default GITHUB_TOKEN can't dispatch another repo's workflow.
+      - name: Trigger corvusre.com/corvusdp/ deploy (CorvusPT)
+        if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CORVUSPT_DEPLOY_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/dheeraj-corvusrf/CorvusPT/actions/workflows/deploy.yml/dispatches \
+            -d '{"ref":"dev"}' \
+            --fail-with-body

@@ -1,0 +1,20 @@
+# Pins line endings for this repo instead of relying on each contributor's own
+# core.autocrlf setting. Without this, Git for Windows' system-wide
+# core.autocrlf=true default disagrees with the LF-only files this repo
+# actually stores, and every edited file shows as "modified" with a 0-byte
+# diff — pure line-ending noise, not real content. `eol=lf` here matches what
+# every source file in this repo already uses on disk.
+* text=auto eol=lf
+
+# Binary formats — never touched by line-ending conversion regardless of the
+# `text=auto` default above (belt and suspenders: `text=auto` already
+# autodetects these as binary, but an explicit list survives a
+# misdetection on a file git's heuristic gets wrong).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

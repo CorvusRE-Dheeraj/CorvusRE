@@ -1,0 +1,1057 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+/* Dark theme removed for now (per explicit request). Tailwind v4's default
+   `dark:` variant follows the OS's prefers-color-scheme automatically —
+   redefining it to only match inside a `.dark` ancestor class instead (the
+   standard manual-toggle pattern) makes every scattered `dark:` utility
+   class already in components (SiteChrome, HeroBackground, alert, chart,
+   ai-report, dashboard, index) permanently inert without deleting them one
+   by one, since nothing in the app ever adds a `.dark` class. Delete this
+   line (and restore a real toggle) if dark mode comes back later. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  /* Single-font system (Figtree) for both body and headings, matching the Ownwell
+     reference — --font-serif is kept as the variable name since h1/h2/h3/.font-serif
+     already reference it throughout the app, but it no longer points to an actual
+     serif typeface. */
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-nav-highlight: var(--nav-highlight);
+  --color-nav-highlight-foreground: var(--nav-highlight-foreground);
+  --shadow-elev: 0 10px 30px -12px oklch(0.18 0.06 250 / 0.25);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.04), 0 8px 24px -12px oklch(0.18 0.06 250 / 0.12);
+  /* Thin bright band on a wide transparent field — accent-foreground is the
+     same near-white in both light and dark mode, so one gradient works for
+     both without a dark-mode override. */
+  --btn-sheen-gradient: linear-gradient(
+    115deg,
+    transparent 42%,
+    oklch(1 0 0 / 0.35) 50%,
+    transparent 58%
+  );
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Deep navy + amber accent (matches the CorvusDP door's amber in hub/hub.css) */
+  /* Faded green instead of plain white — same hue as --accent (163) at a
+     much lower chroma/higher lightness, so every page reads as this app's
+     green rather than neutral gray, while staying light enough that white
+     cards/popovers (still oklch(1 0 0) below) clearly pop against it and
+     text contrast is unaffected. */
+  --background: oklch(0.985 0.008 85);
+  --foreground: oklch(0.2 0.04 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.04 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.04 250);
+  --primary: oklch(0.29 0.08 255); /* deep navy */
+  --primary-foreground: oklch(0.985 0.005 90);
+  --secondary: oklch(0.955 0.012 250);
+  --secondary-foreground: oklch(0.25 0.05 255);
+  --muted: oklch(0.96 0.008 250);
+  --muted-foreground: oklch(0.48 0.02 255);
+  /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
+     feedback — same hue (163) and lightness, just richer, so every existing
+     accent/badge/ring usage sitewide reads more vivid without a redesign. */
+  --accent: oklch(0.62 0.155 58); /* amber, matching the CorvusDP door (#d97706) */
+  --accent-foreground: oklch(0.99 0.01 90);
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.62 0.17 155);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.78 0.19 75);
+  --warning-foreground: oklch(0.22 0.05 60);
+  --border: oklch(0.9 0.012 250);
+  --input: oklch(0.92 0.012 250);
+  --ring: oklch(0.6 0.15 58);
+  /* Brand diagonal (navy → emerald) — one shared gradient for hero/banner/
+     featured-card treatments, so "make it bolder" reads as one consistent
+     signature move across pages rather than a different gradient per
+     section. A soft (low-alpha) variant works as a section wash; the solid
+     one is for a real focal band (a banner, a highlighted plan's header). */
+  --gradient-brand: linear-gradient(135deg, oklch(0.29 0.08 255), oklch(0.6 0.15 60));
+  --gradient-brand-soft: linear-gradient(
+    135deg,
+    oklch(0.29 0.08 255 / 0.08),
+    oklch(0.6 0.15 60 / 0.1)
+  );
+  /* Fixed navy/white brand colors for things that must look the same regardless
+     of theme (homepage hero overlay, the CorvusRF logo mark) — kept as their
+     own tokens rather than reusing --primary/--primary-foreground (which
+     flip for button contrast) even though dark mode itself is removed for
+     now; see the @custom-variant dark comment near the top of this file. */
+  --brand: oklch(0.29 0.08 255);
+  --brand-foreground: oklch(0.985 0.005 90);
+
+  /* Active/hover pill for the top nav and account tab bar — same soft-emerald
+     tint as .badge-soft (not the neutral --secondary, which carries a faint
+     blue hue at h=250) so nav highlighting reads as this app's green, not
+     blue. Fixed regardless of theme mode, same convention as .badge-soft. */
+  --nav-highlight: oklch(0.93 0.055 78);
+  --nav-highlight-foreground: oklch(0.38 0.11 55);
+
+  /* Homepage hero decorative background (src/components/HeroBackground.tsx) — its
+     own tokens rather than reusing --secondary/--accent directly, since the field
+     band needs a genuinely different (darker, muted) tone in dark mode than any
+     existing surface color, to avoid a jarring bright patch on a near-black page. */
+  --hero-sky-top: oklch(0.955 0.012 250);
+  --hero-sky-bottom: oklch(0.98 0.006 90);
+  --hero-cloud: oklch(
+    1 0 0
+  ); /* solid white — opacity applied per-element, not baked into the color, so overlapping cloud shapes don't show stacking seams */
+  --hero-cloud-opacity: 0.92;
+  --hero-field: oklch(0.88 0.09 145); /* light green */
+  --hero-field-shade: oklch(0.74 0.13 148); /* deeper green, for the second wave */
+  --hero-tree: oklch(0.42 0.12 145); /* dark green foliage */
+  --hero-sun: oklch(0.85 0.15 90); /* warm sun yellow */
+  --hero-moon: oklch(
+    0.9 0.02 250
+  ); /* pale moon — unused while dark mode is removed, see .hero-moon-wrap above */
+}
+
+/* Dark theme removed for now (per explicit request) — the app is
+   permanently light-themed regardless of OS preference. The hero always
+   shows its sun; .hero-moon-wrap is unused dead weight left in
+   HeroBackground.tsx but simply never displayed since nothing sets
+   display:block on it anymore. If dark mode comes back later, restore the
+   `@media (prefers-color-scheme: dark)` block this replaced (see git
+   history) rather than rebuilding it from scratch. */
+.hero-sun-wrap {
+  display: block;
+}
+.hero-moon-wrap {
+  display: none;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  /* Scales every rem-based Tailwind text/spacing utility site-wide from one
+     line, preserving the existing text-sm/text-xs body-vs-description ratio
+     rather than flattening it — description/meta text stays the smallest
+     tier, just larger in absolute terms along with everything else. */
+  html {
+    font-family: var(--font-sans);
+    font-size: 112.5%;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  .font-serif {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
+  }
+  /* A consistent, on-brand keyboard-focus ring everywhere — the shadcn
+     <Button> component already rings itself (focus-visible:ring-ring in
+     button.tsx), but most buttons/links across the app are plain elements
+     styled via the .btn-accent/.btn-primary/.btn-outline utility classes
+     below or bare <a>/<input>, none of which had ANY focus-visible rule —
+     they fell back to whatever blue the browser felt like that day, which
+     both looks off-brand next to this app's navy/emerald palette and, on
+     some elements, is easy to lose entirely. :focus-visible (not :focus)
+     so mouse clicks never show a ring, only real keyboard navigation.
+     Skipped for [role="tab"]/[role="radio"] elements that already paint
+     their own selected-state background (the pricing toggle, hearing/
+     appraiser-category pickers) — a ring there would double up with that. */
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"]) {
+    &:focus-visible {
+      outline: 2px solid var(--color-ring);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+  }
+}
+
+@utility container-page {
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+  @media (min-width: 768px) {
+    padding-inline: 2rem;
+  }
+}
+
+/* The header's own .container-page spans the full window edge-to-edge instead of
+   staying centered at 80rem — otherwise on wide screens the logo sits stranded well
+   inside the actual left corner instead of flush against it (same technique as the
+   CorvusRE hub's header, hub/hub.css). */
+header .container-page {
+  max-width: none;
+  margin-inline: 0;
+}
+
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  /* Uses the accent blue rather than --color-primary (navy) so every primary CTA
+     across the site reads as the same blue, not a mix of navy and blue buttons. */
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+  box-shadow: var(--shadow-elev);
+  /* Baseline press/lift feedback lives on the base class (not the opt-in
+     -hover modifiers below) so every button gets it regardless of whether a
+     call site also opted into the extra color-darken modifier. */
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px -14px oklch(0.18 0.06 250 / 0.32);
+  }
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--btn-sheen-gradient);
+    background-size: 250% 100%;
+    background-position: 150% 0;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &::after {
+      transition: background-position 0.6s ease;
+    }
+    &:hover::after {
+      background-position: -50% 0;
+    }
+  }
+}
+@utility btn-primary-hover {
+  &:hover {
+    background-color: oklch(0.53 0.15 55);
+  }
+}
+
+@utility btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.6rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-elev);
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+  &:hover {
+    background-color: oklch(0.53 0.15 55);
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px -14px oklch(0.18 0.06 250 / 0.32);
+  }
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+  /* Diagonal light sheen that sweeps across on hover — a thin bright band
+     riding a wide transparent gradient, slid via background-position rather
+     than a second animated element, so it never affects layout/hit-testing. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--btn-sheen-gradient);
+    background-size: 250% 100%;
+    background-position: 150% 0;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &::after {
+      transition: background-position 0.6s ease;
+    }
+    &:hover::after {
+      background-position: -50% 0;
+    }
+  }
+}
+
+@utility btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: transparent;
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  padding: 0.7rem 1.15rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+  /* Transform-only — no color/background hover here, since a few call sites
+     (e.g. the destructive delete button) already set their own hover:bg-*
+     via inline Tailwind classes and a base color rule would fight them. */
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  &:hover {
+    transform: translateY(-1px);
+  }
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility card-elev {
+  background-color: var(--color-card);
+  color: var(--color-card-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-card);
+  /* No forced hover effect here — plenty of card-elev usages are static info
+     cards, and a lift/tint would falsely imply they're clickable. This just
+     makes whichever hover:* Tailwind classes a call site already applies
+     (the genuinely clickable cards) animate smoothly instead of snapping. */
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  /* Runs once whenever a card is actually inserted into the DOM (initial page
+     load, a new list item mounting, a modal opening) — not on every re-render,
+     since CSS animations don't restart unless the element itself is freshly
+     mounted. Respects reduced-motion since entrance animation is decorative,
+     not functional. */
+  @media (prefers-reduced-motion: no-preference) {
+    animation: card-enter 0.4s ease-out both;
+  }
+}
+
+/* Subtle scan-hover for static list rows (documents, tax bills, admin
+   rows) — deliberately lighter than card-elev's clickable-card hover
+   (no lift/shadow), since these rows aren't click-anywhere targets, just
+   dense lists worth highlighting as you scan down them. No border-radius
+   of its own — call sites already have one (card-elev, or their own
+   rounded-* utility), so this only ever adds the background+transition. */
+@utility row-hover {
+  transition: background-color 0.15s ease;
+  &:hover {
+    background-color: var(--color-secondary);
+  }
+}
+
+/* Scoped contrast boost for the dashboard overview — user feedback was that
+   the page "all seems to blend" together. --border at its default lightness
+   (0.90 light / 10% white dark) is nearly invisible against --card, which is
+   pure white in light mode and only a touch darker than --background in dark
+   mode — every card, stat tile, and section edge on a data-dense page like
+   this reads as one undifferentiated field instead of separate, scannable
+   panels. Wrap the page root in this class rather than changing --border/
+   --muted-foreground globally: every other page (pricing, admin, marketing)
+   already reads fine at the default tokens and wasn't part of this
+   complaint, so this only strengthens the CSS custom properties within this
+   one page's own subtree (they cascade normally — --color-border's own
+   `var(--border)` reference re-resolves against whatever --border is
+   overridden to here, no per-card edits needed) rather than risking a
+   site-wide visual regression. */
+.dashboard-contrast {
+  --border: oklch(0.8 0.02 255);
+  --muted-foreground: oklch(0.4 0.02 255);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.05), 0 10px 26px -10px oklch(0.18 0.06 250 / 0.18);
+  /* AppShell's own content wrapper (src/components/AppShell.tsx) is fully
+     transparent — this is genuinely the first background painted below the
+     page's own near-white base, so pure-white cards (--card is oklch(1 0 0)
+     in light mode) had nothing to visually separate from. A soft, slightly
+     darker canvas fill behind the whole page gives every card real
+     separation without a border/shadow of its own (which would read as a
+     second, redundant box one level out) — just a quiet "zone" the actual
+     content sits on, same idea as Notion/Linear-style dashboards. */
+  background: oklch(0.965 0.008 255);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+}
+
+/* One shared "featured" treatment (see --gradient-brand above) — a soft
+   diagonal wash for a section background, and a solid version for a real
+   focal band (a banner strip, a highlighted plan card's header). Named
+   "brand-gradient*" rather than "bg-gradient-*" to stay clear of Tailwind's
+   own gradient utilities. */
+@utility brand-gradient-soft {
+  background: var(--gradient-brand-soft);
+}
+@utility brand-gradient {
+  background: var(--gradient-brand);
+  color: var(--accent-foreground);
+}
+
+@utility badge-soft {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: oklch(0.93 0.055 78);
+  color: oklch(0.38 0.11 55);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+/* Same shape as .badge-soft, warning/amber-tinted — used where a badge needs to read
+   as "premium" rather than the default informational green (e.g. pricing's white-glove
+   tier), without changing badge-soft's own color for every other site-wide use. */
+@utility badge-soft-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-warning) 30%, transparent);
+  color: var(--color-warning-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.locked-blur {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Cascading entrance for list/grid children (stat cards, table rows, checklist
+   items) — same fade+rise as .card-elev's card-enter, but as an opt-in utility
+   since not every list item should animate (e.g. items added one-at-a-time by
+   user action, not a bulk initial render). Callers pair this with an inline
+   `animation-delay` per index, same convention as .radiate-ring below. */
+@keyframes list-item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@utility list-item-enter {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: list-item-enter 0.45s ease-out both;
+  }
+}
+
+/* Fade for Modal.tsx's backdrop — the inner box already animates in via
+   card-enter (inherited from .card-elev), but the backdrop itself used to
+   pop in instantly. Matches radix Dialog's own fade-in-0/fade-out-0. */
+@keyframes backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@utility backdrop-fade-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: backdrop-fade 0.2s ease-out both;
+  }
+}
+
+/* Brief fade+rise replayed on every client-side route change (see
+   AppShell.tsx) — keyed on pathname so React remounts this wrapper and the
+   animation restarts. Never touches the prerendered HTML's first paint. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@utility page-enter {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: page-enter 0.3s ease-out both;
+  }
+}
+
+/* Progress-bar fills (roadmap %, checklist %, construction-readiness %)
+   were snapping straight to the new width on every update instead of
+   animating there — this eases the width change itself, not an
+   entrance/exit, so it stays on under reduced-motion (a snapped instant
+   change reads the same as "no animation", nothing to gate). */
+@utility progress-fill {
+  transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Ambient motion for the homepage hero scene (clouds drifting, sun glow
+   breathing, trees swaying) — each element carries its own animation-duration/
+   -delay inline (see HeroBackground.tsx) so multiple clouds/trees don't move
+   in lockstep. All gated behind reduced-motion since it's purely decorative. */
+@keyframes cloud-drift {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(16px);
+  }
+}
+@keyframes sun-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.68;
+    transform: scale(1.1);
+  }
+}
+@keyframes tree-sway {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+@keyframes wave-arm {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(15deg);
+  }
+  50% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(10deg);
+  }
+}
+/* One-shot "steps out of the doorway" entrance, plus a delayed pop-in for
+   the speech bubble once he's arrived — separate elements from the
+   continuously-waving arm, so none of these ever fight over the same
+   element's transform (see the CorvusRE doors work for why that matters). */
+@keyframes bear-emerge {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-cloud-drift {
+    animation: cloud-drift 9s ease-in-out infinite;
+  }
+  .hero-sun-glow {
+    animation: sun-glow-pulse 4s ease-in-out infinite;
+  }
+  .hero-tree-sway {
+    animation: tree-sway 5s ease-in-out infinite;
+    transform-origin: 50% 100%;
+  }
+  .hero-wave-arm {
+    animation: wave-arm 1.8s ease-in-out infinite;
+  }
+  .hero-bear-emerge {
+    animation: bear-emerge 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  }
+  .hero-bubble {
+    animation: bubble-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both;
+  }
+}
+
+/* Speech bubble greeting beside the hero's waving bear — visible
+   immediately (unconditionally) even for reduced-motion users; only the
+   pop-in motion above is gated. */
+.hero-bubble {
+  position: absolute;
+  z-index: 1;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  box-shadow: 0 4px 14px -6px oklch(0 0 0 / 0.25);
+}
+.hero-bubble::after {
+  content: "";
+  position: absolute;
+  left: -0.4rem;
+  bottom: 1rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+/* Concentric rings pulsing outward behind the homepage's "how you can save"
+   illustration — each ring carries its own animation-delay inline (see
+   index.tsx) so they radiate in sequence rather than all at once. */
+@keyframes radiate-ping {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .radiate-ring {
+    animation: radiate-ping 3s ease-out infinite;
+  }
+}
+
+/* Homepage beta-signup announcement — a small plane towing a banner sign,
+   flying right-to-left through the hero's own sky (see HeroBackground.tsx),
+   not a separate colored strip above it. The plane leads (left side of the
+   group, since that's the direction of travel) with the banner trailing
+   behind it to the right, like a real towed sign. Positioned high in the sky
+   (same band as the sun/moon and top clouds) so it mostly clears the
+   centered headline text as it crosses. */
+@keyframes fly-across {
+  from {
+    transform: translateX(100vw);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+.beta-flyby-plane {
+  position: absolute;
+  top: 1.5rem;
+  left: 0;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transform: translateX(100vw);
+}
+/* A visible tow rope, not just a gap — without it the plane and the banner
+   just look like two unrelated things sitting near each other. */
+.beta-flyby-rope {
+  width: 1.375rem;
+  height: 2px;
+  flex-shrink: 0;
+  background: var(--muted-foreground);
+  opacity: 0.6;
+}
+/* A real pennant/flag silhouette — a swallowtail V cut into the trailing
+   edge via clip-path, the actual shape a cloth banner tail makes, rather
+   than a rectangle with a decorative corner. clip-path cuts the box itself,
+   so a normal `border` won't trace the notch (it draws around the
+   unclipped rectangle) — filter: drop-shadow() is used instead, since that
+   one *does* follow the clipped silhouette. */
+.beta-flyby-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  /* Brand gradient instead of a plain card background — this is the app's
+     one active promo (free beta review), it should read as the boldest
+     thing towing across the hero, not blend in with the page. */
+  background: var(--gradient-brand);
+  color: var(--accent-foreground);
+  /* A fixed-depth notch (not a %-based one) — at this box's length, a
+     percentage cut reached deep enough to slice through the trailing link
+     text itself instead of staying a small decorative tail. */
+  clip-path: polygon(0% 0%, 100% 0%, calc(100% - 12px) 50%, 100% 100%, 0% 100%);
+  padding: 0.35rem 1.75rem 0.35rem 1rem;
+  filter: drop-shadow(0 2px 5px oklch(0 0 0 / 0.25));
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Slower than a first pass might suggest — the banner now carries an extra
+     bolded line, so it needs more time on screen to stay readable as it
+     crosses. */
+  .beta-flyby-plane {
+    animation: fly-across 48s linear infinite;
+  }
+}
+/* Reduced-motion: no flight, just a centered, static plane+banner. */
+@media (prefers-reduced-motion: reduce) {
+  .beta-flyby-plane {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* Without this, browsers strip background colors by default when printing —
+   the colorful chips/badges/chart fills that make the AI report worth exporting
+   would silently print as plain black-on-white otherwise. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* Ambient glow breathing behind the AI Report savings banner's hero number
+   (see the ".savings-glow"/".savings-glow-warm" elements in ai-report.tsx)
+   — two blobs now, not one: emerald top-left (savings-glow) plus a warm
+   gold one bottom-right (savings-glow-warm, its own offset timing via
+   animation-delay so they don't breathe in lockstep), replacing a flat
+   solid-navy card with something that actually feels alive. Same idea as
+   the homepage hero's sun-glow-pulse — a second/third instance since
+   Tailwind's arbitrary-value opacity/scale utilities can't express a
+   looping animation on their own. */
+@keyframes savings-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .savings-glow {
+    animation: savings-glow-pulse 5s ease-in-out infinite;
+  }
+  .savings-glow-warm {
+    animation: savings-glow-pulse 6s ease-in-out 1.5s infinite;
+  }
+}
+
+/* Slow diagonal light sweep across the whole savings banner — a soft bright
+   band drifting through and fading, like light catching a premium card's
+   surface. One more layer (besides the two glow blobs above) making the
+   banner read as an intentionally celebratory surface rather than a flat
+   color fill. */
+@keyframes savings-sheen-sweep {
+  0% {
+    transform: translateX(-40%) skewX(-12deg);
+    opacity: 0;
+  }
+  15%,
+  35% {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(220%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .savings-sheen {
+    animation: savings-sheen-sweep 6s ease-in-out infinite;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Marketing polish — "Apple-style" surfaces + motion for the public pages
+   (/, /design, /construction). Decorative only; every motion piece is gated
+   behind prefers-reduced-motion, and the layout is unaffected when it's off.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Layered radial blooms — one amber, one navy — on a near-white ground. The
+   hero/section backdrop that reads as "this app's colour" without a hard fill. */
+@utility gradient-mesh {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 40rem at 78% -10%, oklch(0.62 0.155 58 / 0.16), transparent 60%),
+    radial-gradient(48rem 40rem at 8% 8%, oklch(0.4 0.13 255 / 0.12), transparent 55%),
+    radial-gradient(40rem 30rem at 50% 120%, oklch(0.62 0.155 58 / 0.08), transparent 60%);
+}
+
+/* Frosted panel — translucent, blurred, hairline border, gentle depth. */
+@utility glass {
+  background: color-mix(in oklch, var(--card) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: 1.1rem;
+  box-shadow:
+    0 1px 0 oklch(1 0 0 / 0.5) inset,
+    0 20px 50px -28px oklch(0.18 0.06 250 / 0.28);
+}
+
+/* Brand-gradient text fill (navy → amber). */
+@utility text-gradient {
+  background: linear-gradient(115deg, oklch(0.29 0.08 255), oklch(0.58 0.16 55));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Spring lift on hover — the Apple-ish "card floats toward you" feel. */
+@utility hover-lift {
+  transition:
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.4s ease;
+  &:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 30px 60px -30px oklch(0.18 0.06 250 / 0.35);
+    border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &:hover {
+      transform: none;
+    }
+  }
+}
+
+/* Soft vertical drift for decorative blurred blobs behind a hero. */
+@keyframes blob-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -22px, 0) scale(1.06);
+  }
+}
+.hero-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-blob {
+    animation: blob-drift 14s ease-in-out infinite;
+  }
+}
+
+/* Thin gradient hairline used to connect numbered process steps. */
+@utility rule-gradient {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--accent) 55%, transparent),
+    transparent
+  );
+}
+
+/* Slow sheen sweep across a featured band (reuses the savings-sheen idea). */
+@keyframes band-sheen {
+  0% {
+    transform: translateX(-60%) skewX(-14deg);
+    opacity: 0;
+  }
+  20%,
+  40% {
+    opacity: 0.35;
+  }
+  70%,
+  100% {
+    transform: translateX(240%) skewX(-14deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .band-sheen {
+    animation: band-sheen 7s ease-in-out infinite;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Drafting / blueprint texture system — the marketing pages lean on
+   architectural-drawing language (graph paper, dimension lines, contours)
+   rather than stock photography, so the look stays on-brand, sharp at any
+   size, and adds zero image weight or external requests.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Fine graph-paper grid. Two layered gradients (minor + major lines),
+   radially masked so it dissolves toward the edges instead of ending on a
+   hard rectangle. Sits under a hero's content. */
+@utility blueprint-grid {
+  background-image:
+    linear-gradient(oklch(0.29 0.08 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.29 0.08 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(oklch(0.29 0.08 255 / 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.29 0.08 255 / 0.09) 1px, transparent 1px);
+  background-size:
+    28px 28px,
+    28px 28px,
+    140px 140px,
+    140px 140px;
+  background-position: -1px -1px;
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 40%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(80% 70% at 50% 40%, #000 40%, transparent 100%);
+}
+
+/* Dotted grid — lighter texture for secondary section bands. */
+@utility dot-grid {
+  background-image: radial-gradient(oklch(0.29 0.08 255 / 0.12) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+/* Topographic contour lines — a survey-map motif for section backgrounds. */
+@utility topo-lines {
+  background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1200'%20height='400'%20viewBox='0%200%201200%20400'%3E%3Cg%20fill='none'%20stroke='%23233a6b'%20stroke-opacity='0.08'%20stroke-width='1.5'%3E%3Cpath%20d='M-20%2080C180%2020%20360%20140%20600%2090S1020%20-10%201220%2060'/%3E%3Cpath%20d='M-20%20140C180%2080%20360%20200%20600%20150S1020%2050%201220%20120'/%3E%3Cpath%20d='M-20%20200C180%20140%20360%20260%20600%20210S1020%20110%201220%20180'/%3E%3Cpath%20d='M-20%20260C180%20200%20360%20320%20600%20270S1020%20170%201220%20240'/%3E%3Cpath%20d='M-20%20320C180%20260%20360%20380%20600%20330S1020%20230%201220%20300'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+}
+
+/* Subtle film grain — breaks up flat gradient fills so a hero reads as a
+   textured surface rather than a plain wash. Apply to an absolutely
+   positioned overlay span. */
+.grain {
+  background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='140'%20height='140'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.9'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3C/filter%3E%3Crect%20width='140'%20height='140'%20filter='url(%23n)'%20opacity='0.5'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Animated stroke draw-on for the blueprint illustrations. Each pathed
+   element gets its own dash length via --len and a per-element delay via
+   --d (set inline in the component). Content is always visible for
+   reduced-motion users — the lines simply appear fully drawn. */
+@media (prefers-reduced-motion: no-preference) {
+  .draw path,
+  .draw line,
+  .draw circle,
+  .draw rect,
+  .draw polyline {
+    stroke-dasharray: var(--len, 1200);
+    stroke-dashoffset: var(--len, 1200);
+    animation: draw-on 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation-delay: var(--d, 0ms);
+  }
+  .draw [data-fill] {
+    opacity: 0;
+    animation: fade-fill 0.8s ease forwards;
+    animation-delay: var(--d, 0ms);
+  }
+}
+@keyframes draw-on {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes fade-fill {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Slow parallax bob for a hero illustration — distinct from hero-blob so the
+   two don't move in lockstep. */
+@media (prefers-reduced-motion: no-preference) {
+  .illo-float {
+    animation: illo-float 9s ease-in-out infinite;
+  }
+}
+@keyframes illo-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0);
+  }
+}
+
+/* Spec-sheet caption used under an illustration (monospaced, drafting-label
+   feel). */
+.spec-label {
+  font-family: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
