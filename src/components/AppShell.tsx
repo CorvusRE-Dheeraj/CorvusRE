@@ -16,13 +16,14 @@ import { useAuth } from "@/lib/auth";
 // of here — they're account-level, not a property-tax workflow section, so
 // grouping them with Sign out reads more clearly than sitting in this row.
 // `locked` is purely a visual signal here (the link still navigates) — the
-// actual gate is the ComingSoonLock render each locked page shows itself,
-// see bpp-accounts.tsx/tax-bills.tsx. Keep in sync with those pages' own
-// LOCKED flag when toggling either back on.
+// actual gate is the ComingSoonLock render a still-locked page shows itself
+// (see tax-bills.tsx's own LOCKED flag). BPP Accounts shipped for real
+// 2026-09-15 (real value/deadline tracking, subscriptions, rendition/protest
+// filing) and no longer has a LOCKED flag to keep in sync with this one.
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, locked: false },
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
-  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
+  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: false },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
