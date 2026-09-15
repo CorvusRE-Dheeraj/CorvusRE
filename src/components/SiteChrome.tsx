@@ -1,9 +1,11 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { Phone } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { checkIsAdmin } from "@/lib/admin";
 import { shouldShowShell } from "@/components/AppShell";
+import { CONTACT_PHONES } from "@/lib/contact-info";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -203,6 +205,16 @@ export function SiteFooter() {
           <a href="/" className="underline underline-offset-2 hover:text-foreground">
             CorvusRE
           </a>
+          {CONTACT_PHONES.map((p) => (
+            <a
+              key={p.href}
+              href={p.href}
+              className="flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"
+            >
+              <Phone className="h-3 w-3" aria-hidden />
+              {p.display}
+            </a>
+          ))}
         </span>
         <span>Estimates only — always confirm requirements with the governing authority.</span>
       </div>

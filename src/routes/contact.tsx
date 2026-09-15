@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { Phone } from "lucide-react";
 import { Field, inputCls, Section } from "@/components/dp-ui";
 import { sendInquiry } from "@/lib/inquiries";
+import { CONTACT_PHONES } from "@/lib/contact-info";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({ meta: [{ title: "Contact — CorvusDP" }] }),
@@ -40,6 +42,7 @@ function Contact() {
         <p className="mt-2 text-muted-foreground">
           We reply to most messages within one business day.
         </p>
+        <CallUsPanel className="mt-6" />
       </div>
     );
   }
@@ -51,6 +54,7 @@ function Contact() {
       <p className="mt-2 text-muted-foreground">
         Questions about a project, a jurisdiction, or a managed engagement.
       </p>
+      <CallUsPanel className="mt-6" />
       <form onSubmit={submit} className="mt-6">
         <Section title="Message">
           <div className="grid gap-4">
@@ -96,6 +100,23 @@ function Contact() {
           </button>
         </Section>
       </form>
+    </div>
+  );
+}
+
+function CallUsPanel({ className = "" }: { className?: string }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${className}`}>
+      {CONTACT_PHONES.map((p) => (
+        <a
+          key={p.href}
+          href={p.href}
+          className="flex items-center gap-2 text-sm font-medium text-foreground transition-colors hover:text-accent"
+        >
+          <Phone className="h-4 w-4 text-accent" aria-hidden />
+          {p.display}
+        </a>
+      ))}
     </div>
   );
 }
