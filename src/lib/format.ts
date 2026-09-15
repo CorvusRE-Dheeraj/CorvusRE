@@ -29,6 +29,19 @@ export function dateShort(iso: string | number | Date | null | undefined): strin
   return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+// Whole days from `from` (defaults to now) to `iso` — negative when `iso` is
+// in the past. Used for permit aging (days since submission) and countdowns
+// (days until expiry) in the admin ops views.
+export function daysUntil(
+  iso: string | number | Date | null | undefined,
+  from: Date = new Date(),
+): number | null {
+  if (iso == null) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.round((d.getTime() - from.getTime()) / 86_400_000);
+}
+
 export function parseArea(input: string | number | null | undefined): number | null {
   if (input == null) return null;
   if (typeof input === "number") return Number.isFinite(input) ? input : null;
