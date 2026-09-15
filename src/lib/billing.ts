@@ -97,6 +97,74 @@ export function propertyMonthlyPrice(
     : base;
 }
 
+// BPP accounts get their own value brackets — rendered BPP values run far
+// lower than real estate — but the same two tiers and the same price points,
+// since the tiers represent service level (owner-files vs Corvus-manages),
+// not property type. Mirrored by hand into _shared/pricing.ts, same as the
+// real-estate brackets above.
+export type BppValueBracket = "under250k" | "250kTo1m" | "over1m";
+
+export const BPP_VALUE_BRACKETS: { value: BppValueBracket; label: string }[] = [
+  { value: "under250k", label: "$0 - $250K" },
+  { value: "250kTo1m", label: "$250K - $1M" },
+  { value: "over1m", label: "$1M+" },
+];
+
+export const BPP_TIER_BRACKET_PRICES: Record<Tier, Record<BppValueBracket, number>> = {
+  owner_managed: { under250k: 99, "250kTo1m": 299, over1m: 499 },
+  corvusrf_managed: { under250k: 199, "250kTo1m": 499, over1m: 799 },
+};
+
+export function bracketForBppValue(value: number | null | undefined): BppValueBracket {
+  if (value == null) return "under250k";
+  if (value < 250_000) return "under250k";
+  if (value < 1_000_000) return "250kTo1m";
+  return "over1m";
+}
+
+// Real price for one BPP account's own subscription — full rate; unlike
+// properties, BPP accounts don't get a 2nd-account-in-bracket discount (no
+// such business rule has been set for this product line yet). Display only;
+// create-bpp-checkout-session computes and charges the authoritative amount
+// server-side.
+export function bppMonthlyPrice(tier: Tier, bracket: BppValueBracket): number {
+  return BPP_TIER_BRACKET_PRICES[tier][bracket];
+}
+
+// Starts a real, independent Stripe subscription for exactly this one BPP
+// account — see create-bpp-checkout-session/index.ts. Same popup-blocker-safe
+// window.open pattern as startPropertyCheckout.
+export async function startBppCheckout(
+  bppAccountId: string,
+  tier: Tier,
+  options?: { newTab?: boolean },
+): Promise<void> {
+  const newTabHandle = options?.newTab ? window.open("", "_blank") : null;
+  try {
+    const basePath = import.meta.env.BASE_URL;
+    const { url } = await invokeEdgeFunction<{ url: string }>("create-bpp-checkout-session", {
+      bppAccountId,
+      tier,
+      successPath: `${basePath}dashboard/bpp-accounts?checkout=success`,
+      cancelPath: `${basePath}dashboard/bpp-accounts`,
+    });
+    if (!url) throw new Error("Stripe did not return a checkout URL. Please try again.");
+    if (newTabHandle) newTabHandle.location.href = url;
+    else window.location.href = url;
+  } catch (err) {
+    newTabHandle?.close();
+    throw err;
+  }
+}
+
+export async function cancelBppSubscription(bppAccountId: string): Promise<void> {
+  await invokeEdgeFunction<{ ok: boolean }>("cancel-bpp-subscription", { bppAccountId });
+}
+
+export async function resumeBppSubscription(bppAccountId: string): Promise<void> {
+  await invokeEdgeFunction<{ ok: boolean }>("resume-bpp-subscription", { bppAccountId });
+}
+
 export const PLAN_OPTIONS: { value: PlanValue; label: string }[] = [
   { value: "free_ai_review", label: "Free AI Review" },
   { value: "owner_managed", label: "Owner-Managed ($99–$499/mo/property, by value)" },
@@ -220,8 +288,9 @@ export type MySubscription = {
   id: string;
   status: string;
   propertyId: string | null;
+  bppAccountId: string | null;
   tier: Tier | null;
-  bracket: PropertyValueBracket | null;
+  bracket: PropertyValueBracket | BppValueBracket | null;
   productName: string | null;
   amountCents: number | null;
   currency: string;
