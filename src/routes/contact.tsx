@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Phone } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getMyProfile } from "@/lib/profile";
+import { notifyStaff } from "@/lib/staff-notification";
 import { ScrollReveal } from "@/components/ScrollReveal";
 
 const PHONE_DISPLAY = "(469) 501-9362";
@@ -58,31 +59,16 @@ function Contact() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-
-    const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY;
-    if (!accessKey) {
-      setError("Contact form isn't set up in this deployment yet. Please check back soon.");
-      return;
-    }
-
     setSending(true);
     try {
-      // Submitted as FormData (not JSON) so the browser treats this as a CORS-simple
-      // request — a JSON body with a Content-Type header triggers a preflight that
-      // Web3Forms' endpoint doesn't answer, which fails the request before it sends.
-      const formData = new FormData();
-      formData.set("access_key", accessKey);
-      formData.set("subject", "New CorvusPT.ai contact form submission");
-      formData.set("name", knownContact?.name || name);
-      formData.set("email", knownContact?.email || email);
-      formData.set("message", message);
-
-      const res = await fetch("https://api.web3forms.com/submit", {
-        method: "POST",
-        body: formData,
+      const contactName = knownContact?.name || name;
+      const contactEmail = knownContact?.email || email;
+      await notifyStaff({
+        subject: "New CorvusPT.ai contact form submission",
+        replyToEmail: contactEmail,
+        replyToName: contactName || undefined,
+        message: `${message}\n\nFrom: ${contactName || "(no name given)"} <${contactEmail}>`,
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || "Could not send your message.");
       setSent(true);
       toast.success("Message sent.");
     } catch (err) {

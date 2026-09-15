@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { submitWeb3Form } from "./web3forms";
+import { notifyStaff } from "./staff-notification";
 
 export type ProtestStatus =
   | "requested"
@@ -232,12 +232,9 @@ export async function requestProtest(
   // Best-effort staff notification — previously a request only surfaced if staff
   // happened to check the admin panel's "Protest Requests" list themselves.
   const address = details?.address ?? `property ${propertyId}`;
-  submitWeb3Form({
+  notifyStaff({
     subject: "New protest filing request — CorvusPT.ai",
-    from_name: "CorvusPT.ai",
-    property_address: address,
-    property_id: propertyId,
-    user_email: details?.userEmail ?? "(unknown)",
+    replyToEmail: details?.userEmail,
     message: `A protest filing was requested for ${address} by ${details?.userEmail ?? `user ${userId}`}. Update its status in the admin panel.`,
   }).catch((err) => console.error("Protest request staff notification failed:", err));
 
@@ -274,12 +271,9 @@ export async function requestBppProtest(
   const created = fromRow(data as ProtestRow);
 
   const businessName = details?.businessName ?? `BPP account ${bppAccountId}`;
-  submitWeb3Form({
+  notifyStaff({
     subject: "New BPP protest filing request — CorvusPT.ai",
-    from_name: "CorvusPT.ai",
-    property_address: businessName,
-    property_id: bppAccountId,
-    user_email: details?.userEmail ?? "(unknown)",
+    replyToEmail: details?.userEmail,
     message: `A BPP protest filing was requested for ${businessName} by ${details?.userEmail ?? `user ${userId}`}. Update its status in the admin panel.`,
   }).catch((err) => console.error("BPP protest request staff notification failed:", err));
 
