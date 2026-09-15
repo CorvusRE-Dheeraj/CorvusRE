@@ -1106,6 +1106,197 @@ export const APPOINTMENT_OF_AGENT_SCHEMA: FieldSection[] = [
   },
 ];
 
+// Texas Comptroller Form 50-144, "Business Personal Property Rendition of
+// Taxable Property" — filed BEFORE any protest exists (see requiredFilingSteps'
+// BPP variant in filing-workflow.ts), so unlike the three schemas above this
+// one is keyed to a BppAccountRecord, not a PropertyRecord.
+//
+// Real field names/labels/radio options read directly off the actual PDF's
+// AcroForm (public/forms/50-144.pdf, fetched from comptroller.texas.gov/
+// forms/50-144.pdf and inspected via pdf-lib getForm().getFields()), same
+// discipline as the other three forms — none are guessed. The full form has
+// 306 fields across 4 pages, most of them repeated itemized-schedule grid
+// rows (Schedules A/B/C/D, up to 45 line items across the four). This schema
+// covers page 1 (general business info + the required "Total market value of
+// your property" threshold + affirmation/signature) and one row of Schedule
+// A — the lump-sum "good faith estimate of market value" alternative to full
+// itemization Tax Code §22.01(l) explicitly allows, which is also the
+// only reasonable AI-extraction-driven path (this app has no per-asset
+// inventory data to itemize from). Schedules B (vehicles other than
+// inventory), C (leased/borrowed property), and D (motor vehicles) are left
+// for a future pass if a customer's real filing needs them — nothing here
+// prevents opening the downloaded PDF directly in another editor to add them.
+export const BPP_RENDITION_SCHEMA: FieldSection[] = [
+  {
+    title: "General Information",
+    fields: [
+      { type: "text", name: "Tax Year", label: "Tax Year", required: true },
+      {
+        type: "text",
+        name: "Appraisal District Account Number",
+        label: "Appraisal District Account Number",
+      },
+      { type: "text", name: "Business Name", label: "Business Name", required: true },
+      { type: "text", name: "Business Owner", label: "Business Owner" },
+      {
+        type: "text",
+        name: "Property Location Address, City, State, ZIP Code",
+        label: "Property Location Address, City, State, ZIP Code",
+        required: true,
+      },
+      { type: "text", name: "Email", label: "Email" },
+      {
+        type: "text",
+        name: "Phone (area code and number)",
+        label: "Phone (area code and number)",
+      },
+    ],
+  },
+  {
+    title: "Ownership & Representation",
+    fields: [
+      {
+        type: "radio",
+        name: "Ownership type",
+        label: "Ownership Type",
+        options: ["Individual", "Corporation", "Partnership", "Other (Please specify)"],
+      },
+      {
+        type: "text",
+        name: "Ownership Type (optional) is Other",
+        label: "If Other, specify",
+      },
+      {
+        type: "radio",
+        name: "Representation",
+        label: "This rendition is being filed by",
+        options: [
+          "Owner, employee or employee of an affiliated entity of the owner",
+          "Authorized Agent",
+          " Fiduciary",
+          "Secured Party",
+        ],
+      },
+      {
+        type: "text",
+        name: "Name of Owner, Authorized Agent, Fiduciary or Secured Party",
+        label: "Name of Owner, Authorized Agent, Fiduciary or Secured Party",
+      },
+    ],
+  },
+  {
+    title: "Business Description",
+    fields: [
+      {
+        type: "text",
+        name: "Business Description",
+        label: "Describe the type of business conducted at this location",
+        multiline: true,
+      },
+      {
+        type: "checkbox",
+        name: "Business Type: Manufacturing",
+        label: "Manufacturing",
+      },
+      { type: "checkbox", name: "Business Type: Wholesale", label: "Wholesale" },
+      { type: "checkbox", name: "Business Type: Retail", label: "Retail" },
+      { type: "checkbox", name: "Business Type: Service", label: "Service" },
+      { type: "checkbox", name: "Business Type: New Business", label: "New Business" },
+      {
+        type: "text",
+        name: "Business Start Date at Location",
+        label: "Business Start Date at Location",
+        dateFormat: true,
+      },
+    ],
+  },
+  {
+    title: "Schedule A — General Personal Property (Good Faith Estimate)",
+    fields: [
+      {
+        type: "radio",
+        name: "Total market value of your property",
+        label: "Total market value of your business personal property",
+        options: ["under $20,000", "$20,000 or more"],
+        required: true,
+      },
+      {
+        type: "text",
+        name: "ScA:General Property Description by TypeCategoryRow1",
+        label: "General description of property/category",
+        required: true,
+      },
+      {
+        type: "text",
+        name: "ScA:Estimate of Quantity of Each TypeRow1",
+        label: "Estimate of quantity",
+      },
+      {
+        type: "text",
+        name: "ScA:Good Faith Estimate of Market ValueRow1",
+        label: "Good faith estimate of market value",
+        required: true,
+      },
+      {
+        type: "text",
+        name: "ScA:Historical Cost When NewRow1",
+        label: "Historical cost when new (optional)",
+      },
+      {
+        type: "text",
+        name: "ScA:Year AcquiredRow1",
+        label: "Year acquired (optional)",
+      },
+    ],
+  },
+  {
+    title: "Affirmation & Signature",
+    fields: [
+      {
+        type: "text",
+        name: "Printed Name of Authorized Individual",
+        label: "Printed Name of Authorized Individual",
+        required: true,
+        suggestions: (values) => {
+          const owner = values["Name of Owner, Authorized Agent, Fiduciary or Secured Party"];
+          return typeof owner === "string" && owner
+            ? [{ label: "Same as representation name above", value: owner }]
+            : [];
+        },
+      },
+    ],
+  },
+];
+
+// This app has no per-asset inventory data to itemize from (see the schema
+// comment above), so the good-faith estimate defaults to the BPP account's
+// own rendered_value — the same real number driving its subscription
+// bracket and displayed everywhere else in the app — rather than left blank
+// for the user to re-type a figure they already entered at intake.
+export function getBppRenditionDefaults(
+  account: Pick<
+    import("./bpp-accounts").BppAccountRecord,
+    "businessName" | "accountNumber" | "locationAddress" | "taxYear" | "renderedValue"
+  >,
+): FieldValues {
+  const values: FieldValues = {
+    "Tax Year": account.taxYear != null ? String(account.taxYear) : "",
+    "Appraisal District Account Number": account.accountNumber ?? "",
+    "Business Name": account.businessName ?? "",
+    "Property Location Address, City, State, ZIP Code": account.locationAddress ?? "",
+    Representation: "Owner, employee or employee of an affiliated entity of the owner",
+    "ScA:General Property Description by TypeCategoryRow1":
+      "All furniture, fixtures, equipment, and inventory used in business operations at this location",
+  };
+  if (account.renderedValue != null) {
+    values["ScA:Good Faith Estimate of Market ValueRow1"] =
+      account.renderedValue.toLocaleString("en-US");
+    values["Total market value of your property"] =
+      account.renderedValue < 20_000 ? "under $20,000" : "$20,000 or more";
+  }
+  return values;
+}
+
 // The one grounds-for-protest checkbox our data can actually back — every
 // strategy our AI case prep can recommend (Market Value, Unequal Appraisal,
 // Condition-Based Reduction, Combined Approach) reduces to Form 50-132's
@@ -1375,6 +1566,20 @@ const SIGNATURE_FIELD_RECT: Record<
     height: 13,
     maxDrawHeight: 10,
   },
+  // 50-144's "Signature of Authorized Individual" is a true /Sig field on
+  // page 1 (index 0), same as 50-132's — drawn directly. "Printed Name of
+  // Authorized Individual" sits right above at y=140.704 (height 12.96,
+  // bottom edge ~140.7), vs. this line's own top edge at ~98.65 — about 42pt
+  // clearance measured against the actual PDF; kept a few points short of
+  // that, same margin-of-safety convention as the other three forms above.
+  "forms/50-144.pdf": {
+    page: 0,
+    x: 54.9064,
+    y: 85.689,
+    width: 314.6396,
+    height: 12.9597,
+    maxDrawHeight: 32,
+  },
 };
 const DATE_FIELD_NAME: Record<string, string> = {
   "forms/50-132.pdf": "Date of Signature",
@@ -1384,6 +1589,7 @@ const DATE_FIELD_NAME: Record<string, string> = {
   // filled by the user/suggestion-chips like any other field, not
   // auto-injected at sign time the way the other two forms' single Date
   // field is.
+  "forms/50-144.pdf": "Date of Signature",
 };
 
 export async function signPdf(
