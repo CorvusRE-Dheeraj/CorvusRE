@@ -436,3 +436,99 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Transactional email infrastructure (2026-09-14) — welcome email, permit
+-- status-change / engagement-request email, permit-renewal reminders, and a
+-- weekly digest, all sent via Resend from Edge Functions. Idempotent.
+-- ---------------------------------------------------------------------------
+
+-- Welcome email: send-welcome-email claims this atomically
+-- (UPDATE ... WHERE welcome_email_sent_at IS NULL) so a user signing in from
+-- two tabs, or on every later day, never gets a second welcome email.
+alter table public.profiles add column if not exists welcome_email_sent_at timestamptz;
+
+-- Weekly digest: same atomic-claim idea, so the weekly cron sweep is safe to
+-- run more than once without double-sending.
+alter table public.profiles add column if not exists last_digest_sent_at timestamptz;
+
+-- One flag per notification row so send-notification-email (called once per
+-- insert from addNotification) can never double-email the same event even
+-- if it's ever retried.
+alter table public.project_notifications add column if not exists email_sent_at timestamptz;
+
+-- Permit renewal reminders: one flag per permit so the daily sweep only
+-- emails once as a given permit's expiry_date approaches, not once per day
+-- the cron happens to run before it.
+alter table public.project_permits add column if not exists renewal_reminder_sent_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Re-verification pass against the PRD (2026-09-15) — one real gap found:
+-- Automatic Lead Conversion (PRD 1.1.7.N) never actually marked a lead row
+-- as converted when the same anonymous session went on to sign up, even
+-- though the trigger already links that session's projects/design_requests.
+-- Idempotent (create or replace).
+-- ---------------------------------------------------------------------------
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, first_name, last_name, phone, company_name)
+  values (
+    new.id, new.email,
+    new.raw_user_meta_data ->> 'first_name',
+    new.raw_user_meta_data ->> 'last_name',
+    new.raw_user_meta_data ->> 'phone',
+    new.raw_user_meta_data ->> 'company_name'
+  );
+
+  begin
+    insert into public.terms_acceptances (user_id, email, terms_version, privacy_version, source, user_agent)
+    values (
+      new.id, new.email,
+      coalesce(new.raw_user_meta_data ->> 'terms_version', 'unknown'),
+      coalesce(new.raw_user_meta_data ->> 'privacy_version', 'unknown'),
+      'signup',
+      new.raw_user_meta_data ->> 'user_agent'
+    );
+  exception when others then null;
+  end;
+
+  begin
+    update public.projects set user_id = new.id
+      where user_id is null and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+    update public.design_requests set user_id = new.id
+      where user_id is null and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+    -- PRD 1.1.7.N — the same anonymous session converting to an account
+    -- marks its lead row(s) converted rather than leaving them "new"
+    -- forever in the admin Leads view.
+    update public.leads set status = 'converted'
+      where status <> 'converted' and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+  exception when others then null;
+  end;
+
+  return new;
+end;
+$$;
+
+-- "Task - AI Logs and Outputs" (PRD, end of the design-admin section): every
+-- AI call's input and output must be stored so staff can review results.
+-- Written by the Edge Functions themselves via the service-role key (see
+-- supabase/functions/_shared/ai-log.ts), so no insert policy is needed for
+-- any client role — only admins ever read this table.
+create table if not exists public.ai_logs (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,               -- feasibility_summary|design_narrative|review_comment_translation|assistant_chat
+  user_id uuid references auth.users (id) on delete set null,
+  input jsonb not null,
+  output jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.ai_logs enable row level security;
+drop policy if exists "admin: read ai logs" on public.ai_logs;
+create policy "admin: read ai logs" on public.ai_logs for select using (public.is_admin());

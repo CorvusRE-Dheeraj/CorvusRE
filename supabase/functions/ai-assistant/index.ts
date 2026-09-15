@@ -10,6 +10,7 @@
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { logAiCall } from "../_shared/ai-log.ts";
 
 const MAX_TURNS = 12;
 const MAX_MESSAGE_LEN = 2000;
@@ -101,6 +102,16 @@ Deno.serve(async (req: Request) => {
     const reply =
       json.candidates?.[0]?.content?.parts?.[0]?.text?.trim().slice(0, 1600) ||
       "I couldn't put together an answer just now — try rephrasing, or check the relevant dashboard tab directly.";
+
+    // Log just this turn (the latest message + the context it was answered
+    // with), not the whole running transcript — each call already carries
+    // the prior turns, so logging the full array every time would repeat
+    // the same earlier messages in every row.
+    await logAiCall(
+      "assistant_chat",
+      { message: trimmed[trimmed.length - 1]?.content ?? null, context: context ?? {} },
+      { reply },
+    );
 
     return new Response(JSON.stringify({ reply }), { status: 200, headers: corsHeaders });
   } catch (err) {

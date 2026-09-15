@@ -78,6 +78,7 @@ function Construction() {
   const [form, setForm] = useState({
     address: "",
     build: "New Construction",
+    sector: "",
     size: "",
     floors: "",
     structure: "Not sure",
@@ -258,6 +259,27 @@ function Construction() {
                   >
                     {["New Construction", "Addition", "Renovation / Remodeling"].map((o) => (
                       <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Property type" hint="Optional">
+                  <select
+                    className={inputCls}
+                    value={form.sector}
+                    onChange={(e) => setForm({ ...form, sector: e.target.value })}
+                  >
+                    {[
+                      "",
+                      "Office",
+                      "Retail",
+                      "Restaurant / Cafe",
+                      "School / Institutional",
+                      "Warehouse / Industrial",
+                      "Mixed-Use",
+                    ].map((o) => (
+                      <option key={o} value={o}>
+                        {o || "Select…"}
+                      </option>
                     ))}
                   </select>
                 </Field>

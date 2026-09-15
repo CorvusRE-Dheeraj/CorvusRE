@@ -10,6 +10,7 @@
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's permitting assistant. A user pasted one real plan-review comment exactly as their city or county building/planning department wrote it, for one real permit on their project. Draft a plain-language translation of that one comment.
 
@@ -28,7 +29,8 @@ Deno.serve(async (req: Request) => {
   if (pf) return pf;
 
   try {
-    const { comment, permitName, jurisdiction } = await req.json();
+    const input = await req.json();
+    const { comment, permitName, jurisdiction } = input ?? {};
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
     if (!comment || typeof comment !== "string" || !comment.trim()) {
@@ -46,16 +48,17 @@ Deno.serve(async (req: Request) => {
       ? (parsed.priority as string)
       : "medium";
 
-    return new Response(
-      JSON.stringify({
-        plainLanguage: str(parsed.plainLanguage, 400),
-        whyItMatters: str(parsed.whyItMatters, 400),
-        requiredAction: str(parsed.requiredAction, 400),
-        responsible: str(parsed.responsible, 120),
-        priority,
-      }),
-      { status: 200, headers: corsHeaders },
-    );
+    const result = {
+      plainLanguage: str(parsed.plainLanguage, 400),
+      whyItMatters: str(parsed.whyItMatters, 400),
+      requiredAction: str(parsed.requiredAction, 400),
+      responsible: str(parsed.responsible, 120),
+      priority,
+    };
+
+    await logAiCall("review_comment_translation", input, result);
+
+    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
   } catch (err) {
     return aiErrorResponse(err, corsHeaders);
   }
