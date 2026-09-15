@@ -2,3 +2,11 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# The Supabase CLI always writes link/deploy state under <cwd>/supabase/,
+# regardless of the actual folder name — deploying from supabase-pt/ or
+# supabase-dp/ creates a *nested* supabase/.temp/ inside them. Never
+# real function code, always safe to delete/ignore.
+supabase-pt/supabase/
+supabase-dp/supabase/
+supabase-identity/supabase/

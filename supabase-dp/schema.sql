@@ -783,3 +783,26 @@ alter table public.project_rfis enable row level security;
 drop policy if exists "rfis: all" on public.project_rfis;
 create policy "rfis: all" on public.project_rfis
   for all using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+-- CorvusRE login bridge (Phase 4) — lets mint-door-session check whether an
+-- email already has a DP account BEFORE calling admin.generateLink, since
+-- generateLink({type:"magiclink"}) silently auto-creates a user for an
+-- email that doesn't exist yet (confirmed empirically: a fresh email comes
+-- back with verification_type "signup", not "magiclink" — but by then the
+-- account already exists, too late to un-create it). auth.users isn't
+-- exposed over PostgREST, and the admin /admin/users REST endpoint doesn't
+-- actually support filtering by email despite accepting the query param —
+-- this SECURITY DEFINER function is the standard safe way to answer
+-- "does this email have an account" without exposing auth.users generally.
+-- Only service_role may call it (this is the login-bridge Edge Function
+-- only, never a browser).
+create or replace function public.corvusre_email_has_account(check_email text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists(select 1 from auth.users where email = check_email);
+$$;
+revoke all on function public.corvusre_email_has_account(text) from public, anon, authenticated;
+grant execute on function public.corvusre_email_has_account(text) to service_role;

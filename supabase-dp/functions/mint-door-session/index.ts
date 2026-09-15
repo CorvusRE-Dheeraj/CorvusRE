@@ -1,0 +1,118 @@
+// Deploy via the CLI (`supabase functions deploy mint-door-session`).
+// Requires public.corvusre_email_has_account(text) to already exist
+// (see supabase-dp/schema.sql).
+//
+// CorvusRE login bridge (Phase 4): CorvusPT is the shared identity source
+// (see the migration plan — no new/paid Supabase project was created for
+// this). This function is the DP-side half of "one login, separate
+// databases" — given a caller's already-verified CorvusPT session, it
+// silently establishes a real CorvusDP session for the same person,
+// WITHOUT ever merging the two projects' auth.users tables.
+//
+// Mechanics (confirmed against this exact project via a live spike before
+// writing this function, not assumed from docs):
+//   1. auth.admin.generateLink({type:"magiclink", email}) auto-CREATES the
+//      user if that email has no CorvusDP account yet (confirmed: a fresh
+//      email comes back with properties.verification_type "signup", but
+//      the account already exists by the time you see that — too late to
+//      undo). So existence MUST be checked first, not inferred from the
+//      generateLink response.
+//   2. auth.users isn't exposed over PostgREST and the admin /admin/users
+//      REST endpoint's `email` query param is silently ignored (confirmed
+//      empirically) — corvusre_email_has_account() is a SECURITY DEFINER
+//      RPC built specifically to answer this safely.
+//   3. properties.hashed_token + properties.verification_type from
+//      generateLink are what the client passes to `supabase.auth.verifyOtp
+//      ({ token_hash, type })` to get a real session with no redirect/new
+//      tab (the type must be the verification_type Supabase actually
+//      returned — "magiclink" for an existing user, confirmed live).
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json",
+};
+
+// CorvusPT is the identity source. Its anon key is a public, client-side-by-
+// design value (same one CorvusPT's own frontend ships) — safe to embed
+// here for the sole purpose of verifying a caller-supplied PT access token.
+const PT_URL = "https://iotzuhuajbsxxuccuihn.supabase.co";
+const PT_ANON_KEY = "sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3";
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const { ptAccessToken } = await req.json();
+    if (!ptAccessToken || typeof ptAccessToken !== "string") {
+      return new Response(JSON.stringify({ error: "ptAccessToken required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
+
+    // Verify the caller's identity against CorvusPT — never trust a
+    // client-supplied email for something this sensitive.
+    const ptClient = createClient(PT_URL, PT_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${ptAccessToken}` } },
+    });
+    const {
+      data: { user: ptUser },
+      error: ptErr,
+    } = await ptClient.auth.getUser();
+    if (ptErr || !ptUser?.email) {
+      return new Response(JSON.stringify({ error: "not signed in on CorvusPT" }), {
+        status: 401,
+        headers: corsHeaders,
+      });
+    }
+
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // Only ever bridge into an account that already exists on THIS door —
+    // visiting CorvusDP for the first time should still go through CorvusDP's
+    // own sign-up, not silently get one created via the bridge.
+    const { data: hasAccount, error: checkErr } = await adminClient.rpc(
+      "corvusre_email_has_account",
+      { check_email: ptUser.email },
+    );
+    if (checkErr) throw checkErr;
+    if (!hasAccount) {
+      return new Response(JSON.stringify({ error: "no_account_on_this_door" }), {
+        status: 404,
+        headers: corsHeaders,
+      });
+    }
+
+    const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
+      type: "magiclink",
+      email: ptUser.email,
+    });
+    if (linkErr) throw linkErr;
+    const hashedToken = linkData?.properties?.hashed_token;
+    const verificationType = linkData?.properties?.verification_type;
+    if (!hashedToken || !verificationType) {
+      throw new Error("Supabase did not return a verifiable token.");
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        email: ptUser.email,
+        hashedToken,
+        verificationType,
+      }),
+      { status: 200, headers: corsHeaders },
+    );
+  } catch (err) {
+    console.error("mint-door-session failed:", err);
+    return new Response(
+      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      { status: 500, headers: corsHeaders },
+    );
+  }
+});
