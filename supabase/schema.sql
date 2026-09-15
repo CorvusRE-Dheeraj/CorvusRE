@@ -532,3 +532,9 @@ create table if not exists public.ai_logs (
 alter table public.ai_logs enable row level security;
 drop policy if exists "admin: read ai logs" on public.ai_logs;
 create policy "admin: read ai logs" on public.ai_logs for select using (public.is_admin());
+
+-- Manage properties (switch/delete) on the Settings page — design_requests
+-- had no updated_at to bump the way projects.updated_at already drives
+-- getActiveProject()'s "most recently touched" sort, so switching back to
+-- an older design request had no equivalent mechanism.
+alter table public.design_requests add column if not exists updated_at timestamptz not null default now();

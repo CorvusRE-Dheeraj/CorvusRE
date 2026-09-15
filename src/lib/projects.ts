@@ -197,6 +197,30 @@ export async function listProjects(userId: string): Promise<ProjectRow[]> {
   return (data as ProjectRow[]) ?? [];
 }
 
+// getActiveProject() always returns whichever project this user touched
+// most recently (order by updated_at desc limit 1) — there was previously
+// no way to switch back to an older one once a second project's own
+// updates pushed it out of that #1 spot, which is exactly what made a
+// "saved" project seem to silently disappear. Bumping updated_at is the
+// same mechanism that already promotes a project, just user-triggered.
+export async function setActiveProject(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
+// Deleting the project row cascades to every child table (permits,
+// checklist, notifications, documents, review comments, city
+// communications, engagement requests — all declared `on delete cascade`
+// against projects.id in schema.sql), so this one delete is a complete,
+// clean removal.
+export async function deleteProject(projectId: string): Promise<void> {
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+  if (error) throw error;
+}
+
 export async function getProjectBundle(projectId: string): Promise<ProjectBundle> {
   const [projectRes, permitsRes, checklistRes, notifsRes] = await Promise.all([
     supabase.from("projects").select("*").eq("id", projectId).single(),
