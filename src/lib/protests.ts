@@ -276,6 +276,44 @@ export async function requestBppProtest(
   return created;
 }
 
+// Records BPP's own agreement acceptance + owner info + AI acknowledgement +
+// e-signature — all on the protests row itself (bpp_* columns added in
+// schema.sql) rather than the real-estate flow's separate
+// service_agreement_acceptances/protest_authorizations tables. See
+// BppProtestFlow.tsx: everything is held in component state across its
+// wizard steps and written here in one call once the owner actually signs,
+// since (unlike the real-estate flow) there's no protest row to attach an
+// early "agreement accepted" write to until requestBppProtest() above has
+// already run.
+export async function saveBppAuthorization(
+  protestId: string,
+  authorization: {
+    ownerFirstName: string;
+    ownerLastName: string;
+    ownerEmail: string;
+    ownerPhone: string;
+    signatureType: "draw" | "type";
+    signatureData: string;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      bpp_agreement_accepted_at: now,
+      bpp_owner_first_name: authorization.ownerFirstName,
+      bpp_owner_last_name: authorization.ownerLastName,
+      bpp_owner_email: authorization.ownerEmail,
+      bpp_owner_phone: authorization.ownerPhone,
+      bpp_ai_ack_at: now,
+      bpp_signature_type: authorization.signatureType,
+      bpp_signature_data: authorization.signatureData,
+      bpp_signed_at: now,
+    })
+    .eq("id", protestId);
+  if (error) throw error;
+}
+
 // Records that the customer has acknowledged Corvus's "AI Guidance & Filing
 // Notice" for this case — see CorvusGuidanceGate in CaseDetailModal.tsx. A
 // one-way write (no "un-acknowledge"); the gate only ever checks whether this
