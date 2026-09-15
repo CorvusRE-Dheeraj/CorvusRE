@@ -3,6 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
 import { resetDpIntake } from "@/lib/dp-intake";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 
 type AuthState = {
   user: User | null;
@@ -53,6 +54,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // account — signing out is the one clear signal that whatever was in
       // progress no longer applies to whoever signs in next in this tab.
       if (event === "SIGNED_OUT") resetDpIntake();
+      // Fire-and-forget on every real sign-in (password, Google, Microsoft,
+      // sign-up) — deliberately not on mere session restoration on page load
+      // (that fires INITIAL_SESSION, not SIGNED_IN). Safe to call this often
+      // anyway: send-welcome-email only actually emails once per account,
+      // gated by its own atomic DB claim on profiles.welcome_email_sent_at.
+      if (event === "SIGNED_IN") {
+        invokeEdgeFunction("send-welcome-email", {}).catch((err) =>
+          console.error("Could not send welcome email:", err),
+        );
+      }
       setState({ user: session?.user ?? null, session, loading: false });
     });
 

@@ -1,9 +1,13 @@
 import { supabase } from "./supabase";
+import { invokeEdgeFunction } from "./edge-functions";
 import type { NotificationRow } from "./projects";
 
-// Alerts & Notifications (PRD 1.1.27). In-app only on the static build — no
-// email/SMS transport — but every project status change writes one so the
-// dashboard and the Notifications page stay current.
+// Alerts & Notifications (PRD 1.1.27). Writes the in-app row (dashboard +
+// Notifications page) and, best-effort, asks send-notification-email to also
+// email it — that function re-checks the owner's real notification_prefs
+// itself (email on/off, permit_status on/off) rather than trusting anything
+// the client claims, so this fires unconditionally and never blocks the
+// caller on the email actually going out.
 
 export async function addNotification(input: {
   projectId: string;
@@ -12,12 +16,21 @@ export async function addNotification(input: {
   body?: string;
 }): Promise<void> {
   try {
-    await supabase.from("project_notifications").insert({
-      project_id: input.projectId,
-      kind: input.kind,
-      title: input.title,
-      body: input.body ?? null,
-    });
+    const { data, error } = await supabase
+      .from("project_notifications")
+      .insert({
+        project_id: input.projectId,
+        kind: input.kind,
+        title: input.title,
+        body: input.body ?? null,
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    const notificationId = (data as { id: string }).id;
+    invokeEdgeFunction("send-notification-email", { notificationId }).catch((err) =>
+      console.error("notification email failed (non-blocking)", err),
+    );
   } catch (err) {
     console.error("notification insert failed (non-blocking)", err);
   }

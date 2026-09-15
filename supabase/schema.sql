@@ -436,3 +436,28 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Transactional email infrastructure (2026-09-14) — welcome email, permit
+-- status-change / engagement-request email, permit-renewal reminders, and a
+-- weekly digest, all sent via Resend from Edge Functions. Idempotent.
+-- ---------------------------------------------------------------------------
+
+-- Welcome email: send-welcome-email claims this atomically
+-- (UPDATE ... WHERE welcome_email_sent_at IS NULL) so a user signing in from
+-- two tabs, or on every later day, never gets a second welcome email.
+alter table public.profiles add column if not exists welcome_email_sent_at timestamptz;
+
+-- Weekly digest: same atomic-claim idea, so the weekly cron sweep is safe to
+-- run more than once without double-sending.
+alter table public.profiles add column if not exists last_digest_sent_at timestamptz;
+
+-- One flag per notification row so send-notification-email (called once per
+-- insert from addNotification) can never double-email the same event even
+-- if it's ever retried.
+alter table public.project_notifications add column if not exists email_sent_at timestamptz;
+
+-- Permit renewal reminders: one flag per permit so the daily sweep only
+-- emails once as a given permit's expiry_date approaches, not once per day
+-- the cron happens to run before it.
+alter table public.project_permits add column if not exists renewal_reminder_sent_at timestamptz;
