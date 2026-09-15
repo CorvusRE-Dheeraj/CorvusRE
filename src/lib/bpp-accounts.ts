@@ -205,7 +205,10 @@ export async function updateBppAccount(
 // is filed with the county directly by the owner (there's no ARB process for
 // it), so this just records the sign-off; markRenditionFiled below records
 // the county actually has it.
-export async function signRendition(id: string, signature: SignatureValue): Promise<BppAccountRecord> {
+export async function signRendition(
+  id: string,
+  signature: SignatureValue,
+): Promise<BppAccountRecord> {
   const { data, error } = await supabase
     .from("bpp_accounts")
     .update({
@@ -239,7 +242,9 @@ export async function deleteBppAccount(id: string): Promise<void> {
 // A protest only makes sense once the county's own notice_value actually
 // disagrees with what was rendered — otherwise there's nothing to contest
 // yet (still waiting on the county's response to the rendition).
-export function bppNeedsProtest(account: Pick<BppAccountRecord, "renderedValue" | "noticeValue">): boolean {
+export function bppNeedsProtest(
+  account: Pick<BppAccountRecord, "renderedValue" | "noticeValue">,
+): boolean {
   return (
     account.noticeValue != null &&
     account.renderedValue != null &&

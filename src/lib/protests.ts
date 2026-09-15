@@ -59,7 +59,18 @@ export type AttendanceType = "Property Owner" | "Authorized Agent" | "Both";
 
 export type ProtestRecord = {
   id: string;
-  propertyId: string;
+  // Exactly one of propertyId/bppAccountId is ever set — a BPP protest has
+  // no property_id (see protests_subject_check in schema.sql). Real-estate
+  // code that only ever reads/creates property-backed protests (the
+  // overwhelming majority of this codebase) can keep treating propertyId as
+  // present; it's typed nullable so a BPP row round-trips honestly instead
+  // of lying about having a property.
+  propertyId: string | null;
+  // Optional (not just nullable), same reason as informalReviewTime/
+  // filingConfirmationNumber below: the many ProtestRecord fixtures/builders
+  // that predate BPP don't all need updating; fromRow (the real path)
+  // always populates it.
+  bppAccountId?: string | null;
   status: ProtestStatus;
   notes: string | null;
   requestedAt: string;
@@ -108,7 +119,8 @@ export type ProtestRecord = {
 
 type ProtestRow = {
   id: string;
-  property_id: string;
+  property_id: string | null;
+  bpp_account_id: string | null;
   status: ProtestStatus;
   notes: string | null;
   requested_at: string;
@@ -140,12 +152,13 @@ type ProtestRow = {
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return {
     id: row.id,
     propertyId: row.property_id,
+    bppAccountId: row.bpp_account_id,
     status: row.status,
     notes: row.notes,
     requestedAt: row.requested_at,
@@ -217,6 +230,48 @@ export async function requestProtest(
     user_email: details?.userEmail ?? "(unknown)",
     message: `A protest filing was requested for ${address} by ${details?.userEmail ?? `user ${userId}`}. Update its status in the admin panel.`,
   }).catch((err) => console.error("Protest request staff notification failed:", err));
+
+  return created;
+}
+
+// BPP sibling of requestProtest above — same shape, but keyed to a BPP
+// account instead of a property (bpp_is_paid() gates the insert server-side,
+// same as property_is_paid() does for requestProtest). Only makes sense once
+// the county's own notice_value actually disagrees with what was rendered
+// (see bppNeedsProtest in bpp-accounts.ts) — callers check that before
+// offering this, same as the UI-level isPaid checks around requestProtest.
+export async function requestBppProtest(
+  userId: string,
+  bppAccountId: string,
+  details?: {
+    businessName?: string;
+    userEmail?: string;
+    originalValue?: number | null;
+    taxYear?: number | null;
+  },
+): Promise<ProtestRecord> {
+  const { data, error } = await supabase
+    .from("protests")
+    .insert({
+      bpp_account_id: bppAccountId,
+      user_id: userId,
+      original_value: details?.originalValue ?? null,
+      tax_year: details?.taxYear ?? null,
+    })
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  const created = fromRow(data as ProtestRow);
+
+  const businessName = details?.businessName ?? `BPP account ${bppAccountId}`;
+  submitWeb3Form({
+    subject: "New BPP protest filing request — CorvusPT.ai",
+    from_name: "CorvusPT.ai",
+    property_address: businessName,
+    property_id: bppAccountId,
+    user_email: details?.userEmail ?? "(unknown)",
+    message: `A BPP protest filing was requested for ${businessName} by ${details?.userEmail ?? `user ${userId}`}. Update its status in the admin panel.`,
+  }).catch((err) => console.error("BPP protest request staff notification failed:", err));
 
   return created;
 }

@@ -154,8 +154,10 @@ function Overview() {
     nav({ to: "/ai-report" });
   }
 
-  const addressFor = (propertyId: string) =>
-    properties.find((p) => p.id === propertyId)?.address ?? "Property removed";
+  const addressFor = (propertyId: string | null) =>
+    propertyId
+      ? (properties.find((p) => p.id === propertyId)?.address ?? "Property removed")
+      : "BPP account";
 
   // Prefers the real per-property estimate computed during intake (comps- or
   // formula-grounded — see src/lib/savings-estimate.ts) whenever it's on file.
@@ -818,7 +820,7 @@ function ProtestStatusChart({
   addressFor,
 }: {
   protests: ProtestRecord[];
-  addressFor: (propertyId: string) => string;
+  addressFor: (propertyId: string | null) => string;
 }) {
   const counts = protests.reduce(
     (acc, p) => {

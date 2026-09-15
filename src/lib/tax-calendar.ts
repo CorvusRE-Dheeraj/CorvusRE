@@ -204,6 +204,7 @@ function fromProtest(
     pr.status === "resolved" &&
     pr.taxYear != null &&
     pr.taxYear < currentYear &&
+    pr.propertyId &&
     !propertiesWithCurrentProtest.has(pr.propertyId)
   ) {
     events.push({
@@ -334,7 +335,9 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
   // check in fromProtest can suppress itself once the user has actually
   // re-filed rather than reminding forever off a stale, already-resolved row.
   const propertiesWithCurrentProtest = new Set(
-    protests.filter((p) => p.taxYear != null && p.taxYear >= currentYear).map((p) => p.propertyId),
+    protests
+      .filter((p) => p.taxYear != null && p.taxYear >= currentYear && p.propertyId)
+      .map((p) => p.propertyId as string),
   );
 
   const events: CalendarEvent[] = [

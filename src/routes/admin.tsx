@@ -212,7 +212,15 @@ function AdminPanel() {
 
   // CaseProgress (reused from the customer dashboard) already made the write —
   // this just keeps the modal and the row's status dropdown in sync with it.
-  function handleCaseProgressUpdate(protestId: string, patch: Partial<ProtestRecord>) {
+  function handleCaseProgressUpdate(
+    protestId: string,
+    // Never actually carries propertyId/bppAccountId — CaseProgress only
+    // ever patches case-progress fields (status/hearing/settlement/etc.) —
+    // excluded here so ProtestRecord's own nullable propertyId (BPP
+    // protests have none) doesn't conflict with AdminProtestRecord's
+    // required one, which this admin queue never populates from a BPP row.
+    patch: Partial<Omit<ProtestRecord, "propertyId" | "bppAccountId">>,
+  ) {
     setCaseRecord((prev) => (prev && prev.id === protestId ? { ...prev, ...patch } : prev));
     setProtests((cur) => cur.map((p) => (p.id === protestId ? { ...p, ...patch } : p)));
   }
