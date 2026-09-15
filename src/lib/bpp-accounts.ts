@@ -21,7 +21,7 @@ export type BppAccountRecord = {
   noticeValue: number | null;
   renditionDeadline: string | null;
   protestDeadline: string | null;
-  renditionSignatureType: "typed" | "drawn" | null;
+  renditionSignatureType: "draw" | "type" | null;
   renditionSignatureData: string | null;
   renditionSignedAt: string | null;
   renditionFiledAt: string | null;
@@ -51,7 +51,7 @@ type BppAccountRow = {
   notice_value: number | null;
   rendition_deadline: string | null;
   protest_deadline: string | null;
-  rendition_signature_type: "typed" | "drawn" | null;
+  rendition_signature_type: "draw" | "type" | null;
   rendition_signature_data: string | null;
   rendition_signed_at: string | null;
   rendition_filed_at: string | null;

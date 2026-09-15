@@ -595,6 +595,7 @@ function DocumentReview() {
             {workflows.map((w) => {
               const isBillOrRefund =
                 w.workflow === "tax_payment_tracking" || w.workflow === "refund_tracking";
+              const isBpp = w.workflow === "bpp_rendition" || w.workflow === "bpp_protest";
               return (
                 <div key={w.workflow} className="card-elev p-5">
                   <div className="flex items-center justify-between gap-2">
@@ -609,6 +610,18 @@ function DocumentReview() {
                         className="btn-primary btn-primary-hover text-sm py-2"
                       >
                         View Tax Bills
+                      </Link>
+                    ) : isBpp ? (
+                      // Signed-in only route — an unauthenticated click bounces
+                      // through /sign-in?redirect=..., same as every other
+                      // dashboard-adjacent route; the extraction this card is
+                      // built from stays in sessionStorage across that redirect,
+                      // so bpp-intake.tsx still picks it up once signed in.
+                      <Link
+                        to="/dashboard/bpp-intake"
+                        className="btn-primary btn-primary-hover text-sm py-2"
+                      >
+                        Continue
                       </Link>
                     ) : (
                       <Link to="/ai-report" className="btn-primary btn-primary-hover text-sm py-2">

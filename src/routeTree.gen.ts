@@ -32,6 +32,7 @@ import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
 import { Route as DashboardLayoutBillingRouteImport } from './routes/dashboard/_layout.billing'
 import { Route as DashboardLayoutBppAccountsRouteImport } from './routes/dashboard/_layout.bpp-accounts'
+import { Route as DashboardLayoutBppIntakeRouteImport } from './routes/dashboard/_layout.bpp-intake'
 import { Route as DashboardLayoutCalendarRouteImport } from './routes/dashboard/_layout.calendar'
 import { Route as DashboardLayoutCaseRouteImport } from './routes/dashboard/_layout.case'
 import { Route as DashboardLayoutDeadlinesRouteImport } from './routes/dashboard/_layout.deadlines'
@@ -157,6 +158,12 @@ const DashboardLayoutBppAccountsRoute =
     path: '/bpp-accounts',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutBppIntakeRoute =
+  DashboardLayoutBppIntakeRouteImport.update({
+    id: '/bpp-intake',
+    path: '/bpp-intake',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutCalendarRoute = DashboardLayoutCalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
@@ -225,6 +232,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardLayoutRouteWithChildren
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
+  '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
   '/dashboard/calendar': typeof DashboardLayoutCalendarRoute
   '/dashboard/case': typeof DashboardLayoutCaseRoute
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
@@ -257,6 +265,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
+  '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
   '/dashboard/calendar': typeof DashboardLayoutCalendarRoute
   '/dashboard/case': typeof DashboardLayoutCaseRoute
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
@@ -291,6 +300,7 @@ export interface FileRoutesById {
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
   '/dashboard/_layout/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/_layout/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
+  '/dashboard/_layout/bpp-intake': typeof DashboardLayoutBppIntakeRoute
   '/dashboard/_layout/calendar': typeof DashboardLayoutCalendarRoute
   '/dashboard/_layout/case': typeof DashboardLayoutCaseRoute
   '/dashboard/_layout/deadlines': typeof DashboardLayoutDeadlinesRoute
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
+    | '/dashboard/bpp-intake'
     | '/dashboard/calendar'
     | '/dashboard/case'
     | '/dashboard/deadlines'
@@ -358,6 +369,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
+    | '/dashboard/bpp-intake'
     | '/dashboard/calendar'
     | '/dashboard/case'
     | '/dashboard/deadlines'
@@ -391,6 +403,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout'
     | '/dashboard/_layout/billing'
     | '/dashboard/_layout/bpp-accounts'
+    | '/dashboard/_layout/bpp-intake'
     | '/dashboard/_layout/calendar'
     | '/dashboard/_layout/case'
     | '/dashboard/_layout/deadlines'
@@ -588,6 +601,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutBppAccountsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/bpp-intake': {
+      id: '/dashboard/_layout/bpp-intake'
+      path: '/bpp-intake'
+      fullPath: '/dashboard/bpp-intake'
+      preLoaderRoute: typeof DashboardLayoutBppIntakeRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/calendar': {
       id: '/dashboard/_layout/calendar'
       path: '/calendar'
@@ -650,6 +670,7 @@ declare module '@tanstack/react-router' {
 interface DashboardLayoutRouteChildren {
   DashboardLayoutBillingRoute: typeof DashboardLayoutBillingRoute
   DashboardLayoutBppAccountsRoute: typeof DashboardLayoutBppAccountsRoute
+  DashboardLayoutBppIntakeRoute: typeof DashboardLayoutBppIntakeRoute
   DashboardLayoutCalendarRoute: typeof DashboardLayoutCalendarRoute
   DashboardLayoutCaseRoute: typeof DashboardLayoutCaseRoute
   DashboardLayoutDeadlinesRoute: typeof DashboardLayoutDeadlinesRoute
@@ -664,6 +685,7 @@ interface DashboardLayoutRouteChildren {
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutBillingRoute: DashboardLayoutBillingRoute,
   DashboardLayoutBppAccountsRoute: DashboardLayoutBppAccountsRoute,
+  DashboardLayoutBppIntakeRoute: DashboardLayoutBppIntakeRoute,
   DashboardLayoutCalendarRoute: DashboardLayoutCalendarRoute,
   DashboardLayoutCaseRoute: DashboardLayoutCaseRoute,
   DashboardLayoutDeadlinesRoute: DashboardLayoutDeadlinesRoute,

@@ -22,10 +22,22 @@ export const Route = createFileRoute("/bpp-rendition")({
 
 function Page() {
   const items = [
-    ["Business type templates", "Start from a template built for your business type."],
-    ["Asset extraction", "AI reads prior renditions to prefill asset categories."],
-    ["Depreciation logic", "County-specific depreciation applied automatically."],
-    ["County rules", "Hidden County Rule Engine handles filing requirements."],
+    [
+      "AI-read intake",
+      "Upload a prior rendition or the county's BPP notice and AI extracts your real rendered value, account number, and deadlines.",
+    ],
+    [
+      "Real Form 50-144",
+      "The actual Texas Comptroller rendition form, prefilled from what you entered, e-signed in-app.",
+    ],
+    [
+      "Real deadline tracking",
+      "The statutory April 15 rendition deadline, and a protest deadline once the county responds.",
+    ],
+    [
+      "CorvusPT protests it",
+      "If the county's assessed value disagrees with what you rendered, CorvusPT can file and manage the protest.",
+    ],
   ];
   return (
     <div>
@@ -36,8 +48,8 @@ function Page() {
             BPP rendition without the paperwork.
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Upload a prior rendition or start with a template. AI extracts assets, applies county
-            depreciation, and prepares the filing. CorvusPT files and defends it.
+            Upload a prior rendition or the county's BPP notice. AI reads your real value, prepares
+            the filing, and CorvusPT protests it if the county disagrees.
           </p>
         </div>
       </div>
@@ -54,7 +66,7 @@ function Page() {
           ))}
         </div>
         <div className="mt-8">
-          <Link to="/" className="btn-primary btn-primary-hover">
+          <Link to="/dashboard/bpp-intake" className="btn-primary btn-primary-hover">
             Start Free Review
           </Link>
         </div>
