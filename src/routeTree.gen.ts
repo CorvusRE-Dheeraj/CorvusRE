@@ -39,6 +39,7 @@ import { Route as DashboardLayoutDeadlinesRouteImport } from './routes/dashboard
 import { Route as DashboardLayoutDocumentsRouteImport } from './routes/dashboard/_layout.documents'
 import { Route as DashboardLayoutPropertiesRouteImport } from './routes/dashboard/_layout.properties'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
+import { Route as DashboardLayoutSavingsRouteImport } from './routes/dashboard/_layout.savings'
 import { Route as DashboardLayoutSettingsRouteImport } from './routes/dashboard/_layout.settings'
 import { Route as DashboardLayoutTaxBillsRouteImport } from './routes/dashboard/_layout.tax-bills'
 
@@ -198,6 +199,11 @@ const DashboardLayoutReferralsRoute =
     path: '/referrals',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutSavingsRoute = DashboardLayoutSavingsRouteImport.update({
+  id: '/savings',
+  path: '/savings',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutSettingsRoute = DashboardLayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -239,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
+  '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
   '/dashboard/': typeof DashboardLayoutIndexRoute
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
+  '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
   '/dashboard': typeof DashboardLayoutIndexRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/_layout/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
+  '/dashboard/_layout/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/_layout/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/_layout/tax-bills': typeof DashboardLayoutTaxBillsRoute
   '/dashboard/_layout/': typeof DashboardLayoutIndexRoute
@@ -343,6 +352,7 @@ export interface FileRouteTypes {
     | '/dashboard/documents'
     | '/dashboard/properties'
     | '/dashboard/referrals'
+    | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
     | '/dashboard/'
@@ -376,6 +386,7 @@ export interface FileRouteTypes {
     | '/dashboard/documents'
     | '/dashboard/properties'
     | '/dashboard/referrals'
+    | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
     | '/dashboard'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/documents'
     | '/dashboard/_layout/properties'
     | '/dashboard/_layout/referrals'
+    | '/dashboard/_layout/savings'
     | '/dashboard/_layout/settings'
     | '/dashboard/_layout/tax-bills'
     | '/dashboard/_layout/'
@@ -650,6 +662,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutReferralsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/savings': {
+      id: '/dashboard/_layout/savings'
+      path: '/savings'
+      fullPath: '/dashboard/savings'
+      preLoaderRoute: typeof DashboardLayoutSavingsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/settings': {
       id: '/dashboard/_layout/settings'
       path: '/settings'
@@ -677,6 +696,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutDocumentsRoute: typeof DashboardLayoutDocumentsRoute
   DashboardLayoutPropertiesRoute: typeof DashboardLayoutPropertiesRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
+  DashboardLayoutSavingsRoute: typeof DashboardLayoutSavingsRoute
   DashboardLayoutSettingsRoute: typeof DashboardLayoutSettingsRoute
   DashboardLayoutTaxBillsRoute: typeof DashboardLayoutTaxBillsRoute
   DashboardLayoutIndexRoute: typeof DashboardLayoutIndexRoute
@@ -692,6 +712,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutDocumentsRoute: DashboardLayoutDocumentsRoute,
   DashboardLayoutPropertiesRoute: DashboardLayoutPropertiesRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
+  DashboardLayoutSavingsRoute: DashboardLayoutSavingsRoute,
   DashboardLayoutSettingsRoute: DashboardLayoutSettingsRoute,
   DashboardLayoutTaxBillsRoute: DashboardLayoutTaxBillsRoute,
   DashboardLayoutIndexRoute: DashboardLayoutIndexRoute,
