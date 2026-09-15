@@ -2248,6 +2248,18 @@ alter table public.bpp_accounts add column if not exists auto_refile_authorized_
 grant update (auto_refile, auto_refile_authorized_at) on public.properties to authenticated;
 grant update (auto_refile, auto_refile_authorized_at) on public.bpp_accounts to authenticated;
 
+-- Real hearing/case representation assignment — who at CorvusPT is actually
+-- handling this case, for a customer who authorized an Authorized Agent (or
+-- "Both") to attend on their behalf (see HearingPrepSection's "Who's
+-- attending" in CaseDetailModal.tsx, previously just a self-report with no
+-- connection to who's actually representing them). Admin-set via the admin
+-- panel (see updateProtestAssignedRep in src/lib/admin.ts) — same
+-- self-reported-by-staff precedent as protests.notes; no separate
+-- column-level grant, "Users can update their own protests" already covers
+-- writing any column on their own row, same as the rest of this table.
+alter table public.protests add column if not exists assigned_representative text;
+alter table public.protests add column if not exists assigned_rep_set_at timestamptz;
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:
