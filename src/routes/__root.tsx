@@ -92,7 +92,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: `${import.meta.env.BASE_URL}favicon.svg?v=2`, type: "image/svg+xml" },
+      { rel: "icon", href: `${import.meta.env.BASE_URL}favicon.svg?v=7`, type: "image/svg+xml" },
       { rel: "icon", href: `${import.meta.env.BASE_URL}favicon.ico?v=2`, sizes: "any" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
@@ -135,16 +135,23 @@ function RootComponent() {
           >
             Skip to main content
           </a>
-          <div className="print:hidden">
-            <SiteNav />
-          </div>
-          <main id="main-content" className="min-h-[70vh]">
-            <AppShell>
-              <Outlet />
-            </AppShell>
-          </main>
-          <div className="print:hidden">
-            <SiteFooter />
+          {/* flex-col + min-h-screen + main:flex-1 is what pins the footer to
+              the bottom of the viewport on short pages (e.g. Settings)
+              instead of leaving a gap between it and the end of the
+              document — on tall pages this has no effect, the footer just
+              sits after the (taller) content as always. */}
+          <div className="flex min-h-screen flex-col">
+            <div className="print:hidden">
+              <SiteNav />
+            </div>
+            <main id="main-content" className="flex-1">
+              <AppShell>
+                <Outlet />
+              </AppShell>
+            </main>
+            <div className="print:hidden">
+              <SiteFooter />
+            </div>
           </div>
           <div className="print:hidden">
             <AskAiWidget />
