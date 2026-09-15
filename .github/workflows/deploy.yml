@@ -46,7 +46,6 @@ jobs:
           # Variables: Settings > Secrets and variables > Actions > Variables.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_WEB3FORMS_ACCESS_KEY: ${{ vars.VITE_WEB3FORMS_ACCESS_KEY }}
 
       # SPA deep-link fallback: GitHub Pages serves 404.html for any path it has
       # no file for. Every route is already prerendered, so this only matters for

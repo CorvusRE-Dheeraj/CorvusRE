@@ -62,7 +62,7 @@ function DailyLog() {
     <div className="grid gap-5">
       <Section
         title="Daily construction log"
-        subtitle="Weather, crews, work performed, deliveries, and issues — one entry per day (PRD 2.3.6.2)."
+        subtitle="Weather, crews, work performed, deliveries, and issues — one entry per day."
         right={
           <button className="btn-outline text-sm" onClick={() => window.print()}>
             Export / print

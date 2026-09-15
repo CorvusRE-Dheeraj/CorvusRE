@@ -164,30 +164,17 @@ function WelcomeWalkthrough() {
           ✕
         </button>
       </div>
-      <ul className="mt-3 grid gap-1.5 text-sm text-muted-foreground sm:grid-cols-2">
-        <li>
-          • <span className="text-foreground">Permits / Roadmap</span> — every permit, its agency,
-          and the order to submit
-        </li>
-        <li>
-          • <span className="text-foreground">Site Data</span> — utility & constraint summary +
-          pre-app meeting agenda
-        </li>
-        <li>
-          • <span className="text-foreground">Checklist / Prepare</span> — what to submit and who
-          owns it
-        </li>
-        <li>
-          • <span className="text-foreground">Reviews / City</span> — track cycles, comments, and
-          jurisdiction contact
-        </li>
-        <li>
-          • <span className="text-foreground">Approvals</span> — approved permits, clearance, and
-          expiry
-        </li>
-        <li>
-          • <span className="text-foreground">Alerts</span> — a log of every status change
-        </li>
+      <ul className="mt-3 grid gap-1.5 text-sm sm:grid-cols-2">
+        {WALKTHROUGH_ITEMS.map((item) => (
+          <li key={item.to}>
+            <Link
+              to={item.to}
+              className="block rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
+            >
+              • <span className="font-medium text-foreground">{item.label}</span> — {item.desc}
+            </Link>
+          </li>
+        ))}
       </ul>
       <button onClick={close} className="btn-outline mt-4 text-sm">
         Got it
@@ -195,3 +182,14 @@ function WelcomeWalkthrough() {
     </div>
   );
 }
+
+const WALKTHROUGH_ITEMS: { to: string; label: string; desc: string }[] = [
+  { to: "/dashboard/permits", label: "Permits / Roadmap", desc: "every permit, its agency, and the order to submit" },
+  { to: "/dashboard/constraints", label: "Site Data", desc: "utility & constraint summary + pre-app meeting agenda" },
+  { to: "/dashboard/checklist", label: "Checklist / Prepare", desc: "what to submit and who owns it" },
+  { to: "/dashboard/reviews", label: "Reviews / City", desc: "reviewer comments vs. informal jurisdiction contact" },
+  { to: "/dashboard/approvals", label: "Approvals", desc: "approved permits, clearance, and expiry" },
+  { to: "/dashboard/inspections", label: "Construction", desc: "inspections, daily logs, and submittals/RFIs once you're building" },
+  { to: "/dashboard/design", label: "Design", desc: "your design brief, cost breakdown, and stage progress" },
+  { to: "/dashboard/notifications", label: "Alerts", desc: "a log of every status change" },
+];

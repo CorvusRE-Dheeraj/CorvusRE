@@ -59,7 +59,7 @@ function City() {
     <div className="grid gap-5">
       <Section
         title="City relationship management tracker"
-        subtitle="Every interaction with the jurisdiction, in order (PRD 1.1.22)."
+        subtitle="A manual log of calls, emails, and meetings with the jurisdiction — for reviewer comments on a submitted permit, see Reviews instead."
       >
         {comms.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>

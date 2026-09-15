@@ -22,7 +22,10 @@ function Roadmap() {
 
   return (
     <div className="grid gap-5">
-      <Section title="Permitting roadmap — current status">
+      <Section
+        title="Permitting roadmap — current status"
+        subtitle="Every permit phase for this project, in the order it needs to happen."
+      >
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">{status.currentPhase}</span>
           <span className="text-muted-foreground">{status.percentComplete}% complete</span>

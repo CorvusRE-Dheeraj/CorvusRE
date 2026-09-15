@@ -70,7 +70,7 @@ function Checklist() {
     <div className="grid gap-5">
       <Section
         title="Pre-application checklist"
-        subtitle={`Complete before submitting anything (PRD 1.1.13) · ${preAppPct}% done`}
+        subtitle={`Complete these before submitting anything · ${preAppPct}% done`}
         right={
           <button className="btn-outline text-sm" onClick={() => window.print()}>
             Export / print

@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
+import { getActiveDesignRequest } from "@/lib/design-requests";
 
 export function Section({
   title,
@@ -153,7 +156,41 @@ export function Field({
 export const inputCls =
   "w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm";
 
+// This is the "no data" state on every permitting-scoped dashboard page (16 of
+// 18 — everything except /dashboard/design and /dashboard/settings, which read
+// from design_requests instead of projects). Without the design-brief check
+// below, a user who only ever ran a Design analysis would hit "Run a
+// permitting analysis" on nearly every tab in the sidebar despite already
+// having an active, saved project of a different kind — a real dead end, not
+// just an unhelpful empty state.
 export function EmptyProject() {
+  const { user } = useAuth();
+  const designRequest = useQuery({
+    queryKey: ["active-design-request-check", user?.id],
+    queryFn: () => getActiveDesignRequest(user!.id),
+    enabled: !!user?.id,
+  });
+
+  if (designRequest.data) {
+    return (
+      <div className="card-elev p-8 text-center">
+        <h2 className="font-serif text-lg font-semibold">No permitting project yet</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This page tracks permitting activity, and you don't have one started. You do have an
+          active design brief — pick up there, or start a permitting analysis for this property.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Link to="/dashboard/design" className="btn-accent">
+            View your design brief
+          </Link>
+          <Link to="/permitting/analyze" className="btn-outline">
+            Start Permitting Analysis
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card-elev p-8 text-center">
       <h2 className="font-serif text-lg font-semibold">No project yet</h2>

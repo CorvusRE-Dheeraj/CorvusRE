@@ -238,7 +238,7 @@ function Admin() {
         {tab === "design" && (
           <Section
             title={`Design requests (${design.data?.length ?? 0})`}
-            subtitle="Advance a request through concept → development → final drawings once the design team is engaged (PRD 1.2.19)."
+            subtitle="Advance a request through concept → development → final drawings once the design team is engaged."
           >
             <Table
               cols={["Location", "Scope", "Sector", "Stage", "Created", ""]}
@@ -260,7 +260,7 @@ function Admin() {
         {tab === "engagements" && (
           <Section
             title={`Professional-assistance requests (${engagements.data?.length ?? 0})`}
-            subtitle="Follow up with a scope of services, fee schedule, and payment schedule (PRD 1.1.19 / 2.1.31)."
+            subtitle="Follow up with a scope of services, fee schedule, and payment schedule."
           >
             <Table
               cols={["Project", "Track", "Requester", "Scope", "Status", "Requested", ""]}
@@ -290,7 +290,7 @@ function Admin() {
         {tab === "permits" && (
           <Section
             title={`Permits across all projects (${permitRows.length})`}
-            subtitle="Submission, aging/risk, approval, and expiry tracking in one view (PRD 2.1.47–52)."
+            subtitle="Submission, aging/risk, approval, and expiry tracking in one view."
           >
             <div className="grid gap-3 sm:grid-cols-3">
               <Stat label="Open permits" value={<AnimatedNumber value={openPermits.length} />} />
@@ -346,7 +346,7 @@ function Admin() {
         {tab === "documents" && (
           <Section
             title={`Documents across all projects (${documents.data?.length ?? 0})`}
-            subtitle="Central repository view (PRD 2.1.9)."
+            subtitle="Central repository view across every user's project."
           >
             <Table
               cols={["Project", "Name", "Category", "Uploaded", ""]}
@@ -365,7 +365,7 @@ function Admin() {
         {tab === "leads" && (
           <Section
             title={`Leads (${leads.data?.length ?? 0})`}
-            subtitle="Anonymous drop-offs from the analysis flow, ranked by intent (PRD 2.1.2 / 2.1.3)."
+            subtitle="Anonymous drop-offs from the analysis flow, ranked by intent."
           >
             <Table
               cols={["Priority", "Track", "Contact", "Property", "Intent", "Created"]}

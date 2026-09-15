@@ -41,7 +41,7 @@ function Permits() {
       {analysis && (
         <Section
           title="Complexity summary"
-          subtitle="Based on permit count + dependencies (PRD 1.1.8.A)"
+          subtitle="How many permits this project needs, and how they depend on each other."
         >
           <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-lg border border-border p-4">

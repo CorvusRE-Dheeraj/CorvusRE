@@ -57,7 +57,7 @@ function Prepare() {
     <div className="grid gap-5">
       <Section
         title="Application preparation summary"
-        subtitle="Package readiness against the city-specific checklist (PRD 1.1.21)."
+        subtitle="How ready your submission package is against the city-specific checklist."
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <Stat
@@ -108,7 +108,7 @@ function Prepare() {
 
       <Section
         title="Proceed with professional assistance"
-        subtitle="PRD 1.1.19 — CorvusDP prepares and runs the permit submission for you."
+        subtitle="Have CorvusDP's team prepare and run the permit submission for you."
       >
         {eng.data ? (
           <div className="rounded-lg border border-accent/40 bg-accent/5 p-4 text-sm">

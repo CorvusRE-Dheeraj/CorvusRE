@@ -17,7 +17,10 @@ function Fees() {
 
   return (
     <div className="grid gap-5">
-      <Section title="Total fee estimation">
+      <Section
+        title="Total fee estimation"
+        subtitle="Estimates only — always confirm the final amount with the jurisdiction before paying."
+      >
         <div className="grid gap-3 sm:grid-cols-3">
           <Stat
             label="Permit & review fees"
