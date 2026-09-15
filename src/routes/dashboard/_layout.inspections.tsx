@@ -81,10 +81,14 @@ function Inspections() {
           <p className="text-sm text-muted-foreground">No inspections logged yet.</p>
         ) : (
           <ul className="grid gap-2">
-            {(inspections.data ?? []).map((i) => {
+            {(inspections.data ?? []).map((i, idx) => {
               const permit = permits.find((p) => p.id === i.permit_id);
               return (
-                <li key={i.id} className="rounded-lg border border-border p-3 text-sm">
+                <li
+                  key={i.id}
+                  className="list-item-enter rounded-lg border border-border p-3 text-sm"
+                  style={{ animationDelay: `${Math.min(idx, 10) * 40}ms` }}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="font-medium">{i.name}</span>

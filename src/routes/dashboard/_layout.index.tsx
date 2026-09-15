@@ -70,7 +70,7 @@ function DashboardHome() {
             </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="h-full rounded-full bg-accent"
+                className="progress-fill h-full rounded-full bg-accent"
                 style={{ width: `${status.percentComplete}%` }}
               />
             </div>

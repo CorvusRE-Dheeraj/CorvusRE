@@ -104,8 +104,12 @@ function Documents() {
                 </tr>
               </thead>
               <tbody>
-                {(docs.data ?? []).map((d) => (
-                  <tr key={d.id} className="row-hover border-b border-border/60">
+                {(docs.data ?? []).map((d, i) => (
+                  <tr
+                    key={d.id}
+                    className="list-item-enter row-hover border-b border-border/60"
+                    style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                  >
                     <td className="px-2 py-2 font-medium">
                       {d.name}
                       {d.note && <p className="text-xs text-muted-foreground">{d.note}</p>}

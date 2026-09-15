@@ -167,8 +167,12 @@ function Reviews() {
           <p className="text-sm text-muted-foreground">No review comments logged yet.</p>
         ) : (
           <ul className="grid gap-3">
-            {(comments.data ?? []).map((c) => (
-              <li key={c.id} className="rounded-lg border border-border p-4 text-sm">
+            {(comments.data ?? []).map((c, i) => (
+              <li
+                key={c.id}
+                className="list-item-enter rounded-lg border border-border p-4 text-sm"
+                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+              >
                 <div className="flex items-center gap-2">
                   <Pill tone={PRIORITY_TONE[c.priority] ?? "gray"}>{c.priority}</Pill>
                   <Pill

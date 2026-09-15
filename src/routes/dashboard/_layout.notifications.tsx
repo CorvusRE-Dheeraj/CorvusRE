@@ -57,10 +57,11 @@ function Notifications() {
         <p className="text-sm text-muted-foreground">No notifications yet.</p>
       ) : (
         <ul className="grid gap-2">
-          {rows.map((n) => (
+          {rows.map((n, i) => (
             <li
               key={n.id}
-              className={`rounded-lg border p-3 text-sm ${n.read ? "border-border" : "border-accent/40 bg-accent/5"}`}
+              className={`list-item-enter rounded-lg border p-3 text-sm ${n.read ? "border-border" : "border-accent/40 bg-accent/5"}`}
+              style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
