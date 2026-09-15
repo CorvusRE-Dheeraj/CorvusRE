@@ -2099,6 +2099,127 @@ alter table public.protest_form_submissions
   check (reminder_frequency is null or reminder_frequency in ('daily', 'weekly', 'off'));
 alter table public.protest_form_submissions add column if not exists last_reminder_sent_at timestamptz;
 
+-- Business Personal Property — real value/deadline tracking, one independent
+-- Stripe subscription per BPP account (mirrors public.properties' own model,
+-- one subscription per subscribable thing — see src/lib/billing.ts's comment
+-- on why), and enough to support filing a real protest once the county's own
+-- notice_value disagrees with what was rendered. Form 50-144 (Rendition)
+-- precedes any protest and has no real-estate equivalent — its own
+-- rendition_signature_*/rendition_filed_at columns are captured directly on
+-- this row rather than needing a protests row to exist yet.
+alter table public.bpp_accounts add column if not exists tax_year integer;
+alter table public.bpp_accounts add column if not exists rendered_value numeric;
+alter table public.bpp_accounts add column if not exists prior_value numeric;
+alter table public.bpp_accounts add column if not exists notice_value numeric;
+alter table public.bpp_accounts add column if not exists rendition_deadline date;
+alter table public.bpp_accounts add column if not exists protest_deadline date;
+alter table public.bpp_accounts add column if not exists rendition_signature_type text;
+alter table public.bpp_accounts add column if not exists rendition_signature_data text;
+alter table public.bpp_accounts add column if not exists rendition_signed_at timestamptz;
+alter table public.bpp_accounts add column if not exists rendition_filed_at timestamptz;
+alter table public.bpp_accounts add column if not exists estimated_savings numeric;
+
+-- One real, independent Stripe subscription per BPP ACCOUNT — same shape and
+-- discipline as public.properties' six subscription columns above (ad hoc
+-- price_data, no fixed Price IDs; never client-writable — see the
+-- column-level UPDATE grant below, which omits all six). See
+-- create-bpp-checkout-session / cancel-bpp-subscription / stripe-webhook.
+alter table public.bpp_accounts add column if not exists stripe_subscription_id text;
+alter table public.bpp_accounts add column if not exists subscription_status text;
+alter table public.bpp_accounts add column if not exists plan_tier text;
+alter table public.bpp_accounts add column if not exists value_bracket text;
+alter table public.bpp_accounts add column if not exists cancel_at_period_end boolean not null default false;
+alter table public.bpp_accounts add column if not exists cancel_at timestamptz;
+
+-- Was missing entirely (bpp_accounts only ever had select/insert/delete) —
+-- without it, every field added above would be permanently unwritable after
+-- the initial insert.
+drop policy if exists "Users can update their own BPP accounts" on public.bpp_accounts;
+create policy "Users can update their own BPP accounts"
+  on public.bpp_accounts for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+revoke update on public.bpp_accounts from authenticated;
+grant update (
+  business_name, account_number, cad, location_address, tax_year,
+  rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline,
+  rendition_signature_type, rendition_signature_data, rendition_signed_at,
+  rendition_filed_at, estimated_savings
+) on public.bpp_accounts to authenticated;
+
+-- Same "can't delete a paid account out from under a running subscription"
+-- gate as properties.delete above.
+drop policy if exists "Users can delete their own BPP accounts" on public.bpp_accounts;
+create policy "Users can delete their own BPP accounts"
+  on public.bpp_accounts for delete
+  using (auth.uid() = user_id and subscription_status is distinct from 'active');
+
+-- public.protests now covers BOTH a real-estate protest (property_id) and a
+-- BPP protest (bpp_account_id) — a BPP protest IS a protest, same ARB
+-- process, same Form 50-132 Notice of Protest, just preceded by a rendition
+-- step real estate doesn't have. property_id becomes nullable; exactly one of
+-- property_id/bpp_account_id is set per row (enforced by the check
+-- constraint below, app code never sets both).
+alter table public.protests alter column property_id drop not null;
+alter table public.protests add column if not exists bpp_account_id uuid references public.bpp_accounts (id) on delete cascade;
+alter table public.protests drop constraint if exists protests_subject_check;
+alter table public.protests add constraint protests_subject_check
+  check ((property_id is not null) <> (bpp_account_id is not null));
+
+-- BPP mirror of property_is_paid() above — same security-definer pattern, so
+-- a BPP protest can only ever be created for a BPP account with a real active
+-- subscription (or a beta account), enforced server-side, not just hidden by
+-- a disabled button in the UI.
+create or replace function public.bpp_is_paid(p_bpp_account_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.bpp_accounts b
+    where b.id = p_bpp_account_id
+      and b.user_id = auth.uid()
+      and (
+        b.subscription_status = 'active'
+        or (select plan from public.profiles where id = auth.uid()) = 'beta'
+      )
+  );
+$$;
+
+drop policy if exists "Users can request their own protests" on public.protests;
+create policy "Users can request their own protests"
+  on public.protests for insert
+  with check (
+    auth.uid() = user_id
+    and (
+      (property_id is not null and public.property_is_paid(property_id))
+      or (bpp_account_id is not null and public.bpp_is_paid(bpp_account_id))
+    )
+  );
+
+-- BPP's own rendition-then-protest authorization + e-signature capture —
+-- deliberately its OWN columns rather than reusing service_agreement_
+-- acceptances/protest_authorizations (the real-estate flow's tables): those
+-- are live, legally-sensitive infrastructure this feature reuses everywhere
+-- it safely can (protest-case.ts, filing-workflow.ts, protest-documents.ts,
+-- PdfFormEditor) but deliberately does not touch here, so BPP's own
+-- authorization flow can ship with zero chance of regressing the existing
+-- one. "Users can update their own protests" above already covers writing
+-- these (self-reported, no column-level grant on protests exists).
+alter table public.protests add column if not exists bpp_agreement_accepted_at timestamptz;
+alter table public.protests add column if not exists bpp_owner_first_name text;
+alter table public.protests add column if not exists bpp_owner_last_name text;
+alter table public.protests add column if not exists bpp_owner_email text;
+alter table public.protests add column if not exists bpp_owner_phone text;
+alter table public.protests add column if not exists bpp_ai_ack_at timestamptz;
+alter table public.protests add column if not exists bpp_signature_type text;
+alter table public.protests add column if not exists bpp_signature_data text;
+alter table public.protests add column if not exists bpp_signed_at timestamptz;
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:
