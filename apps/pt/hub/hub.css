@@ -1,0 +1,1010 @@
+/* Hand-written, not compiled from Tailwind — these 5 pages have no app logic
+   (auth, data, interactivity), so they're plain static HTML/CSS rather than a
+   second framework build. Color tokens copied verbatim from src/styles.css's
+   :root block for visual consistency with the CorvusPT app. */
+:root {
+  --background: oklch(0.98 0.01 155);
+  --foreground: oklch(0.2 0.04 250);
+  --card: oklch(1 0 0);
+  --primary: oklch(0.29 0.08 255);
+  --primary-foreground: oklch(0.985 0.005 90);
+  --secondary: oklch(0.955 0.012 250);
+  --secondary-foreground: oklch(0.25 0.05 255);
+  --muted-foreground: oklch(0.48 0.02 255);
+  --accent: oklch(0.62 0.19 255);
+  --accent-foreground: oklch(0.99 0.005 255);
+  --border: oklch(0.9 0.012 250);
+  --brand: oklch(0.29 0.08 255);
+  --brand-foreground: oklch(0.985 0.005 90);
+  --radius: 0.75rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body {
+  margin: 0;
+  font-family: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  line-height: 1.5;
+}
+
+.container-page {
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+@media (min-width: 768px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+}
+/* Unlike the centered, max-width .container-page used for regular page
+   content, the header spans the full window edge-to-edge (matching the
+   full-bleed doors below) — otherwise on wide screens the centered
+   80rem box leaves the logo stranded well inside the actual corner. */
+header .container-page {
+  max-width: none;
+  margin-inline: 0;
+}
+header .bar {
+  height: 5.5rem;
+  display: grid;
+  /* 3 columns (not flex space-between) so the centered tagline is truly
+     centered in the bar regardless of how wide the brand/hint content on
+     either side of it happens to be. */
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+}
+.logo-mark {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--brand);
+  color: var(--brand-foreground);
+  flex-shrink: 0;
+}
+.wordmark {
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.wordmark .accent {
+  color: var(--accent);
+}
+
+.badge-soft-muted {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+main {
+  position: relative;
+}
+
+/* Centered header tagline — moved here from its own banner row between the
+   header and the doors so it reads as part of the header itself. Sized up
+   at the same 640px breakpoint .doors-hint already uses, so it doesn't
+   force wrapping/overflow on a narrow phone width before growing to its
+   full "big" size on larger screens. */
+.header-tagline {
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+@media (min-width: 640px) {
+  .header-tagline {
+    font-size: 1.625rem;
+  }
+}
+
+/* Small "Choose a door to enter" hint beside the logo — only the doors-page
+   header shows it (placeholder pages reuse the same header markup without
+   this element present). */
+.doors-hint {
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+  display: none;
+}
+@media (min-width: 640px) {
+  .doors-hint {
+    display: inline-flex;
+  }
+}
+
+/* The whole home page: header + one full-height row of five doors + a thin
+   footer, stacked to exactly one viewport with no scroll — body becomes the
+   flex column so we never have to hand-compute header/footer heights. Scoped
+   to body.doors-page so the four placeholder pages (which reuse header/
+   footer/hub.css but keep normal document flow) are unaffected. */
+body.doors-page {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+body.doors-page header {
+  flex: 0 0 auto;
+}
+body.doors-page footer {
+  flex: 0 0 auto;
+  height: 2.25rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+.doors-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.doors {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+/* Each door is a real link — works with no JS as a plain, instant
+   navigation. With JS, clicking a door opens the "Request Beta Access"
+   dialog instead (see the script at the bottom of index.html) — the
+   click-triggered full swing-past-vertical + navigate below is currently
+   unreachable because of that, but left in place since it's real,
+   tuned behavior that comes back into play once doors navigate for real
+   again post-beta. The hover/focus "ajar peek" a few rules down is
+   unrelated and still fully active. .door-panel is the literal door
+   leaf: it hinges on its left edge (perspective lives on .door, the
+   panel's containing block). .door itself is the doorway/frame; a thick
+   inset "casing" plus a shared frame color across all five sells the
+   "row of doors in a hallway" read even before any motion happens. */
+.door {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem 0.5rem;
+  color: #fff;
+  text-decoration: none;
+  overflow: hidden;
+  /* Lit-from-above-left, same diagonal as .door-panel's own gradient below —
+     this only actually shows in the casing margin around the door leaf (the
+     leaf itself covers the rest), but that's exactly the "flat black strip"
+     a doorway's real frame/architrave never is: a real casing catches light
+     unevenly the same way the door face does. */
+  background: linear-gradient(165deg, oklch(0.24 0.02 258) 0, oklch(0.08 0.01 258) 3rem);
+  /* Widened from the original 0.5rem flat casing to 0.875rem, with an
+     actual light/dark pair right at its inner edge (a real moulding's lit
+     bevel face next to its shadowed groove) — a single soft-opacity ring
+     read as barely-there at the old thin width; this crisp pairing reads
+     unmistakably as a beveled 3D frame instead of a flat black bar. Kept in
+     sync with .door-panel's own inset just below. */
+  box-shadow:
+    inset 0 0 0 0.875rem oklch(0.1 0.015 258),
+    inset 0 0 0 1rem oklch(0.55 0.02 258 / 0.9),
+    inset 0 0 0 1.0625rem oklch(0.04 0.01 258 / 0.9),
+    inset 0 0 0 1.125rem oklch(1 0 0 / 0.08);
+  perspective: 1500px;
+  cursor: pointer;
+}
+
+.door-panel {
+  position: absolute;
+  inset: 1.125rem;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  transform-origin: left center;
+  backface-visibility: hidden;
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+  transition:
+    transform 0.65s cubic-bezier(0.6, 0, 0.35, 1),
+    box-shadow 0.5s ease;
+}
+/* Thin glowing light strip tracing the top and both sides of the door leaf
+   (no bottom edge, matching a real recessed-LED door frame) — each door's
+   own --door-glow doubles as the strip color, same as the label accent, so
+   the glow itself carries each door's identity. Lives on the leaf (not the
+   doorway) so it swings open together with it on hover/click. Three 1D
+   gradients (one per edge) rather than a box-shadow, since box-shadow can't
+   omit a single side; the drop-shadow blur is what actually reads as "glow"
+   rather than a flat line. */
+.door-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, var(--door-glow, #fff), var(--door-glow, #fff)) top / 100% 3px
+      no-repeat,
+    linear-gradient(to bottom, var(--door-glow, #fff), var(--door-glow, #fff)) left / 3px 100%
+      no-repeat,
+    linear-gradient(to bottom, var(--door-glow, #fff), var(--door-glow, #fff)) right / 3px 100%
+      no-repeat;
+  filter: drop-shadow(0 0 3px var(--door-glow, #fff))
+    drop-shadow(0 0 7px color-mix(in oklch, var(--door-glow, #fff) 70%, transparent));
+}
+/* Raised/routed panel fields, like a real two-panel wood door — dormant
+   while doors use the flat slab + glow-frame style below; kept defined so
+   it's a one-line revert (remove the display:none). */
+.door-panel-field-upper,
+.door-panel-field-lower {
+  display: none;
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  border-radius: 0.35rem;
+  box-shadow:
+    inset 0.15rem 0.15rem 0.3rem oklch(0 0 0 / 0.32),
+    inset -0.1rem -0.1rem 0.2rem oklch(1 0 0 / 0.16);
+  pointer-events: none;
+}
+.door-panel-field-upper {
+  top: 10%;
+  height: 26%;
+}
+.door-panel-field-lower {
+  bottom: 8%;
+  height: 46%;
+}
+/* Hinge leaves on the side the door pivots from — dormant while doors use
+   the plain flat-paint style; kept defined so it's a one-line revert. */
+.door-hinge {
+  display: none;
+  position: absolute;
+  left: 0;
+  z-index: 1;
+  width: 0.4375rem;
+  height: 1.5rem;
+  border-radius: 0 0.1875rem 0.1875rem 0;
+  background: linear-gradient(
+    90deg,
+    oklch(0.5 0.02 258),
+    oklch(0.78 0.02 258) 60%,
+    oklch(0.5 0.02 258)
+  );
+  box-shadow: 1px 0 2px oklch(0 0 0 / 0.4);
+}
+.door-hinge-top {
+  top: 3rem;
+}
+.door-hinge-bottom {
+  bottom: 3rem;
+}
+/* Metal kickplate along the bottom edge — dormant while doors use the
+   plain flat-paint style; kept defined so it's a one-line revert. */
+.door-kickplate {
+  display: none;
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 1.1rem;
+  z-index: 2;
+  height: 0.5rem;
+  border-radius: 0.15rem;
+  background: linear-gradient(180deg, oklch(0.82 0.02 258), oklch(0.55 0.02 258));
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.4);
+  pointer-events: none;
+}
+/* Tall vertical bar pull, brushed-metal shaded (dark-light-dark across its
+   width reads as a lit round bar) and tinted with the door's own --door-glow
+   so it matches the glow frame, like a real bronze/gold pull under a warm
+   LED strip. Replaces the small round knob the ornate-door style used. */
+.door-handle {
+  position: absolute;
+  top: 28%;
+  right: 13%;
+  z-index: 2;
+  height: 42%;
+  width: 0.5625rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--door-glow, #ccc) 45%, black) 0%,
+    color-mix(in oklch, var(--door-glow, #ccc) 75%, white) 42%,
+    color-mix(in oklch, var(--door-glow, #ccc) 35%, black) 100%
+  );
+  box-shadow:
+    0 2px 5px oklch(0 0 0 / 0.6),
+    0 0 4px color-mix(in oklch, var(--door-glow, #ccc) 40%, transparent);
+}
+
+/* ---------- Dark slab + glow-frame door style ----------
+   A dark door leaf with each door's own brand hue mixed in more heavily
+   than before (was 6%/2%, a near-black "whisper") — still reads as a door,
+   not a flat painted swatch, but the color itself is meant to be clearly
+   visible now, not just implied through the glow frame (.door-panel::before
+   above) and the handle. */
+.door-panel {
+  background: linear-gradient(
+    165deg,
+    color-mix(in oklch, var(--door-tint, #888) 20%, #12151c) 0%,
+    color-mix(in oklch, var(--door-tint, #888) 9%, #05060a) 100%
+  );
+}
+.door-pt {
+  --door-tint: #059669;
+  --door-glow: #6ee7b7;
+  --door-flame: #6ee7b7;
+  --door-metal: linear-gradient(155deg, #fef3c7, #b45309 75%);
+  --door-scale: #022c22;
+}
+.door-bsl {
+  --door-tint: #7c3aed;
+  --door-glow: #c4b5fd;
+  --door-flame: #c4b5fd;
+  --door-metal: linear-gradient(155deg, #fdf4ff, #a21caf 75%);
+  --door-scale: #1e0a4d;
+}
+.door-dp {
+  --door-tint: #d97706;
+  --door-glow: #fde68a;
+  --door-flame: #fde68a;
+  --door-metal: linear-gradient(155deg, #fef3c7, #92400e 75%);
+  --door-scale: #341005;
+}
+.door-co {
+  --door-tint: #db2777;
+  --door-glow: #fbcfe8;
+  --door-flame: #fbcfe8;
+  --door-metal: linear-gradient(155deg, #fdf2f8, #9d174d 75%);
+  --door-scale: #3d0619;
+}
+.door-rf {
+  --door-tint: #0284c7;
+  --door-glow: #7dd3fc;
+  --door-flame: #7dd3fc;
+  --door-metal: linear-gradient(155deg, #f0f9ff, #075985 75%);
+  --door-scale: #041c2e;
+}
+
+/* Carved medallion arching over the doorway — dormant while doors use the
+   plain flat-paint style; kept defined so it's a one-line revert. Lives
+   directly on .door (like the torches/kickplate), not inside .door-panel,
+   so it stays put and never moves. */
+.door-medallion {
+  display: none;
+  position: absolute;
+  top: 0.15rem;
+  left: 50%;
+  z-index: 2;
+  width: 2.25rem;
+  height: 2.25rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.door-medallion svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.5));
+}
+.medallion-ring {
+  fill: var(--door-metal, #d97706);
+  stroke: oklch(0 0 0 / 0.35);
+  stroke-width: 0.4;
+}
+.medallion-mark {
+  fill: none;
+  stroke: var(--door-scale, oklch(0 0 0 / 0.5));
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.medallion-eye {
+  fill: var(--door-scale, oklch(0 0 0 / 0.5));
+}
+@media (max-width: 640px) {
+  .door-medallion {
+    display: none;
+  }
+}
+
+/* Five doors squeezed into one narrow flex row (the desktop "hallway" look)
+   made each door too narrow to read comfortably on a phone — confirmed live
+   at 375px, roughly 75px per door. 2 columns x 3 rows instead, still locked
+   to one screen (body.doors-page's own overflow:hidden/100dvh is unchanged
+   here — a deliberate choice over letting the page scroll, so each door
+   ends up wider but a bit shorter per row, not full desktop-height rows).
+   Five doors don't split evenly into pairs — the last one spans both
+   columns but is width-capped and centered (not stretched to double width),
+   so it still reads as "one door alone on its own row", not a wider one. */
+@media (max-width: 640px) {
+  .doors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(3, 1fr);
+    gap: 0.625rem;
+  }
+  .door:last-child {
+    grid-column: 1 / -1;
+    /* width: 100% (not auto) is load-bearing here, not decorative — a grid
+       item with margin:auto and no explicit width shrinks to its own
+       content size first (CSS box alignment: auto margins absorb free
+       space INSTEAD OF the default stretch, so the box never grows to
+       max-width at all) — confirmed live, this door rendered at 16px wide
+       instead of matching its siblings until width:100% gave it a definite
+       size for max-width to actually clamp. */
+    width: 100%;
+    max-width: calc(50% - 0.3125rem);
+    margin: 0 auto;
+  }
+}
+
+/* Twin wall sconces flanking the panel — dormant while doors use the
+   plain flat-paint style; kept defined so it's a one-line revert. */
+.door-torch {
+  display: none;
+  position: absolute;
+  top: 20%;
+  z-index: 2;
+  width: 0.5625rem;
+  height: 1.25rem;
+  opacity: 0.9;
+}
+.door-torch.left {
+  left: 6%;
+}
+.door-torch.right {
+  right: 6%;
+}
+.door-torch svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.torch-sconce {
+  fill: oklch(0.55 0.02 258);
+}
+.torch-flame {
+  fill: var(--door-flame, #fbbf24);
+  filter: drop-shadow(0 0 5px var(--door-flame, #fbbf24));
+  transform-origin: 50% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .torch-flame {
+    animation: torchFlicker 1.6s ease-in-out infinite;
+  }
+  .door-torch.right .torch-flame {
+    animation-delay: -0.8s;
+  }
+}
+@keyframes torchFlicker {
+  0%,
+  100% {
+    transform: scaleY(1) scaleX(1);
+    opacity: 0.95;
+  }
+  30% {
+    transform: scaleY(1.14) scaleX(0.9);
+    opacity: 1;
+  }
+  55% {
+    transform: scaleY(0.88) scaleX(1.06);
+    opacity: 0.85;
+  }
+  80% {
+    transform: scaleY(1.06) scaleX(0.95);
+    opacity: 1;
+  }
+}
+@media (max-width: 640px) {
+  .door-torch {
+    display: none;
+  }
+}
+
+/* Lets the active door's leaf actually rise above the header instead of
+   getting clipped flat at its own frame's top edge (.door's overflow:hidden
+   otherwise cuts it off right where the door meets the header, killing the
+   3D illusion) — scoped to just the door currently being interacted with,
+   so the other four stay properly framed. z-index here is what actually
+   guarantees it paints over the header (a plain non-positioned box, so it
+   otherwise sits at the same "auto" stacking level as normal flow content,
+   below any positioned+z-indexed element like this one becomes on hover). */
+.door:hover,
+.door:focus-visible,
+.door.is-open {
+  overflow: visible;
+  z-index: 20;
+}
+/* Ajar peek on hover/focus — 30% of the way to the full -100deg swing-open
+   the click animation plays (see .door.is-open below), so hovering visibly
+   opens the door partway rather than just tilting it a hair. Pure rotateY
+   around the hinge (transform-origin: left center, set on .door-panel
+   above) — no added translateY/scale here: a real hinge doesn't move, only
+   the door swings on it, so the left edge/corners must stay exactly put.
+   The rotated leaf itself is what's now allowed to extend past the frame
+   (see the overflow:visible rule above), not any artificial lift. */
+.door:hover .door-panel,
+.door:focus-visible .door-panel {
+  transform: rotateY(-30deg);
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 0.14),
+    1.5rem 0 3rem -1rem oklch(0 0 0 / 0.55);
+}
+.door:focus-visible {
+  outline: none;
+}
+.door:focus-visible .door-panel {
+  box-shadow:
+    inset 0 0 0 3px oklch(1 0 0 / 0.85),
+    1.5rem 0 3rem -1rem oklch(0 0 0 / 0.55);
+}
+/* The actual open — swings well past vertical and, with backface-visibility
+   hidden above, disappears from view just before the click handler
+   navigates, revealing the plain "hallway" behind it (.door's own
+   background). Currently unreachable — see the comment on .door above. */
+.door.is-open .door-panel {
+  transform: rotateY(-100deg);
+}
+/* Every other door dims slightly once one has been chosen. */
+.doors.has-open .door:not(.is-open) {
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+}
+
+/* Ambient glow layer on the panel — a faint hint of overhead light, not a
+   bright blob, to keep the slab reading as flat and evenly lit like the
+   reference doorway rather than spotlit. */
+.door-panel::after {
+  content: "";
+  position: absolute;
+  inset: -20% -20% auto -20%;
+  height: 60%;
+  z-index: 0;
+  background: radial-gradient(closest-side, oklch(1 0 0 / 0.06), transparent 70%);
+  pointer-events: none;
+}
+/* The label sits above the leaf (z-index 2, higher than the leaf's own
+   z-index:1) rather than inside it, so it fades out on its own instead
+   of swinging away attached to the door surface. */
+.door-label {
+  transition: opacity 0.25s ease;
+}
+/* Same specificity as the :hover reveal rule below (which comes later in
+   source order and would otherwise win the tie while still hovering mid-
+   swing) — the "body" qualifier is only here to nudge specificity so
+   is-open reliably beats :hover, not for any actual scoping reason. */
+body .door.is-open .door-label {
+  opacity: 0;
+}
+
+/* "Nameplate" label — horizontal on desktop, where a ~280px door column
+   has plenty of width. Positioned with position:absolute + top/left/
+   transform (not flex centering) so every door's label lands at the exact
+   same height regardless of what optional siblings (door-subtitle,
+   door-tagline) that door does or doesn't have — those used to be
+   centered together as one flex group, so a door missing a subtitle got
+   a shorter group and its label drifted to a different height than its
+   neighbors. A solid plaque behind the text (not just a text-shadow) is
+   what keeps it readable against the door artwork. */
+.door-label {
+  position: absolute;
+  top: 54%;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  background: oklch(0.16 0.02 260 / 0.78);
+  border: 1px solid oklch(1 0 0 / 0.16);
+  border-radius: 999px;
+  padding: 0.5rem 1.125rem;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.35);
+}
+/* Below ~640px each door column narrows to ~70-90px — too tight for
+   horizontal text at any legible size — so the label reverts to the
+   vertical orientation used before, which only needs height, not width. */
+@media (max-width: 640px) {
+  .door-label {
+    font-size: 1.0625rem;
+    writing-mode: vertical-rl;
+    transform: translate(-50%, -50%) rotate(180deg);
+    padding: 0.75rem 0.375rem;
+  }
+}
+/* The vertical-text rule right above was tuned for the OLD single-row
+   layout, where 5 doors across ~375px left each one only ~70-90px wide —
+   too narrow for horizontal text at any legible size (see that rule's own
+   comment). The 2-column grid a few rules up gives each door ~183px
+   instead, comfortably enough for the same horizontal nameplate desktop
+   already uses — reverts back to it here, later in the cascade so it wins
+   over the vertical rule above at the same breakpoint. */
+@media (max-width: 640px) {
+  .door-label {
+    writing-mode: horizontal-tb;
+    transform: translate(-50%, -50%);
+    padding: 0.5rem 1.125rem;
+    /* Desktop's top:54% (see the base .door-label rule) was tuned for a
+       tall, narrow single-row door — on the shorter, more square doors the
+       2-column mobile grid produces, that same 54% left the whole
+       label+caption block sitting low. A first pass shifted this to 46%,
+       but a real phone screenshot (annotated by the user) showed the
+       label+caption group was still riding low, with most of the empty
+       space stacked above it and almost none below. Recomputed from the
+       actual rendered box heights (label ~21% of panel height, gap ~1.5%,
+       3-line subtitle ~36%) so the whole block — label top edge through
+       subtitle bottom edge — lands roughly centered in the door instead of
+       guessed incrementally again. */
+    top: 32%;
+  }
+}
+/* Matches the app header/footer wordmark, where "PT" is picked out in
+   green — a brighter shade here specifically so it still pops against
+   the door's own vivid blue gradient, not just the neutral header bg. */
+.door-label-pt {
+  color: #34d399;
+}
+/* Same idea for the other four doors' abbreviations (BSL, D&P, CO, RF) —
+   each door's own --door-glow (already defined per door for the torch
+   flame/medallion) doubles as its label accent color. */
+.door-label-accent {
+  color: var(--door-glow, currentColor);
+}
+
+/* Small plaque under the main nameplate spelling out what each door's
+   abbreviation stands for. Absolutely positioned (top-anchored, not
+   flex-centered with the label) so its presence/absence never shifts the
+   label's own position on other doors. */
+.door-subtitle {
+  position: absolute;
+  top: 65%;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1875rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  background: oklch(0.16 0.02 260 / 0.78);
+  border: 1px solid oklch(1 0 0 / 0.16);
+  border-radius: 0.625rem;
+  padding: 0.5625rem 0.875rem;
+  box-shadow: 0 2px 6px oklch(0 0 0 / 0.3);
+  transition: opacity 0.25s ease;
+}
+.door-subtitle span {
+  white-space: nowrap;
+}
+/* Only the specific letter that actually spells out the door's own
+   abbreviation (PT, BSL, D&P, CO, RF) gets picked out — e.g. the "P" in
+   "Property" and "T" in "Tax" for CorvusPT, not the whole word. Same
+   door-glow accent already used for the label lettering
+   (.door-label-accent), +2pt over the surrounding word's 1.0625rem. */
+.door-subtitle-letter {
+  color: var(--door-glow, currentColor);
+  font-size: 1.25rem;
+}
+/* PT gets the same brighter override as .door-label-pt (its --door-glow is
+   a touch muted for this purpose) so these letters match the nameplate's
+   own green exactly, not a slightly different shade of it. */
+.door-pt .door-subtitle-letter {
+  color: #34d399;
+}
+body .door.is-open .door-subtitle {
+  opacity: 0;
+}
+
+/* Dragon engraving in the upper door-panel-field box — removed for now;
+   the still (dragon-still.jpg) is kept on disk and this rule is a
+   one-line revert (add the background-image/blend rules back onto
+   .door-panel-field-upper) if it comes back later. */
+
+/* Motion only for users who haven't asked to avoid it — a staggered
+   rise-and-fade on load plus a slow ambient glow drift per door. Reduced-
+   motion users also skip the click-triggered dim/fade delay entirely
+   (handled in the script), navigating immediately instead. */
+@media (prefers-reduced-motion: no-preference) {
+  .door {
+    animation: doorRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 90ms);
+  }
+  .door-panel {
+    animation: doorFadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 90ms);
+  }
+  .door-panel::after {
+    animation: doorGlow 9s ease-in-out infinite alternate;
+    animation-delay: calc(var(--i, 0) * 0.6s);
+  }
+}
+@keyframes doorRise {
+  from {
+    transform: translateY(1.5rem);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes doorFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes doorGlow {
+  from {
+    transform: translateY(-10%);
+    opacity: 0.55;
+  }
+  to {
+    transform: translateY(15%);
+    opacity: 0.9;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Used to just drop this entirely — at the OLD ~70px single-row door
+     width there was truly no room for horizontal, nowrap text. The
+     2-column grid's ~183px doors have room, at a reduced size scoped to
+     just this breakpoint (desktop's own 1.0625rem is untouched). */
+  .door-subtitle {
+    font-size: 0.8125rem;
+    padding: 0.4375rem 0.625rem;
+    gap: 0.125rem;
+    /* Follows .door-label's own top:32% above — same ~12-point gap from
+       the label preserved (see that rule's comment for how both numbers
+       were derived from actual box heights this time, not another guess),
+       so the caption still sits directly under the name. */
+    top: 44%;
+  }
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 0.625rem 1.25rem;
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 0.9375rem;
+  background: transparent;
+}
+
+.placeholder {
+  min-height: calc(100dvh - 4rem - 1px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.placeholder .container-page {
+  max-width: 32rem;
+}
+.placeholder h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 1rem 0 0;
+}
+.placeholder p {
+  color: var(--muted-foreground);
+  margin: 0.75rem 0 2rem;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem 0;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+/* Invite-Only Beta lead form — a native <dialog> for built-in focus
+   trapping, Escape-to-close, and a ::backdrop; styled with the same
+   light-surface tokens as the header/footer chrome (not the doors' dark
+   plaque look), since this is a real form surface, not door decoration. */
+.beta-dialog {
+  width: min(30rem, 92vw);
+  max-height: min(42rem, 88vh);
+  padding: 0;
+  border: none;
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1.5rem 3rem oklch(0 0 0 / 0.35);
+}
+.beta-dialog::backdrop {
+  background: oklch(0.1 0.02 258 / 0.6);
+}
+.beta-dialog-close {
+  position: absolute;
+  top: 0.875rem;
+  right: 0.875rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.beta-dialog-close svg {
+  width: 1rem;
+  height: 1rem;
+}
+.beta-dialog-close:hover {
+  color: var(--foreground);
+  border-color: var(--foreground);
+}
+.beta-dialog-panel {
+  padding: 2rem 1.75rem 1.75rem;
+  overflow-y: auto;
+  max-height: inherit;
+}
+.beta-dialog-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.375rem;
+  font-weight: 800;
+}
+.beta-dialog-sub {
+  margin: 0 0 1.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.9375rem;
+}
+#betaForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+}
+.beta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.beta-field input[type="text"],
+.beta-field input[type="email"],
+.beta-field textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+.beta-field input:focus-visible,
+.beta-field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.beta-field textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+}
+.beta-radio-group {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.beta-radio-group legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.beta-radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+.beta-radio-group input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+.beta-form-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: oklch(0.55 0.19 25);
+  background: oklch(0.55 0.19 25 / 0.08);
+  border: 1px solid oklch(0.55 0.19 25 / 0.35);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+}
+.beta-submit {
+  margin-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--brand);
+  color: var(--brand-foreground);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+.beta-submit:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.beta-submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+#betaSuccessView p {
+  color: var(--muted-foreground);
+}
+@media (max-width: 640px) {
+  .beta-dialog {
+    width: 94vw;
+  }
+  .beta-dialog-panel {
+    padding: 1.75rem 1.25rem 1.5rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.17 0.02 260);
+    --foreground: oklch(0.96 0.01 250);
+    --card: oklch(0.22 0.025 260);
+    --secondary: oklch(0.26 0.02 260);
+    --secondary-foreground: oklch(0.92 0.01 250);
+    --muted-foreground: oklch(0.68 0.02 255);
+    --border: oklch(0.32 0.02 260);
+  }
+}

@@ -1,0 +1,6895 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { askAboutDocument } from "@/lib/document-ai";
+import { MarkdownLite } from "@/components/MarkdownLite";
+import {
+  updatePropertyIdentity,
+  buildAiReportIntakePatch,
+  setAutoRefile,
+  type PropertyRecord,
+} from "@/lib/properties";
+import {
+  acknowledgeGuidance,
+  updateProtestTaxYear,
+  INFORMAL_STATUS_LABEL,
+  type ProtestRecord,
+  type InformalStatus,
+  type AttendanceType,
+} from "@/lib/protests";
+import { currency, updateIntake } from "@/lib/intake-store";
+import {
+  getCase,
+  generateCasePrep,
+  markFiled,
+  recordSettlementOffer,
+  acceptSettlement,
+  scheduleHearing,
+  getHearingPrep,
+  recordArbDecision,
+  recordEscalation,
+  closeCase,
+  getCaseResults,
+  updateInformalStatus,
+  scheduleInformalReview,
+  resolveInformalSettlement,
+  saveInformalAppraiserCategory,
+  saveAttendanceType,
+  type ProtestCase,
+} from "@/lib/protest-case";
+import { getCaseGuidance } from "@/lib/case-guidance";
+import {
+  evaluateEscalation,
+  type EscalationOption,
+  type EscalationEvaluation,
+} from "@/lib/escalation-eval";
+import {
+  getCaseRecord,
+  caseRecordStage,
+  outstandingProofPrompts,
+  caseRecordCompletion,
+  type CaseRecordItem,
+} from "@/lib/case-record";
+import {
+  logCaseEvent,
+  getCaseAuditTrail,
+  caseAuditKindLabel,
+  type CaseAuditEvent,
+} from "@/lib/case-audit";
+import { saveCaseRecordFields } from "@/lib/protest-case";
+import { listDocuments } from "@/lib/documents";
+import {
+  getCountyProtestInfo,
+  COUNTY_PROTEST_INFO,
+  type CountyProtestInfo,
+} from "@/lib/county-protest-info";
+import {
+  getPreFilingCheck,
+  isPreFilingBlocked,
+  type PreFilingCheckItem,
+} from "@/lib/pre-filing-check";
+import { verifyCaseReadiness, type CaseReadinessConcern } from "@/lib/case-readiness";
+import {
+  uploadDocument,
+  getProtestEvidenceDocuments,
+  getFilingProofDocumentsFor,
+  filingProofDocumentType,
+  getDocumentById,
+  getDocumentUrl,
+  SETTLEMENT_DOCUMENT_TYPE,
+  DECISION_DOCUMENT_TYPE,
+  type DocumentRecord,
+} from "@/lib/documents";
+import { getCadRecordUrl } from "@/lib/cad-record-url";
+import { verifyFilingProof, type FilingProofVerification } from "@/lib/filing-proof";
+import {
+  extractHearingNotice,
+  saveHearingNotice,
+  getLatestHearingNotice,
+  type HearingNoticeRecord,
+  type HearingNoticeExtraction,
+  type HearingMode,
+} from "@/lib/hearing-notice";
+import {
+  getInformalReviewGuidance,
+  buildInformalReviewMailto,
+  type InformalReviewGuidance,
+} from "@/lib/informal-review";
+import { getHearingPrepGuide, type HearingPrepGuide } from "@/lib/hearing-prep";
+import { getHearingUserStatus, type HearingUserStatus } from "@/lib/hearing-status";
+import {
+  extractDecisionDocument,
+  saveDecisionNotice,
+  getLatestDecisionNotice,
+  type DecisionNoticeRecord,
+  type DecisionExtraction,
+} from "@/lib/decision-notice";
+import {
+  extractSettlementDocument,
+  saveSettlementAgreement,
+  getLatestSettlementAgreement,
+  confirmSettlementAgreement,
+  signSettlementAgreement,
+  recordSettlementResponse,
+  verifySignedSettlementCopy,
+  confirmSettlementOutcome,
+  type SettlementAgreementRecord,
+} from "@/lib/settlement-agreement";
+import { getEffectiveTaxRate } from "@/lib/texas-tax-rates";
+import { getErrorMessage } from "@/lib/error-message";
+import { getAuthorization, type AuthorizationRecord } from "@/lib/protest-authorizations";
+import {
+  getNoticeOfProtestDefaults,
+  getAppointmentOfAgentDefaults,
+  getAdditionalOwnerPropertyFields,
+  getEvidenceDeclarationDefaults,
+  buildPdf,
+  signPdf,
+  downloadPdf,
+  resolveDateFields,
+  NOTICE_OF_PROTEST_SCHEMA,
+  APPOINTMENT_OF_AGENT_SCHEMA,
+  EVIDENCE_DECLARATION_SCHEMA,
+  type FieldValues,
+} from "@/lib/protest-documents";
+import {
+  getSubmission,
+  saveDraft,
+  signAndSubmit,
+  saveFilingMethod,
+  saveFilingProofFields,
+  markSubmitted,
+  confirmFiling,
+  requestAdditionalInfo,
+  markRejected,
+  saveReminderFrequency,
+  type FormType,
+  type FilingMethod,
+  type FormSubmission,
+  type ReminderFrequency,
+} from "@/lib/protest-form-submissions";
+import {
+  filingSubmissionStatus,
+  hasFilingReferenceNumber,
+  confirmationMethodDescription,
+  FILING_SUBMISSION_STATUS_LABEL,
+  type FilingSubmissionStatus,
+} from "@/lib/filing-submission-status";
+import {
+  computeEvidenceStatus,
+  evidenceScore,
+  EVIDENCE_STATUS_LABEL,
+  type EvidenceStatusStage,
+} from "@/lib/evidence-status";
+import { selectRelevantEvidence, buildEvidencePackagePdf } from "@/lib/evidence-package";
+import { getCachedModuleResult } from "@/lib/module-results-cache";
+import type { ModuleResultMap } from "@/lib/ai-report-modules";
+import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
+import { draftProtestReason } from "@/lib/protest-reason";
+import {
+  requiredFilingSteps,
+  FILING_STEP_META,
+  isFilingStepDone,
+  firstIncompleteFilingStep,
+  describeFilingRequirements,
+  type FilingStepId,
+  type FilingStepStatusInput,
+} from "@/lib/filing-workflow";
+import { verdictMeta } from "@/lib/documents";
+import { PdfFormEditor } from "@/components/PdfFormEditor";
+import { FilingMethodsList } from "@/components/FilingMethodsList";
+import { Modal } from "@/components/Modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
+import { CalendarDays } from "lucide-react";
+
+// --- Tabbed filing workflow -------------------------------------------------
+// The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
+// the case hasn't reached yet is visible but locked. The tab set and lock
+// rules are derived purely from the protest's real status/fields — no schema,
+// no new state beyond which tab is open.
+type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision";
+
+const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
+  { id: "overview", label: "Overview", lockedHint: "" },
+  {
+    id: "file",
+    label: "Prepare & File",
+    lockedHint: "Read and accept the filing notice on Overview first.",
+  },
+  { id: "informal", label: "Informal Review", lockedHint: "Unlocks once your protest is filed." },
+  { id: "hearing", label: "Hearing", lockedHint: "Unlocks once your protest is filed." },
+  {
+    id: "decision",
+    label: "Decision & Appeal",
+    lockedHint: "Unlocks after your hearing or a decision is recorded.",
+  },
+];
+
+// One plain sentence per phase — "what this step is for" — shown under the tab
+// bar for whichever tab is open, so landing on a tab always explains itself.
+const CASE_TAB_INTRO: Record<CaseTabId, string> = {
+  overview: "Where your case stands right now, and the one thing to do next.",
+  file: "Fill, sign, and file your Notice of Protest with the county — and gather your evidence.",
+  informal: "Work the county's proposed value informally, before a formal hearing.",
+  hearing: "Log your hearing notice, then prepare your evidence and talking points.",
+  decision: "Record the ARB's decision and weigh binding arbitration or a district-court appeal.",
+};
+
+// The anchor ids the deterministic guidance (case-guidance.ts) links to, and
+// which tab each one lives in now — so a "Go to Documents" link can switch
+// tabs before scrolling.
+const ANCHOR_TAB: Record<string, CaseTabId> = {
+  "case-progress": "overview",
+  "case-record": "overview",
+  "case-audit-trail": "overview",
+  "case-documents": "file",
+  "case-upload-evidence": "file",
+  "case-informal-review": "informal",
+  "case-settlement-signature": "informal",
+  "case-hearing-notice": "hearing",
+  "case-hearing-prep": "hearing",
+  "case-decision-notice": "decision",
+  "case-escalation": "decision",
+};
+
+function caseTabUnlocked(
+  id: CaseTabId,
+  protest: ProtestRecord,
+  needsGuidanceAck: boolean,
+): boolean {
+  const s = protest.status;
+  const filed = s !== "requested";
+  switch (id) {
+    case "overview":
+      return true;
+    case "file":
+      return filed || !needsGuidanceAck;
+    case "informal":
+    case "hearing":
+      return filed;
+    case "decision":
+      return (
+        ["decision_received", "appealing", "arbitrating", "resolved"].includes(s) ||
+        protest.hearingDate != null ||
+        protest.arbDecision != null
+      );
+  }
+}
+
+// The tab the case should open on given where it is now — used for the
+// initial render and to auto-advance when the status moves to a new phase.
+function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): CaseTabId {
+  switch (protest.status) {
+    case "requested":
+      return needsGuidanceAck ? "overview" : "file";
+    case "filed":
+    case "under_review":
+    case "offer_received":
+      return "informal";
+    case "hearing_scheduled":
+      return "hearing";
+    case "decision_received":
+    case "appealing":
+    case "arbitrating":
+      return "decision";
+    case "resolved":
+      return "overview";
+    default:
+      return "overview";
+  }
+}
+
+// Renders as a full page (see routes/dashboard/_layout.case.tsx), not an
+// overlay — previously this was a <Modal>; per product direction, View Case
+// now navigates to its own URL instead of opening on top of whatever page
+// triggered it. onBack is "return to wherever View Case was clicked from,"
+// not "dismiss an overlay," even though the internal state/logic below is
+// unchanged from the modal version.
+export function CaseDetailView({
+  userId,
+  property: propertyProp,
+  protest,
+  onBack,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  onBack: () => void;
+}) {
+  const [caseData, setCaseData] = useState<ProtestCase | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [current, setCurrent] = useState<ProtestRecord>(protest);
+  // Local, editable copy — the Pre-Filing Check gate lets the customer
+  // correct/confirm a missing identity field (see PreFilingGate) right
+  // where Corvus flags it as blocking, without leaving this modal.
+  const [property, setProperty] = useState<PropertyRecord>(propertyProp);
+  const [acknowledging, setAcknowledging] = useState(false);
+  // The step-by-step filing workflow opens in its own focused popup.
+  const [filingOpen, setFilingOpen] = useState(false);
+  // Real signed_at off the Notice of Protest submission (see
+  // protest-form-submissions.ts) — the one honest signal this app has for
+  // "has the customer actually signed this," distinct from and never
+  // conflated with "filed." Lifted here (not local to DocumentsSection) so
+  // CorvusGuidancePanel/NextStepFooter can give correct guidance too.
+  const [noticeSignedAt, setNoticeSignedAt] = useState<string | null>(null);
+  // Real "Protest Evidence"-tagged documents for this property — evidence
+  // now uploads exclusively through Module 8 (ai-report.tsx), not a
+  // checklist inside this modal (see CasePlanSection's "Upload Evidence —
+  // Go to Module 8" button below), so this is the one real source every
+  // evidence-aware feature here (Corvus's guidance, Pre-Filing Check,
+  // Generate Suggested Reason) reads from.
+  const [evidenceDocuments, setEvidenceDocuments] = useState<DocumentRecord[]>([]);
+  // Lifted (not local to SettlementSignatureSection) so the top-of-case
+  // "informal outcome unconfirmed" banner and HearingPrepSection's inline
+  // warning read the same record the settlement section writes.
+  const [settlementAgreement, setSettlementAgreement] = useState<SettlementAgreementRecord | null>(
+    null,
+  );
+
+  function load() {
+    setLoading(true);
+    getCase(protest.id)
+      .then(setCaseData)
+      .catch((err) => toast.error(err instanceof Error ? err.message : "Could not load this case."))
+      .finally(() => setLoading(false));
+    getSubmission(protest.id, "notice_of_protest")
+      .then((s) => setNoticeSignedAt(s?.signedAt ?? null))
+      .catch((err) => console.error("Could not load Notice of Protest signing status:", err));
+    getProtestEvidenceDocuments(userId, property.id)
+      .then(setEvidenceDocuments)
+      .catch((err) => console.error("Could not load this case's evidence documents:", err));
+    getLatestSettlementAgreement(protest.id)
+      .then(setSettlementAgreement)
+      .catch((err) => console.error("Could not load this case's settlement agreement:", err));
+  }
+
+  useEffect(load, [protest.id]);
+
+  // If a fresher protest prop arrives with the filing notice already
+  // accepted (e.g. this view stayed mounted while the parent refetched),
+  // carry that in so the one-time notice doesn't reappear. Only ever fills
+  // the ack — never clobbers a locally-edited field.
+  useEffect(() => {
+    if (protest.corvusGuidanceAckAt) {
+      setCurrent((c) =>
+        c.corvusGuidanceAckAt ? c : { ...c, corvusGuidanceAckAt: protest.corvusGuidanceAckAt },
+      );
+    }
+  }, [protest.corvusGuidanceAckAt]);
+
+  async function handleAcknowledgeGuidance() {
+    setAcknowledging(true);
+    try {
+      await acknowledgeGuidance(protest.id);
+      setCurrent((prev) => ({ ...prev, corvusGuidanceAckAt: new Date().toISOString() }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not continue — please try again.");
+    } finally {
+      setAcknowledging(false);
+    }
+  }
+
+  // One-time per case: the AI Guidance & Filing Notice gates a not-yet-filed
+  // case only until the customer has accepted it once (persisted as
+  // protests.corvus_guidance_ack_at). After that it never shows again for
+  // this case — reopening View Case, switching tabs, or a new session.
+  const needsGuidanceAck = current.status === "requested" && !current.corvusGuidanceAckAt;
+
+  // Which phase tab is open. Starts on the case's current phase; auto-advances
+  // when the status moves to a new phase (recording a hearing jumps to the
+  // Hearing tab), but manual navigation between unlocked tabs is otherwise free.
+  const phaseDefault = defaultCaseTab(current, needsGuidanceAck);
+  const [activeTab, setActiveTab] = useState<CaseTabId>(phaseDefault);
+  // Re-runs only when the derived phase-tab string actually changes, so
+  // recording a hearing (etc.) advances the open tab; unrelated re-renders
+  // don't disturb manual navigation.
+  useEffect(() => {
+    setActiveTab(phaseDefault);
+  }, [phaseDefault]);
+
+  // A guidance "Go to X" link: switch to the tab that holds the anchor, then
+  // scroll to it once the panel has mounted.
+  function navigateTo(anchor: string) {
+    if (anchor.startsWith("http") || anchor.startsWith("tel:") || anchor.startsWith("mailto:")) {
+      goToGuidanceAnchor(anchor);
+      return;
+    }
+    const targetTab = ANCHOR_TAB[anchor];
+    if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
+    // The filing steps live inside the popup — open it so the anchor exists.
+    if (targetTab === "file") setFilingOpen(true);
+    // Give the newly-mounted panel a couple of frames to appear.
+    let tries = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(anchor);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (tries++ < 6) requestAnimationFrame(tryScroll);
+    };
+    requestAnimationFrame(tryScroll);
+  }
+
+  function handleTabClick(id: CaseTabId) {
+    if (caseTabUnlocked(id, current, needsGuidanceAck)) {
+      setActiveTab(id);
+    } else {
+      toast.info(
+        CASE_TABS.find((t) => t.id === id)?.lockedHint ?? "This phase isn't available yet.",
+      );
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={onBack} className="btn-outline text-sm mb-4">
+        ← Back
+      </button>
+      <h3 className="font-serif text-xl font-semibold">Case: {property.address}</h3>
+      <p className="text-xs text-muted-foreground">
+        AI-generated from your property's official CAD record.
+      </p>
+
+      {loading ? (
+        <div className="mt-4 grid gap-2">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : (
+        <>
+          <CaseTabBar
+            activeTab={activeTab}
+            protest={current}
+            needsGuidanceAck={needsGuidanceAck}
+            onSelect={handleTabClick}
+          />
+          <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+
+          {/* --- Overview --- */}
+          {activeTab === "overview" &&
+            (needsGuidanceAck ? (
+              <CorvusGuidanceGate
+                property={property}
+                protest={current}
+                evidenceCount={evidenceDocuments.length}
+                onAcknowledge={handleAcknowledgeGuidance}
+                acknowledging={acknowledging}
+              />
+            ) : (
+              <div className="grid gap-1">
+                <CaseRoadmap
+                  property={property}
+                  protest={current}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                  noticeSignedAt={noticeSignedAt}
+                  needsGuidanceAck={needsGuidanceAck}
+                  onSelect={handleTabClick}
+                  onNavigate={navigateTo}
+                />
+                <CorvusGuidancePanel
+                  property={property}
+                  protest={current}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                  noticeSignedAt={noticeSignedAt}
+                  onNavigate={navigateTo}
+                />
+                <InformalOutcomeBanner
+                  protest={current}
+                  agreement={settlementAgreement}
+                  onNavigate={navigateTo}
+                />
+                <CaseProgress
+                  protest={current}
+                  property={property}
+                  caseData={caseData}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
+                />
+                <CaseRecordSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+                <CaseAuditTrailSection protestId={protest.id} />
+                <NextStepFooter
+                  property={property}
+                  protest={current}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                  noticeSignedAt={noticeSignedAt}
+                  onNavigate={navigateTo}
+                />
+              </div>
+            ))}
+
+          {/* --- Prepare & File --- */}
+          {activeTab === "file" && (
+            <div>
+              <FiledProtestStatusCard
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceCount={evidenceDocuments.length}
+                onOpen={() => setFilingOpen(true)}
+              />
+              <EvidenceStatusCard
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceDocuments={evidenceDocuments}
+                onOpen={() => setFilingOpen(true)}
+              />
+              <CasePlanSection
+                userId={userId}
+                property={property}
+                protestId={protest.id}
+                caseData={caseData}
+                onReload={load}
+              />
+            </div>
+          )}
+
+          {filingOpen && (
+            <Modal onClose={() => setFilingOpen(false)} xl>
+              <DocumentsSection
+                userId={userId}
+                protest={current}
+                property={property}
+                strategyRecommendation={caseData?.strategyRecommendation ?? null}
+                noticeSignedAt={noticeSignedAt}
+                evidenceDocuments={evidenceDocuments}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
+                onNoticeSigned={setNoticeSignedAt}
+              />
+            </Modal>
+          )}
+
+          {/* --- Informal Review --- */}
+          {activeTab === "informal" && current.status !== "requested" && (
+            <div>
+              <InformalReviewSection
+                protest={current}
+                property={property}
+                strategyRecommendation={caseData?.strategyRecommendation ?? null}
+                evidenceDocuments={evidenceDocuments}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <SettlementSignatureSection
+                userId={userId}
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+            </div>
+          )}
+
+          {/* --- Hearing --- */}
+          {activeTab === "hearing" && current.status !== "requested" && (
+            <div>
+              <HearingNoticeSection
+                userId={userId}
+                protest={current}
+                property={property}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <HearingPrepSection
+                protest={current}
+                property={property}
+                caseData={caseData}
+                evidenceDocuments={evidenceDocuments}
+                settlementAgreement={settlementAgreement}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+            </div>
+          )}
+
+          {/* --- Decision & Appeal --- */}
+          {activeTab === "decision" && (
+            <div>
+              <DecisionNoticeSection
+                userId={userId}
+                protest={current}
+                property={property}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <EscalationEvaluationSection
+                protest={current}
+                property={property}
+                evidenceDocumentCount={evidenceDocuments.length}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// The phase-tab bar, drawn as a numbered progress path: Overview is an
+// unnumbered "hub", the four real phases are steps 1–4. Each step shows one of
+// four states derived purely from where the case is now (defaultCaseTab) and
+// what's unlocked (caseTabUnlocked): done (✓), current (accent, "you are
+// here"), available (outlined number), or locked (🔒, dimmed — clicking still
+// toasts the hint via onSelect). Connector arrows make it read left-to-right.
+function CaseTabBar({
+  activeTab,
+  protest,
+  needsGuidanceAck,
+  onSelect,
+}: {
+  activeTab: CaseTabId;
+  protest: ProtestRecord;
+  needsGuidanceAck: boolean;
+  onSelect: (id: CaseTabId) => void;
+}) {
+  const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
+  const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  return (
+    <div
+      role="tablist"
+      aria-label="Case phases"
+      className="mt-4 flex items-center gap-1 overflow-x-auto border-b border-border pb-2"
+    >
+      {CASE_TABS.map((t, i) => {
+        const isOpen = t.id === activeTab;
+        const isHub = t.id === "overview";
+        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck);
+        const done = !isHub && !locked && i < currentIdx;
+        const isCurrent = !isHub && i === currentIdx;
+        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(i);
+        return (
+          <div key={t.id} className="flex shrink-0 items-center gap-1">
+            {i > 0 && (
+              <span aria-hidden className="px-0.5 text-muted-foreground/30">
+                →
+              </span>
+            )}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isOpen}
+              aria-current={isCurrent ? "step" : undefined}
+              title={locked ? t.lockedHint : undefined}
+              onClick={() => onSelect(t.id)}
+              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+                isOpen
+                  ? "bg-accent/10 font-semibold text-foreground"
+                  : locked
+                    ? "font-medium text-muted-foreground/50"
+                    : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold leading-none ${
+                  done
+                    ? "bg-success/15 text-success"
+                    : isCurrent && !locked
+                      ? "bg-accent text-accent-foreground"
+                      : locked
+                        ? "bg-muted text-muted-foreground/60"
+                        : "border border-border text-muted-foreground"
+                }`}
+              >
+                {marker}
+              </span>
+              {t.label}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// The Overview tab's centerpiece: the same 5 phases as the tab bar drawn as a
+// numbered path, with the current stage's plain-language summary and the single
+// most important next action called out right below it. This is the one
+// authoritative "you are here + do this next" panel — CorvusGuidancePanel's list
+// and NextStepFooter below it are deliberately lighter, secondary echoes of the
+// same getCaseGuidance() data, never a competing instruction.
+function CaseRoadmap({
+  property,
+  protest,
+  evidenceDocumentCount,
+  noticeSignedAt,
+  needsGuidanceAck,
+  onSelect,
+  onNavigate,
+}: {
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceDocumentCount: number;
+  noticeSignedAt: string | null;
+  needsGuidanceAck: boolean;
+  onSelect: (id: CaseTabId) => void;
+  onNavigate: (anchor: string) => void;
+}) {
+  const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
+  const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  const countyInfo = getCountyProtestInfo(property.cad);
+  const guidance = getCaseGuidance(
+    property,
+    protest,
+    evidenceDocumentCount,
+    countyInfo,
+    noticeSignedAt,
+  );
+  const next = guidance.nextSteps[0];
+  return (
+    <div className="mt-4 card-elev p-4">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Your protest, step by step
+      </span>
+      <ol className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
+        {CASE_TABS.map((t, i) => {
+          const isHub = t.id === "overview";
+          const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck);
+          const done = !isHub && unlocked && i < currentIdx;
+          const here = i === currentIdx;
+          const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(i);
+          return (
+            <li key={t.id} className="flex items-center gap-1">
+              {i > 0 && (
+                <span aria-hidden className="text-muted-foreground/30">
+                  →
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onSelect(t.id)}
+                disabled={!unlocked}
+                className={`flex items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2 font-medium ${
+                  here
+                    ? "bg-accent/15 text-accent"
+                    : done
+                      ? "text-success"
+                      : unlocked
+                        ? "text-muted-foreground hover:text-foreground"
+                        : "text-muted-foreground/40"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold leading-none ${
+                    here
+                      ? "bg-accent text-accent-foreground"
+                      : done
+                        ? "bg-success/20 text-success"
+                        : unlocked
+                          ? "border border-border"
+                          : "bg-muted text-muted-foreground/50"
+                  }`}
+                >
+                  {marker}
+                </span>
+                {t.label}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-3 rounded-md border border-accent/30 bg-accent/5 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+          You are here — {guidance.stageLabel}
+        </p>
+        <p className="mt-1 text-sm">{guidance.summary}</p>
+        {next && (
+          <div className="mt-2 text-sm">
+            <span className="font-semibold">Do this next: {next.label}.</span>
+            {next.detail && <span className="text-muted-foreground"> {next.detail}</span>}
+            {next.action && (
+              <button
+                onClick={() => onNavigate(next.action!.anchor)}
+                className="btn-accent mt-2 block w-fit py-1.5 text-xs"
+              >
+                {next.action.label} →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Consent screen gating entry into a not-yet-filed case, shown on every open
+// (not just the first) per explicit product direction — exact copy per the
+// spec this was built from. An acknowledgment, not a legal document, so a
+// checkbox + button is enough (no signature capture, unlike the real Service
+// Agreement in ProtestAuthorizationFlow.tsx).
+function CorvusGuidanceGate({
+  property,
+  protest,
+  evidenceCount,
+  onAcknowledge,
+  acknowledging,
+}: {
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceCount: number;
+  onAcknowledge: () => void;
+  acknowledging: boolean;
+}) {
+  const [checked, setChecked] = useState(false);
+  const [concernsReviewed, setConcernsReviewed] = useState(false);
+  const [concerns, setConcerns] = useState<CaseReadinessConcern[] | null>(null);
+  const [verifyState, setVerifyState] = useState<"loading" | "done" | "error">("loading");
+
+  const countyInfo = getCountyProtestInfo(property.cad);
+
+  useEffect(() => {
+    let live = true;
+    setVerifyState("loading");
+    verifyCaseReadiness(property, protest, evidenceCount)
+      .then((c) => {
+        if (!live) return;
+        setConcerns(c);
+        setVerifyState("done");
+      })
+      .catch(() => {
+        if (live) setVerifyState("error");
+      });
+    return () => {
+      live = false;
+    };
+    // Keyed on the case's identity, not the property/protest object refs —
+    // this gate re-renders on unrelated state and `verifyCaseReadiness` is a
+    // real AI call. While this gate is shown, none of the fields it checks
+    // can change (the Pre-Filing fix rows only render after acknowledgment).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [property.id, protest.id, evidenceCount]);
+
+  const hasHigh = (concerns ?? []).some((c) => c.severity === "high");
+  const canContinue = checked && (!hasHigh || concernsReviewed) && !acknowledging;
+
+  return (
+    <div className="mt-4 grid gap-4">
+      <div className="card-elev p-4">
+        <h4 className="text-sm font-semibold">AI Guidance & Filing Notice</h4>
+        <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
+          <p>
+            Corvus AI is an assistant designed to guide you through the property protest process and
+            help prepare and complete the required forms and documents.
+          </p>
+          <p>
+            By proceeding, you authorize Corvus AI to assist with completing forms and preparing
+            filing materials on your behalf.
+          </p>
+          <p>
+            You are responsible for reviewing and verifying all information before signing, filing,
+            or submitting any document.
+          </p>
+          <p>
+            Corvus AI does not replace your responsibility to verify the accuracy of the information
+            or comply with county requirements.
+          </p>
+        </div>
+        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+          {countyInfo ? (
+            <>
+              County procedures for {property.cad} were verified {countyInfo.verifiedAt}.{" "}
+              <a
+                href={countyInfo.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline underline-offset-2"
+              >
+                Source
+              </a>
+              . Confirm current county requirements before you file.
+            </>
+          ) : (
+            <>
+              No county-specific procedures are on file for {property.cad || "this county"} — the
+              standard Texas Comptroller Form 50-132 process applies. Confirm current county
+              requirements before you file.
+            </>
+          )}
+        </p>
+      </div>
+
+      <div className="card-elev p-4">
+        <h4 className="text-sm font-semibold">County Requirements Check</h4>
+        {verifyState === "loading" ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Corvus is verifying this case against {property.cad || "the county"}'s requirements…
+          </p>
+        ) : verifyState === "error" ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Couldn't run the automated check — review the Pre-Filing Check below carefully before
+            filing.
+          </p>
+        ) : (concerns ?? []).length === 0 ? (
+          <p className="mt-2 text-xs text-success">
+            Nothing looks inconsistent with the county's requirements. Still review the Pre-Filing
+            Check below before filing.
+          </p>
+        ) : (
+          <ul className="mt-2 grid gap-2">
+            {(concerns ?? []).map((c, i) => (
+              <li
+                key={i}
+                className={`rounded-md border p-2.5 text-xs ${
+                  c.severity === "high"
+                    ? "border-destructive/30 bg-destructive/5"
+                    : "border-warning/40 bg-warning/10"
+                }`}
+              >
+                <span className="font-semibold">
+                  {c.field}
+                  {c.severity === "high" ? " — needs attention" : ""}:
+                </span>{" "}
+                <span className="text-muted-foreground">{c.concern}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {hasHigh && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={concernsReviewed}
+            onChange={(e) => setConcernsReviewed(e.target.checked)}
+            className="mt-0.5"
+          />
+          I have reviewed the concern(s) above and will confirm or correct them.
+        </label>
+      )}
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+          className="mt-0.5"
+        />
+        I have read and understand this notice.
+      </label>
+      <button
+        onClick={onAcknowledge}
+        disabled={!canContinue}
+        className="btn-accent w-fit text-sm disabled:opacity-60"
+      >
+        {acknowledging ? "Continuing…" : "Continue to Case"}
+      </button>
+    </div>
+  );
+}
+
+// Shared by CorvusGuidancePanel and NextStepFooter below — a GuidanceStep's
+// action.anchor is either a real element id already rendered by an existing
+// section (scroll to it) or a real external URL (open it), never a route
+// change or a new surface.
+function goToGuidanceAnchor(anchor: string) {
+  if (anchor.startsWith("http")) {
+    window.open(anchor, "_blank", "noopener,noreferrer");
+    return;
+  }
+  // tel:/mailto: — window.open() on these triggers a popup blocker or opens
+  // a blank tab in most browsers; a plain location assignment is what
+  // actually hands off to the phone/mail app reliably.
+  if (anchor.startsWith("tel:") || anchor.startsWith("mailto:")) {
+    window.location.href = anchor;
+    return;
+  }
+  const el = document.getElementById(anchor);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  // Target not in the DOM yet (a section that just conditionally mounted) —
+  // try once more next frame before giving up, so the click is never a
+  // silent no-op for a purely timing reason.
+  requestAnimationFrame(() => {
+    document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// Ambient, ongoing guidance — purely additive, sits above the existing
+// sections on every visit once the one-time filing notice above has been
+// accepted for this case. Every fact it shows comes from getCaseGuidance()'s
+// deterministic mapping of real case/property/county data — never
+// AI-generated. No checkbox, no gating: informational only, and nothing
+// below it is disabled or hidden by its presence.
+function CorvusGuidancePanel({
+  property,
+  protest,
+  evidenceDocumentCount,
+  noticeSignedAt,
+  onNavigate,
+}: {
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceDocumentCount: number;
+  noticeSignedAt: string | null;
+  // Switch to the tab holding this anchor, then scroll to it.
+  onNavigate: (anchor: string) => void;
+}) {
+  const [countyOpen, setCountyOpen] = useState(false);
+  const countyInfo = getCountyProtestInfo(property.cad);
+  const guidance = getCaseGuidance(
+    property,
+    protest,
+    evidenceDocumentCount,
+    countyInfo,
+    noticeSignedAt,
+  );
+
+  // The #1 next step is already the headline call-to-action in CaseRoadmap
+  // above — this panel only lists whatever comes after it, so the two never
+  // repeat the same instruction.
+  const otherSteps = guidance.nextSteps.slice(1);
+
+  return (
+    <div className="mt-4 card-elev p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Corvus AI Guidance
+        </span>
+        <span className="badge-soft">{guidance.stageLabel}</span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        County-specific reference for this stage. The action to take now is in the step-by-step
+        panel above.
+      </p>
+
+      {otherSteps.length > 0 && (
+        <div className="mt-3 grid gap-2 border-t border-border pt-3">
+          <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Also on your list
+          </h5>
+          <ul className="grid gap-1.5">
+            {otherSteps.map((step, i) => (
+              <li key={i} className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{step.label}</span>
+                {step.detail && <span> — {step.detail}</span>}
+                {step.action && (
+                  <button
+                    onClick={() => onNavigate(step.action!.anchor)}
+                    className="ml-2 text-xs text-accent hover:underline"
+                  >
+                    {step.action.label} →
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {countyInfo && (
+        <div className="mt-3 border-t border-border pt-3">
+          <button
+            onClick={() => setCountyOpen((v) => !v)}
+            className="text-xs font-semibold text-accent hover:underline"
+          >
+            {countyOpen ? "Hide" : "Show"} your county's protest process
+          </button>
+          {countyOpen && (
+            <div className="mt-2 grid gap-2 text-xs text-muted-foreground">
+              <div>
+                <span className="font-medium text-foreground">How to file: </span>
+                <FilingMethodsList countyInfo={countyInfo} />
+              </div>
+              {countyInfo.arbContact &&
+                (countyInfo.arbContact.phone || countyInfo.arbContact.email) && (
+                  <div>
+                    <span className="font-medium text-foreground">ARB contact: </span>
+                    {[countyInfo.arbContact.phone, countyInfo.arbContact.email]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                )}
+              {countyInfo.informalReview && (
+                <div>
+                  <span className="font-medium text-foreground">Informal review: </span>
+                  {countyInfo.informalReview.howToRequest}
+                </div>
+              )}
+              <div className="pt-1">
+                Source:{" "}
+                <a
+                  href={countyInfo.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                >
+                  {countyInfo.cad}
+                </a>{" "}
+                (verified {countyInfo.verifiedAt})
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Repeats just the single most important next step at the very bottom of
+// the modal, right above Close — CorvusGuidancePanel's own copy of this
+// sits at the top, which a user scrolled down to Evidence
+// Checklist/Documents/Case Progress (e.g. right after uploading a file or
+// downloading a form) won't see without scrolling back up. Same real
+// getCaseGuidance() data, not a separate/invented message. Renders nothing
+// once there's genuinely no next step (e.g. a resolved case).
+function NextStepFooter({
+  property,
+  protest,
+  evidenceDocumentCount,
+  noticeSignedAt,
+  onNavigate,
+}: {
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceDocumentCount: number;
+  noticeSignedAt: string | null;
+  onNavigate: (anchor: string) => void;
+}) {
+  const countyInfo = getCountyProtestInfo(property.cad);
+  const guidance = getCaseGuidance(
+    property,
+    protest,
+    evidenceDocumentCount,
+    countyInfo,
+    noticeSignedAt,
+  );
+  const next = guidance.nextSteps[0];
+  if (!next) return null;
+
+  return (
+    <div className="mt-5 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+        Reminder — your next step
+      </p>
+      <p className="mt-1">
+        <span className="font-semibold">{next.label}.</span>
+        {next.detail && <span className="text-muted-foreground"> {next.detail}</span>}
+      </p>
+      {next.action && (
+        <button
+          onClick={() => onNavigate(next.action!.anchor)}
+          className="btn-accent mt-2 block w-fit py-1.5 text-xs"
+        >
+          {next.action.label} →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Maps a blocking PreFilingCheckItem's label to the real property field it
+// corrects and the input shape that field needs — County uses a closed
+// dropdown of the exact cad strings the rest of the app recognizes (a
+// free-typed county would silently break every county-specific lookup),
+// everything else is free text/number/date.
+const BLOCKING_FIELD_MAP: Record<
+  string,
+  {
+    key: "cad" | "address" | "accountNumber" | "ownerName" | "taxYear" | "protestDeadline";
+    type: "select" | "text" | "number" | "date";
+  }
+> = {
+  County: { key: "cad", type: "select" },
+  "Property Address": { key: "address", type: "text" },
+  "Account Number": { key: "accountNumber", type: "text" },
+  "Tax Year": { key: "taxYear", type: "number" },
+  "Owner / Entity": { key: "ownerName", type: "text" },
+  "Protest Deadline": { key: "protestDeadline", type: "date" },
+};
+
+function PreFilingCheckList({
+  items,
+  blocked,
+  propertyId,
+  protestId,
+  propertyTaxYear,
+  onFixed,
+  onProtestFixed,
+}: {
+  items: PreFilingCheckItem[];
+  blocked: boolean;
+  propertyId: string;
+  protestId: string;
+  propertyTaxYear?: number | null;
+  onFixed: (patch: Partial<PropertyRecord>) => void;
+  // Only ever needed for the Tax Year row's protest/property mismatch case
+  // (see resolveField in pre-filing-check.ts) — every other row fixes the
+  // property record via onFixed.
+  onProtestFixed: (patch: Partial<ProtestRecord>) => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold">Pre-Filing Check</h4>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            blocked ? "bg-destructive/10 text-destructive" : "bg-success/15 text-success"
+          }`}
+        >
+          {blocked ? "Action Needed" : "Ready to File"}
+        </span>
+      </div>
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+        {items.map((item) => {
+          const missing = item.status === "missing";
+          const needsReview = item.status === "needs_review";
+          const field = missing || needsReview ? BLOCKING_FIELD_MAP[item.label] : undefined;
+          return (
+            <div key={item.label} className="grid gap-1 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">{item.label}</span>
+                <span
+                  className={`truncate ${
+                    missing
+                      ? "text-destructive"
+                      : needsReview
+                        ? "text-warning-foreground"
+                        : "text-success"
+                  }`}
+                  title={item.value ?? undefined}
+                >
+                  {missing ? "Missing" : needsReview ? "Needs review" : (item.value ?? "Confirmed")}
+                </span>
+              </div>
+              {needsReview && item.issue && <p className="text-warning-foreground">{item.issue}</p>}
+              {field && (
+                <PreFilingFixRow
+                  label={item.label}
+                  field={field.key}
+                  inputType={field.type}
+                  resolveField={item.resolveField ?? "property"}
+                  propertyId={propertyId}
+                  protestId={protestId}
+                  propertyTaxYear={propertyTaxYear}
+                  onFixed={onFixed}
+                  onProtestFixed={onProtestFixed}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Lets the customer directly correct/confirm a missing blocking field,
+// right where Corvus flags it — the real fix for a property that never had
+// this data (e.g. added via CAD search rather than an uploaded notice AI
+// could extract a real deadline from). Saves via updatePropertyIdentity and
+// bubbles the real updated field back up so PreFilingGate re-evaluates
+// immediately, same pattern as CaseProgress's forms.
+//
+// resolveField="protest" is the one exception (Tax Year's protest/property
+// mismatch — see resolveField in pre-filing-check.ts): editing the property
+// record there can never clear the flag, since the property side is already
+// correct and it's the protest's own stale tax_year snapshot that's wrong.
+// That case writes via updateProtestTaxYear instead, and is pre-filled with
+// the property's real current tax year so the user isn't left guessing what
+// to type.
+function PreFilingFixRow({
+  label,
+  field,
+  inputType,
+  resolveField,
+  propertyId,
+  protestId,
+  onFixed,
+  onProtestFixed,
+  propertyTaxYear,
+}: {
+  label: string;
+  field: "cad" | "address" | "accountNumber" | "ownerName" | "taxYear" | "protestDeadline";
+  inputType: "select" | "text" | "number" | "date";
+  resolveField: "property" | "protest";
+  propertyId: string;
+  protestId: string;
+  onFixed: (patch: Partial<PropertyRecord>) => void;
+  onProtestFixed: (patch: Partial<ProtestRecord>) => void;
+  propertyTaxYear?: number | null;
+}) {
+  const [value, setValue] = useState(
+    resolveField === "protest" && propertyTaxYear != null ? String(propertyTaxYear) : "",
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      if (resolveField === "protest") {
+        const updated = await updateProtestTaxYear(protestId, Number(value));
+        onProtestFixed(updated);
+      } else {
+        const patch = field === "taxYear" ? { taxYear: Number(value) } : { [field]: value };
+        const updated = await updatePropertyIdentity(propertyId, patch);
+        onFixed(updated);
+      }
+      toast.success(`${label} saved.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Could not save ${label}.`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {inputType === "select" ? (
+        <select
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 py-1 text-xs"
+        >
+          <option value="">Select {label}…</option>
+          {Object.keys(COUNTY_PROTEST_INFO).map((cad) => (
+            <option key={cad} value={cad}>
+              {cad}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={inputType === "number" ? "number" : inputType === "date" ? "date" : "text"}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={`Enter ${label}`}
+          className="min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 py-1 text-xs"
+        />
+      )}
+      <button
+        onClick={handleSave}
+        disabled={saving || !value.trim()}
+        className="shrink-0 btn-outline px-2 py-1 text-[11px] disabled:opacity-60"
+      >
+        {saving ? "Saving…" : "Confirm/edit"}
+      </button>
+    </div>
+  );
+}
+
+// Real Texas Comptroller forms (Form 50-132, Form 50-162 — see
+// src/lib/protest-documents.ts), pre-filled from data already on this case.
+// Neither is auto-signed; both need review + a real signature before filing.
+// Strategy + Evidence Checklist + "Generate Case Plan" — shared by the customer
+// modal (CaseDetailModal, above) and the staff modal (AdminCaseProgressModal),
+// same reuse pattern as DocumentsSection/CaseProgress below. `userId` must be the
+// case-owning CUSTOMER's id even when this renders inside the admin panel — both
+// generateCasePrep()'s protest_evidence_items insert and uploadDocument()'s row/
+// storage-path use it directly, and the customer's own RLS policies (unaffected by
+// this component's admin-added INSERT/UPDATE policies) key off that same value.
+export function CasePlanSection({
+  userId,
+  property,
+  protestId,
+  caseData,
+  onReload,
+  // Module 8 lives on the customer's own /ai-report page, keyed to
+  // whoever is currently signed in — for staff (AdminCaseProgressModal),
+  // that's the admin, not the customer, so navigating there would try to
+  // resolve/create this property under the ADMIN's account instead.
+  // Customer view leaves this at its default (true); admin passes false.
+  allowEvidenceUpload = true,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protestId: string;
+  caseData: ProtestCase | null;
+  onReload: () => void;
+  allowEvidenceUpload?: boolean;
+}) {
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      await generateCasePrep(protestId, userId, property);
+      onReload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate the case plan.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // Evidence upload lives in exactly one place now — Module 8 on the AI
+  // Report page — rather than duplicated here too. Sets this property as
+  // the report's subject the same real way "View AI Report" already does
+  // from the Properties dashboard (buildAiReportIntakePatch), then deep
+  // links straight into the Evidence module (ai-report.tsx's own
+  // ?openModule=evidence handling, built for exactly this button). Opens in
+  // a new tab (window.open, not router navigate) so the case modal stays
+  // open behind it — the sessionStorage write above happens synchronously
+  // before the tab opens, so the new same-origin tab inherits it.
+  function goToModule8() {
+    updateIntake(buildAiReportIntakePatch(property));
+    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
+    // Pages build — a raw "/ai-report" absolute path skips that prefix and
+    // 404s in production. Always build the URL from BASE_URL.
+    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+  }
+
+  const hasAnyPlan = !!caseData?.strategyRecommendation;
+
+  if (!hasAnyPlan) {
+    return (
+      <div className="mt-4 grid gap-3">
+        <p className="text-sm text-muted-foreground">No case plan yet.</p>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="btn-accent w-fit text-sm disabled:opacity-60"
+        >
+          {generating ? "Generating…" : "Generate Case Plan"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 grid gap-5">
+      <section>
+        <h4 className="text-sm font-semibold">Strategy</h4>
+        {caseData?.strategyRecommendation ? (
+          <div className="mt-1">
+            <span className="badge-soft">{caseData.strategyRecommendation}</span>
+            {caseData.strategyConfidencePct != null && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                {caseData.strategyConfidencePct}% confidence
+              </span>
+            )}
+            {caseData.strategyRationale && (
+              <p className="mt-1.5 text-sm text-muted-foreground">{caseData.strategyRationale}</p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Not available yet.</span>
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="text-xs text-accent hover:underline disabled:opacity-60"
+            >
+              {generating ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {allowEvidenceUpload && (
+        <section id="case-upload-evidence">
+          <button onClick={goToModule8} className="btn-outline w-fit text-sm">
+            Upload Evidence — Go to Module 8
+          </button>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const FILING_METHOD_LABEL: Record<FilingMethod, string> = {
+  online: "Online / County Website",
+  mail: "Mail",
+  in_person: "In Person",
+  email: "Email",
+};
+
+// A real, county-confirmed method wins; when none is confirmed for this
+// county, all four still show (matches the honest "not confirmed, check
+// the website directly" fallback the instructions block below gives per
+// method) rather than leaving the picker with nothing to choose.
+function availableFilingMethods(countyInfo: CountyProtestInfo | null): FilingMethod[] {
+  const methods: FilingMethod[] = [];
+  if (countyInfo?.filingMethod.online) methods.push("online");
+  if (countyInfo?.filingMethod.mail) methods.push("mail");
+  if (countyInfo?.filingMethod.inPerson) methods.push("in_person");
+  if (countyInfo?.filingMethod.email.available) methods.push("email");
+  return methods.length > 0 ? methods : ["online", "mail", "in_person", "email"];
+}
+
+// mailto: can't attach a file (same known limitation as PdfFormEditor's own
+// buildFilingMailto) — the draft tells the user that plainly rather than
+// silently producing an email with nothing attached.
+function buildFilingEmailDraft(
+  docLabel: string,
+  property: PropertyRecord,
+): { subject: string; body: string } {
+  return {
+    subject: `${docLabel} — ${property.address}`,
+    body: `Please find my ${docLabel} for ${property.address}${
+      property.accountNumber ? ` (Account #${property.accountNumber})` : ""
+    }.\n\n(Attach your downloaded, signed PDF to this email before sending — it isn't included automatically.)`,
+  };
+}
+
+const EMPTY_FORM_SUBMISSION: FormSubmission = {
+  fieldValues: {},
+  signature: null,
+  signedAt: null,
+  documentId: null,
+  filingMethod: null,
+  filingConfirmationNumber: null,
+  mailTrackingNumber: null,
+  emailRecipient: null,
+  emailSubject: null,
+  emailSentAt: null,
+  submittedAt: null,
+  filingConfirmedAt: null,
+  additionalRequestedAt: null,
+  rejectedAt: null,
+  reminderFrequency: null,
+  lastReminderSentAt: null,
+};
+
+// Shown right after the Notice of Protest is signed, so filing it (Go to
+// County CAD, below) never reads as blocked on the evidence package or the
+// other forms — see describeFilingRequirements's own comment for why this is
+// general Texas process fact rather than a county-specific rule this app
+// doesn't actually have.
+function FilingRequirementsPanel({
+  steps,
+  hearingDate,
+}: {
+  steps: FilingStepId[];
+  hearingDate: string | null;
+}) {
+  const note = describeFilingRequirements(steps, hearingDate);
+  return (
+    <div className="rounded-md border border-border p-3 text-xs">
+      <p className="font-medium text-foreground">
+        What has to go with this filing — and what can follow
+      </p>
+      <p className="mt-1.5">
+        <span className="font-semibold text-success">Due now: </span>
+        <span className="text-muted-foreground">{note.dueNow}</span>
+      </p>
+      {note.canWaitUntil.length > 0 && (
+        <div className="mt-1.5">
+          <span className="font-semibold text-foreground">Can follow: </span>
+          <ul className="mt-1 grid gap-1 text-muted-foreground">
+            {note.canWaitUntil.map((item) => (
+              <li key={item.label}>
+                • <span className="font-medium text-foreground">{item.label}</span> — {item.detail}.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One real "how are you actually getting this document to the county, and
+// what proves you did" flow — used identically for all four documents the
+// filing workflow tracks (File Protest, Agent/Representative, Evidence
+// Affidavit, Evidence). A county can allow a different method for each, so
+// this is scoped per (protest, formType), never once per case. Self-
+// contained: loads and saves its own submission row and proof documents,
+// and only tells its parent about the one thing that actually changes the
+// case's own state — the moment this document is confirmed with the county
+// (onConfirmed), so the caller can react (flip protest.status for the
+// Notice of Protest, or set evidenceSubmittedConfirmedAt for Evidence).
+function FilingSubmissionFlow({
+  userId,
+  property,
+  protest,
+  formType,
+  docLabel,
+  countyInfo,
+  onConfirmed,
+  // Bumped by a caller (Generate Evidence Package, once it saves a new
+  // proof document) to force this panel to re-fetch its own submission +
+  // proof list — it has no other reason to know that happened.
+  refreshToken,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  formType: FormType;
+  docLabel: string;
+  countyInfo: CountyProtestInfo | null;
+  onConfirmed: (at: string) => void;
+  refreshToken?: number;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [proofDocs, setProofDocs] = useState<DocumentRecord[]>([]);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofCheck, setProofCheck] = useState<FilingProofVerification | null>(null);
+  const [checkingProof, setCheckingProof] = useState(false);
+  const [proofCheckError, setProofCheckError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [confNumInput, setConfNumInput] = useState("");
+  const [trackingInput, setTrackingInput] = useState("");
+  const [emailRecipientInput, setEmailRecipientInput] = useState("");
+  const [emailSubjectInput, setEmailSubjectInput] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    Promise.all([
+      getSubmission(protest.id, formType),
+      getFilingProofDocumentsFor(userId, property.id, formType),
+    ])
+      .then(([s, docs]) => {
+        if (!live) return;
+        setSubmission(s);
+        setProofDocs(docs);
+        setConfNumInput(s?.filingConfirmationNumber ?? "");
+        setTrackingInput(s?.mailTrackingNumber ?? "");
+        setEmailRecipientInput(s?.emailRecipient ?? countyInfo?.filingMethod.email.address ?? "");
+        const draft = buildFilingEmailDraft(docLabel, property);
+        setEmailSubjectInput(s?.emailSubject ?? draft.subject);
+      })
+      .catch((err) => console.error(`Could not load filing status for ${docLabel}:`, err))
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [protest.id, formType, userId, property.id, refreshToken]);
+
+  async function chooseMethod(method: FilingMethod) {
+    setSavingField("method");
+    try {
+      await saveFilingMethod(userId, protest.id, formType, method);
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), filingMethod: method }));
+      // Mirrors into the case-level field File Protest already had —
+      // CaseRecordSection keeps reading real, current data instead of a
+      // second, disconnected copy the user would have to enter twice.
+      if (formType === "notice_of_protest") {
+        saveCaseRecordFields(protest.id, { filingChannel: method }).catch((err) =>
+          console.error("Could not mirror filing method to the case record:", err),
+        );
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  async function saveConfirmationNumber() {
+    setSavingField("conf");
+    try {
+      const value = confNumInput.trim() || null;
+      await saveFilingProofFields(userId, protest.id, formType, {
+        filingConfirmationNumber: value,
+      });
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), filingConfirmationNumber: value }));
+      if (formType === "notice_of_protest") {
+        saveCaseRecordFields(protest.id, { filingConfirmationNumber: value }).catch((err) =>
+          console.error("Could not mirror confirmation number to the case record:", err),
+        );
+      }
+      toast.success("Saved.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  async function saveTrackingNumber() {
+    setSavingField("tracking");
+    try {
+      const value = trackingInput.trim() || null;
+      await saveFilingProofFields(userId, protest.id, formType, { mailTrackingNumber: value });
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), mailTrackingNumber: value }));
+      if (formType === "notice_of_protest") {
+        saveCaseRecordFields(protest.id, { certifiedMailTracking: value }).catch((err) =>
+          console.error("Could not mirror tracking number to the case record:", err),
+        );
+      }
+      toast.success("Saved.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  async function handleUploadProof(files: File[]) {
+    setUploadingProof(true);
+    try {
+      const uploaded: DocumentRecord[] = [];
+      for (const file of files) {
+        uploaded.push(
+          await uploadDocument(userId, property.id, file, filingProofDocumentType(formType)),
+        );
+      }
+      const next = [...proofDocs, ...uploaded];
+      setProofDocs(next);
+      handleCheckProof(next);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not upload this file."));
+    } finally {
+      setUploadingProof(false);
+    }
+  }
+
+  async function handleCheckProof(docs: DocumentRecord[] = proofDocs) {
+    if (docs.length === 0) return;
+    setCheckingProof(true);
+    setProofCheckError(null);
+    try {
+      setProofCheck(await verifyFilingProof(property, docs));
+    } catch (err) {
+      setProofCheckError(getErrorMessage(err, "Could not check this proof."));
+    } finally {
+      setCheckingProof(false);
+    }
+  }
+
+  // The customer's own "I delivered this" report — the same real signal for
+  // every method now (Online/Mail/In Person included, not just Email). Not
+  // the same as the county actually confirming it — see handleConfirm below.
+  async function handleMarkSubmitted() {
+    setConfirming(true);
+    try {
+      const at = await markSubmitted(userId, protest.id, formType);
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), submittedAt: at }));
+      toast.success("Logged — showing as Awaiting County Confirmation.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  // The one honest source of "the county actually has this" — the
+  // customer's own explicit click, same discipline as markFiled() elsewhere
+  // in this app. Never auto-confirmed from the AI read above, which is
+  // advisory only, and never set just because the customer marked it
+  // submitted — that's a real, separate, earlier event.
+  async function handleConfirm() {
+    setConfirming(true);
+    try {
+      const at = await confirmFiling(userId, protest.id, formType);
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), filingConfirmedAt: at }));
+      onConfirmed(at);
+      toast.success(`${docLabel} marked as filed with the county.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function handleReject() {
+    setConfirming(true);
+    try {
+      const at = await markRejected(userId, protest.id, formType);
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), rejectedAt: at }));
+      toast.info(`${docLabel} marked as rejected — fix it and mark as submitted again.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  // Email is mocked — Corvus prepares the draft, but sending and reading any
+  // reply both happen in the user's own mail client (this app has no email
+  // account integration). "Sent" and "the county confirmed" are deliberately
+  // two separate, manual steps rather than one click, so the case never
+  // claims a confirmation this app can't actually see. Sets the same generic
+  // submittedAt every other method uses, plus email's own sent-log fields.
+  async function handleMarkEmailSent() {
+    setConfirming(true);
+    try {
+      const at = new Date().toISOString();
+      await Promise.all([
+        saveFilingProofFields(userId, protest.id, formType, {
+          emailRecipient: emailRecipientInput.trim() || null,
+          emailSubject: emailSubjectInput.trim() || null,
+          emailSentAt: at,
+        }),
+        markSubmitted(userId, protest.id, formType),
+      ]);
+      setSubmission((s) => ({
+        ...(s ?? EMPTY_FORM_SUBMISSION),
+        emailRecipient: emailRecipientInput.trim() || null,
+        emailSubject: emailSubjectInput.trim() || null,
+        emailSentAt: at,
+        submittedAt: at,
+      }));
+      toast.success("Logged — showing as Awaiting County Confirmation.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  if (loading) {
+    return <p className="mt-3 text-xs text-muted-foreground">Loading filing status…</p>;
+  }
+
+  const method = submission?.filingMethod ?? null;
+  const status = filingSubmissionStatus(submission);
+  const methods = availableFilingMethods(countyInfo);
+  const cadUrl = getCadRecordUrl({
+    cad: property.cad ?? "",
+    accountNumber: property.accountNumber,
+  });
+  const emailDraft = buildFilingEmailDraft(docLabel, property);
+  const emailAddress = countyInfo?.filingMethod.email.address ?? null;
+  const mailtoHref = emailAddress
+    ? `mailto:${encodeURIComponent(emailAddress)}?subject=${encodeURIComponent(
+        emailSubjectInput || emailDraft.subject,
+      )}&body=${encodeURIComponent(emailDraft.body)}`
+    : null;
+  const canConfirm = hasFilingReferenceNumber(submission) || proofDocs.length > 0;
+  // The submit form (method-specific input + proof + "Mark as Submitted")
+  // shows whenever there's genuinely something to (re)submit — not yet
+  // submitted, or bounced back (rejected / additional info requested).
+  const canEditSubmission =
+    status === "method_chosen" || status === "rejected" || status === "additional_requested";
+
+  const proofBlock = (
+    <div className="mt-3">
+      {proofDocs.length > 0 && (
+        <ul className="mb-2 grid gap-1 text-xs">
+          {proofDocs.map((doc) => (
+            <li key={doc.id} className="text-foreground">
+              {doc.fileName}
+            </li>
+          ))}
+        </ul>
+      )}
+      <label
+        className={`inline-flex btn-outline cursor-pointer py-1.5 text-xs ${uploadingProof ? "pointer-events-none opacity-60" : ""}`}
+      >
+        {uploadingProof ? "Uploading…" : "Upload Proof"}
+        <input
+          type="file"
+          accept="image/*,.pdf"
+          multiple
+          className="hidden"
+          disabled={uploadingProof}
+          onChange={(e) => {
+            const selected = e.target.files ? Array.from(e.target.files) : [];
+            e.target.value = "";
+            if (selected.length > 0) handleUploadProof(selected);
+          }}
+        />
+      </label>
+      {checkingProof && (
+        <p className="mt-2 text-xs text-muted-foreground">Checking what this shows…</p>
+      )}
+      {proofCheckError && <p className="mt-2 text-xs text-destructive">{proofCheckError}</p>}
+      {proofCheck && !checkingProof && (
+        <div className="mt-2 rounded-md border border-border p-2.5 text-xs">
+          <div className="font-medium">AI check — review before confirming</div>
+          <div className="mt-1.5 grid gap-1.5">
+            {proofCheck.findings.map((f, i) => (
+              <div key={i}>
+                <span className="font-medium">{f.fileName}:</span>{" "}
+                {f.hasVisibleSignature ? (
+                  <span className="text-success">
+                    signature visible
+                    {f.signatureNameObserved ? ` (${f.signatureNameObserved})` : ""}
+                  </span>
+                ) : (
+                  <span className="text-warning-foreground">no signature visible</span>
+                )}
+                {f.dateObserved && (
+                  <>
+                    {" · date: "}
+                    <span className={f.dateYearPlausible === false ? "text-destructive" : ""}>
+                      {f.dateObserved}
+                      {f.dateYearPlausible === false
+                        ? " — looks like it may be a prior year, please double-check"
+                        : ""}
+                    </span>
+                  </>
+                )}
+                <p className="mt-0.5 text-muted-foreground">{f.notes}</p>
+              </div>
+            ))}
+          </div>
+          {proofCheck.overallAssessment && (
+            <p className="mt-1.5 text-muted-foreground">{proofCheck.overallAssessment}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => handleCheckProof()}
+            className="mt-1.5 text-accent hover:underline"
+          >
+            Re-check
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="mt-3 rounded-md border border-accent/40 bg-accent/5 p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          How you&apos;re filing this
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            status === "confirmed"
+              ? "bg-success/15 text-success"
+              : status === "rejected" || status === "additional_requested"
+                ? "bg-destructive/10 text-destructive"
+                : status === "awaiting_confirmation"
+                  ? "bg-warning/15 text-warning-foreground"
+                  : "bg-secondary text-muted-foreground"
+          }`}
+        >
+          {FILING_SUBMISSION_STATUS_LABEL[status]}
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {methods.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => chooseMethod(m)}
+            disabled={
+              savingField === "method" ||
+              status === "confirmed" ||
+              status === "awaiting_confirmation"
+            }
+            className={`rounded-full px-2.5 py-1 text-xs font-medium disabled:cursor-default ${
+              method === m
+                ? "bg-accent/15 text-accent"
+                : "border border-border text-muted-foreground hover:bg-secondary"
+            }`}
+          >
+            {FILING_METHOD_LABEL[m]}
+          </button>
+        ))}
+      </div>
+
+      {!method && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Pick how you&apos;re filing this to see the right instructions.
+        </p>
+      )}
+
+      {method && status === "confirmed" && submission?.filingConfirmedAt && (
+        <p className="mt-2 text-xs text-success">
+          ✓ Confirmed with the county on{" "}
+          {new Date(submission.filingConfirmedAt).toLocaleDateString()} via{" "}
+          {FILING_METHOD_LABEL[method].toLowerCase()}.
+        </p>
+      )}
+
+      {method && status === "rejected" && (
+        <p className="mt-2 text-xs text-destructive">
+          The county rejected this
+          {submission?.rejectedAt
+            ? ` on ${new Date(submission.rejectedAt).toLocaleDateString()}`
+            : ""}
+          — review what&apos;s below, fix it, and mark as submitted again.
+        </p>
+      )}
+
+      {method && status !== "confirmed" && (
+        <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+          {method === "online" &&
+            (countyInfo?.filingMethod.online ? (
+              <>
+                <p>
+                  {countyInfo.cad} accepts online filing.
+                  {countyInfo.filingMethod.online.notes
+                    ? ` ${countyInfo.filingMethod.online.notes}`
+                    : ""}
+                </p>
+                <a
+                  href={countyInfo.filingMethod.online.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-accent mt-2 inline-flex text-xs py-1.5"
+                >
+                  Go to County Portal →
+                </a>
+              </>
+            ) : (
+              <>
+                <p>
+                  We don&apos;t have a confirmed online portal for {property.cad ?? "this county"}{" "}
+                  on file — try its CAD record page instead.
+                </p>
+                {cadUrl && (
+                  <a
+                    href={cadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-outline mt-2 inline-flex text-xs py-1.5"
+                  >
+                    Go to County CAD →
+                  </a>
+                )}
+              </>
+            ))}
+
+          {method === "mail" &&
+            (countyInfo?.filingMethod.mail ? (
+              <>
+                <p className="font-medium text-foreground">
+                  {countyInfo.filingMethod.mail.address}
+                </p>
+                {countyInfo.filingMethod.mail.notes && (
+                  <p className="mt-1">{countyInfo.filingMethod.mail.notes}</p>
+                )}
+              </>
+            ) : (
+              <p>
+                We don&apos;t have a confirmed mailing address for {property.cad ?? "this county"}{" "}
+                on file — check its website directly.
+              </p>
+            ))}
+          {method === "mail" && property.protestDeadline && (
+            <p className="mt-1">
+              Deadline: {new Date(`${property.protestDeadline}T00:00:00`).toLocaleDateString()} —
+              mail early enough to arrive (or be postmarked) by then.
+            </p>
+          )}
+
+          {method === "in_person" &&
+            (countyInfo?.filingMethod.inPerson ? (
+              <>
+                <p className="font-medium text-foreground">
+                  {countyInfo.filingMethod.inPerson.address}
+                </p>
+                <p className="mt-1">
+                  {countyInfo.filingMethod.inPerson.notes ||
+                    "Hours and appointment requirements aren't confirmed for this county — check its website."}
+                </p>
+              </>
+            ) : (
+              <p>
+                We don&apos;t have a confirmed in-person location for{" "}
+                {property.cad ?? "this county"} on file — check its website directly.
+              </p>
+            ))}
+          {method === "in_person" && (
+            <p className="mt-1">Bring a government-issued photo ID and a printed copy of this.</p>
+          )}
+
+          {method === "email" &&
+            (emailAddress ? (
+              <>
+                <p>Draft to send from your own email — CorvusPT doesn&apos;t send it for you:</p>
+                <div className="mt-1 rounded-md border border-border bg-background p-2 text-foreground">
+                  <p>
+                    <span className="font-medium">To:</span> {emailAddress}
+                  </p>
+                  <p>
+                    <span className="font-medium">Subject:</span>{" "}
+                    {emailSubjectInput || emailDraft.subject}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap">{emailDraft.body}</p>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {mailtoHref && (
+                    <a href={mailtoHref} className="btn-outline text-xs py-1.5">
+                      Open in Mail App →
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigator.clipboard
+                        .writeText(emailDraft.body)
+                        .then(() => toast.success("Copied."))
+                        .catch(() => toast.error("Could not copy."))
+                    }
+                    className="btn-outline text-xs py-1.5"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>
+                No confirmed email address on file for {property.cad ?? "this county"} — use another
+                method, or check its website.
+              </p>
+            ))}
+        </div>
+      )}
+
+      {method === "online" && canEditSubmission && (
+        <div className="mt-3 grid gap-2">
+          <label className="grid gap-1 text-xs">
+            Confirmation number{" "}
+            <span className="text-muted-foreground">(optional — counts as proof on its own)</span>
+            <div className="flex gap-1">
+              <input
+                value={confNumInput}
+                onChange={(e) => setConfNumInput(e.target.value)}
+                placeholder="Portal confirmation code"
+                className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={saveConfirmationNumber}
+                disabled={savingField === "conf"}
+                className="btn-outline shrink-0 text-xs disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </label>
+          {proofBlock}
+          <button
+            type="button"
+            onClick={handleMarkSubmitted}
+            disabled={!canConfirm || confirming}
+            title={canConfirm ? undefined : "Enter a confirmation number or upload proof first"}
+            className="btn-accent w-fit text-xs py-1.5 disabled:opacity-60"
+          >
+            {confirming ? "Saving…" : "Mark as Submitted"}
+          </button>
+        </div>
+      )}
+
+      {method === "mail" && canEditSubmission && (
+        <div className="mt-3 grid gap-2">
+          <label className="grid gap-1 text-xs">
+            Certified-mail tracking number
+            <div className="flex gap-1">
+              <input
+                value={trackingInput}
+                onChange={(e) => setTrackingInput(e.target.value)}
+                className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={saveTrackingNumber}
+                disabled={savingField === "tracking"}
+                className="btn-outline shrink-0 text-xs disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </label>
+          {proofBlock}
+          <button
+            type="button"
+            onClick={handleMarkSubmitted}
+            disabled={!canConfirm || confirming}
+            title={canConfirm ? undefined : "Enter a tracking number or upload proof first"}
+            className="btn-accent w-fit text-xs py-1.5 disabled:opacity-60"
+          >
+            {confirming ? "Saving…" : "Mark as Submitted"}
+          </button>
+          <p className="text-[11px] text-muted-foreground">
+            Mailing it doesn&apos;t by itself mean the county accepted it — this stays{" "}
+            {FILING_SUBMISSION_STATUS_LABEL.method_chosen.toLowerCase()} until it&apos;s confirmed.
+          </p>
+        </div>
+      )}
+
+      {method === "in_person" && canEditSubmission && (
+        <div className="mt-3 grid gap-2">
+          {proofBlock}
+          <button
+            type="button"
+            onClick={handleMarkSubmitted}
+            disabled={!canConfirm || confirming}
+            title={canConfirm ? undefined : "Upload proof first (a stamped copy, receipt, etc.)"}
+            className="btn-accent w-fit text-xs py-1.5 disabled:opacity-60"
+          >
+            {confirming ? "Saving…" : "Mark as Submitted"}
+          </button>
+        </div>
+      )}
+
+      {method === "email" && canEditSubmission && (
+        <div className="mt-3 grid gap-2">
+          <label className="grid gap-1 text-xs">
+            Recipient
+            <input
+              value={emailRecipientInput}
+              onChange={(e) => setEmailRecipientInput(e.target.value)}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="grid gap-1 text-xs">
+            Subject
+            <input
+              value={emailSubjectInput}
+              onChange={(e) => setEmailSubjectInput(e.target.value)}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+          </label>
+          <p className="text-[11px] text-muted-foreground">Attaching a screenshot is optional.</p>
+          {proofBlock}
+          <button
+            type="button"
+            onClick={handleMarkEmailSent}
+            disabled={confirming}
+            className="btn-accent w-fit text-xs py-1.5 disabled:opacity-60"
+          >
+            {confirming ? "Saving…" : "Mark as Sent"}
+          </button>
+        </div>
+      )}
+
+      {/* Once anyone marks it submitted, the same "now what" block applies
+          regardless of method — the only real difference is what confirmation
+          from the county actually looks like (confirmationMethodDescription). */}
+      {status === "awaiting_confirmation" && method && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">
+          <p className="font-semibold text-warning-foreground">Awaiting County Confirmation</p>
+          <p className="mt-1 text-muted-foreground">
+            {method === "email" ? (
+              <>
+                Sent to {submission?.emailRecipient || emailAddress || "the county"}
+                {submission?.emailSentAt
+                  ? ` on ${new Date(submission.emailSentAt).toLocaleDateString()}`
+                  : ""}
+                .{" "}
+              </>
+            ) : (
+              submission?.submittedAt &&
+              `Marked submitted on ${new Date(submission.submittedAt).toLocaleDateString()}. `
+            )}
+            What confirmation from {property.cad ?? "the county"} usually looks like:{" "}
+            {confirmationMethodDescription(method)}. If you don&apos;t hear back within about 10
+            business days,{" "}
+            {countyInfo?.arbContact?.phone
+              ? `call ${countyInfo.arbContact.phone}`
+              : "follow up with the appraisal district"}{" "}
+            to confirm receipt.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={confirming}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {confirming ? "Saving…" : "County Confirmed"}
+            </button>
+            <button
+              type="button"
+              onClick={handleReject}
+              disabled={confirming}
+              className="btn-outline text-destructive text-xs py-1.5 disabled:opacity-60"
+            >
+              Rejected?
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Part 3's own small label map for the Notice of Protest's "Final Status" —
+// deliberately separate from FILING_SUBMISSION_STATUS_LABEL (which is
+// generic across all four documents in Part 2's own panels): this is the
+// one and only place this app ever says "Protest Filed", and only once
+// filingConfirmedAt is real — confirmFiling()'s existing discipline already
+// enforces that it's never set just because the user said "submitted" or a
+// delivery was confirmed; this card only ever surfaces what's already true.
+function noticeFinalStatusLabel(status: FilingSubmissionStatus): string {
+  switch (status) {
+    case "unstarted":
+      return "Not Filed Yet";
+    case "method_chosen":
+      return "Method Selected — Not Yet Submitted";
+    case "awaiting_confirmation":
+      return "Awaiting County Confirmation";
+    case "additional_requested":
+      return "Additional Information Requested";
+    case "rejected":
+      return "Rejected — Needs Correction";
+    case "confirmed":
+      return "Protest Filed";
+  }
+}
+
+// Part 3 — the Filed Protest half of the status/action screen. Reads the
+// exact same submission row Part 2's own FilingSubmissionFlow (for
+// notice_of_protest) reads and writes; this card never duplicates that
+// workflow, it only rolls the same real fields up into one glance +
+// whichever action (Start/Continue/Review/View) makes sense right now.
+function FiledProtestStatusCard({
+  userId,
+  property,
+  protest,
+  evidenceCount,
+  onOpen,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceCount: number;
+  onOpen: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [submission, setSubmission] = useState<FormSubmission | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    getSubmission(protest.id, "notice_of_protest")
+      .then((s) => {
+        if (!live) return;
+        setSubmission(s);
+      })
+      .catch((err) => console.error("Could not load the filed-protest status:", err))
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [protest.id, userId, property.id]);
+
+  const blocked = isPreFilingBlocked(getPreFilingCheck(property, protest, evidenceCount));
+  const status = filingSubmissionStatus(submission);
+  const started = status !== "unstarted";
+  const statusLabel = noticeFinalStatusLabel(status);
+
+  return (
+    <div className="mt-4 card-elev p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-serif text-base font-semibold">Filed Protest</h4>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            status === "confirmed"
+              ? "bg-success/15 text-success"
+              : status === "additional_requested" || status === "rejected"
+                ? "bg-destructive/10 text-destructive"
+                : status === "awaiting_confirmation"
+                  ? "bg-warning/15 text-warning-foreground"
+                  : "bg-secondary text-muted-foreground"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      {loading ? (
+        <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+      ) : !started ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Corvus walks you through it one step at a time — the Pre-Filing Check, the exact county
+          forms you need (Notice of Protest, and an agent or affidavit form only if they apply),
+          signing, filing, and your evidence package.
+        </p>
+      ) : (
+        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
+          <Field
+            label="Submission Method"
+            value={
+              submission?.filingMethod
+                ? FILING_METHOD_LABEL[submission.filingMethod]
+                : "Not yet chosen"
+            }
+          />
+          <Field
+            label="Submission Date"
+            value={
+              submission?.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : "—"
+            }
+          />
+          <Field
+            label="Confirmation Method"
+            value={confirmationMethodDescription(submission?.filingMethod ?? null) ?? "—"}
+          />
+          <Field
+            label="County Confirmation"
+            value={
+              status === "confirmed"
+                ? "Confirmed"
+                : status === "rejected"
+                  ? "Rejected"
+                  : status === "additional_requested"
+                    ? "More info requested"
+                    : status === "awaiting_confirmation"
+                      ? "Awaiting reply"
+                      : "Not yet"
+            }
+          />
+        </dl>
+      )}
+
+      {blocked && !started && (
+        <p className="mt-2 text-xs text-warning-foreground">
+          Action needed in the Pre-Filing Check — open the workflow to resolve it.
+        </p>
+      )}
+
+      <button onClick={onOpen} className="btn-accent mt-3 text-xs py-1.5">
+        {status === "confirmed"
+          ? "View Filing"
+          : started
+            ? "Continue Filing"
+            : blocked
+              ? "Review Pre-Filing Check"
+              : "Start Filing"}
+      </button>
+    </div>
+  );
+}
+
+// Part 3 — the Evidence half of the status/action screen. criticalMissing
+// comes from Module 8's own cached checklist (getCachedModuleResult, a plain
+// read — no new AI call); the rest from the same "evidence" submission row
+// Part 2's Evidence tab reads and writes. Never re-does either module's work,
+// just tells the user which of the two states applies and what to do next.
+function EvidenceStatusCard({
+  userId,
+  property,
+  protest,
+  evidenceDocuments,
+  onOpen,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceDocuments: DocumentRecord[];
+  onOpen: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  const [criticalMissingCount, setCriticalMissingCount] = useState<number | null>(null);
+  const [score, setScore] = useState<number | null>(null);
+  const [proofCount, setProofCount] = useState(0);
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    Promise.all([
+      getSubmission(protest.id, "evidence"),
+      getCachedModuleResult(property.id, "evidence"),
+      getFilingProofDocumentsFor(userId, property.id, "evidence"),
+    ])
+      .then(([s, cached, proofDocs]) => {
+        if (!live) return;
+        setSubmission(s);
+        setProofCount(proofDocs.length);
+        if (cached) {
+          const items = (cached.result as ModuleResultMap["evidence"]).items ?? [];
+          setCriticalMissingCount(
+            items.filter((i) => i.priority === "Critical" && i.status === "Missing").length,
+          );
+          setScore(evidenceScore(items));
+        } else {
+          setCriticalMissingCount(null);
+          setScore(null);
+        }
+      })
+      .catch((err) => console.error("Could not load the evidence status:", err))
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [protest.id, property.id, userId]);
+
+  async function handleRequestAdditional() {
+    setRequesting(true);
+    try {
+      const at = await requestAdditionalInfo(userId, protest.id, "evidence");
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), additionalRequestedAt: at }));
+      toast.info("Logged — showing as Additional Evidence Requested.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  // Evidence upload lives in exactly one place — Module 8 on the AI Report
+  // page — same real deep link CasePlanSection/DocumentsSection already use.
+  function goToModule8() {
+    updateIntake(buildAiReportIntakePatch(property));
+    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+  }
+
+  const status = loading
+    ? null
+    : computeEvidenceStatus({
+        evidenceDocCount: evidenceDocuments.length,
+        criticalMissingCount,
+        submission,
+      });
+  const methodChosen =
+    status &&
+    !["not_started", "evidence_required", "being_prepared", "ready_to_submit"].includes(status);
+
+  return (
+    <div className="mt-4 card-elev p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-serif text-base font-semibold">Evidence</h4>
+        {status && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              status === "complete" || status === "confirmed"
+                ? "bg-success/15 text-success"
+                : status === "additional_requested" || status === "rejected"
+                  ? "bg-destructive/10 text-destructive"
+                  : status === "awaiting_confirmation"
+                    ? "bg-warning/15 text-warning-foreground"
+                    : "bg-secondary text-muted-foreground"
+            }`}
+          >
+            {EVIDENCE_STATUS_LABEL[status]}
+          </span>
+        )}
+      </div>
+
+      {loading || !status ? (
+        <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+      ) : (
+        <>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {evidenceDocuments.length} evidence document{evidenceDocuments.length === 1 ? "" : "s"}{" "}
+            on this case
+            {score != null && ` · Evidence Score ${score}%`}
+            {criticalMissingCount != null &&
+              criticalMissingCount > 0 &&
+              ` · ${criticalMissingCount} critical item${criticalMissingCount === 1 ? "" : "s"} still missing`}
+            .
+          </p>
+          {score != null && score < 70 && (
+            <p className="mt-1 text-xs text-warning-foreground">
+              Your evidence score is low — add more to strengthen the case.
+            </p>
+          )}
+
+          {methodChosen && (
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-3">
+              <Field
+                label="Confirmation Method"
+                value={confirmationMethodDescription(submission?.filingMethod ?? null) ?? "—"}
+              />
+              <Field
+                label="Submission Date"
+                value={
+                  submission?.submittedAt
+                    ? new Date(submission.submittedAt).toLocaleDateString()
+                    : "—"
+                }
+              />
+              <Field
+                label="Submission Proof"
+                value={
+                  proofCount > 0
+                    ? `${proofCount} document${proofCount === 1 ? "" : "s"}`
+                    : hasFilingReferenceNumber(submission)
+                      ? "Reference number on file"
+                      : "None yet"
+                }
+              />
+            </dl>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(status === "not_started" ||
+              status === "evidence_required" ||
+              status === "being_prepared") && (
+              <button onClick={goToModule8} className="btn-accent text-xs py-1.5">
+                Continue to Evidence
+              </button>
+            )}
+            {status === "ready_to_submit" && (
+              <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                Submit Evidence
+              </button>
+            )}
+            {status === "awaiting_confirmation" && (
+              <button onClick={onOpen} className="btn-outline text-xs py-1.5">
+                View Submission
+              </button>
+            )}
+            {(status === "confirmed" || status === "complete") && (
+              <button
+                onClick={handleRequestAdditional}
+                disabled={requesting}
+                className="text-xs text-accent hover:underline disabled:opacity-60"
+              >
+                {requesting ? "Saving…" : "County asked for more?"}
+              </button>
+            )}
+            {(status === "additional_requested" || status === "rejected") && (
+              <>
+                <button onClick={goToModule8} className="btn-accent text-xs py-1.5">
+                  Add Evidence
+                </button>
+                <button onClick={onOpen} className="btn-outline text-xs py-1.5">
+                  Continue to Evidence
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function DocumentsSection({
+  userId,
+  protest,
+  property,
+  strategyRecommendation,
+  noticeSignedAt,
+  evidenceDocuments,
+  onUpdate,
+  onNoticeSigned,
+  // Correct a blocking Pre-Filing Check field (County / Deadline / …) right in
+  // the workflow's first step. Optional — omitted by the admin copy.
+  onPropertyUpdate,
+  // Staff must never sign a legal filing on a customer's behalf — the admin
+  // panel's copy of this section (AdminCaseProgressModal) passes false to
+  // hide signing entirely, keeping Save Progress/Download available for
+  // staff to help prep the form without ever touching the signature step.
+  allowSigning = true,
+}: {
+  userId: string;
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  strategyRecommendation: string | null;
+  noticeSignedAt: string | null;
+  evidenceDocuments: DocumentRecord[];
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onNoticeSigned: (signedAt: string | null) => void;
+  onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
+  allowSigning?: boolean;
+}) {
+  const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [editingForm, setEditingForm] = useState<"protest" | "agent" | "evidence" | null>(null);
+  const [values, setValues] = useState<FieldValues>({});
+  const [downloading, setDownloading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [signingOpen, setSigningOpen] = useState(false);
+  const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [generatingReason, setGeneratingReason] = useState(false);
+  // Same real signed_at signal as the Notice of Protest's noticeSignedAt
+  // (see CaseDetailModal.tsx), but for the Appointment of Agent form —
+  // kept local here rather than lifted, since nothing outside Documents
+  // currently needs it. Loaded whenever the agent editor opens, below.
+  const [agentFormSignedAt, setAgentFormSignedAt] = useState<string | null>(null);
+  // Same again for the Evidence Declaration (Form 50-283) — note that
+  // "signed" here only means the in-app signature was drawn and saved, not
+  // that the affidavit was actually notarized (see PdfFormEditor's own
+  // notarization notice for formKind "evidence-declaration").
+  const [evidenceDeclarationSignedAt, setEvidenceDeclarationSignedAt] = useState<string | null>(
+    null,
+  );
+
+  // The saved Notice of Protest "how will you appear at the ARB hearing"
+  // answer, loaded eagerly (not just when the editor opens) — it decides
+  // whether the Evidence Affidavit step is part of this filing.
+  const [noticeHearingAppearance, setNoticeHearingAppearance] = useState<string | null>(null);
+
+  useEffect(() => {
+    getAuthorization(protest.id)
+      .then(setAuthorization)
+      .catch((err) => console.error(err))
+      .finally(() => setAuthLoading(false));
+  }, [protest.id]);
+
+  // Eager load of the two secondary forms' signed-at + the notice's hearing
+  // answer, so the step bar can show completion / decide the step set without
+  // opening each editor first. openAgentEditor / openEvidenceDeclarationEditor
+  // still refresh these when they run.
+  useEffect(() => {
+    getSubmission(protest.id, "notice_of_protest")
+      .then((s) => {
+        const v = s?.fieldValues?.["ARB hearing"];
+        setNoticeHearingAppearance(typeof v === "string" && v ? v : null);
+      })
+      .catch(() => {});
+    getSubmission(protest.id, "appointment_of_agent")
+      .then((s) => setAgentFormSignedAt(s?.signedAt ?? null))
+      .catch(() => {});
+    getSubmission(protest.id, "evidence_declaration")
+      .then((s) => setEvidenceDeclarationSignedAt(s?.signedAt ?? null))
+      .catch(() => {});
+  }, [protest.id]);
+
+  const filingSteps = useMemo(
+    () =>
+      requiredFilingSteps({
+        attendanceType: protest.attendanceType,
+        hasAgentAuthorization: false,
+        hearingAppearance: noticeHearingAppearance,
+      }),
+    [protest.attendanceType, noticeHearingAppearance],
+  );
+  const preFilingItems = getPreFilingCheck(property, protest, evidenceDocuments.length);
+  const preFilingBlocked = isPreFilingBlocked(preFilingItems);
+  // Shared with filing-workflow.ts so this step bar and anything else reading
+  // the same case (the AI Report page's Case Progress card) can never
+  // disagree on what "done" means for a step.
+  const filingStepStatus: FilingStepStatusInput = {
+    preFilingBlocked,
+    noticeSignedAt,
+    agentFormSignedAt,
+    evidenceDeclarationSignedAt,
+    evidenceSubmittedConfirmedAt: protest.evidenceSubmittedConfirmedAt ?? null,
+  };
+  const stepDone = (id: FilingStepId) => isFilingStepDone(id, filingStepStatus);
+  const firstIncomplete = firstIncompleteFilingStep(filingSteps, filingStepStatus);
+  const [activeStep, setActiveStep] = useState<FilingStepId>(
+    preFilingBlocked ? "prefiling" : firstIncomplete,
+  );
+  // Auto-advance: when the step the user is currently on gets completed, move
+  // them to the next step that still needs work — so they never have to figure
+  // out "what's next". Manual back-navigation to review a completed step is
+  // preserved (only advances if they were sitting on the step that just
+  // finished).
+  const prevFirstIncomplete = useRef(firstIncomplete);
+  useEffect(() => {
+    const prev = prevFirstIncomplete.current;
+    prevFirstIncomplete.current = firstIncomplete;
+    if (!filingSteps.includes(activeStep)) {
+      setActiveStep(firstIncomplete);
+    } else if (preFilingBlocked && activeStep !== "prefiling") {
+      setActiveStep("prefiling");
+    } else if (prev !== firstIncomplete && activeStep === prev) {
+      setActiveStep(firstIncomplete);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filingSteps.join(","), preFilingBlocked, firstIncomplete]);
+
+  function selectStep(id: FilingStepId) {
+    // While the Pre-Filing Check is blocked, nothing after it is actionable.
+    if (preFilingBlocked && id !== "prefiling") {
+      toast.info("Finish the Pre-Filing Check first — resolve the flagged field(s).");
+      return;
+    }
+    setActiveStep(id);
+  }
+
+  // The Evidence tab's own FilingSubmissionFlow already ran confirmFiling()
+  // (real timestamp, its own toast/loading state) — this just mirrors that
+  // moment into the existing evidenceSubmittedConfirmedAt column, which
+  // case-next-action.ts / pre-filing-check.ts / the Case Record already read.
+  function handleEvidenceFilingConfirmed(at: string) {
+    saveCaseRecordFields(protest.id, { evidenceSubmittedConfirmedAt: at }).catch((err) =>
+      console.error("Could not save the evidence-submitted confirmation:", err),
+    );
+    onUpdate({ evidenceSubmittedConfirmedAt: at });
+  }
+
+  const formType: FormType | null =
+    editingForm === "protest"
+      ? "notice_of_protest"
+      : editingForm === "agent"
+        ? "appointment_of_agent"
+        : editingForm === "evidence"
+          ? "evidence_declaration"
+          : null;
+  const templatePath =
+    editingForm === "protest"
+      ? "forms/50-132.pdf"
+      : editingForm === "agent"
+        ? "forms/50-162.pdf"
+        : "forms/50-283.pdf";
+  const schema =
+    editingForm === "protest"
+      ? NOTICE_OF_PROTEST_SCHEMA
+      : editingForm === "agent"
+        ? APPOINTMENT_OF_AGENT_SCHEMA
+        : EVIDENCE_DECLARATION_SCHEMA;
+
+  // Opens immediately with computed defaults (no loading state on click), then
+  // swaps in a saved draft/signed submission if one exists — a prior Save
+  // Progress or Sign & Submit always wins over freshly-computed defaults.
+  function openProtestEditor() {
+    const defaults = getNoticeOfProtestDefaults(
+      property,
+      property.taxYear,
+      strategyRecommendation,
+      authorization,
+    );
+    setValues(defaults);
+    setEditingForm("protest");
+    setSigningOpen(false);
+    setSignature(null);
+    getSubmission(protest.id, "notice_of_protest")
+      .then((existing) => {
+        if (existing) {
+          setValues(existing.fieldValues);
+          return;
+        }
+        // No saved draft — auto-draft the "facts to resolve protest" text from
+        // the case's evidence so the form opens as complete as Corvus can make
+        // it. Always editable; the user still reviews before signing.
+        if (evidenceDocuments.length > 0 && !defaults["Facts to resolve protest"]) {
+          draftProtestReason(property, strategyRecommendation, evidenceDocuments)
+            .then((text) =>
+              setValues((v) =>
+                v["Facts to resolve protest"] ? v : { ...v, "Facts to resolve protest": text },
+              ),
+            )
+            .catch((err) => console.error("Auto-draft of protest reason failed:", err));
+        }
+      })
+      .catch((err) => console.error("Could not load saved Notice of Protest draft:", err));
+  }
+
+  function openAgentEditor() {
+    if (!authorization) return;
+    setValues(getAppointmentOfAgentDefaults(authorization, property));
+    setEditingForm("agent");
+    setSigningOpen(false);
+    setSignature(null);
+    setAgentFormSignedAt(null);
+    getSubmission(protest.id, "appointment_of_agent")
+      .then((existing) => {
+        if (existing) {
+          setValues(existing.fieldValues);
+          setAgentFormSignedAt(existing.signedAt);
+        }
+      })
+      .catch((err) => console.error("Could not load saved Appointment of Agent draft:", err))
+      .finally(fillAdditionalOwnerProperties);
+  }
+
+  function openEvidenceDeclarationEditor() {
+    setValues(getEvidenceDeclarationDefaults(property, property.taxYear, evidenceDocuments.length));
+    setEditingForm("evidence");
+    setSigningOpen(false);
+    setSignature(null);
+    setEvidenceDeclarationSignedAt(null);
+    getSubmission(protest.id, "evidence_declaration")
+      .then((existing) => {
+        if (existing) {
+          setValues(existing.fieldValues);
+          setEvidenceDeclarationSignedAt(existing.signedAt);
+        }
+      })
+      .catch((err) => console.error("Could not load saved Evidence Declaration draft:", err));
+  }
+
+  // Same real deep link as CasePlanSection's own goToModule8 — evidence
+  // upload lives in exactly one place (Module 8 on the AI Report page), so
+  // this button just gets the user there rather than duplicating an upload
+  // widget in a second location. Opens in a new tab so the case modal
+  // stays open behind it.
+  function goToModule8() {
+    updateIntake(buildAiReportIntakePatch(property));
+    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
+    // Pages build — a raw "/ai-report" absolute path skips that prefix and
+    // 404s in production. Always build the URL from BASE_URL.
+    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+  }
+
+  // Form 50-162 authorizes an agent for possibly several properties at once —
+  // this case's own property already fills the first slot; this looks up any
+  // OTHER real properties on file under the same owner name, in the same
+  // appraisal district (an authorization is filed per-district, so a sibling
+  // property in a different county doesn't belong on this form), and fills
+  // the remaining slots. Reuses the exact same owner-name search Add
+  // Ownerships already uses — real CAD data, never guessed. Runs after the
+  // saved-draft check above (whichever wins) and only ever fills slots that
+  // are still empty, so it can never clobber a saved draft or an edit the
+  // user already made.
+  async function fillAdditionalOwnerProperties() {
+    const ownerName =
+      property.ownerName || (authorization?.isEntity ? authorization.entityName : null);
+    if (!ownerName || !property.cad) return;
+    try {
+      const { matches } = await searchPropertiesByOwner(ownerName);
+      const isCurrentProperty = (m: (typeof matches)[number]) =>
+        property.accountNumber && m.accountNumber
+          ? m.accountNumber === property.accountNumber
+          : m.propertyAddress.trim().toLowerCase() === property.address.trim().toLowerCase();
+      const additional = matches.filter((m) => m.cad === property.cad && !isCurrentProperty(m));
+      if (additional.length === 0) return;
+      setValues((prev) =>
+        prev["Appraisal District Account Number_3"] ||
+        prev["Physical or Situs Address of Property_3"]
+          ? prev
+          : { ...prev, ...getAdditionalOwnerPropertyFields(additional) },
+      );
+    } catch (err) {
+      console.error("Could not search for other properties under this ownership:", err);
+    }
+  }
+
+  function handleFieldChange(name: string, value: string | boolean) {
+    setValues((prev) => ({ ...prev, [name]: value }));
+  }
+
+  async function handleSaveProgress() {
+    if (!formType) return;
+    setSaving(true);
+    try {
+      await saveDraft(userId, protest.id, formType, values);
+      toast.success("Progress saved.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save your progress.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const bytes = await buildPdf(templatePath, schema, values);
+      const filenameBase = property.accountNumber ?? property.id;
+      downloadPdf(
+        bytes,
+        editingForm === "protest"
+          ? `Notice-of-Protest-${filenameBase}.pdf`
+          : editingForm === "agent"
+            ? `Appointment-of-Agent-${filenameBase}.pdf`
+            : `Evidence-Declaration-${filenameBase}.pdf`,
+      );
+      // Downloading shouldn't be able to lose edits either — save silently
+      // alongside it (no separate toast — the real next-step message below
+      // covers this action).
+      if (formType)
+        await saveDraft(userId, protest.id, formType, values).catch((err) => console.error(err));
+      toast.success(
+        editingForm === "protest"
+          ? "Downloaded. Review it, then use Sign & Submit above to file this protest — or deliver this PDF to your county yourself."
+          : editingForm === "agent"
+            ? "Downloaded. Once signed, deliver this PDF to your appraisal district."
+            : "Downloaded. This affidavit isn't valid until signed before a notary public.",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate this document.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleConfirmSign() {
+    if (!formType || !signature) return;
+    setSubmitting(true);
+    try {
+      // Last-chance correction — catches a date field that was never blurred
+      // (e.g. filled by clicking a suggestion chip last) before it's baked
+      // into the signed PDF and the saved record.
+      const resolvedValues = resolveDateFields(schema, values);
+      setValues(resolvedValues);
+      const signedAt = new Date();
+      const bytes = await signPdf(templatePath, schema, resolvedValues, signature, signedAt);
+      const filenameBase = property.accountNumber ?? property.id;
+      const fileName =
+        editingForm === "protest"
+          ? `Signed-Notice-of-Protest-${filenameBase}.pdf`
+          : editingForm === "agent"
+            ? `Signed-Appointment-of-Agent-${filenameBase}.pdf`
+            : `Signed-Evidence-Declaration-${filenameBase}.pdf`;
+      const file = new File([bytes as BlobPart], fileName, { type: "application/pdf" });
+      const doc = await uploadDocument(
+        userId,
+        property.id,
+        file,
+        editingForm === "protest"
+          ? "Signed Notice of Protest"
+          : editingForm === "agent"
+            ? "Signed Appointment of Agent"
+            : "Signed Evidence Declaration",
+      );
+      await signAndSubmit(userId, protest.id, formType, resolvedValues, signature, doc.id);
+      // Signing here is NOT the same as filing — this app has no e-filing
+      // integration with any county, so it can't truthfully claim the
+      // protest has been filed the moment it's signed. Status stays
+      // "requested"; the customer confirms filing themselves, once they've
+      // actually delivered it, via the "Mark as Filed" action below. For the
+      // Evidence Declaration specifically, signing here isn't even a
+      // complete signature yet — see the notarization notice in
+      // PdfFormEditor.
+      if (editingForm === "protest") onNoticeSigned(signedAt.toISOString());
+      else if (editingForm === "agent") setAgentFormSignedAt(signedAt.toISOString());
+      else setEvidenceDeclarationSignedAt(signedAt.toISOString());
+      downloadPdf(bytes, fileName);
+      setSigningOpen(false);
+      setSignature(null);
+      toast.success(
+        editingForm === "protest"
+          ? 'Signed and saved. This does not file your protest — deliver it to your county (online, by mail, or in person), then click "Mark as Filed" below.'
+          : editingForm === "agent"
+            ? "Signed and saved. Deliver this PDF to your appraisal district to put it into effect."
+            : "Saved. This does not complete your affidavit — Texas law requires it be signed before a notary public.",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not sign this document.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Just closes the editor — actually recording how/whether this was filed
+  // now happens in the always-visible FilingSubmissionFlow panel on the tab
+  // behind it (kept the same name since it's already wired as
+  // PdfFormEditor's onMarkFiled prop).
+  function handleMarkFiled() {
+    setEditingForm(null);
+  }
+
+  // The Notice of Protest's own FilingSubmissionFlow confirms with the real
+  // county — that's the one honest signal this app has for "filed" (no
+  // e-filing integration exists), so it's what actually advances the case.
+  async function handleNoticeFilingConfirmed() {
+    try {
+      await markFiled(protest.id);
+      onUpdate({ status: "filed" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not mark this case as filed.");
+    }
+  }
+
+  // Reads the customer's own uploaded evidence and drafts a suggestion for
+  // Form 50-132's "Facts to resolve protest" field — never auto-inserted,
+  // never automatic; only ever runs from the explicit "Generate Suggested
+  // Reason" click inside PdfFormEditor, and always lands in an editable
+  // field the customer must review before signing. See protest-reason.ts.
+  async function handleGenerateReason() {
+    setGeneratingReason(true);
+    try {
+      const text = await draftProtestReason(property, strategyRecommendation, evidenceDocuments);
+      // The two forms' aiSuggestable field has a different real name — 50-132's
+      // "Facts to resolve protest" vs. 50-283's "Sect5-1" (Section 5,
+      // Statement of Facts or Arguments — see EVIDENCE_DECLARATION_SCHEMA).
+      handleFieldChange(editingForm === "evidence" ? "Sect5-1" : "Facts to resolve protest", text);
+      toast.success("Suggested — review and edit before signing.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate a suggestion.");
+    } finally {
+      setGeneratingReason(false);
+    }
+  }
+
+  const countyInfo = getCountyProtestInfo(property.cad);
+  const hasEvidence = evidenceDocuments.length > 0;
+
+  return (
+    <div id="case-documents">
+      <h4 className="font-serif text-lg font-semibold">File Your Protest</h4>
+      <p className="text-xs text-muted-foreground">
+        Corvus takes you through only the steps this case needs — one at a time. Official Texas
+        Comptroller forms, pre-filled; review every field, then sign. Completed forms save to your
+        Documents.
+      </p>
+
+      <FilingStepBar
+        steps={filingSteps}
+        active={activeStep}
+        isDone={stepDone}
+        lockedAfterPrefiling={preFilingBlocked}
+        onSelect={selectStep}
+      />
+      <p className="mt-2 text-xs text-muted-foreground">{FILING_STEP_META[activeStep].blurb}</p>
+
+      {/* --- Step: Pre-Filing Check --- */}
+      {activeStep === "prefiling" && (
+        <div className="mt-3">
+          <PreFilingCheckList
+            items={preFilingItems}
+            blocked={preFilingBlocked}
+            propertyId={property.id}
+            protestId={protest.id}
+            propertyTaxYear={property.taxYear}
+            onFixed={onPropertyUpdate ?? (() => {})}
+            onProtestFixed={(patch) => onUpdate(patch)}
+          />
+          {preFilingBlocked ? (
+            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              Corvus can't confirm this case is ready to file — resolve the field(s) marked
+              "Missing" or "Needs review" above (use the editor beside each). The filing steps
+              unlock once this is clear.
+            </div>
+          ) : (
+            <div className="mt-3 rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success">
+              Everything checks out — continue to File Protest.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- Step: File Protest --- */}
+      {activeStep === "file" && (
+        <div className="mt-3 grid gap-3">
+          {!hasEvidence && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Tip (optional):</span> Upload whatever
+                evidence you already have first — AI can then suggest a stronger strategy and draft
+                the "facts to resolve protest" text for you.
+              </p>
+              <button
+                onClick={goToModule8}
+                className="btn-outline shrink-0 whitespace-nowrap text-xs py-1.5"
+              >
+                Upload Evidence First →
+              </button>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={openProtestEditor} className="btn-accent text-xs py-1.5">
+              File Protest
+            </button>
+            {noticeSignedAt && (
+              <>
+                <span className="text-xs text-success">✓ Signed</span>
+                <Link to="/dashboard/documents" className="text-xs text-accent hover:underline">
+                  View in Documents tab →
+                </Link>
+              </>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Opens the Notice of Protest (Form 50-132) pre-filled from your case — Corvus drafts the
+            "reasons" from your evidence; review every field, then Save, Sign &amp; download. The
+            signed form is saved to your Documents.
+          </p>
+
+          {noticeSignedAt ? (
+            <>
+              <FilingRequirementsPanel steps={filingSteps} hearingDate={protest.hearingDate} />
+              <FilingSubmissionFlow
+                userId={userId}
+                property={property}
+                protest={protest}
+                formType="notice_of_protest"
+                docLabel="Notice of Protest"
+                countyInfo={countyInfo}
+                onConfirmed={handleNoticeFilingConfirmed}
+              />
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sign your Notice of Protest above to see how to file it with{" "}
+              {property.cad ?? "your county"}.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* --- Step: Agent / Representative --- */}
+      {activeStep === "agent" && (
+        <div className="mt-3 grid gap-2">
+          <div>
+            <button
+              onClick={openAgentEditor}
+              disabled={authLoading || !authorization}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+              title={
+                !authLoading && !authorization
+                  ? "Autofill needs a signed authorization on file for this case"
+                  : undefined
+              }
+            >
+              {agentFormSignedAt
+                ? "Review Appointment of Agent"
+                : "Open Appointment of Agent (Form 50-162)"}
+            </button>
+          </div>
+          {!authLoading && !authorization && (
+            <p className="text-xs text-muted-foreground">
+              A signed authorization must be on file before this form can be pre-filled.
+            </p>
+          )}
+          {agentFormSignedAt ? (
+            <FilingSubmissionFlow
+              userId={userId}
+              property={property}
+              protest={protest}
+              formType="appointment_of_agent"
+              docLabel="Appointment of Agent"
+              countyInfo={countyInfo}
+              onConfirmed={() => {}}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sign the Appointment of Agent above to see how to file it.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* --- Step: Evidence Affidavit / Declaration --- */}
+      {activeStep === "affidavit" && (
+        <div className="mt-3 grid gap-2">
+          <div>
+            <button onClick={openEvidenceDeclarationEditor} className="btn-accent text-xs py-1.5">
+              {evidenceDeclarationSignedAt
+                ? "Review Affidavit of Evidence"
+                : "Open Affidavit of Evidence (Form 50-283)"}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Form 50-283 is a sworn affidavit — after you sign it in-app, it must be notarized before
+            it's delivered to the ARB.
+          </p>
+          {evidenceDeclarationSignedAt ? (
+            <FilingSubmissionFlow
+              userId={userId}
+              property={property}
+              protest={protest}
+              formType="evidence_declaration"
+              docLabel="Evidence Affidavit"
+              countyInfo={countyInfo}
+              onConfirmed={() => {}}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sign the affidavit above (and have it notarized) to see how to file it.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* --- Step: Evidence --- */}
+      {activeStep === "evidence" && (
+        <FilingEvidenceStep
+          evidenceDocuments={evidenceDocuments}
+          strategyRecommendation={strategyRecommendation}
+          userId={userId}
+          property={property}
+          protest={protest}
+          countyInfo={countyInfo}
+          onGoToModule8={goToModule8}
+          onConfirmed={handleEvidenceFilingConfirmed}
+        />
+      )}
+
+      {editingForm && (
+        <PdfFormEditor
+          title={
+            editingForm === "protest"
+              ? "Notice of Protest (Form 50-132)"
+              : editingForm === "agent"
+                ? "Appointment of Agent (Form 50-162)"
+                : "Property Owner's Affidavit of Evidence (Form 50-283)"
+          }
+          sections={schema}
+          values={values}
+          onChange={handleFieldChange}
+          onDownload={handleDownload}
+          downloading={downloading}
+          onSaveProgress={handleSaveProgress}
+          saving={saving}
+          allowSigning={allowSigning}
+          signingOpen={signingOpen}
+          onOpenSigning={() => {
+            setSignature(null);
+            setSigningOpen(true);
+          }}
+          onCancelSigning={() => {
+            setSigningOpen(false);
+            setSignature(null);
+          }}
+          signature={signature}
+          onSignatureChange={setSignature}
+          onConfirmSign={handleConfirmSign}
+          submitting={submitting}
+          expectedSignerName={(() => {
+            const key =
+              editingForm === "protest"
+                ? "Print Name of Property Owner or Authorized Representative"
+                : editingForm === "agent"
+                  ? "Name of Property Owner"
+                  : "Affiant Name_2";
+            const v = values[key];
+            return typeof v === "string" && v ? v : undefined;
+          })()}
+          onClose={() => setEditingForm(null)}
+          formKind={
+            editingForm === "protest"
+              ? "protest"
+              : editingForm === "agent"
+                ? "agent"
+                : "evidence-declaration"
+          }
+          countyInfo={countyInfo}
+          signedAt={
+            editingForm === "protest"
+              ? noticeSignedAt
+              : editingForm === "agent"
+                ? agentFormSignedAt
+                : evidenceDeclarationSignedAt
+          }
+          caseStatus={protest.status}
+          onMarkFiled={handleMarkFiled}
+          markingFiled={false}
+          hasEvidence={hasEvidence}
+          generatingReason={generatingReason}
+          onGenerateReason={handleGenerateReason}
+        />
+      )}
+    </div>
+  );
+}
+
+// The filing workflow's step indicator — the 2–4 active steps as
+// "1 File Protest → 2 Agent → …", each marked done / current / upcoming. The
+// user always sees where they are; a step is clickable once it's in the set
+// (upcoming steps are shown but reading-only until the prior work is done —
+// enforced by the panels themselves, not disabled here, so the user can look
+// ahead).
+function FilingStepBar({
+  steps,
+  active,
+  isDone,
+  lockedAfterPrefiling,
+  onSelect,
+}: {
+  steps: FilingStepId[];
+  active: FilingStepId;
+  isDone: (id: FilingStepId) => boolean;
+  // While the Pre-Filing Check is blocked, every step after it is inert.
+  lockedAfterPrefiling: boolean;
+  onSelect: (id: FilingStepId) => void;
+}) {
+  return (
+    <ol className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
+      {steps.map((id, i) => {
+        const done = isDone(id);
+        const here = id === active;
+        const locked = lockedAfterPrefiling && id !== "prefiling";
+        return (
+          <li key={id} className="flex items-center gap-1">
+            {i > 0 && <span className="text-muted-foreground/40">→</span>}
+            <button
+              type="button"
+              onClick={() => onSelect(id)}
+              aria-current={here ? "step" : undefined}
+              className={`rounded-full px-2.5 py-1 font-medium ${
+                here
+                  ? "bg-accent/15 text-accent"
+                  : locked
+                    ? "text-muted-foreground/40"
+                    : done
+                      ? "text-success hover:bg-secondary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              }`}
+            >
+              <span className="tabular-nums">{locked ? "🔒" : done ? "✓" : i + 1}</span>{" "}
+              {FILING_STEP_META[id].label}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// The workflow's Evidence step: the case's real evidence at a glance, what's
+// still critically missing, a way to go add more (Module 8), and a record that
+// the package was submitted to the county. Uses the "Protest Evidence"-tagged
+// documents already loaded for this case — never a separate list.
+function FilingEvidenceStep({
+  evidenceDocuments,
+  strategyRecommendation,
+  userId,
+  property,
+  protest,
+  countyInfo,
+  onGoToModule8,
+  onConfirmed,
+}: {
+  evidenceDocuments: DocumentRecord[];
+  strategyRecommendation: string | null;
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  countyInfo: CountyProtestInfo | null;
+  onGoToModule8: () => void;
+  onConfirmed: (at: string) => void;
+}) {
+  const withIssues = evidenceDocuments.filter(
+    (d) => d.aiVerdict === "issues" || d.aiVerdict === "invalid",
+  );
+  // Bumped once the package builder saves a new proof document, so the
+  // FilingSubmissionFlow below (which loaded its own proof list before that
+  // existed) picks it up without a full page reload.
+  const [refreshToken, setRefreshToken] = useState(0);
+  return (
+    <div className="mt-3 grid gap-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {evidenceDocuments.length} evidence document{evidenceDocuments.length === 1 ? "" : "s"} on
+          this case
+          {withIssues.length > 0 && ` · ${withIssues.length} flagged by AI review`}
+        </span>
+        <button onClick={onGoToModule8} className="btn-outline shrink-0 text-xs py-1.5">
+          Add / organize evidence in Module 8 →
+        </button>
+      </div>
+
+      {evidenceDocuments.length === 0 ? (
+        <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
+          No evidence has been uploaded for this case yet. Module 8 finds and verifies what it can
+          from public records, then flags only the critical evidence you need to provide.
+        </div>
+      ) : (
+        <ul className="grid gap-1">
+          {evidenceDocuments.slice(0, 12).map((d) => {
+            const v = verdictMeta(d.aiVerdict);
+            return (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs"
+              >
+                <span className="truncate">{d.fileName}</span>
+                <span
+                  className={`shrink-0 font-semibold ${
+                    v.tone === "success"
+                      ? "text-success"
+                      : v.tone === "warning"
+                        ? "text-warning-foreground"
+                        : "text-destructive"
+                  }`}
+                >
+                  {d.aiCheckedAt ? v.label : "Not checked"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {strategyRecommendation && (
+        <p className="text-xs text-muted-foreground">
+          Organize the package around your protest strategy: {strategyRecommendation}
+        </p>
+      )}
+
+      {evidenceDocuments.length > 0 && (
+        <EvidencePackageBuilder
+          userId={userId}
+          property={property}
+          protest={protest}
+          evidenceDocuments={evidenceDocuments}
+          onSaved={() => setRefreshToken((t) => t + 1)}
+        />
+      )}
+
+      <FilingSubmissionFlow
+        userId={userId}
+        property={property}
+        protest={protest}
+        formType="evidence"
+        docLabel="Evidence Package"
+        countyInfo={countyInfo}
+        onConfirmed={onConfirmed}
+        refreshToken={refreshToken}
+      />
+    </div>
+  );
+}
+
+// Generate Evidence Package — combines the real evidence documents Module 8
+// already matched to this case's checklist into one downloadable PDF, using
+// selectRelevantEvidence/buildEvidencePackagePdf (evidence-package.ts). The
+// user can add/remove/reorder before generating; saving it becomes the
+// Evidence submission's own real proof (FilingSubmissionFlow above), so
+// there's exactly one "Evidence Submitted" toggle, not a second one here.
+function EvidencePackageBuilder({
+  userId,
+  property,
+  protest,
+  evidenceDocuments,
+  onSaved,
+}: {
+  userId: string;
+  property: PropertyRecord;
+  protest: ProtestRecord;
+  evidenceDocuments: DocumentRecord[];
+  onSaved: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deadline, setDeadline] = useState<string | null>(null);
+  const [reminderFrequency, setReminderFrequencyState] = useState<ReminderFrequency>("daily");
+  const [generating, setGenerating] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    Promise.all([
+      getCachedModuleResult(property.id, "evidence"),
+      getLatestHearingNotice(protest.id),
+      getSubmission(protest.id, "evidence"),
+    ])
+      .then(([cached, notice, submission]) => {
+        if (!live) return;
+        const items = cached ? ((cached.result as ModuleResultMap["evidence"]).items ?? []) : null;
+        const preselected = selectRelevantEvidence(evidenceDocuments, items);
+        setSelectedIds((preselected.length > 0 ? preselected : evidenceDocuments).map((d) => d.id));
+        setDeadline(notice?.evidenceSubmissionDeadline ?? null);
+        setReminderFrequencyState(submission?.reminderFrequency ?? "daily");
+        // Seed a real row at the default frequency so send-evidence-reminders
+        // has something to find — "by default, daily reminders" shouldn't
+        // require the user to first open this dropdown and pick "Daily"
+        // themselves.
+        if (!submission) {
+          saveReminderFrequency(userId, protest.id, "evidence", "daily").catch((err) =>
+            console.error("Could not seed the default reminder frequency:", err),
+          );
+        }
+      })
+      .catch((err) => console.error("Could not prepare the evidence package builder:", err))
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+    // Runs once per property/case — evidenceDocuments changing (a fresh
+    // array reference on every parent render) shouldn't re-run this and
+    // silently reset an in-progress selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [property.id, protest.id]);
+
+  function toggle(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+  function moveUp(id: string) {
+    setSelectedIds((prev) => {
+      const i = prev.indexOf(id);
+      if (i <= 0) return prev;
+      const next = [...prev];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      return next;
+    });
+  }
+  function moveDown(id: string) {
+    setSelectedIds((prev) => {
+      const i = prev.indexOf(id);
+      if (i === -1 || i >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+      return next;
+    });
+  }
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const selectedDocs = selectedIds
+        .map((id) => evidenceDocuments.find((d) => d.id === id))
+        .filter((d): d is DocumentRecord => !!d);
+      const files = [];
+      for (const d of selectedDocs) {
+        const url = await getDocumentUrl(d.storagePath);
+        const bytes = await fetch(url).then((r) => r.arrayBuffer());
+        files.push({ fileName: d.fileName, bytes });
+      }
+      const pdfBytes = await buildEvidencePackagePdf(files);
+      setPreviewBytes(pdfBytes);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(new Blob([pdfBytes as BlobPart], { type: "application/pdf" }));
+      });
+      toast.success("Package generated — review it below.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not generate the package."));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleSaveToDocuments() {
+    if (!previewBytes) return;
+    setSaving(true);
+    try {
+      const fileName = `Evidence-Package-${property.accountNumber ?? property.id}.pdf`;
+      const file = new File([previewBytes as BlobPart], fileName, { type: "application/pdf" });
+      await uploadDocument(userId, property.id, file, filingProofDocumentType("evidence"));
+      toast.success("Saved to Documents — this is now your Evidence proof.");
+      onSaved();
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDownload() {
+    if (!previewBytes) return;
+    downloadPdf(previewBytes, `Evidence-Package-${property.accountNumber ?? property.id}.pdf`);
+  }
+
+  async function handleReminderChange(freq: ReminderFrequency) {
+    setReminderFrequencyState(freq);
+    try {
+      await saveReminderFrequency(userId, protest.id, "evidence", freq);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    }
+  }
+
+  if (loading) {
+    return <p className="text-xs text-muted-foreground">Preparing the evidence package builder…</p>;
+  }
+
+  return (
+    <div className="rounded-md border border-border p-3 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Generate Evidence Package
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Corvus pre-selected the documents Module 8 already matched to your case — add, remove, or
+        reorder before generating.
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {deadline
+          ? `Deadline: ${new Date(`${deadline}T00:00:00`).toLocaleDateString()}.`
+          : "Deadline not confirmed yet — check your hearing notice."}
+      </p>
+
+      <ul className="mt-2 grid gap-1">
+        {evidenceDocuments.map((d) => {
+          const idx = selectedIds.indexOf(d.id);
+          const checked = idx !== -1;
+          return (
+            <li
+              key={d.id}
+              className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
+            >
+              <input type="checkbox" checked={checked} onChange={() => toggle(d.id)} />
+              <span className="min-w-0 flex-1 truncate">{d.fileName}</span>
+              {checked && (
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveUp(d.id)}
+                    disabled={idx === 0}
+                    className="text-muted-foreground disabled:opacity-30"
+                    aria-label={`Move ${d.fileName} up`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveDown(d.id)}
+                    disabled={idx === selectedIds.length - 1}
+                    className="text-muted-foreground disabled:opacity-30"
+                    aria-label={`Move ${d.fileName} down`}
+                  >
+                    ↓
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        Remind me:
+        <select
+          value={reminderFrequency}
+          onChange={(e) => handleReminderChange(e.target.value as ReminderFrequency)}
+          className="rounded-md border border-input bg-background px-1.5 py-1 text-xs"
+        >
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+
+      <div>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating || selectedIds.length === 0}
+          className="btn-accent mt-3 text-xs py-1.5 disabled:opacity-60"
+        >
+          {generating ? "Generating…" : "Generate Package"}
+        </button>
+      </div>
+
+      {previewUrl && (
+        <div className="mt-3">
+          <iframe
+            title="Evidence package preview"
+            src={previewUrl}
+            className="h-64 w-full rounded-md border border-border"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleSaveToDocuments}
+              disabled={saving}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save to Documents"}
+            </button>
+            <button type="button" onClick={handleDownload} className="btn-outline text-xs py-1.5">
+              Download
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Every real, trackable informal-review sub-state, in the same order the
+// product spec listed them — the raw options for the status dropdown below.
+// Distinct from INFORMAL_STATUS_LABEL (protests.ts), which collapses these
+// to the shorter user-facing badge text; this dropdown shows the real,
+// specific state the user is actually setting.
+const INFORMAL_STATUS_OPTIONS: { value: InformalStatus; label: string }[] = [
+  { value: "not_requested", label: "Not Requested" },
+  { value: "requested", label: "Requested" },
+  { value: "pending_response", label: "Pending County Response" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "proposed_value_received", label: "Proposed Value Received" },
+  { value: "accepted", label: "Accepted" },
+  { value: "rejected", label: "Rejected" },
+  { value: "no_informal_available", label: "No Informal Available" },
+];
+
+// "14:30" (the value an <input type="time"> yields) → "2:30 PM", the same
+// human display string the hearing-notice extraction stores, so the informal
+// review's time reads the same everywhere (calendar title included).
+function formatInputTime(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h)) return hhmm;
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m ?? 0).padStart(2, "0")} ${period}`;
+}
+
+// The reverse — a stored "2:30 PM" back to "14:30" so it can seed the
+// <input type="time"> when the section re-opens. Returns "" for anything
+// that doesn't parse.
+function parseTimeToInput(display: string | null | undefined): string {
+  if (!display) return "";
+  const m = display.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return "";
+  let h = Number(m[1]);
+  const period = m[3]?.toUpperCase();
+  if (period === "PM" && h < 12) h += 12;
+  if (period === "AM" && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
+}
+
+// Same "local calendar date, no timezone math" convention as the rest of this
+// file's date-only fields (see pre-filing-check.ts's own comment on this) —
+// built from/read back via the Date object's local getters, never toISOString,
+// so a viewer west of UTC never sees the day roll back by one.
+function dateInputToDate(v: string): Date | undefined {
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return undefined;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+function dateToDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
+}
+
+const INFORMAL_REVIEW_MODES: HearingMode[] = [
+  "In Person",
+  "Phone",
+  "Videoconference",
+  "Affidavit",
+  "Unknown",
+];
+
+function InformalReviewSection({
+  protest,
+  property,
+  strategyRecommendation,
+  evidenceDocuments,
+  onUpdate,
+}: {
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  strategyRecommendation: string | null;
+  evidenceDocuments: DocumentRecord[];
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
+  const [timeInput, setTimeInput] = useState(parseTimeToInput(protest.informalReviewTime));
+  const [modeInput, setModeInput] = useState<HearingMode>(
+    protest.informalReviewMode ?? "In Person",
+  );
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [guidance, setGuidance] = useState<InformalReviewGuidance | null>(null);
+  const [loadingGuidance, setLoadingGuidance] = useState(false);
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<HearingNoticeRecord | null>(null);
+
+  // Inline Q&A — stateless, same engine as the site-wide Ask AI widget
+  // (ask-about-document). Only the latest question/answer is kept on screen.
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [qaError, setQaError] = useState<string | null>(null);
+
+  const countyInfo = getCountyProtestInfo(property.cad);
+
+  // The latest hearing/county notice already read for this case — grounds the
+  // guidance below (see getInformalReviewGuidance's noticeContext arg). Same
+  // call HearingNoticeSection and HearingPrepSection already make.
+  useEffect(() => {
+    getLatestHearingNotice(protest.id)
+      .then((n) => {
+        setNotice(n);
+        // Seed the date only from a notice that's actually about an informal
+        // review — never the formal ARB hearing date.
+        if (n?.hearingDate && /informal/i.test(n.hearingType ?? "")) {
+          setDateInput((prev) => prev || n.hearingDate!);
+        }
+      })
+      .catch((err) => console.error("Could not load hearing notice:", err));
+  }, [protest.id]);
+
+  async function handleStatusChange(status: InformalStatus) {
+    setUpdatingStatus(true);
+    try {
+      await updateInformalStatus(protest.id, status);
+      onUpdate({ informalStatus: status });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not update this status."));
+    } finally {
+      setUpdatingStatus(false);
+    }
+  }
+
+  async function handleSaveSchedule(e: FormEvent) {
+    e.preventDefault();
+    if (!dateInput) return;
+    setSavingSchedule(true);
+    try {
+      const displayTime = timeInput ? formatInputTime(timeInput) : null;
+      await scheduleInformalReview(protest.id, dateInput, { time: displayTime, mode: modeInput });
+      onUpdate({
+        informalStatus: "scheduled",
+        informalReviewDate: dateInput,
+        informalReviewTime: displayTime,
+        informalReviewMode: modeInput,
+      });
+      toast.success("Informal review scheduled — added to your calendar.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this schedule."));
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  async function handleGetGuidance() {
+    setLoadingGuidance(true);
+    setGuidanceError(null);
+    try {
+      const result = await getInformalReviewGuidance(
+        property,
+        countyInfo,
+        strategyRecommendation,
+        property.estimatedSavings,
+        evidenceDocuments.map((d) => d.fileName),
+        notice,
+      );
+      setGuidance(result);
+      // Saved quietly — never its own prominent field, see the schema
+      // comment on informal_appraiser_category — just so it's on file the
+      // next time this case's guidance is looked at (by staff, say).
+      saveInformalAppraiserCategory(protest.id, result.appraiserCategory).catch((err) =>
+        console.error("Could not save appraiser category:", err),
+      );
+    } catch (err) {
+      setGuidanceError(getErrorMessage(err, "Could not get guidance. Please try again."));
+    } finally {
+      setLoadingGuidance(false);
+    }
+  }
+
+  async function handleAsk(e: FormEvent) {
+    e.preventDefault();
+    const q = question.trim();
+    if (!q || asking) return;
+    setAsking(true);
+    setQaError(null);
+    setAnswer(null);
+    try {
+      const context = [
+        `Property: ${property.address}${property.cad ? `, ${property.cad}` : ""}`,
+        property.accountNumber ? `Account: ${property.accountNumber}` : null,
+        property.taxYear ? `Tax year: ${property.taxYear}` : null,
+        strategyRecommendation ? `Case strategy: ${strategyRecommendation}` : null,
+        countyInfo?.informalReview?.howToRequest
+          ? `County informal-review process: ${countyInfo.informalReview.howToRequest}`
+          : null,
+        notice
+          ? `Uploaded notice — hearing date ${notice.hearingDate ?? "n/a"}, evidence deadline ${
+              notice.evidenceSubmissionDeadline ?? "n/a"
+            }, county contact ${notice.countyContact ?? "n/a"}, informal review available: ${
+              notice.informalReviewAvailable
+            }. Instructions: ${notice.submissionInstructions ?? "none stated"}`
+          : "No county notice uploaded for this case yet.",
+        guidance
+          ? `Guidance already shown to the user — steps: ${guidance.steps.join(
+              " | ",
+            )}; where to schedule: ${guidance.whereToSchedule || "unknown"}; deadlines: ${
+              guidance.applicableDeadlines.join(" | ") || "none"
+            }.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const { answer: a } = await askAboutDocument({
+        question: `About the informal review for this Texas property tax protest: ${q}`,
+        context,
+      });
+      setAnswer(a);
+    } catch (err) {
+      setQaError(getErrorMessage(err, "Could not answer that. Please try again."));
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  const mailto = guidance ? buildInformalReviewMailto(guidance) : null;
+  const scheduled = protest.informalStatus === "scheduled" && !!protest.informalReviewDate;
+
+  return (
+    <div id="case-informal-review" className="mt-5 border-t border-border pt-5">
+      <h4 className="text-sm font-semibold">Informal Review</h4>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        <span className="badge-soft">{INFORMAL_STATUS_LABEL[protest.informalStatus]}</span>
+        <select
+          value={protest.informalStatus}
+          disabled={updatingStatus}
+          onChange={(e) => handleStatusChange(e.target.value as InformalStatus)}
+          className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-60"
+        >
+          {INFORMAL_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Schedule — always available, not gated behind the status dropdown.
+          Saving it sets the status to "scheduled" and feeds the in-platform
+          calendar + Google/ICS sync (see scheduleInformalReview). */}
+      <form onSubmit={handleSaveSchedule} className="mt-3 rounded-md border border-border p-3">
+        <div className="text-xs font-semibold text-foreground">Schedule the informal review</div>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          Enter the date, time, and mode you arranged with the appraisal district — it goes straight
+          onto your calendar.
+        </p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <div className="grid gap-1 text-xs">
+            <span>Date</span>
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Date"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                  {dateInput
+                    ? new Date(`${dateInput}T00:00:00`).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "Pick a date"}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-0">
+                <DatePickerCalendar
+                  mode="single"
+                  selected={dateInputToDate(dateInput)}
+                  onSelect={(d) => {
+                    if (d) setDateInput(dateToDateInput(d));
+                    setCalendarOpen(false);
+                  }}
+                  disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <label className="grid gap-1 text-xs">
+            Time
+            <input
+              type="time"
+              value={timeInput}
+              onChange={(e) => setTimeInput(e.target.value)}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="grid gap-1 text-xs">
+            Mode
+            <select
+              value={modeInput}
+              onChange={(e) => setModeInput(e.target.value as HearingMode)}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            >
+              {INFORMAL_REVIEW_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            disabled={savingSchedule || !dateInput}
+            className="btn-accent text-xs py-1.5 disabled:opacity-60"
+          >
+            {savingSchedule ? "Saving…" : "Save & add to calendar"}
+          </button>
+        </div>
+        {scheduled && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            On file: {protest.informalReviewDate}
+            {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
+            {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
+            <Link to="/dashboard/calendar" className="text-accent hover:underline">
+              View on calendar
+            </Link>
+          </p>
+        )}
+      </form>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={handleGetGuidance}
+          disabled={loadingGuidance}
+          className="btn-outline text-xs py-1.5 disabled:opacity-60"
+        >
+          {loadingGuidance
+            ? "Reading your case…"
+            : guidance
+              ? "Refresh Guidance"
+              : "Get Informal Review Guidance"}
+        </button>
+        {guidanceError && <p className="mt-1 text-xs text-destructive">{guidanceError}</p>}
+      </div>
+
+      {guidance && (
+        <div className="mt-3 grid gap-3 rounded-md border border-border p-3 text-sm">
+          <div>
+            <span className="font-semibold">Available: </span>
+            <span className="text-muted-foreground">{guidance.available}</span>
+          </div>
+
+          {guidance.steps.length > 0 && (
+            <div className="text-xs">
+              <div className="font-semibold text-foreground">
+                Steps to schedule &amp; complete it
+              </div>
+              <ol className="mt-1 grid list-decimal gap-1 pl-4 text-muted-foreground">
+                {guidance.steps.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <div>
+              <div className="font-semibold text-foreground">Where to Schedule</div>
+              <MarkdownLite
+                className="text-muted-foreground"
+                text={guidance.whereToSchedule || "Not stated."}
+              />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">Who to Contact</div>
+              <MarkdownLite
+                className="text-muted-foreground"
+                text={guidance.whoToContact || "Not confirmed."}
+              />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">How to Request It</div>
+              <MarkdownLite
+                className="text-muted-foreground"
+                text={guidance.howToRequest || "Not confirmed."}
+              />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">What Value to Request</div>
+              <MarkdownLite
+                className="text-muted-foreground"
+                text={guidance.requestedValueGuidance}
+              />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">Responding to a Proposed Value</div>
+              <MarkdownLite
+                className="text-muted-foreground"
+                text={guidance.respondingToProposedValue}
+              />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">What to Say</div>
+              <MarkdownLite className="text-muted-foreground" text={guidance.whatToSay} />
+            </div>
+            <div>
+              <div className="font-semibold text-foreground">What Not to Say</div>
+              <MarkdownLite className="text-muted-foreground" text={guidance.whatNotToSay} />
+            </div>
+            <div className="sm:col-span-2">
+              <div className="font-semibold text-foreground">Does Accepting End the Case?</div>
+              <MarkdownLite className="text-muted-foreground" text={guidance.acceptingEndsCase} />
+            </div>
+          </div>
+
+          {guidance.applicableDeadlines.length > 0 && (
+            <div className="text-xs">
+              <div className="font-semibold text-foreground">Applicable Deadlines</div>
+              <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                {guidance.applicableDeadlines.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {guidance.documentsToProvide.length > 0 && (
+            <div className="text-xs">
+              <div className="font-semibold text-foreground">Documents to Provide</div>
+              <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                {guidance.documentsToProvide.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {guidance.evidenceToUse.length > 0 && (
+            <div className="text-xs">
+              <div className="font-semibold text-foreground">Evidence to Use</div>
+              <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                {guidance.evidenceToUse.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(guidance.missingInfo.length > 0 || guidance.nextSteps.length > 0) && (
+            <div className="rounded-md bg-accent/5 border border-accent/30 p-2 text-xs">
+              {guidance.missingInfo.length > 0 && (
+                <>
+                  <div className="font-semibold text-foreground">
+                    Missing from your notice — do this to fill the gap
+                  </div>
+                  <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                    {guidance.missingInfo.map((d, i) => (
+                      <li key={i}>• {d}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {guidance.nextSteps.length > 0 && (
+                <div className={guidance.missingInfo.length > 0 ? "mt-2" : ""}>
+                  <div className="font-semibold text-foreground">Next steps</div>
+                  <ol className="mt-0.5 grid list-decimal gap-0.5 pl-4 text-muted-foreground">
+                    {guidance.nextSteps.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mailto ? (
+            <div>
+              <a href={mailto} className="btn-accent text-xs py-1.5 inline-flex">
+                Draft Email to {guidance.contactEmail}
+              </a>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Opens your email app with a suggested request pre-filled — review and edit before
+                sending.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No confirmed email contact on file for this county — use the phone/contact info above,
+              or check {property.cad ?? "your appraisal district"}'s website directly.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Ask the AI a follow-up about the informal review / preparation. */}
+      <form onSubmit={handleAsk} className="mt-3">
+        <div className="text-xs font-semibold text-foreground">Ask about the informal review</div>
+        <div className="mt-1 flex flex-wrap items-end gap-2">
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            rows={2}
+            aria-label="Ask about the informal review"
+            placeholder="e.g. Can I bring new comps to the informal that weren't in my protest?"
+            className="min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={asking || !question.trim()}
+            className="btn-outline text-xs py-1.5 disabled:opacity-60"
+          >
+            {asking ? "Asking…" : "Ask"}
+          </button>
+        </div>
+        {qaError && <p className="mt-1 text-xs text-destructive">{qaError}</p>}
+        {answer && (
+          <div className="mt-2 rounded-md border border-border bg-secondary/30 p-2 text-xs">
+            <MarkdownLite text={answer} />
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
+
+// "Once the protest has been filed" — real AI extraction from the actual
+// hearing notice (or other county notice) the user uploads, cross-checked
+// against the case's own known facts (see extract-hearing-notice's own
+// deterministic discrepancy check), and — once a real hearing date is on
+// it — fed straight into scheduleHearing() so it shows up wherever this
+// app's calendar sync already reads hearing_date/time/location from (the
+// webcal feed and the real Google Calendar sync both pick it up on their
+// own next pass, no separate calendar code needed here).
+const HEARING_NOTICE_DOCUMENT_TYPE = "Hearing Notice";
+
+function HearingNoticeSection({
+  userId,
+  protest,
+  property,
+  onUpdate,
+}: {
+  userId: string;
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [notice, setNotice] = useState<HearingNoticeRecord | null>(null);
+  const [loadingNotice, setLoadingNotice] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pending, setPending] = useState<HearingNoticeExtraction | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getLatestHearingNotice(protest.id)
+      .then(setNotice)
+      .catch((err) => console.error("Could not load hearing notice:", err))
+      .finally(() => setLoadingNotice(false));
+  }, [protest.id]);
+
+  const countyInfo = getCountyProtestInfo(property.cad);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const extraction = await extractHearingNotice(property, file, countyInfo);
+      setPending(extraction);
+      setPendingFile(file);
+    } catch (err) {
+      setUploadError(getErrorMessage(err, "Could not read this notice. Please try again."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!pending) return;
+    setSaving(true);
+    try {
+      let documentId: string | null = null;
+      if (pendingFile) {
+        const doc = await uploadDocument(
+          userId,
+          property.id,
+          pendingFile,
+          HEARING_NOTICE_DOCUMENT_TYPE,
+        );
+        documentId = doc.id;
+      }
+      const saved = await saveHearingNotice(userId, protest.id, documentId, pending);
+      setNotice(saved);
+      setPending(null);
+      setPendingFile(null);
+      // Only advances the case (and, by extension, the calendar) when the
+      // notice actually stated a real hearing date — a notice that's
+      // something else entirely (an exemption denial, a value notice)
+      // still saves for its own record, but doesn't invent a hearing.
+      if (pending.hearingDate) {
+        await scheduleHearing(protest.id, pending.hearingDate, {
+          time: pending.hearingTime,
+          location: pending.hearingLocation,
+          mode: pending.hearingMode,
+        });
+        onUpdate({
+          hearingDate: pending.hearingDate,
+          hearingTime: pending.hearingTime,
+          hearingLocation: pending.hearingLocation,
+          hearingMode: pending.hearingMode,
+          status: "hearing_scheduled",
+        });
+      }
+      toast.success("Hearing notice saved.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this notice."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscard() {
+    setPending(null);
+    setPendingFile(null);
+    setUploadError(null);
+  }
+
+  if (loadingNotice) return null;
+
+  const uploadLabel = notice ? "Upload an Updated Notice" : "Upload Hearing Notice";
+  const uploadButton = (
+    <label
+      className={`inline-flex ${notice ? "btn-outline" : "btn-accent"} cursor-pointer text-xs py-1.5 ${uploading ? "pointer-events-none opacity-60" : ""}`}
+    >
+      {uploading ? "Reading your notice…" : uploadLabel}
+      <input
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        disabled={uploading}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) handleUpload(file);
+        }}
+      />
+    </label>
+  );
+
+  return (
+    <div id="case-hearing-notice" className="mt-5 border-t border-border pt-5">
+      <h4 className="text-sm font-semibold">Hearing Notice</h4>
+
+      {!notice && !pending && (
+        <div className="mt-2 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+          <p className="font-medium">Next Step</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Upload the hearing notice or other notice received from the county. AI will read it,
+            check it against your case, and — if it states a real hearing date — get it onto your
+            calendar.
+          </p>
+          <div className="mt-2">{uploadButton}</div>
+          {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
+        </div>
+      )}
+
+      {!pending && notice && (
+        <div className="mt-2 rounded-md border border-border p-3 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              <Field label="Hearing Date" value={notice.hearingDate ?? "Not stated"} />
+              <Field label="Hearing Time" value={notice.hearingTime ?? "Not stated"} />
+              <Field label="Hearing Location" value={notice.hearingLocation ?? "Not stated"} />
+              <Field label="Hearing Mode" value={notice.hearingMode} />
+              <Field
+                label="Evidence Submission Deadline"
+                value={notice.evidenceSubmissionDeadline ?? "Not stated"}
+              />
+              <Field
+                label="Appeal/Escalation Deadline"
+                value={notice.appealDeadline ?? "Not stated"}
+              />
+              <Field label="County Contact" value={notice.countyContact ?? "Not stated"} />
+              <Field label="Appraiser/Contact" value={notice.appraiserContact ?? "Not stated"} />
+            </div>
+            {uploadButton}
+          </div>
+          {notice.discrepancies.length > 0 && (
+            <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies flagged:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {notice.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {notice.submissionInstructions && (
+            <div className="mt-3 text-xs">
+              <div className="font-semibold text-foreground">Submission Instructions</div>
+              <p className="text-muted-foreground">{notice.submissionInstructions}</p>
+            </div>
+          )}
+          {notice.requiredDocuments.length > 0 && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Required Documents</div>
+              <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                {notice.requiredDocuments.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 rounded-md bg-secondary/40 p-2 text-xs">
+            <div className="font-semibold">Informal Review: {notice.informalReviewAvailable}</div>
+            <p className="mt-0.5 text-muted-foreground">{notice.proceduralDifferences}</p>
+          </div>
+          {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
+        </div>
+      )}
+
+      {pending && (
+        <div className="mt-2 rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+          <p className="font-medium">Review before saving</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Confirm this looks right — discard and re-upload if the wrong file was read.
+          </p>
+          {pending.discrepancies.length > 0 && (
+            <div className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies found:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {pending.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+            <Field label="Hearing Date" value={pending.hearingDate ?? "Not stated"} />
+            <Field label="Hearing Time" value={pending.hearingTime ?? "Not stated"} />
+            <Field label="Hearing Location" value={pending.hearingLocation ?? "Not stated"} />
+            <Field label="Hearing Mode" value={pending.hearingMode} />
+            <Field label="Hearing Type" value={pending.hearingType ?? "Not stated"} />
+            <Field
+              label="Evidence Submission Deadline"
+              value={pending.evidenceSubmissionDeadline ?? "Not stated"}
+            />
+            <Field
+              label="Appeal/Escalation Deadline"
+              value={pending.appealDeadline ?? "Not stated"}
+            />
+            <Field
+              label="Account Number (on notice)"
+              value={pending.accountNumber ?? "Not stated"}
+            />
+            <Field label="Tax Year (on notice)" value={pending.taxYear ?? "Not stated"} />
+            <Field
+              label="Property Address (on notice)"
+              value={pending.propertyAddress ?? "Not stated"}
+            />
+            <Field label="County Contact" value={pending.countyContact ?? "Not stated"} />
+            <Field label="Appraiser/Contact" value={pending.appraiserContact ?? "Not stated"} />
+          </div>
+          {pending.submissionInstructions && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Submission Instructions</div>
+              <p className="text-muted-foreground">{pending.submissionInstructions}</p>
+            </div>
+          )}
+          {pending.requiredDocuments.length > 0 && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Required Documents</div>
+              <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+                {pending.requiredDocuments.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 rounded-md bg-secondary/40 p-2 text-xs">
+            <div className="font-semibold">Informal Review: {pending.informalReviewAvailable}</div>
+            <p className="mt-0.5 text-muted-foreground">{pending.proceduralDifferences}</p>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={handleConfirm}
+              disabled={saving}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Confirm & Save"}
+            </button>
+            <button
+              onClick={handleDiscard}
+              disabled={saving}
+              className="btn-outline text-xs py-1.5"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuideText({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="mt-2">
+      <div className="text-xs font-semibold text-foreground">{label}</div>
+      <MarkdownLite
+        text={value}
+        className={`mt-0.5 text-muted-foreground ${bold ? "font-medium text-foreground" : ""}`}
+      />
+    </div>
+  );
+}
+
+function GuideList({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-2">
+      <div className="text-xs font-semibold text-foreground">{label}</div>
+      <ul className="mt-0.5 grid gap-0.5 text-muted-foreground">
+        {items.map((item, i) => (
+          <li key={i}>• {item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const HEARING_STATUS_STYLE: Record<HearingUserStatus, string> = {
+  "Hearing Scheduled": "bg-secondary text-foreground",
+  "No Action Needed": "bg-secondary text-muted-foreground",
+  "Upload Documents": "bg-amber-500/15 text-amber-700",
+  "Attend Hearing": "bg-accent/15 text-accent",
+};
+
+const ATTENDANCE_TYPES: AttendanceType[] = ["Property Owner", "Authorized Agent", "Both"];
+
+// The real, step-by-step ARB hearing prep guide — see hearing-prep.ts /
+// hearing-prep-guide/index.ts for how it's grounded. Only shown once a
+// hearing is actually scheduled; before that there's nothing real yet to
+// prepare for.
+function HearingPrepSection({
+  protest,
+  property,
+  caseData,
+  evidenceDocuments,
+  settlementAgreement,
+  onUpdate,
+}: {
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  caseData: ProtestCase | null;
+  evidenceDocuments: DocumentRecord[];
+  settlementAgreement: SettlementAgreementRecord | null;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [notice, setNotice] = useState<HearingNoticeRecord | null>(null);
+  const [loadingNotice, setLoadingNotice] = useState(true);
+  const [guide, setGuide] = useState<HearingPrepGuide | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+
+  useEffect(() => {
+    getLatestHearingNotice(protest.id)
+      .then(setNotice)
+      .catch((err) => console.error("Could not load hearing notice for prep guide:", err))
+      .finally(() => setLoadingNotice(false));
+  }, [protest.id]);
+
+  const countyInfo = getCountyProtestInfo(property.cad);
+  const hearingStatus = getHearingUserStatus(protest, !!notice, evidenceDocuments.length);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const result = await getHearingPrepGuide(
+        property,
+        protest,
+        caseData?.strategyRecommendation ?? null,
+        caseData?.strategyRationale ?? null,
+        countyInfo,
+        notice,
+        evidenceDocuments.map((d) => d.fileName),
+        null,
+      );
+      setGuide(result);
+    } catch (err) {
+      setGenError(
+        getErrorMessage(err, "Could not generate your hearing prep guide. Please try again."),
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleAttendanceChange(value: AttendanceType) {
+    setSavingAttendance(true);
+    try {
+      await saveAttendanceType(protest.id, value);
+      onUpdate({ attendanceType: value });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save who's attending."));
+    } finally {
+      setSavingAttendance(false);
+    }
+  }
+
+  if (protest.status !== "hearing_scheduled" || loadingNotice) return null;
+
+  return (
+    <div id="case-hearing-prep" className="mt-5 border-t border-border pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold">Hearing Preparation</h4>
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${HEARING_STATUS_STYLE[hearingStatus]}`}
+        >
+          {hearingStatus}
+        </span>
+      </div>
+
+      <InformalOutcomeBanner protest={protest} agreement={settlementAgreement} inline />
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted-foreground">Who&apos;s attending:</span>
+        {ATTENDANCE_TYPES.map((opt) => (
+          <button
+            key={opt}
+            onClick={() => handleAttendanceChange(opt)}
+            disabled={savingAttendance}
+            className={`rounded-full border px-2 py-1 ${
+              protest.attendanceType === opt
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-border text-muted-foreground"
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+
+      {(protest.attendanceType === "Authorized Agent" || protest.attendanceType === "Both") && (
+        <div className="mt-2 rounded-md border border-border p-2.5 text-xs">
+          {protest.assignedRepresentative ? (
+            <>
+              <span className="font-medium">Your CorvusPT representative: </span>
+              {protest.assignedRepresentative}
+              {protest.assignedRepSetAt && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  (assigned {new Date(protest.assignedRepSetAt).toLocaleDateString()})
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              CorvusPT is assigning a representative for this hearing — check back before your
+              hearing date.
+            </span>
+          )}
+        </div>
+      )}
+
+      {!guide && (
+        <div className="mt-3">
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="btn-accent text-xs py-1.5 disabled:opacity-60"
+          >
+            {generating ? "Preparing your guide…" : "Generate Hearing Prep Guide"}
+          </button>
+          {genError && <p className="mt-2 text-xs text-destructive">{genError}</p>}
+        </div>
+      )}
+
+      {guide && (
+        <div className="mt-3 grid gap-4 text-sm">
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="btn-outline w-fit text-xs py-1.5 disabled:opacity-60"
+          >
+            {generating ? "Regenerating…" : "Regenerate Guide"}
+          </button>
+
+          <div>
+            <div className="font-semibold">Hearing Summary</div>
+            <MarkdownLite className="mt-1 text-muted-foreground" text={guide.hearingSummary} />
+          </div>
+
+          {guide.evidencePacketNote && (
+            <div className="rounded-md bg-secondary/40 p-2 text-xs">
+              <div className="font-semibold">Evidence Packet</div>
+              <MarkdownLite className="mt-0.5" text={guide.evidencePacketNote} />
+            </div>
+          )}
+
+          <div className="rounded-md border border-border p-3">
+            <div className="font-semibold text-accent">Step 1 — Before the Hearing</div>
+            <GuideList label="What to review" items={guide.beforeHearing.whatToReview} />
+            <GuideList
+              label="Documents to have ready"
+              items={guide.beforeHearing.documentsToHaveReady}
+            />
+            <GuideText label="Value to request" value={guide.beforeHearing.valueToRequest} />
+            <GuideList label="Key evidence" items={guide.beforeHearing.keyEvidence} />
+            <GuideText
+              label="How to organize your evidence"
+              value={guide.beforeHearing.howToOrganize}
+            />
+            <GuideText label="Preparing for questions" value={guide.beforeHearing.questionPrep} />
+          </div>
+
+          <div className="rounded-md border border-border p-3">
+            <div className="font-semibold text-accent">Step 2 — During the Hearing</div>
+            <GuideText label="Opening statement" value={guide.duringHearing.openingStatement} />
+            <GuideText
+              label="Property/value explanation"
+              value={guide.duringHearing.valueExplanation}
+            />
+            <GuideText
+              label="Presenting comparable evidence"
+              value={guide.duringHearing.comparableEvidencePresentation}
+            />
+            <GuideText
+              label="Condition/obsolescence arguments"
+              value={guide.duringHearing.conditionArguments}
+            />
+            <GuideText label="Requested value" value={guide.duringHearing.requestedValue} bold />
+            <GuideText label="Closing statement" value={guide.duringHearing.closingStatement} />
+          </div>
+
+          <GuideList label="Property-specific arguments" items={guide.propertySpecificArguments} />
+          <GuideList label="Questions to ask" items={guide.questionsToAsk} />
+          <GuideList label="Questions the ARB/appraiser may ask" items={guide.questionsArbMayAsk} />
+          <GuideList label="Weaknesses & risk notes" items={guide.weaknessesAndRisks} />
+          <GuideList label="Documents to have available" items={guide.documentsToHave} />
+          <GuideText label="Submission instructions" value={guide.submissionInstructions} />
+          <GuideText label="County contact" value={guide.countyContact} />
+          <GuideText label="Hearing logistics" value={guide.hearingLogistics} />
+
+          <p className="text-xs italic text-muted-foreground">{guide.disclaimer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// After the hearing: upload the ARB Order / hearing decision / settlement /
+// revised value notice / other final determination, AI extracts the real
+// facts, and confirming applies them to the case via the SAME
+// recordArbDecision() CaseProgress's own manual form already uses — this is
+// an AI-assisted entry path into that one real mechanism, not a second one.
+// decisionType (approved/partial/denied) is deliberately computed HERE from
+// the real original/final values, never trusted from the model's own read
+// of the document, same discipline as every other derived fact in this app.
+function DecisionNoticeSection({
+  userId,
+  protest,
+  property,
+  onUpdate,
+}: {
+  userId: string;
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [notice, setNotice] = useState<DecisionNoticeRecord | null>(null);
+  const [loadingNotice, setLoadingNotice] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pending, setPending] = useState<DecisionExtraction | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getLatestDecisionNotice(protest.id)
+      .then(setNotice)
+      .catch((err) => console.error("Could not load decision notice:", err))
+      .finally(() => setLoadingNotice(false));
+  }, [protest.id]);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const extraction = await extractDecisionDocument(property, protest, file);
+      setPending(extraction);
+      setPendingFile(file);
+    } catch (err) {
+      setUploadError(getErrorMessage(err, "Could not read this document. Please try again."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!pending) return;
+    setSaving(true);
+    try {
+      let documentId: string | null = null;
+      if (pendingFile) {
+        const doc = await uploadDocument(userId, property.id, pendingFile, DECISION_DOCUMENT_TYPE);
+        documentId = doc.id;
+      }
+      const saved = await saveDecisionNotice(userId, protest.id, documentId, pending);
+      setNotice(saved);
+      setPending(null);
+      setPendingFile(null);
+
+      if (pending.finalValue != null) {
+        const decisionType: "partial" | "denied" =
+          pending.originalValue != null && pending.finalValue < pending.originalValue
+            ? "partial"
+            : "denied";
+        const decisionDate = pending.decisionDate ?? new Date().toISOString().slice(0, 10);
+        await recordArbDecision(protest.id, {
+          type: decisionType,
+          date: decisionDate,
+          finalValue: pending.finalValue,
+        });
+        onUpdate({
+          arbDecision: decisionType,
+          arbDecisionDate: decisionDate,
+          finalValue: pending.finalValue,
+          status: "decision_received",
+        });
+      }
+      toast.success("Decision document saved.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this document."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscard() {
+    setPending(null);
+    setPendingFile(null);
+    setUploadError(null);
+  }
+
+  if (loadingNotice) return null;
+  if (
+    protest.status !== "hearing_scheduled" &&
+    protest.status !== "decision_received" &&
+    protest.status !== "resolved"
+  )
+    return null;
+
+  const uploadLabel = notice ? "Upload an Updated Decision Document" : "Upload Decision Document";
+  const uploadButton = (
+    <label
+      className={`inline-flex ${notice ? "btn-outline" : "btn-accent"} cursor-pointer text-xs py-1.5 ${uploading ? "pointer-events-none opacity-60" : ""}`}
+    >
+      {uploading ? "Reading your document…" : uploadLabel}
+      <input
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        disabled={uploading}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) handleUpload(file);
+        }}
+      />
+    </label>
+  );
+
+  const reduction =
+    protest.originalValue != null && protest.finalValue != null
+      ? protest.originalValue - protest.finalValue
+      : null;
+  const savings =
+    reduction != null && reduction > 0 ? reduction * getEffectiveTaxRate(property.cad) : null;
+
+  return (
+    <div id="case-decision-notice" className="mt-5 border-t border-border pt-5">
+      <h4 className="text-sm font-semibold">Hearing Decision</h4>
+      <p className="mt-1 text-xs text-muted-foreground">
+        After your hearing, upload the ARB Order, hearing decision, settlement, revised value
+        notice, or other final determination you receive.
+      </p>
+
+      {!notice && !pending && (
+        <div className="mt-2">
+          {uploadButton}
+          {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
+        </div>
+      )}
+
+      {!pending && notice && (
+        <div className="mt-2 rounded-md border border-border p-3 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              <Field label="Document Type" value={notice.documentCategory} />
+              <Field label="Decision Date" value={notice.decisionDate ?? "Not stated"} />
+              <Field
+                label="Original Value"
+                value={notice.originalValue != null ? currency(notice.originalValue) : "Not stated"}
+              />
+              <Field
+                label="Final Value"
+                value={notice.finalValue != null ? currency(notice.finalValue) : "Not stated"}
+              />
+              <Field label="Appeal Deadline" value={notice.appealDeadline ?? "Not stated"} />
+              <Field label="Refund" value={notice.refundIndicator ?? "Not stated"} />
+            </div>
+            {uploadButton}
+          </div>
+          {notice.discrepancies.length > 0 && (
+            <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies flagged:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {notice.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {notice.settlementTerms && (
+            <div className="mt-3 text-xs">
+              <div className="font-semibold text-foreground">Terms</div>
+              <p className="text-muted-foreground">{notice.settlementTerms}</p>
+            </div>
+          )}
+          {notice.otherConditions && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Other Conditions</div>
+              <p className="text-muted-foreground">{notice.otherConditions}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {pending && (
+        <div className="mt-2 rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+          <p className="font-medium">Review before saving</p>
+          {pending.discrepancies.length > 0 && (
+            <div className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies found:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {pending.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+            <Field label="Document Type" value={pending.documentCategory} />
+            <Field label="Decision Date" value={pending.decisionDate ?? "Not stated"} />
+            <Field
+              label="Original Value"
+              value={pending.originalValue != null ? currency(pending.originalValue) : "Not stated"}
+            />
+            <Field
+              label="Final Value"
+              value={pending.finalValue != null ? currency(pending.finalValue) : "Not stated"}
+            />
+            <Field label="Tax Year (on document)" value={pending.taxYear ?? "Not stated"} />
+            <Field
+              label="Account Number (on document)"
+              value={pending.accountNumber ?? "Not stated"}
+            />
+            <Field label="Appeal Deadline" value={pending.appealDeadline ?? "Not stated"} />
+            <Field label="Refund" value={pending.refundIndicator ?? "Not stated"} />
+          </div>
+          {pending.settlementTerms && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Terms</div>
+              <p className="text-muted-foreground">{pending.settlementTerms}</p>
+            </div>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={handleConfirm}
+              disabled={saving}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Confirm & Save"}
+            </button>
+            <button
+              onClick={handleDiscard}
+              disabled={saving}
+              className="btn-outline text-xs py-1.5"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {protest.arbDecision && protest.finalValue != null && (
+        <div className="mt-3 grid gap-2 rounded-md bg-secondary/40 p-3 text-xs sm:grid-cols-2">
+          <Field label="Decision Received" value={protest.arbDecisionDate ?? "Yes"} success />
+          <Field
+            label="Original Value"
+            value={protest.originalValue != null ? currency(protest.originalValue) : "Not on file"}
+          />
+          <Field label="Final Value" value={currency(protest.finalValue)} bold />
+          <Field
+            label="Value Reduction"
+            value={reduction != null ? currency(reduction) : "N/A"}
+            success={reduction != null && reduction > 0}
+          />
+          <Field
+            label="Estimated Tax Savings"
+            value={savings != null ? `${currency(savings)}/yr` : "N/A"}
+            success={savings != null}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Amber, non-blocking notice at the top of the case (and inline in
+// HearingPrepSection) whenever the county's informal proposed value is on
+// the table but the owner hasn't recorded what came of it. Product asked
+// for a warning, not a hard gate — the case still works, this just keeps
+// the history honest.
+function InformalOutcomeBanner({
+  protest,
+  agreement,
+  inline = false,
+  onNavigate,
+}: {
+  protest: ProtestRecord;
+  agreement: SettlementAgreementRecord | null;
+  inline?: boolean;
+  // Optional — jump to the Informal Review tab + settlement section. When
+  // absent (the inline copy inside HearingPrepSection), falls back to a plain
+  // same-page scroll.
+  onNavigate?: (anchor: string) => void;
+}) {
+  const unresolved =
+    protest.status !== "resolved" &&
+    (protest.informalStatus === "proposed_value_received" ||
+      (!!agreement && !agreement.outcomeConfirmedAt));
+  if (!unresolved) return null;
+  return (
+    <div
+      className={`${inline ? "mt-3" : "mt-4"} rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs`}
+    >
+      <div className="font-semibold text-amber-700">Informal outcome not confirmed yet</div>
+      <p className="mt-1 text-muted-foreground">
+        The county&apos;s informal proposed value hasn&apos;t been resolved. Record whether you
+        accepted or rejected it, and whether you&apos;re satisfied, before working the formal
+        hearing — otherwise the case history and savings won&apos;t be right.
+      </p>
+      <button
+        type="button"
+        onClick={() =>
+          onNavigate
+            ? onNavigate("case-settlement-signature")
+            : document
+                .getElementById("case-settlement-signature")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+        className="btn-outline mt-2 text-xs py-1"
+      >
+        Go to the settlement section
+      </button>
+    </div>
+  );
+}
+
+// The county's proposed value / settlement offer, end to end: AI reads the
+// real settled value/terms off the uploaded document, the owner says
+// whether they've already accepted/rejected it, otherwise they confirm it
+// looks right and sign here (or upload the copy they signed in person for
+// AI to verify), and finally they confirm Satisfied / Not Satisfied — which
+// resolves the case at the settled value or unlocks formal-hearing prep.
+// See settlement-agreement.ts for the read/verify/sign/outcome mechanics.
+function SettlementSignatureSection({
+  userId,
+  protest,
+  property,
+  agreement,
+  onAgreementChange,
+  onUpdate,
+}: {
+  userId: string;
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  agreement: SettlementAgreementRecord | null;
+  onAgreementChange: (a: SettlementAgreementRecord | null) => void;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [originalDoc, setOriginalDoc] = useState<DocumentRecord | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pending, setPending] = useState<DecisionExtraction | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const [signerName, setSignerName] = useState("");
+  const [signing, setSigning] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [recordingResponse, setRecordingResponse] = useState(false);
+  const [verifyingCopy, setVerifyingCopy] = useState(false);
+  const [signedCopyExtraction, setSignedCopyExtraction] = useState<DecisionExtraction | null>(null);
+  const [confirmingOutcome, setConfirmingOutcome] = useState(false);
+
+  useEffect(() => {
+    if (agreement?.documentId) {
+      getDocumentById(userId, agreement.documentId)
+        .then(setOriginalDoc)
+        .catch(() => {});
+    }
+  }, [agreement?.documentId, userId]);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const extraction = await extractSettlementDocument(property, protest, file);
+      setPending(extraction);
+      setPendingFile(file);
+    } catch (err) {
+      setUploadError(getErrorMessage(err, "Could not read this document. Please try again."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSaveExtraction() {
+    if (!pending || !pendingFile) return;
+    setSaving(true);
+    try {
+      const doc = await uploadDocument(userId, property.id, pendingFile, SETTLEMENT_DOCUMENT_TYPE);
+      setOriginalDoc(doc);
+      const saved = await saveSettlementAgreement(userId, protest.id, doc.id, pending);
+      onAgreementChange(saved);
+      setPending(null);
+      setPendingFile(null);
+      toast.success("Settlement document saved — tell us what came of it below.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this document."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResponse(status: "not_yet" | "accepted" | "rejected") {
+    if (!agreement) return;
+    setRecordingResponse(true);
+    try {
+      await recordSettlementResponse(protest.id, agreement.id, status);
+      onAgreementChange({
+        ...agreement,
+        responseStatus: status,
+        responseRecordedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save your response."));
+    } finally {
+      setRecordingResponse(false);
+    }
+  }
+
+  async function handleConfirmLooksCorrect() {
+    if (!agreement) return;
+    setConfirming(true);
+    try {
+      await confirmSettlementAgreement(agreement.id);
+      onAgreementChange({ ...agreement, userConfirmedAt: new Date().toISOString() });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save your confirmation."));
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function handleSign() {
+    if (!agreement || !signature || !originalDoc || !signerName.trim()) return;
+    setSigning(true);
+    try {
+      const { record } = await signSettlementAgreement(
+        userId,
+        agreement,
+        property,
+        originalDoc,
+        signature,
+        signerName.trim(),
+      );
+      onAgreementChange(record);
+      toast.success(
+        "Signed. Download the completed settlement below, then confirm whether you're satisfied.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not sign this document."));
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function handleVerifySignedCopy(file: File) {
+    if (!agreement) return;
+    setVerifyingCopy(true);
+    try {
+      const { record, extraction } = await verifySignedSettlementCopy(
+        userId,
+        agreement,
+        property,
+        protest,
+        file,
+      );
+      onAgreementChange(record);
+      setSignedCopyExtraction(extraction);
+      toast.success(
+        extraction.signaturePresent === "No"
+          ? "Uploaded, but AI couldn't find a completed signature on it — double-check the copy."
+          : "Signed copy verified.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not verify this signed copy."));
+    } finally {
+      setVerifyingCopy(false);
+    }
+  }
+
+  async function handleDownloadSigned() {
+    if (!agreement?.signedDocumentId) return;
+    setDownloading(true);
+    try {
+      const doc = await getDocumentById(userId, agreement.signedDocumentId);
+      if (!doc) throw new Error("Could not find the signed document.");
+      const url = await getDocumentUrl(doc.storagePath);
+      const res = await fetch(url);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      downloadPdf(bytes, doc.fileName);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not download the signed document."));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleOutcome(outcome: "satisfied" | "not_satisfied") {
+    if (!agreement) return;
+    const accepted = agreement.responseStatus === "accepted" || !!agreement.signedAt;
+    if (accepted && outcome === "satisfied" && agreement.settledValue == null) {
+      toast.error("No settled value on file yet — upload the settlement document above first.");
+      return;
+    }
+    setConfirmingOutcome(true);
+    try {
+      await confirmSettlementOutcome(protest.id, agreement.id, outcome);
+      onAgreementChange({
+        ...agreement,
+        outcome,
+        outcomeConfirmedAt: new Date().toISOString(),
+      });
+      if (accepted && outcome === "satisfied") {
+        const settledValue = agreement.settledValue as number;
+        await resolveInformalSettlement(protest.id, settledValue);
+        onUpdate({
+          status: "resolved",
+          finalValue: settledValue,
+          escalationPath: "accept",
+          closedAt: new Date().toISOString(),
+          informalStatus: "accepted",
+        });
+        toast.success(`Settlement accepted — case resolved at ${currency(settledValue)}.`);
+      } else {
+        await updateInformalStatus(protest.id, "rejected");
+        onUpdate({ informalStatus: "rejected" });
+        toast.success("Outcome recorded — formal-hearing prep is now unlocked.");
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not record this outcome."));
+    } finally {
+      setConfirmingOutcome(false);
+    }
+  }
+
+  function handleDiscard() {
+    setPending(null);
+    setPendingFile(null);
+    setUploadError(null);
+  }
+
+  if (protest.status === "requested" || protest.status === "resolved") return null;
+
+  const uploadButton = (
+    <label
+      className={`inline-flex ${agreement ? "btn-outline" : "btn-accent"} cursor-pointer text-xs py-1.5 ${uploading ? "pointer-events-none opacity-60" : ""}`}
+    >
+      {uploading
+        ? "Reading your document…"
+        : agreement
+          ? "Upload a Different Settlement Offer"
+          : "Upload Settlement Offer"}
+      <input
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        disabled={uploading}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) handleUpload(file);
+        }}
+      />
+    </label>
+  );
+
+  const notResponded = agreement != null && agreement.responseStatus == null && !agreement.signedAt;
+  const signHerePath =
+    agreement != null &&
+    !agreement.signedAt &&
+    (agreement.responseStatus === "not_yet" || agreement.responseStatus == null);
+  const canOfferSignedCopy =
+    agreement != null &&
+    !agreement.signedAt &&
+    !agreement.signedCopyVerifiedAt &&
+    agreement.responseStatus !== "rejected";
+  const readyForOutcome =
+    agreement != null &&
+    !agreement.outcomeConfirmedAt &&
+    (agreement.responseStatus === "accepted" ||
+      agreement.responseStatus === "rejected" ||
+      !!agreement.signedAt ||
+      !!agreement.signedCopyVerifiedAt);
+
+  return (
+    <div id="case-settlement-signature" className="mt-5 border-t border-border pt-5">
+      <h4 className="text-sm font-semibold">Settlement / Proposed Value</h4>
+      <p className="mt-1 text-xs text-muted-foreground">
+        When the county proposes a value or sends a settlement, upload it here. AI reads the real
+        settled value and terms; you tell us whether you&apos;ve already accepted or rejected it, or
+        sign it here (or upload the copy you signed in person), then confirm whether you&apos;re
+        satisfied with the outcome.
+      </p>
+
+      {!agreement && !pending && (
+        <div className="mt-2">
+          {uploadButton}
+          {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
+        </div>
+      )}
+
+      {pending && (
+        <div className="mt-2 rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+          <p className="font-medium">Review before saving</p>
+          {pending.discrepancies.length > 0 && (
+            <div className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies found:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {pending.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+            <Field
+              label="Settled Value"
+              value={pending.finalValue != null ? currency(pending.finalValue) : "Not stated"}
+              bold
+            />
+            <Field label="Tax Year (on document)" value={pending.taxYear ?? "Not stated"} />
+            <Field
+              label="Account Number (on document)"
+              value={pending.accountNumber ?? "Not stated"}
+            />
+          </div>
+          {pending.settlementTerms && (
+            <div className="mt-2 text-xs">
+              <div className="font-semibold text-foreground">Terms</div>
+              <p className="text-muted-foreground">{pending.settlementTerms}</p>
+            </div>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={handleSaveExtraction}
+              disabled={saving}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save & Continue"}
+            </button>
+            <button
+              onClick={handleDiscard}
+              disabled={saving}
+              className="btn-outline text-xs py-1.5"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!pending && agreement && (
+        <div className="mt-2 rounded-md border border-border p-3 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              <Field
+                label="Settled Value"
+                value={
+                  agreement.settledValue != null ? currency(agreement.settledValue) : "Not stated"
+                }
+                bold
+              />
+              <Field label="Tax Year (on document)" value={agreement.taxYear ?? "Not stated"} />
+            </div>
+            {uploadButton}
+          </div>
+          {agreement.discrepancies.length > 0 && (
+            <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+              <span className="font-semibold">Discrepancies flagged:</span>
+              <ul className="mt-1 grid gap-0.5">
+                {agreement.discrepancies.map((d, i) => (
+                  <li key={i}>• {d}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {agreement.termsSummary && (
+            <div className="mt-3 text-xs">
+              <div className="font-semibold text-foreground">Terms</div>
+              <p className="text-muted-foreground">{agreement.termsSummary}</p>
+            </div>
+          )}
+
+          {notResponded && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="text-xs font-semibold">Have you already responded to this offer?</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => handleResponse("accepted")}
+                  disabled={recordingResponse}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  I&apos;ve accepted it
+                </button>
+                <button
+                  onClick={() => handleResponse("rejected")}
+                  disabled={recordingResponse}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  I&apos;ve rejected it
+                </button>
+                <button
+                  onClick={() => handleResponse("not_yet")}
+                  disabled={recordingResponse}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  Not yet
+                </button>
+              </div>
+            </div>
+          )}
+
+          {signHerePath && !agreement.userConfirmedAt && (
+            <div className="mt-3 border-t border-border pt-3">
+              <button
+                onClick={handleConfirmLooksCorrect}
+                disabled={confirming}
+                className="btn-accent text-xs py-1.5 disabled:opacity-60"
+              >
+                {confirming ? "Saving…" : "This Looks Correct — OK to Sign"}
+              </button>
+            </div>
+          )}
+
+          {signHerePath && agreement.userConfirmedAt && (
+            <div className="mt-3 rounded-md border border-accent/40 bg-accent/5 p-3">
+              <div className="text-xs font-semibold">Sign to accept this settlement</div>
+              <label className="mt-2 grid gap-1 text-xs">
+                Your full legal name
+                <input
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="Full legal name"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </label>
+              <div className="mt-2">
+                <SignaturePad onChange={setSignature} />
+              </div>
+              <button
+                onClick={handleSign}
+                disabled={signing || !signature || !signerName.trim() || !originalDoc}
+                className="btn-accent mt-3 text-xs py-1.5 disabled:opacity-60"
+              >
+                {signing ? "Signing…" : "Sign & Accept"}
+              </button>
+              {!originalDoc && (
+                <p className="mt-2 text-xs text-destructive">
+                  The original uploaded document couldn&apos;t be found — re-upload it above.
+                </p>
+              )}
+            </div>
+          )}
+
+          {canOfferSignedCopy && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="text-xs font-semibold">Signed it in person at the CAD office?</div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Upload the copy you signed — AI verifies the value, date, tax year, terms, and that
+                it&apos;s actually signed.
+              </p>
+              <label
+                className={`mt-2 inline-flex btn-outline cursor-pointer text-xs py-1.5 ${
+                  verifyingCopy ? "pointer-events-none opacity-60" : ""
+                }`}
+              >
+                {verifyingCopy ? "Verifying…" : "Upload Signed Copy"}
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  disabled={verifyingCopy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) handleVerifySignedCopy(file);
+                  }}
+                />
+              </label>
+            </div>
+          )}
+
+          {agreement.signedCopyVerifiedAt && (
+            <div className="mt-3 rounded-md bg-secondary/40 p-2 text-xs">
+              <div className="font-semibold text-foreground">
+                Signed copy verified {new Date(agreement.signedCopyVerifiedAt).toLocaleDateString()}
+              </div>
+              <div className="mt-1 grid gap-1 sm:grid-cols-2">
+                <Field
+                  label="Value on signed copy"
+                  value={
+                    signedCopyExtraction?.finalValue != null
+                      ? currency(signedCopyExtraction.finalValue)
+                      : agreement.settledValue != null
+                        ? currency(agreement.settledValue)
+                        : "Not stated"
+                  }
+                />
+                <Field
+                  label="Signed date"
+                  value={signedCopyExtraction?.signedDate ?? "Not stated"}
+                />
+                <Field
+                  label="Tax year on copy"
+                  value={signedCopyExtraction?.taxYear ?? agreement.taxYear ?? "Not stated"}
+                />
+                <Field
+                  label="Signature present"
+                  value={signedCopyExtraction?.signaturePresent ?? "Unclear"}
+                />
+              </div>
+              {signedCopyExtraction?.discrepancies &&
+                signedCopyExtraction.discrepancies.length > 0 && (
+                  <div className="mt-2 rounded-md bg-destructive/10 p-2 text-destructive">
+                    <span className="font-semibold">Discrepancies on the signed copy:</span>
+                    <ul className="mt-1 grid gap-0.5">
+                      {signedCopyExtraction.discrepancies.map((d, i) => (
+                        <li key={i}>• {d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+            </div>
+          )}
+
+          {agreement.signedAt && (
+            <div className="mt-3 rounded-md bg-secondary/40 p-3 text-xs">
+              <div className="font-semibold text-foreground">
+                Signed {new Date(agreement.signedAt).toLocaleDateString()}
+              </div>
+              <p className="mt-1 text-muted-foreground">
+                Download the completed settlement and submit it to your county — there&apos;s no
+                county-wide e-filing system, so delivering it is still on you.
+              </p>
+              <button
+                onClick={handleDownloadSigned}
+                disabled={downloading}
+                className="btn-accent mt-2 text-xs py-1.5 disabled:opacity-60"
+              >
+                {downloading ? "Preparing…" : "Download Completed Settlement"}
+              </button>
+            </div>
+          )}
+
+          {readyForOutcome && (
+            <div className="mt-3 rounded-md border border-accent/40 bg-accent/5 p-3">
+              <div className="text-xs font-semibold">Are you satisfied with this outcome?</div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                This is what moves the case forward. Satisfied with an accepted value closes the
+                case at that value. Not satisfied — or a rejected offer — unlocks formal-hearing
+                prep.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => handleOutcome("satisfied")}
+                  disabled={confirmingOutcome || agreement.responseStatus === "rejected"}
+                  className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                >
+                  Satisfied
+                </button>
+                <button
+                  onClick={() => handleOutcome("not_satisfied")}
+                  disabled={confirmingOutcome}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  Not satisfied
+                </button>
+              </div>
+            </div>
+          )}
+
+          {agreement.outcomeConfirmedAt && (
+            <div className="mt-3 rounded-md bg-secondary/40 p-3 text-xs">
+              <div className="font-semibold text-foreground">
+                Outcome recorded:{" "}
+                {agreement.outcome === "satisfied" ? "Satisfied" : "Not satisfied"}
+              </div>
+              <p className="mt-1 text-muted-foreground">
+                {agreement.outcome === "satisfied" &&
+                (agreement.responseStatus === "accepted" || agreement.signedAt)
+                  ? "Case resolved at the settled value."
+                  : "Proceeding to the formal hearing — prep is unlocked below."}
+              </p>
+            </div>
+          )}
+
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Your county&apos;s CAD website usually reflects an accepted value within a few business
+            days — check there to confirm it took effect.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The complete case record — every proof/record item a fully-documented
+// protest should hold (see src/lib/case-record.ts), what's on file, and what
+// is still outstanding *for a stage the case has already reached*. Those are
+// surfaced first as "needed now" prompts so the user uploads proof at each
+// stage rather than scrambling at the end.
+const RECORD_STAGE_LABEL: Record<string, string> = {
+  filing: "Filing",
+  informal: "Informal review",
+  hearing: "Formal hearing",
+  decision: "Decision",
+  escalation: "Escalation",
+  resolved: "Resolved",
+};
+
+function CaseRecordSection({
+  userId,
+  protest,
+  property,
+  onUpdate,
+}: {
+  userId: string;
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [docs, setDocs] = useState<DocumentRecord[]>([]);
+  const [countyCommLogged, setCountyCommLogged] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confNum, setConfNum] = useState(protest.filingConfirmationNumber ?? "");
+  const [channel, setChannel] = useState(protest.filingChannel ?? "");
+  const [tracking, setTracking] = useState(protest.certifiedMailTracking ?? "");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    Promise.all([listDocuments(userId), getCaseAuditTrail(protest.id)])
+      .then(([allDocs, events]) => {
+        if (!live) return;
+        setDocs(allDocs.filter((d) => d.propertyId === property.id));
+        setCountyCommLogged(events.some((e) => e.kind === "county_communication"));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [userId, property.id, protest.id, reloadKey]);
+
+  const stage = caseRecordStage(protest);
+  const items = getCaseRecord(protest, {
+    documents: docs,
+    hearingNoticeOnFile: !!(protest.hearingLocation || protest.hearingTime),
+    countyCommunicationLogged: countyCommLogged,
+  });
+  const prompts = outstandingProofPrompts(items, stage);
+  const { onFile, applicable } = caseRecordCompletion(items);
+
+  async function uploadFor(item: CaseRecordItem, files: File[]) {
+    if (!item.docType || files.length === 0) return;
+    setBusy(item.id);
+    try {
+      for (const file of files) {
+        const doc = await uploadDocument(userId, property.id, file, item.docType);
+        void logCaseEvent(protest.id, "document_added", `${item.label}: uploaded ${doc.fileName}.`);
+      }
+      toast.success("Added to the case record.");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload this file.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveField(patch: Parameters<typeof saveCaseRecordFields>[1], label: string) {
+    setBusy(label);
+    try {
+      await saveCaseRecordFields(protest.id, patch);
+      onUpdate(patch as Partial<ProtestRecord>);
+      toast.success("Saved to the case record.");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save this.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const byStage = new Map<string, CaseRecordItem[]>();
+  for (const it of items) {
+    byStage.set(it.stage, [...(byStage.get(it.stage) ?? []), it]);
+  }
+
+  return (
+    <div id="case-record" className="mt-4 card-elev p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h4 className="font-serif text-base font-semibold">Case Record</h4>
+        <span className="text-xs text-muted-foreground">
+          {onFile}/{applicable} on file
+        </span>
+      </div>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        The supporting documents and proof this case keeps on file, stage by stage.
+      </p>
+
+      {prompts.length > 0 && (
+        <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+          <p className="text-xs font-semibold text-warning-foreground">
+            Upload proof for the current stage
+          </p>
+          <ul className="mt-1.5 space-y-1.5">
+            {prompts.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-warning-foreground">{p.label}</span>
+                {p.fulfil === "document" && p.docType && (
+                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-accent/40 bg-background px-2.5 py-1 font-semibold text-accent hover:bg-accent/10">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      multiple
+                      disabled={busy === p.id}
+                      className="hidden"
+                      onChange={(e) => {
+                        void uploadFor(p, Array.from(e.target.files ?? []));
+                        e.target.value = "";
+                      }}
+                    />
+                    {busy === p.id ? "Uploading…" : "Upload"}
+                  </label>
+                )}
+                {p.fulfil === "field" && (
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Enter it below</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Field entry for the structured items */}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-medium text-muted-foreground">
+          Filing confirmation number
+          <div className="mt-1 flex gap-1">
+            <input
+              value={confNum}
+              onChange={(e) => setConfNum(e.target.value)}
+              placeholder="Portal / email / clerk number"
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+            />
+            <button
+              type="button"
+              disabled={busy === "conf" || confNum === (protest.filingConfirmationNumber ?? "")}
+              onClick={() =>
+                saveField(
+                  {
+                    filingConfirmationNumber: confNum,
+                    ...(channel
+                      ? {
+                          filingChannel: channel as "online" | "mail" | "in_person" | "email",
+                        }
+                      : {}),
+                  },
+                  "conf",
+                )
+              }
+              className="btn-outline shrink-0 text-xs disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        </label>
+        <label className="text-xs font-medium text-muted-foreground">
+          Filed by
+          <select
+            value={channel}
+            onChange={(e) => {
+              setChannel(e.target.value);
+              if (e.target.value)
+                saveField(
+                  {
+                    filingChannel: e.target.value as "online" | "mail" | "in_person" | "email",
+                  },
+                  "channel",
+                );
+            }}
+            className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+          >
+            <option value="">—</option>
+            <option value="online">Online portal</option>
+            <option value="mail">Mail</option>
+            <option value="in_person">In person</option>
+            <option value="email">Email</option>
+          </select>
+        </label>
+        {(channel === "mail" || channel === "" || protest.filingChannel === "mail") && (
+          <label className="text-xs font-medium text-muted-foreground">
+            Certified-mail tracking number
+            <div className="mt-1 flex gap-1">
+              <input
+                value={tracking}
+                onChange={(e) => setTracking(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+              />
+              <button
+                type="button"
+                disabled={busy === "tracking" || tracking === (protest.certifiedMailTracking ?? "")}
+                onClick={() => saveField({ certifiedMailTracking: tracking }, "tracking")}
+                className="btn-outline shrink-0 text-xs disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </label>
+        )}
+        {!protest.evidenceSubmittedConfirmedAt && stage !== "filing" && (
+          <div className="text-xs font-medium text-muted-foreground">
+            Evidence submitted to the ARB?
+            <button
+              type="button"
+              disabled={busy === "evsub"}
+              onClick={() =>
+                saveField({ evidenceSubmittedConfirmedAt: new Date().toISOString() }, "evsub")
+              }
+              className="btn-outline mt-1 block text-xs disabled:opacity-50"
+            >
+              Yes — I submitted it before the deadline
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Full record, grouped by stage */}
+      <div className="mt-4 space-y-3">
+        {["filing", "informal", "hearing", "decision", "escalation", "resolved"]
+          .filter((s) => (byStage.get(s) ?? []).length > 0)
+          .map((s) => (
+            <div key={s}>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {RECORD_STAGE_LABEL[s]}
+              </p>
+              <ul className="mt-1 space-y-1">
+                {(byStage.get(s) ?? []).map((it) => (
+                  <li key={it.id} className="flex items-start gap-2 text-xs">
+                    <span
+                      className={
+                        it.status === "on_file"
+                          ? "text-success"
+                          : it.status === "outstanding"
+                            ? "text-warning-foreground"
+                            : "text-muted-foreground"
+                      }
+                    >
+                      {it.status === "on_file" ? "●" : it.status === "outstanding" ? "○" : "–"}
+                    </span>
+                    <span className="flex-1">
+                      <span className="font-medium text-foreground">{it.label}</span>
+                      <span className="text-muted-foreground"> — {it.detail}</span>
+                    </span>
+                    {it.status === "outstanding" && it.fulfil === "document" && it.docType && (
+                      <label className="shrink-0 cursor-pointer text-accent hover:underline">
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          multiple
+                          disabled={busy === it.id}
+                          className="hidden"
+                          onChange={(e) => {
+                            void uploadFor(it, Array.from(e.target.files ?? []));
+                            e.target.value = "";
+                          }}
+                        />
+                        {busy === it.id ? "Uploading…" : "Upload"}
+                      </label>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+// Append-only audit trail for this case (public.case_audit_events) — every
+// status change, document, form, signature, submission, deadline, county
+// communication and value recorded, newest first. Plus a control to log a
+// county call/email that has no other home.
+function CaseAuditTrailSection({ protestId }: { protestId: string }) {
+  const [events, setEvents] = useState<CaseAuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    getCaseAuditTrail(protestId)
+      .then((e) => {
+        if (live) setEvents(e);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [protestId, reloadKey]);
+
+  async function logCommunication(e: FormEvent) {
+    e.preventDefault();
+    if (!note.trim()) return;
+    setBusy(true);
+    try {
+      await logCaseEvent(protestId, "county_communication", note.trim());
+      setNote("");
+      setReloadKey((k) => k + 1);
+      toast.success("Logged.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div id="case-audit-trail" className="mt-4 card-elev p-4">
+      <h4 className="font-serif text-base font-semibold">Audit Trail</h4>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Every change and county contact on this case, timestamped.
+      </p>
+
+      <form onSubmit={logCommunication} className="mt-2 flex gap-1">
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Log a county call or email (who, when, what was said)"
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+        />
+        <button
+          type="submit"
+          disabled={busy || !note.trim()}
+          className="btn-outline shrink-0 text-xs disabled:opacity-50"
+        >
+          {busy ? "Logging…" : "Log"}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="mt-3 grid gap-2">
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-3 w-56" />
+        </div>
+      ) : events.length === 0 ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          No recorded events yet — case actions you take here are logged automatically.
+        </p>
+      ) : (
+        <ol className="mt-3 space-y-2">
+          {events.map((ev) => (
+            <li key={ev.id} className="flex gap-2 text-xs">
+              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+              <span className="flex-1">
+                <span className="text-foreground">{ev.summary}</span>
+                <span className="block text-[10px] text-muted-foreground">
+                  {caseAuditKindLabel(ev.kind)} ·{" "}
+                  {new Date(ev.occurredAt).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+// "Escalation May Be Available" — shown only once the informal review and the
+// formal ARB hearing have both closed unfavourably (see evaluateEscalation's
+// availability gate). Every figure is deterministic (escalation-eval.ts): the
+// statutory deadline windows, the real Comptroller deposit schedule, savings
+// from the value gap × the county effective tax rate. It is explicitly an
+// evaluation of options, not a prediction — the disclaimer says so and so
+// does every option row.
+function EscalationEvaluationSection({
+  protest,
+  property,
+  evidenceDocumentCount,
+  onUpdate,
+}: {
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  evidenceDocumentCount: number;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+}) {
+  const [opinionInput, setOpinionInput] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [showApprove, setShowApprove] = useState(false);
+  const [approveId, setApproveId] = useState("");
+  const [showClose, setShowClose] = useState(false);
+  const [closeValue, setCloseValue] = useState(String(protest.finalValue ?? ""));
+  const [busy, setBusy] = useState(false);
+
+  const opinionOfValue = opinionInput ? Number(opinionInput.replace(/[^0-9.]/g, "")) : null;
+  const evalr: EscalationEvaluation = evaluateEscalation(
+    property,
+    protest,
+    evidenceDocumentCount,
+    opinionOfValue && opinionOfValue > 0 ? opinionOfValue : null,
+  );
+  if (!evalr.available) return null;
+
+  const eligibleValueRemedies = evalr.options.filter(
+    (o) =>
+      o.eligible &&
+      (o.id === "binding_arbitration" || o.id === "district_court" || o.id === "soah"),
+  );
+  const recommended = evalr.options.find((o) => o.recommended) ?? null;
+  const pathFor = (id: string): "appeal" | "arbitration" =>
+    id === "district_court" ? "appeal" : "arbitration";
+
+  async function approveEscalation() {
+    const id = approveId || recommended?.id || eligibleValueRemedies[0]?.id;
+    if (!id || id === "no_further_action") return;
+    const path = pathFor(id);
+    setBusy(true);
+    try {
+      await recordEscalation(protest.id, path);
+      onUpdate({ escalationPath: path, status: path === "appeal" ? "appealing" : "arbitrating" });
+      toast.success(
+        path === "appeal"
+          ? "Recorded — district court appeal. This proceeds outside CorvusPT."
+          : "Recorded — binding arbitration. This is handled with the Comptroller's office.",
+      );
+      setShowApprove(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record this next step.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeNow(e: FormEvent) {
+    e.preventDefault();
+    if (!closeValue) return;
+    setBusy(true);
+    try {
+      const finalValue = Number(closeValue);
+      await closeCase(protest.id, finalValue);
+      onUpdate({ finalValue, closedAt: new Date().toISOString(), status: "resolved" });
+      toast.success("Case closed.");
+      setShowClose(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not close this case.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div id="case-escalation" className="mt-5 border-t border-border pt-5">
+      <h4 className="text-sm font-semibold">Escalation May Be Available</h4>
+      <p className="mt-1 text-sm text-foreground">{evalr.headline}</p>
+      <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-snug text-warning-foreground">
+        {evalr.disclaimer}
+      </p>
+
+      <label className="mt-3 block text-xs font-medium text-muted-foreground">
+        Your opinion of value (optional — enables the savings &amp; ROI columns)
+        <input
+          inputMode="numeric"
+          value={opinionInput}
+          onChange={(e) => setOpinionInput(e.target.value)}
+          placeholder="e.g. 11,000,000"
+          className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+        />
+      </label>
+
+      <ul className="mt-3 grid gap-2">
+        {evalr.options.map((o) => (
+          <EscalationOptionRow key={o.id} o={o} expanded={expanded} />
+        ))}
+      </ul>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="btn-outline text-sm py-1.5"
+        >
+          {expanded ? "Hide detail" : "Review Escalation"}
+        </button>
+        {eligibleValueRemedies.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setApproveId(recommended?.id ?? eligibleValueRemedies[0].id);
+              setShowApprove((v) => !v);
+              setShowClose(false);
+            }}
+            className="btn-primary text-sm py-1.5"
+          >
+            Approve Escalation
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setShowClose((v) => !v);
+            setShowApprove(false);
+          }}
+          className="btn-outline text-sm py-1.5"
+        >
+          Close Case
+        </button>
+      </div>
+
+      {showApprove && eligibleValueRemedies.length > 0 && (
+        <div className="mt-3 rounded-md border border-border p-3">
+          <label className="block text-xs font-medium text-muted-foreground">
+            Record which escalation you're pursuing
+            <select
+              value={approveId}
+              onChange={(e) => setApproveId(e.target.value)}
+              className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+            >
+              {eligibleValueRemedies.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.title} ({o.statute})
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            This records your decision on the case. CorvusPT does not file the arbitration request
+            or court petition for you — you or your attorney do that with the appraisal district by
+            the deadline shown above.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={approveEscalation}
+            className="btn-primary mt-2 text-sm py-1.5 disabled:opacity-60"
+          >
+            {busy ? "Recording…" : "Confirm"}
+          </button>
+        </div>
+      )}
+
+      {showClose && (
+        <form onSubmit={closeNow} className="mt-3 rounded-md border border-border p-3">
+          <label className="block text-xs font-medium text-muted-foreground">
+            Final value to record
+            <input
+              inputMode="numeric"
+              value={closeValue}
+              onChange={(e) => setCloseValue(e.target.value)}
+              className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy || !closeValue}
+            className="btn-primary mt-2 text-sm py-1.5 disabled:opacity-60"
+          >
+            {busy ? "Closing…" : "Close case at this value"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function EscalationOptionRow({ o, expanded }: { o: EscalationOption; expanded: boolean }) {
+  return (
+    <li
+      className={`rounded-md border p-3 text-sm ${
+        o.recommended ? "border-success/50 bg-success/5" : "border-border"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-foreground">{o.title}</span>
+        <span className="text-[11px] text-muted-foreground">{o.statute}</span>
+        {o.recommended && (
+          <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+            Suggested
+          </span>
+        )}
+        {!o.eligible && (
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            Not available
+          </span>
+        )}
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] sm:grid-cols-3">
+        <div>
+          <dt className="text-muted-foreground">Deadline</dt>
+          <dd className="font-medium">
+            {o.deadline.date
+              ? new Date(`${o.deadline.date}T00:00:00`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Est. cost</dt>
+          <dd className="font-medium">
+            {o.estimatedCost
+              ? o.estimatedCost.min === o.estimatedCost.max
+                ? currency(o.estimatedCost.min)
+                : `${currency(o.estimatedCost.min)}–${currency(o.estimatedCost.max)}`
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Added savings / yr</dt>
+          <dd className="font-medium">
+            {o.potentialAdditionalSavings.amount != null
+              ? currency(o.potentialAdditionalSavings.amount)
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Est. ROI</dt>
+          <dd className="font-medium">
+            {o.estimatedRoi.ratio != null ? `${o.estimatedRoi.ratio}×` : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Evidence</dt>
+          <dd className="font-medium capitalize">{o.evidenceStrength}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Risk</dt>
+          <dd className="font-medium capitalize">{o.risk.band}</dd>
+        </div>
+      </dl>
+      {expanded && (
+        <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+          <p>{o.practicalBenefit}</p>
+          <p>
+            <span className="font-medium text-foreground">Eligibility:</span> {o.eligibilityBasis}
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Deadline basis:</span> {o.deadline.basis}
+          </p>
+          {o.estimatedCost && (
+            <p>
+              <span className="font-medium text-foreground">Cost basis:</span>{" "}
+              {o.estimatedCost.basis}
+            </p>
+          )}
+          <p>
+            <span className="font-medium text-foreground">Savings basis:</span>{" "}
+            {o.potentialAdditionalSavings.basis}
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Risk basis:</span> {o.risk.basis}
+          </p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+export function CaseProgress({
+  protest,
+  property,
+  caseData,
+  onUpdate,
+  onPropertyUpdate,
+}: {
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  caseData: ProtestCase | null;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+  // Optional — only the real customer-facing case view (CaseDetailModal)
+  // passes this; the admin panel's own CaseProgress usage
+  // (AdminCaseProgressModal.tsx) works off a synthetic property stub with no
+  // real update path, so it simply doesn't get the auto-refile toggle below.
+  // Auto-refile is a customer self-service preference, not something staff
+  // need to set on someone's behalf.
+  onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [autoRefileSaving, setAutoRefileSaving] = useState(false);
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [offerValue, setOfferValue] = useState("");
+  const [offerDate, setOfferDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showHearingForm, setShowHearingForm] = useState(false);
+  const [hearingDateInput, setHearingDateInput] = useState("");
+  const [showHearingSummary, setShowHearingSummary] = useState(false);
+  const [showDecisionForm, setShowDecisionForm] = useState(false);
+  const [decisionType, setDecisionType] = useState<"approved" | "partial" | "denied">("partial");
+  const [decisionDate, setDecisionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [decisionValue, setDecisionValue] = useState("");
+  const [showCloseForm, setShowCloseForm] = useState(false);
+  const [closeValue, setCloseValue] = useState("");
+
+  async function submitOffer(e: FormEvent) {
+    e.preventDefault();
+    if (!offerValue) return;
+    setBusy(true);
+    try {
+      const value = Number(offerValue);
+      await recordSettlementOffer(protest.id, { value, receivedAt: offerDate });
+      onUpdate({
+        settlementOfferValue: value,
+        settlementOfferReceivedAt: offerDate,
+        status: "offer_received",
+      });
+      setShowOfferForm(false);
+      toast.success("Settlement offer recorded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record this offer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAcceptOffer() {
+    if (protest.settlementOfferValue == null) return;
+    setBusy(true);
+    try {
+      await acceptSettlement(protest.id, protest.settlementOfferValue);
+      onUpdate({
+        finalValue: protest.settlementOfferValue,
+        escalationPath: "accept",
+        closedAt: new Date().toISOString(),
+        status: "resolved",
+      });
+      toast.success("Offer accepted — case closed.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not accept this offer.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitHearing(e: FormEvent) {
+    e.preventDefault();
+    if (!hearingDateInput) return;
+    setBusy(true);
+    try {
+      await scheduleHearing(protest.id, hearingDateInput);
+      onUpdate({ hearingDate: hearingDateInput, status: "hearing_scheduled" });
+      setShowHearingForm(false);
+      toast.success("Hearing date recorded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record this hearing date.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitDecision(e: FormEvent) {
+    e.preventDefault();
+    if (!decisionValue) return;
+    setBusy(true);
+    try {
+      const finalValue = Number(decisionValue);
+      await recordArbDecision(protest.id, { type: decisionType, date: decisionDate, finalValue });
+      const resolved = decisionType === "approved";
+      onUpdate({
+        arbDecision: decisionType,
+        arbDecisionDate: decisionDate,
+        finalValue,
+        status: resolved ? "resolved" : "decision_received",
+        ...(resolved ? { closedAt: new Date().toISOString(), escalationPath: "accept" } : {}),
+      });
+      setShowDecisionForm(false);
+      toast.success("ARB decision recorded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record this decision.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleEscalate(path: "appeal" | "arbitration") {
+    setBusy(true);
+    try {
+      await recordEscalation(protest.id, path);
+      onUpdate({ escalationPath: path, status: path === "appeal" ? "appealing" : "arbitrating" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record this next step.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAcceptDecision() {
+    if (protest.finalValue == null) return;
+    setBusy(true);
+    try {
+      await acceptSettlement(protest.id, protest.finalValue);
+      onUpdate({
+        escalationPath: "accept",
+        closedAt: new Date().toISOString(),
+        status: "resolved",
+      });
+      toast.success("Decision accepted — case closed.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not close this case.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitClose(e: FormEvent) {
+    e.preventDefault();
+    if (!closeValue) return;
+    setBusy(true);
+    try {
+      const finalValue = Number(closeValue);
+      await closeCase(protest.id, finalValue);
+      onUpdate({ finalValue, closedAt: new Date().toISOString(), status: "resolved" });
+      setShowCloseForm(false);
+      toast.success("Case closed.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not close this case.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const results = getCaseResults(protest, property);
+
+  async function handleToggleAutoRefile(enabled: boolean) {
+    setAutoRefileSaving(true);
+    try {
+      const updated = await setAutoRefile(property.id, enabled);
+      onPropertyUpdate?.({
+        autoRefile: updated.autoRefile,
+        autoRefileAuthorizedAt: updated.autoRefileAuthorizedAt,
+      });
+      toast.success(enabled ? "Auto re-file turned on." : "Auto re-file turned off.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update auto re-file.");
+    } finally {
+      setAutoRefileSaving(false);
+    }
+  }
+
+  return (
+    <div id="case-progress" className="mt-4 card-elev p-4">
+      <h4 className="font-serif text-base font-semibold">Case Progress</h4>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Record what has happened — settlement offers, the hearing date, the ARB&apos;s decision.
+      </p>
+
+      {protest.status === "resolved" ? (
+        results ? (
+          <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+            <Field label="Original Value" value={currency(protest.originalValue ?? undefined)} />
+            <Field label="Final Value" value={currency(protest.finalValue ?? undefined)} />
+            <Field label="Value Reduction" value={currency(results.valueReduction)} bold />
+            <Field
+              label="Actual Tax Savings"
+              value={currency(results.actualSavings)}
+              bold
+              success
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Case closed — no final value on file.
+          </p>
+        )
+      ) : null}
+
+      {protest.status === "resolved" && onPropertyUpdate && (
+        <label className="mt-4 flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={!!property.autoRefile}
+            disabled={autoRefileSaving}
+            onChange={(e) => handleToggleAutoRefile(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Auto re-file next year</span>
+            {property.autoRefile && property.autoRefileAuthorizedAt && (
+              <span className="text-muted-foreground">
+                {" "}
+                — authorized {new Date(property.autoRefileAuthorizedAt).toLocaleDateString()}
+              </span>
+            )}
+            <span className="block text-xs text-muted-foreground">
+              When on, CorvusPT automatically starts next year&apos;s protest once the new tax
+              year's cycle begins — no action needed from you beyond signing the actual Notice of
+              Protest when it's ready. Off by default; turn it off any time.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {protest.status !== "resolved" && (
+        <div className="mt-3 grid gap-4">
+          {/* Settlement offer */}
+          {protest.status === "offer_received" ? (
+            <div className="rounded-md border border-border p-3 text-sm">
+              <div className="font-medium">
+                Settlement offer: {currency(protest.settlementOfferValue ?? undefined)}
+                {protest.settlementOfferReceivedAt && ` (${protest.settlementOfferReceivedAt})`}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={handleAcceptOffer}
+                  disabled={busy}
+                  className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                >
+                  Accept Offer
+                </button>
+                <span className="text-xs text-muted-foreground self-center">
+                  or schedule a hearing below to proceed instead
+                </span>
+              </div>
+            </div>
+          ) : (
+            protest.status !== "decision_received" &&
+            protest.status !== "appealing" &&
+            protest.status !== "arbitrating" && (
+              <div>
+                {showOfferForm ? (
+                  <form
+                    onSubmit={submitOffer}
+                    className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end"
+                  >
+                    <label className="grid gap-1 text-xs">
+                      Offer amount<span className="text-destructive"> *</span>
+                      <input
+                        required
+                        value={offerValue}
+                        onChange={(e) => setOfferValue(e.target.value)}
+                        inputMode="decimal"
+                        className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs">
+                      Date received<span className="text-destructive"> *</span>
+                      <input
+                        required
+                        type="date"
+                        value={offerDate}
+                        onChange={(e) => setOfferDate(e.target.value)}
+                        className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => setShowOfferForm(true)}
+                    className="btn-outline text-xs py-1.5"
+                  >
+                    Record Settlement Offer
+                  </button>
+                )}
+              </div>
+            )
+          )}
+
+          {/* Hearing */}
+          {(protest.status === "hearing_scheduled" ||
+            (protest.status !== "decision_received" &&
+              protest.status !== "appealing" &&
+              protest.status !== "arbitrating")) && (
+            <div>
+              {protest.status === "hearing_scheduled" ? (
+                <div className="rounded-md border border-border p-3 text-sm">
+                  <div className="font-medium">Hearing scheduled: {protest.hearingDate}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setShowHearingSummary((v) => !v)}
+                      className="btn-outline text-xs py-1.5"
+                    >
+                      {showHearingSummary ? "Hide" : "View"} Hearing Summary
+                    </button>
+                    <button
+                      onClick={() => setShowDecisionForm((v) => !v)}
+                      className="btn-outline text-xs py-1.5"
+                    >
+                      Record ARB Decision
+                    </button>
+                  </div>
+                  {showHearingSummary && caseData && (
+                    <pre className="mt-3 whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-xs">
+                      {getHearingPrep(caseData, property.address)}
+                    </pre>
+                  )}
+                  {showDecisionForm && (
+                    <form onSubmit={submitDecision} className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <label className="grid gap-1 text-xs">
+                        Decision
+                        <select
+                          value={decisionType}
+                          onChange={(e) => setDecisionType(e.target.value as typeof decisionType)}
+                          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        >
+                          <option value="approved">Approved (full reduction granted)</option>
+                          <option value="partial">Partial reduction</option>
+                          <option value="denied">Denied</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs">
+                        Decision date<span className="text-destructive"> *</span>
+                        <input
+                          required
+                          type="date"
+                          value={decisionDate}
+                          onChange={(e) => setDecisionDate(e.target.value)}
+                          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs sm:col-span-2">
+                        Final determined value<span className="text-destructive"> *</span>
+                        <input
+                          required
+                          value={decisionValue}
+                          onChange={(e) => setDecisionValue(e.target.value)}
+                          inputMode="decimal"
+                          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="btn-accent text-xs py-1.5 w-fit disabled:opacity-60"
+                      >
+                        Save Decision
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {showHearingForm ? (
+                    <form onSubmit={submitHearing} className="flex flex-wrap items-end gap-2">
+                      <label className="grid gap-1 text-xs">
+                        Hearing date<span className="text-destructive"> *</span>
+                        <input
+                          required
+                          type="date"
+                          value={hearingDateInput}
+                          onChange={(e) => setHearingDateInput(e.target.value)}
+                          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                      >
+                        Save
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setShowHearingForm(true)}
+                      className="btn-outline text-xs py-1.5"
+                    >
+                      Schedule a Hearing
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Decision received, non-approved — next steps */}
+          {protest.status === "decision_received" && (
+            <div className="rounded-md border border-border p-3 text-sm">
+              <div className="font-medium">
+                ARB decision: {protest.arbDecision} — final value{" "}
+                {currency(protest.finalValue ?? undefined)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">What's next?</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={handleAcceptDecision}
+                  disabled={busy}
+                  className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleEscalate("appeal")}
+                  disabled={busy}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  File Judicial Appeal
+                </button>
+                <button
+                  onClick={() => handleEscalate("arbitration")}
+                  disabled={busy}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  Request Binding Arbitration
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Appealing / arbitrating */}
+          {(protest.status === "appealing" || protest.status === "arbitrating") && (
+            <div className="rounded-md border border-border p-3 text-sm">
+              <div className="font-medium">
+                {protest.status === "appealing"
+                  ? "Judicial appeal in progress."
+                  : "Binding arbitration in progress."}
+              </div>
+              {protest.status === "arbitrating" ? (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Texas requires agents to file a Request for Binding Arbitration online, not on
+                  paper — file at{" "}
+                  <a
+                    href="https://www.texas.gov/propertytaxarbitration"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    texas.gov/propertytaxarbitration
+                  </a>
+                  . A deposit is required with the request (refunded if the arbitrator's value lands
+                  closer to the owner's opinion of value than the ARB's).
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  A judicial appeal is a lawsuit filed in district court (Tax Code Chapter 42), not
+                  a Comptroller form — it typically requires an attorney and isn't something this
+                  app files. See the Comptroller's{" "}
+                  <a
+                    href="https://comptroller.texas.gov/taxes/property-tax/protests/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    Appraisal Protests and Appeals
+                  </a>{" "}
+                  overview for background.
+                </p>
+              )}
+              {showCloseForm ? (
+                <form onSubmit={submitClose} className="mt-2 flex flex-wrap items-end gap-2">
+                  <label className="grid gap-1 text-xs">
+                    Final determined value<span className="text-destructive"> *</span>
+                    <input
+                      required
+                      value={closeValue}
+                      onChange={(e) => setCloseValue(e.target.value)}
+                      inputMode="decimal"
+                      className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                  >
+                    Save
+                  </button>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setShowCloseForm(true)}
+                  className="btn-outline text-xs py-1.5 mt-2"
+                >
+                  Record Final Outcome
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  bold,
+  success,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  success?: boolean;
+}) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`${bold ? "font-semibold" : ""} ${success ? "text-success" : ""}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
