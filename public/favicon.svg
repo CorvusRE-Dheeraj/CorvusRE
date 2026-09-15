@@ -1,8 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#D97706"/>
-  <!-- bold bird mark, sized to read at 16px -->
-  <g fill="none" stroke="#FFFDF7" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M5 25c4-8 7-12 11-12s7 4 11 12"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="4.5" fill="#D97706"/>
+  <!-- Mirrors CorvusPT's public/favicon.svg technique exactly (confirmed to
+       render well) — a smaller 24-unit viewBox with the icon inset via
+       transform at the same 0.625 scale / 18.75% margin ratio as the app's
+       actual header logo (LogoMark, SiteChrome.tsx: 20px icon in a 32px
+       box), using the literal, un-bolded stroke-width="2" / r="2" from that
+       component. A 32-unit canvas with the same ratios rasterized soft at
+       16px tab-icon size; this smaller canvas is what CorvusPT already
+       proved looks crisp there. -->
+  <g transform="translate(4.5,4.5) scale(0.625)" fill="none" stroke="#FFFDF7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 20c3-6 5-9 8-9s5 3 8 9"/>
+    <circle cx="16" cy="7" r="2" fill="#FFFDF7" stroke="none"/>
   </g>
-  <circle cx="22.5" cy="9.5" r="3" fill="#FFFDF7"/>
 </svg>
