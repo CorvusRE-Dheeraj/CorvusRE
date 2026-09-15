@@ -106,7 +106,7 @@ function Reviews() {
     <div className="grid gap-5">
       <Section
         title="Submission & review status"
-        subtitle="Reviewer and next-update estimate per permit (PRD 1.1.24)."
+        subtitle="Where each submitted permit stands with its reviewer, and when to expect an update."
       >
         <div className="grid gap-2">
           {permits.map((p) => (
@@ -159,7 +159,7 @@ function Reviews() {
 
       <Section
         title="Review comments"
-        subtitle="Translate each city comment, assign an owner, and track resolution (PRD 1.1.25 / 1.1.26)."
+        subtitle="Plain-English translations of each reviewer comment, with an owner and resolution status. For informal calls/emails with the jurisdiction, log those under City instead."
       >
         {comments.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>

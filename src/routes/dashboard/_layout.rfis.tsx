@@ -53,7 +53,7 @@ function Rfis() {
     <div className="grid gap-5">
       <Section
         title="Submittals & RFIs"
-        subtitle="Route questions to the right consultant, with status and turnaround visible to everyone."
+        subtitle="Construction-phase questions to consultants and subs — a separate log from Reviews, which tracks the permitting/design review cycle."
         right={
           <button className="btn-outline text-sm" onClick={() => window.print()}>
             Export / print

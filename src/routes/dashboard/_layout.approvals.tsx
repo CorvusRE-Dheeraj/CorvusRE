@@ -30,7 +30,7 @@ function Approvals() {
     <div className="grid gap-5">
       <Section
         title="Permit approval status"
-        subtitle="Approved permits, numbers, and documents (PRD 1.1.28)."
+        subtitle="Permits that have cleared review — numbers, conditions, and expiry. Still in review? Check Permits or Reviews instead."
       >
         {approved.length === 0 ? (
           <p className="text-sm text-muted-foreground">No approved permits yet.</p>

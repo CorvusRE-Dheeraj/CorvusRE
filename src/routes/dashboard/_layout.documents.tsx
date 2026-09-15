@@ -86,7 +86,7 @@ function Documents() {
     <div className="grid gap-5">
       <Section
         title="Document repository"
-        subtitle="Central store for drawings, studies, forms, and approvals (PRD 2.1.9)."
+        subtitle="One place for every drawing, study, form, and approval on this project."
       >
         {docs.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>

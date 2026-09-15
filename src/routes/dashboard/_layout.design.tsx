@@ -154,7 +154,7 @@ function DesignDashboard() {
       {dr.stage !== "brief" && dr.stage !== "approved" && (
         <Section
           title="Design progress"
-          subtitle="Staff-tracked as your design team moves through each stage (PRD 1.2.19)."
+          subtitle="Staff-tracked as your design team moves through each stage."
         >
           <DesignStageTracker stage={dr.stage as DesignStage} />
         </Section>
@@ -162,7 +162,7 @@ function DesignDashboard() {
 
       <Section
         title="Cost breakdown"
-        subtitle="Design fee by discipline (PRD 1.2.10.A)."
+        subtitle="Estimated design fee by discipline."
         right={
           <button className="btn-outline text-sm" onClick={() => downloadCostBreakdownCsv(dr, b)}>
             Export CSV
@@ -206,7 +206,7 @@ function DesignDashboard() {
 
       <InvestmentSnapshot buildCostLow={b.buildCostLow} buildCostHigh={b.buildCostHigh} buildingArea={dr.building_area} />
 
-      <Section title="Suggested approach" subtitle="PRD 1.2.12.A.">
+      <Section title="Suggested approach" subtitle="Delivery approaches worth considering for this project.">
         <div className="grid gap-3 sm:grid-cols-3">
           {b.approaches.map((ap) => (
             <div key={ap.name} className="rounded-lg border border-border p-3 text-sm">

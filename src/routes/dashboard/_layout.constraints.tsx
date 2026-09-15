@@ -58,8 +58,8 @@ function Constraints() {
   return (
     <div className="grid gap-5">
       <Section
-        title="Site constraints summary"
-        subtitle="Utilities, easements, and off-site conditions (PRD 1.1.11)."
+        title="Site Data"
+        subtitle="Utility availability, easements, and off-site conditions for this property."
         right={
           <button className="btn-outline text-sm" onClick={downloadSiteSummary}>
             Download site summary
@@ -113,7 +113,7 @@ function Constraints() {
 
       <Section
         title="Pre-application meeting summary"
-        subtitle="Agenda + what to bring (PRD 1.1.14)."
+        subtitle="A ready-made agenda and what to bring, based on the same site data above."
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
