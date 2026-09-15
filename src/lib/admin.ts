@@ -205,6 +205,28 @@ export async function updateEngagementStatus(id: string, status: string): Promis
   if (error) throw error;
 }
 
+// "Task - AI Logs and Outputs" — every real AI call's input/output, written
+// by the Edge Functions themselves (supabase/functions/_shared/ai-log.ts)
+// via the service-role key. Admin-only read (see the ai_logs RLS policy).
+export type AiLogRow = {
+  id: string;
+  kind: string;
+  user_id: string | null;
+  input: unknown;
+  output: unknown;
+  created_at: string;
+};
+
+export async function listAiLogs(): Promise<AiLogRow[]> {
+  const { data, error } = await supabase
+    .from("ai_logs")
+    .select("id, kind, user_id, input, output, created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data as AiLogRow[]) ?? [];
+}
+
 export async function logAdminAction(input: {
   action: string;
   target?: string;

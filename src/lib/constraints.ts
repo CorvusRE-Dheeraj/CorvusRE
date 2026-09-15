@@ -43,37 +43,46 @@ export function deriveSiteConstraints(input: {
   const large = (lotSqft ?? 0) >= 43560;
   const groundUp = input.intent === "new_construction" || input.intent === "site_development";
 
+  // Six categories, each with the PRD's own due-diligence framing (provider,
+  // line size/capacity, or the specific data a survey/will-serve letter
+  // needs to confirm) — PRD 2.2.11/2.2.12 lists gas and telecom as separate
+  // line items rather than one combined "other utilities" row.
   const utilities: UtilityLine[] = [
     {
       name: "Water",
       status: etj ? "verify" : jurisdiction.matched ? "likely_available" : "verify",
       note: etj
-        ? "ETJ site — service may come from a county MUD/SUD or require a service extension request."
-        : "Confirm main size and pressure with a will-serve letter from the utility provider.",
+        ? "ETJ site — service may come from a county MUD/SUD rather than the city; confirm the provider and request a will-serve letter."
+        : "Confirm the provider (municipal or a SUD), main line size, and available pressure with a will-serve letter.",
     },
     {
       name: "Wastewater / Sewer",
       status: etj ? "likely_constrained" : jurisdiction.matched ? "verify" : "verify",
       note: etj
-        ? "ETJ sites frequently lack gravity sewer — budget for a lift station, force main, or on-site septic (needs a soil/percolation test)."
-        : "Verify a sewer main is within reach and has downstream capacity.",
+        ? "ETJ sites frequently lack gravity sewer — confirm whether service is by USA (utility service agreement) or budget for on-site septic (needs a soil/percolation test)."
+        : "Confirm the provider, that a sewer main is within reach, and downstream capacity.",
     },
     {
       name: "Electric",
       status: "likely_available",
-      note: "Coordinate transformer sizing and service point early with the electric provider.",
+      note: "Confirm whether the area has a single provider or a choice, and coordinate transformer sizing and service point early.",
     },
     {
       name: "Storm drainage",
       status: large ? "verify" : "likely_available",
       note: large
-        ? "Larger tract — detention/water-quality is almost certain; a drainage study will set pond sizing."
-        : "On-site detention may still be triggered by added impervious cover.",
+        ? "Larger tract — pull FEMA floodplain data and a site-slope/drainage-infrastructure read; a drainage study will set detention pond sizing."
+        : "Confirm floodplain status and site slope; on-site detention may still be triggered by added impervious cover.",
     },
     {
-      name: "Gas / Telecom",
+      name: "Gas",
       status: "verify",
-      note: "Confirm availability if the design depends on gas service or fiber.",
+      note: "Confirm availability and the provider if the design depends on gas service — material for HVAC/energy decisions on restaurants and other high-load uses.",
+    },
+    {
+      name: "Telecom / Data",
+      status: "verify",
+      note: "Confirm which providers serve the site (fiber vs. copper) if the use depends on data/connectivity.",
     },
   ];
 

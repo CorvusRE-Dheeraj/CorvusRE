@@ -515,3 +515,20 @@ begin
   return new;
 end;
 $$;
+
+-- "Task - AI Logs and Outputs" (PRD, end of the design-admin section): every
+-- AI call's input and output must be stored so staff can review results.
+-- Written by the Edge Functions themselves via the service-role key (see
+-- supabase/functions/_shared/ai-log.ts), so no insert policy is needed for
+-- any client role — only admins ever read this table.
+create table if not exists public.ai_logs (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,               -- feasibility_summary|design_narrative|review_comment_translation|assistant_chat
+  user_id uuid references auth.users (id) on delete set null,
+  input jsonb not null,
+  output jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.ai_logs enable row level security;
+drop policy if exists "admin: read ai logs" on public.ai_logs;
+create policy "admin: read ai logs" on public.ai_logs for select using (public.is_admin());

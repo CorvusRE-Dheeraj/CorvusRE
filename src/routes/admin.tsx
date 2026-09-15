@@ -12,6 +12,7 @@ import {
   listEngagementRequests,
   updateEngagementStatus,
   getDocumentSignedUrl,
+  listAiLogs,
   logAdminAction,
   type LeadRow,
   type AdminProjectRow,
@@ -19,6 +20,7 @@ import {
   type AdminPermitRow,
   type AdminDocumentRow,
   type AdminEngagementRow,
+  type AiLogRow,
 } from "@/lib/admin";
 import { dateShort, daysUntil } from "@/lib/format";
 import { Section, Pill, Stat, humanize } from "@/components/dp-ui";
@@ -28,9 +30,24 @@ export const Route = createFileRoute("/admin")({
   component: Admin,
 });
 
-type Tab = "projects" | "design" | "engagements" | "permits" | "documents" | "leads";
+type Tab = "projects" | "design" | "engagements" | "permits" | "documents" | "leads" | "ai logs";
 
-const TABS: Tab[] = ["projects", "design", "engagements", "permits", "documents", "leads"];
+const TABS: Tab[] = [
+  "projects",
+  "design",
+  "engagements",
+  "permits",
+  "documents",
+  "leads",
+  "ai logs",
+];
+
+const AI_KIND_LABEL: Record<string, string> = {
+  feasibility_summary: "Feasibility summary",
+  design_narrative: "Design narrative",
+  review_comment_translation: "Review comment translation",
+  assistant_chat: "Assistant chat",
+};
 
 function leadPriority(score: number): { label: string; tone: "red" | "amber" | "gray" } {
   if (score >= 7) return { label: "High", tone: "red" };
@@ -86,6 +103,11 @@ function Admin() {
     queryKey: ["admin", "engagements"],
     queryFn: listEngagementRequests,
     enabled: authorized === true,
+  });
+  const aiLogs = useQuery<AiLogRow[]>({
+    queryKey: ["admin", "ai-logs"],
+    queryFn: listAiLogs,
+    enabled: authorized === true && tab === "ai logs",
   });
 
   if (authorized !== true) {
@@ -308,8 +330,65 @@ function Admin() {
             />
           </Section>
         )}
+
+        {tab === "ai logs" && (
+          <Section
+            title={`AI logs (${aiLogs.data?.length ?? 0})`}
+            subtitle="Every AI call's real input and output, for review — most recent 200."
+          >
+            {aiLogs.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (aiLogs.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing logged yet.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {(aiLogs.data ?? []).map((log) => (
+                  <AiLogEntry key={log.id} log={log} />
+                ))}
+              </ul>
+            )}
+          </Section>
+        )}
       </div>
     </div>
+  );
+}
+
+function AiLogEntry({ log }: { log: AiLogRow }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="rounded-lg border border-border p-3 text-sm">
+      <button
+        className="flex w-full items-center justify-between gap-2 text-left"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="flex items-center gap-2">
+          <Pill tone="blue">{AI_KIND_LABEL[log.kind] ?? humanize(log.kind)}</Pill>
+          <span className="text-xs text-muted-foreground">{dateShort(log.created_at)}</span>
+        </span>
+        <span className="text-xs font-semibold text-accent">{open ? "Hide" : "View"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Input
+            </div>
+            <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-secondary p-2 text-xs">
+              {JSON.stringify(log.input, null, 2)}
+            </pre>
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Output
+            </div>
+            <pre className="mt-1 max-h-64 overflow-auto rounded-md bg-secondary p-2 text-xs">
+              {JSON.stringify(log.output, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 

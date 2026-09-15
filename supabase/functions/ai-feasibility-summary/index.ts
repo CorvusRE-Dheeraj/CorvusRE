@@ -11,6 +11,7 @@
 import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, arr, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's permitting assistant, explaining a real, already-computed feasibility analysis to the person planning this project. You will be given the real property location, project intent, zoning classification, feasibility status and risks, the identified permits, and site constraints — all already determined by CorvusDP's own analysis engine, never by you.
 
@@ -111,15 +112,15 @@ Deno.serve(async (req: Request) => {
       `${lines.join("\n")}\n\nProduce the JSON feasibility summary.`,
     );
     const parsed = parseJsonLoose(raw);
+    const result = {
+      narrative: str(parsed.narrative, 900),
+      keyRisks: arr(parsed.keyRisks, 220, 6),
+      recommendedNextStep: str(parsed.recommendedNextStep, 300),
+    };
 
-    return new Response(
-      JSON.stringify({
-        narrative: str(parsed.narrative, 900),
-        keyRisks: arr(parsed.keyRisks, 220, 6),
-        recommendedNextStep: str(parsed.recommendedNextStep, 300),
-      }),
-      { status: 200, headers: corsHeaders },
-    );
+    await logAiCall("feasibility_summary", input, result);
+
+    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
   } catch (err) {
     return aiErrorResponse(err, corsHeaders);
   }

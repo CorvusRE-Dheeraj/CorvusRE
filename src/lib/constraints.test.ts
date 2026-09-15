@@ -15,6 +15,13 @@ describe("deriveSiteConstraints", () => {
     );
   });
 
+  it("lists gas and telecom/data as separate due-diligence lines (PRD 2.2.11/2.2.12)", () => {
+    const c = deriveSiteConstraints({ jurisdiction: jur, zoning: classifyZoning("C-2") });
+    const names = c.utilities.map((u) => u.name);
+    expect(names).toContain("Gas");
+    expect(names).toContain("Telecom / Data");
+  });
+
   it("flags wastewater as likely constrained and raises a critical warning in an ETJ", () => {
     const c = deriveSiteConstraints({
       jurisdiction: etjJur,

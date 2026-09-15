@@ -59,15 +59,59 @@ function DesignDashboard() {
     setBusy(null);
   }
 
+  // Design Proposal (PRD 2.2.19) — "a formal document shared with the client
+  // including scope, fees, timeline, and deliverables." Same plain-text
+  // Blob-download pattern as the permitting side's "Download site summary"
+  // (dashboard/_layout.constraints.tsx).
+  function downloadProposal() {
+    if (!dr) return;
+    const lines = [
+      `CorvusDP — Design Proposal`,
+      `Generated ${new Date().toLocaleString()}`,
+      ``,
+      `PROJECT`,
+      `  Location: ${dr.address ?? dr.city ?? "—"}`,
+      `  Scope: ${scopeLabel((dr.scope ?? undefined) as never)}`,
+      `  Sector: ${dr.sector ?? "—"}`,
+      `  Building area: ${dr.building_area ?? "—"} sf, ${dr.floors ?? "—"} floor(s)`,
+      ``,
+      `SCOPE — WHAT'S INCLUDED`,
+      ...b.inclusions.map((i) => `  - ${i.title}: ${i.detail}`),
+      ``,
+      `FEES — DESIGN COST BY DISCIPLINE`,
+      ...b.costBreakdown.map((c) => `  ${c.discipline}: ${currencyRange(c.low, c.high)}`),
+      `  Total design fee: ${currencyRange(b.budgetLow, b.budgetHigh)}`,
+      `  Estimated build cost (separate): ${currencyRange(b.buildCostLow, b.buildCostHigh)}`,
+      ``,
+      `TIMELINE`,
+      ...b.timeline.map((t) => `  ${t.phase}: ${weeksLabel(t.weeksMin, t.weeksMax)} — ${t.note}`),
+      ``,
+      `DELIVERABLES — SUGGESTED APPROACH`,
+      ...b.approaches.map((a) => `  ${a.name}: ${a.summary} (best when: ${a.bestWhen})`),
+      ``,
+      `Status: ${dr.approved_at ? `Approved ${dateShort(dr.approved_at)}` : "Pending approval"}`,
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `design-proposal-${(dr.address ?? "project").replace(/[^\w]+/g, "-").slice(0, 40)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="grid gap-5">
       <Section
         title={dr.address ?? dr.city ?? "Design project"}
         subtitle={`${scopeLabel((dr.scope ?? undefined) as never)} · ${dr.sector ?? "commercial"} · ${dr.building_area ?? "?"} sf`}
         right={
-          dr.approved_at ? (
-            <Pill tone="green">Approved {dateShort(dr.approved_at)}</Pill>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {dr.approved_at && <Pill tone="green">Approved {dateShort(dr.approved_at)}</Pill>}
+            <button className="btn-outline text-sm" onClick={downloadProposal}>
+              Download proposal
+            </button>
+          </div>
         }
       >
         <div className="grid gap-3 sm:grid-cols-3">

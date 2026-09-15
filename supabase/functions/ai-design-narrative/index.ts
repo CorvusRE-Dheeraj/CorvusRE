@@ -10,6 +10,7 @@
 import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, arr, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's design assistant, writing a short scope narrative from a real, already-computed design brief. You will be given the real project scope/sector/size, the real disciplines included, the real timeline, and the real budget range — all already determined by CorvusDP's own brief generator, never by you.
 
@@ -85,15 +86,15 @@ Deno.serve(async (req: Request) => {
       `${lines.join("\n")}\n\nProduce the JSON design narrative.`,
     );
     const parsed = parseJsonLoose(raw);
+    const result = {
+      scopeSummary: str(parsed.scopeSummary, 220),
+      narrative: str(parsed.narrative, 900),
+      designConsiderations: arr(parsed.designConsiderations, 220, 5),
+    };
 
-    return new Response(
-      JSON.stringify({
-        scopeSummary: str(parsed.scopeSummary, 220),
-        narrative: str(parsed.narrative, 900),
-        designConsiderations: arr(parsed.designConsiderations, 220, 5),
-      }),
-      { status: 200, headers: corsHeaders },
-    );
+    await logAiCall("design_narrative", input, result);
+
+    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
   } catch (err) {
     return aiErrorResponse(err, corsHeaders);
   }
