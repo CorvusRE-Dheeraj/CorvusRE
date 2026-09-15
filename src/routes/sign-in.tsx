@@ -17,11 +17,15 @@ export const Route = createFileRoute("/sign-in")({
   head: () => ({ meta: [{ title: "Sign in — CorvusDP" }] }),
   validateSearch: (
     search: Record<string, unknown>,
-  ): { redirect?: string; mode?: "signup"; email?: string; reason?: string } => ({
+  ): { redirect?: string; mode?: "signup"; email?: string; reason?: string; ref?: string } => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
     mode: search.mode === "signup" ? "signup" : undefined,
     email: typeof search.email === "string" ? search.email : undefined,
     reason: typeof search.reason === "string" ? search.reason : undefined,
+    // A referral code (see buildReferralLink in src/lib/referrals.ts) —
+    // resolved into a real referred_by user id SERVER-SIDE by
+    // handle_new_user(), never trusted client-side.
+    ref: typeof search.ref === "string" ? search.ref : undefined,
   }),
   component: SignIn,
 });
@@ -43,7 +47,9 @@ function SignIn() {
     if (authedUser) nav({ to: returnTo, replace: true });
   }, [authedUser, nav, returnTo]);
 
-  const [mode, setMode] = useState<"signin" | "signup">(sp.mode === "signup" ? "signup" : "signin");
+  const [mode, setMode] = useState<"signin" | "signup">(
+    sp.mode === "signup" || sp.ref ? "signup" : "signin",
+  );
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -85,6 +91,9 @@ function SignIn() {
               privacy_version: PRIVACY_VERSION,
               // Recorded on the terms_acceptances row by handle_new_user (PRD 1.1.7.M).
               user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+              // Resolved into a real referred_by id server-side — see this
+              // route's validateSearch comment above.
+              referral_code_used: sp.ref ?? null,
             },
           },
         });

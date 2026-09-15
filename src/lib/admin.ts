@@ -1,4 +1,95 @@
 import { supabase } from "./supabase";
+import { invokeEdgeFunction } from "./edge-functions";
+
+// Users / Admins / Financials / Invited Users / Activity Log — mirrors the
+// CorvusPT door's own admin panel structure. Readable cross-account because
+// "admin: read all profiles" already exists in schema.sql.
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  plan: string;
+  is_admin: boolean;
+  referral_code: string | null;
+  created_at: string;
+};
+
+export async function listAllUsers(): Promise<AdminUserRow[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, first_name, last_name, plan, is_admin, referral_code, created_at")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return (data as AdminUserRow[]) ?? [];
+}
+
+// Single-purpose RPC (see schema.sql admin_set_is_admin) rather than a
+// direct table update — deliberately the only way any admin flag can flip
+// for a row that isn't the caller's own.
+export async function setUserIsAdmin(targetId: string, makeAdmin: boolean): Promise<void> {
+  const { error } = await supabase.rpc("admin_set_is_admin", {
+    target_id: targetId,
+    make_admin: makeAdmin,
+  });
+  if (error) throw error;
+}
+
+export type InvitedUserRow = {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  invited_at: string;
+  last_sent_at: string;
+  resend_count: number;
+};
+
+export async function listInvitedUsers(): Promise<InvitedUserRow[]> {
+  const { data, error } = await supabase
+    .from("invited_users")
+    .select("id, email, first_name, last_name, invited_at, last_sent_at, resend_count")
+    .order("last_sent_at", { ascending: false });
+  if (error) throw error;
+  return (data as InvitedUserRow[]) ?? [];
+}
+
+export async function deleteInvitedUser(id: string): Promise<void> {
+  const { error } = await supabase.from("invited_users").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function sendSignupInvite(input: {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}): Promise<void> {
+  await invokeEdgeFunction("send-signup-invite", {
+    email: input.email,
+    firstName: input.firstName ?? null,
+    lastName: input.lastName ?? null,
+  });
+}
+
+export type AdminAuditLogRow = {
+  id: string;
+  actor_email: string | null;
+  action: string;
+  target: string | null;
+  detail: string | null;
+  created_at: string;
+};
+
+export async function listAuditLog(): Promise<AdminAuditLogRow[]> {
+  const { data, error } = await supabase
+    .from("admin_audit_log")
+    .select("id, actor_email, action, target, detail, created_at")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return (data as AdminAuditLogRow[]) ?? [];
+}
 
 export async function checkIsAdmin(userId: string): Promise<boolean> {
   const { data, error } = await supabase

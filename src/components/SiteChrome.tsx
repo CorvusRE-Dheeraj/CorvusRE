@@ -100,6 +100,7 @@ export function SiteNav() {
                 <div className="absolute right-0 mt-2 w-52 card-elev p-1 text-sm">
                   {[
                     { to: "/dashboard", label: "Dashboard" },
+                    { to: "/dashboard/referrals", label: "Referrals" },
                     { to: "/dashboard/settings", label: "Settings" },
                     { to: "/pricing", label: "Plans" },
                   ].map((l) => (

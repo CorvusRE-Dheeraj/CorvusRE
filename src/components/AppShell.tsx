@@ -14,6 +14,7 @@ import {
   Layers,
   ClipboardCheck,
   Bell,
+  Gift,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -32,6 +33,7 @@ const NAV = [
   { to: "/dashboard/approvals", label: "Approvals", icon: BadgeCheck },
   { to: "/dashboard/notifications", label: "Alerts", icon: Bell },
   { to: "/dashboard/design", label: "Design", icon: DraftingCompass },
+  { to: "/dashboard/referrals", label: "Referrals", icon: Gift },
 ] as const;
 
 const NO_SHELL_PREFIXES = [

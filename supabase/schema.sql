@@ -538,3 +538,184 @@ create policy "admin: read ai logs" on public.ai_logs for select using (public.i
 -- getActiveProject()'s "most recently touched" sort, so switching back to
 -- an older design request had no equivalent mechanism.
 alter table public.design_requests add column if not exists updated_at timestamptz not null default now();
+
+-- ---------------------------------------------------------------------------
+-- Admin/billing parity pass (2026-09-15) — plan concept, referral program,
+-- and admin-invited signups, mirroring the CorvusPT door's own tables so the
+-- two admin panels read the same way. Stripe checkout/webhook itself is a
+-- separate, later step (needs a real Stripe secret key) — this lays the
+-- schema groundwork: `plan` is what that webhook will update, and every
+-- referral/invite table here works with zero Stripe dependency today.
+-- ---------------------------------------------------------------------------
+
+-- 'free' until a real Stripe subscription (once wired) sets it to a paid
+-- plan slug. Kept as a plain text column (not an enum) so new tiers never
+-- need a migration, same choice CorvusPT's own profiles.plan made.
+alter table public.profiles add column if not exists plan text not null default 'free';
+
+-- Referral program — each user's own shareable code, who referred them (set
+-- once at signup below, never changed after), and when the REFERRER was
+-- actually credited. referral_reward_granted_at lives on the referred
+-- user's own row (not a separate referrals table) so a webhook can check
+-- "have we already paid out for this signup converting" atomically — same
+-- design as CorvusPT's. None of these three are in the authenticated
+-- column-grant list, so only handle_new_user() (security definer) and a
+-- future service-role webhook can ever write them.
+alter table public.profiles add column if not exists referral_code text unique;
+alter table public.profiles add column if not exists referred_by uuid references public.profiles (id) on delete set null;
+alter table public.profiles add column if not exists referral_reward_granted_at timestamptz;
+
+-- Backfill: accounts created before this feature shipped have no code yet.
+update public.profiles
+  set referral_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8))
+  where referral_code is null;
+
+-- Security-definer so a referrer can see the minimal safe fields of who
+-- they referred (name, signup date, converted/rewarded) without RLS having
+-- to grant them broad SELECT on other users' full profile rows (which would
+-- leak phone/company/etc. of everyone they referred).
+create or replace function public.get_my_referrals()
+returns table (
+  id uuid,
+  first_name text,
+  signed_up_at timestamptz,
+  converted boolean,
+  rewarded boolean
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select
+    p.id,
+    p.first_name,
+    p.created_at as signed_up_at,
+    (p.plan <> 'free') as converted,
+    (p.referral_reward_granted_at is not null) as rewarded
+  from public.profiles p
+  where p.referred_by = auth.uid()
+  order by p.created_at desc;
+$$;
+
+-- One row per address a user has sent a referral invite email to (see
+-- send-referral-invite/index.ts) — the only record of "yes, I did send
+-- that" until the friend actually signs up. Not auto-cleared on signup
+-- (nothing here to match the eventual signup email against); the user
+-- dismisses stale rows themselves via the delete policy below.
+create table if not exists public.referral_invites (
+  id uuid primary key default gen_random_uuid(),
+  referrer_id uuid not null references public.profiles (id) on delete cascade,
+  email text not null,
+  sent_at timestamptz not null default now()
+);
+create unique index if not exists referral_invites_referrer_email_idx
+  on public.referral_invites (referrer_id, email);
+alter table public.referral_invites enable row level security;
+drop policy if exists "own referral invites: select" on public.referral_invites;
+create policy "own referral invites: select" on public.referral_invites
+  for select using (referrer_id = auth.uid());
+drop policy if exists "own referral invites: delete" on public.referral_invites;
+create policy "own referral invites: delete" on public.referral_invites
+  for delete using (referrer_id = auth.uid());
+
+-- Admin-driven "invite someone directly" (a different flow from the
+-- referral program above — this is staff inviting a prospect, not a user
+-- referring a friend). One row per pending invite; handle_new_user() below
+-- deletes the matching row the moment that email actually signs up, so this
+-- table only ever holds genuinely-still-pending invites.
+create table if not exists public.invited_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  first_name text,
+  last_name text,
+  invited_by uuid references auth.users (id) on delete set null,
+  invited_at timestamptz not null default now(),
+  last_sent_at timestamptz not null default now(),
+  resend_count integer not null default 0
+);
+alter table public.invited_users enable row level security;
+drop policy if exists "admin: read invited users" on public.invited_users;
+create policy "admin: read invited users" on public.invited_users
+  for select using (public.is_admin());
+drop policy if exists "admin: delete invited users" on public.invited_users;
+create policy "admin: delete invited users" on public.invited_users
+  for delete using (public.is_admin());
+
+-- Single-purpose, admin-gated privilege escalation — deliberately NOT a
+-- broad "admin can update any profile column" RLS policy (which would also
+-- let any admin silently rewrite another user's plan, referral fields,
+-- etc.). This is the only way any admin flag can flip for a row that isn't
+-- their own.
+create or replace function public.admin_set_is_admin(target_id uuid, make_admin boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'forbidden';
+  end if;
+  update public.profiles set is_admin = make_admin where id = target_id;
+end;
+$$;
+
+-- Re-adds the referral/plan/invited-user wiring to the same signup trigger
+-- redefined above: resolves 'referral_code_used' (raw code from ?ref=,
+-- passed through supabase.auth.signUp's options.data — see src/routes/
+-- sign-in.tsx) into a real referred_by id SERVER-SIDE, so a referral link
+-- can't be spoofed to point at an arbitrary account; a code that doesn't
+-- match anything just resolves to null, no blocked signup.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  referrer_id uuid;
+begin
+  select id into referrer_id from public.profiles
+    where referral_code = upper(new.raw_user_meta_data ->> 'referral_code_used')
+    limit 1;
+
+  insert into public.profiles (id, email, first_name, last_name, phone, company_name, referral_code, referred_by)
+  values (
+    new.id, new.email,
+    new.raw_user_meta_data ->> 'first_name',
+    new.raw_user_meta_data ->> 'last_name',
+    new.raw_user_meta_data ->> 'phone',
+    new.raw_user_meta_data ->> 'company_name',
+    upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
+    referrer_id
+  );
+
+  begin
+    insert into public.terms_acceptances (user_id, email, terms_version, privacy_version, source, user_agent)
+    values (
+      new.id, new.email,
+      coalesce(new.raw_user_meta_data ->> 'terms_version', 'unknown'),
+      coalesce(new.raw_user_meta_data ->> 'privacy_version', 'unknown'),
+      'signup',
+      new.raw_user_meta_data ->> 'user_agent'
+    );
+  exception when others then null;
+  end;
+
+  begin
+    update public.projects set user_id = new.id
+      where user_id is null and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+    update public.design_requests set user_id = new.id
+      where user_id is null and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+    update public.leads set status = 'converted'
+      where status <> 'converted' and session_id is not null
+        and session_id = new.raw_user_meta_data ->> 'session_id';
+    delete from public.invited_users where email = new.email;
+  exception when others then null;
+  end;
+
+  return new;
+end;
+$$;
