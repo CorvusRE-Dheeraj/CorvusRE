@@ -63,7 +63,11 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
           >
             Try again
           </button>
-          <a href="/" className="btn-outline">
+          {/* A plain reload, not <Link> — the router itself may be what's
+              broken here, so this deliberately doesn't depend on it. Still
+              needs the real base path though (SITE_BASE, e.g. "/corvusdp/"),
+              or this 404s in production instead of reaching the app. */}
+          <a href={import.meta.env.BASE_URL} className="btn-outline">
             Go home
           </a>
         </div>
