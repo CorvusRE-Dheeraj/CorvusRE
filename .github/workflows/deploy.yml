@@ -6,10 +6,11 @@ name: Deploy CorvusRE
 # lives in this one repo), and a single assemble-and-deploy job waits on all
 # of them before publishing exactly one artifact.
 #
-# Phase 0 scaffold: apps/pt, apps/dp, apps/identity are trivial placeholders
-# proving this pipeline end-to-end. Migration Phases 1/2/5 replace each
-# placeholder's package.json/build with the real app, without needing to
-# touch this workflow's shape.
+# Phases 1/2 landed the real CorvusPT/CorvusDP apps in apps/pt, apps/dp —
+# build-pt/build-dp below now run their real test/e2e/build steps with each
+# door's real (public, client-side-by-design) env vars, same values their
+# old standalone pipelines used. apps/identity is still a Phase 0 placeholder
+# until Phase 5 (login bridge) replaces it.
 
 on:
   push:
@@ -28,6 +29,8 @@ concurrency:
 jobs:
   build-pt:
     runs-on: ubuntu-latest
+    env:
+      HAS_E2E_AUTH_SECRET: ${{ secrets.E2E_TEST_EMAIL != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,8 +38,47 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+
       - run: npm run test -w apps/pt
+
+      - run: npx playwright install --with-deps chromium
+
+      # Guest e2e subset — no sign-in needed, writes no persistent rows.
+      - run: npm run test:e2e -w apps/pt
+        env:
+          VITE_SUPABASE_URL: https://iotzuhuajbsxxuccuihn.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3
+          VITE_WEB3FORMS_ACCESS_KEY: 5a66f800-1264-49a2-9696-2839afd02485
+          VITE_STRIPE_PUBLISHABLE_KEY_TEST: pk_test_51TwDPUCrbRfnYZRW05z9Huz1UlghIXZZUrR9nMF82t1Ym89ID6ZXbnGcT1Lcqdb9fFbU6z1W8e11xezYbrPSNqbj00kOMSJnE2
+          VITE_STRIPE_PUBLISHABLE_KEY_LIVE: pk_live_51TwDPKE4IPC6TIHQWfh47929fIIkIIk2BrPSEWkJLAG93kCH021JNgmPHczcGxE1GG42Nmv1za7k2nTbp2fe9tqs00xTWIYCKX
+
+      # Authenticated e2e subset — runs against a dedicated, permanent test
+      # account (not a real customer); deletes any rows it creates. Gated
+      # on the secret existing: E2E_TEST_EMAIL/PASSWORD live on the old
+      # CorvusPT repo and don't carry over automatically (GitHub secrets
+      # are write-only via API) — skips cleanly until they're added here
+      # rather than failing every run in the meantime.
+      - run: npm run test:e2e:auth -w apps/pt
+        if: ${{ env.HAS_E2E_AUTH_SECRET == 'true' }}
+        env:
+          VITE_SUPABASE_URL: https://iotzuhuajbsxxuccuihn.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3
+          VITE_WEB3FORMS_ACCESS_KEY: 5a66f800-1264-49a2-9696-2839afd02485
+          VITE_STRIPE_PUBLISHABLE_KEY_TEST: pk_test_51TwDPUCrbRfnYZRW05z9Huz1UlghIXZZUrR9nMF82t1Ym89ID6ZXbnGcT1Lcqdb9fFbU6z1W8e11xezYbrPSNqbj00kOMSJnE2
+          VITE_STRIPE_PUBLISHABLE_KEY_LIVE: pk_live_51TwDPKE4IPC6TIHQWfh47929fIIkIIk2BrPSEWkJLAG93kCH021JNgmPHczcGxE1GG42Nmv1za7k2nTbp2fe9tqs00xTWIYCKX
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+
       - run: npm run build -w apps/pt
+        env:
+          SITE_BASE: /corvuspt/
+          VITE_SUPABASE_URL: https://iotzuhuajbsxxuccuihn.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3
+          VITE_WEB3FORMS_ACCESS_KEY: 5a66f800-1264-49a2-9696-2839afd02485
+          VITE_STRIPE_PUBLISHABLE_KEY_TEST: pk_test_51TwDPUCrbRfnYZRW05z9Huz1UlghIXZZUrR9nMF82t1Ym89ID6ZXbnGcT1Lcqdb9fFbU6z1W8e11xezYbrPSNqbj00kOMSJnE2
+          VITE_STRIPE_PUBLISHABLE_KEY_LIVE: pk_live_51TwDPKE4IPC6TIHQWfh47929fIIkIIk2BrPSEWkJLAG93kCH021JNgmPHczcGxE1GG42Nmv1za7k2nTbp2fe9tqs00xTWIYCKX
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
+
       - uses: actions/upload-artifact@v4
         with:
           name: pt-dist
@@ -53,6 +95,11 @@ jobs:
       - run: npm ci
       - run: npm run test -w apps/dp
       - run: npm run build -w apps/dp
+        env:
+          SITE_BASE: /corvusdp/
+          VITE_SUPABASE_URL: https://xzhilwwlfajxhklkiteb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
       - uses: actions/upload-artifact@v4
         with:
           name: dp-dist
