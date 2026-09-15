@@ -4,9 +4,12 @@
 // authoritative monthly amount (including the 2nd-property discount that
 // create-checkout-session applies via price_data, which the client's own
 // TIER_BRACKET_PRICES copy can't reproduce), the real next billing date, and
-// the card on file — none of which live in our own DB. The property address
-// each subscription is for comes from subscription metadata.propertyId, which
-// create-checkout-session sets; the client joins that to its property list.
+// the card on file — none of which live in our own DB. What each subscription
+// is for comes from subscription metadata.propertyId or .bppAccountId (set by
+// create-checkout-session / create-bpp-checkout-session respectively); the
+// client joins whichever is present back to its property or BPP account list.
+// Every Stripe subscription for this customer is listed regardless of which
+// kind it's for — this function doesn't need to know or care.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
@@ -118,6 +121,7 @@ Deno.serve(async (req: Request) => {
           id: s.id,
           status: s.status,
           propertyId: (s.metadata?.propertyId as string | undefined) ?? null,
+          bppAccountId: (s.metadata?.bppAccountId as string | undefined) ?? null,
           tier: (s.metadata?.tier as string | undefined) ?? null,
           bracket: (s.metadata?.bracket as string | undefined) ?? null,
           productName:

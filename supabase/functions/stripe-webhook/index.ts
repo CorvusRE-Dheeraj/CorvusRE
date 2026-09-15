@@ -13,14 +13,16 @@
 // used to write to profiles/properties, bypassing RLS, since there is no end-user
 // session.
 //
-// One real, independent Stripe subscription per PROPERTY (not one shared
-// subscription per customer with bracket quantities, as before) — every
-// event here is keyed by which PROPERTY row a subscription belongs to
-// (matched via properties.stripe_subscription_id), not by customer alone,
-// since one customer can now have many active subscriptions at once.
+// One real, independent Stripe subscription per PROPERTY or BPP ACCOUNT (not
+// one shared subscription per customer with bracket quantities, as before) —
+// every event here is keyed by which properties/bpp_accounts row a
+// subscription belongs to (matched via metadata.subjectType at checkout, or
+// by stripe_subscription_id thereafter, checking properties then
+// bpp_accounts), not by customer alone, since one customer can now have many
+// active subscriptions — of either kind — at once.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
-import type { Bracket, Tier } from "../_shared/pricing.ts";
+import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -32,11 +34,11 @@ const corsHeaders = {
 
 // profiles.plan is a coarse, account-level signal only now (see its own
 // comment in src/lib/billing.ts) — "the tier of this customer's most
-// recently created active property subscription," recomputed here after
-// every property-subscription change. Never touched for a 'beta' account:
-// that's an unconditional, non-Stripe grant (see handle_new_user() in
-// schema.sql) that must never be overwritten by ordinary subscription
-// activity.
+// recently created active subscription, property or BPP account,"
+// recomputed here after every subscription change. Never touched for a
+// 'beta' account: that's an unconditional, non-Stripe grant (see
+// handle_new_user() in schema.sql) that must never be overwritten by
+// ordinary subscription activity.
 async function syncProfilePlan(
   adminClient: ReturnType<typeof createClient>,
   userId: string,
@@ -48,14 +50,26 @@ async function syncProfilePlan(
     .maybeSingle();
   if (profile?.plan === "beta") return;
 
-  const { data: activeProps } = await adminClient
-    .from("properties")
-    .select("plan_tier")
-    .eq("user_id", userId)
-    .eq("subscription_status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const mostRecentTier = activeProps?.[0]?.plan_tier as string | null | undefined;
+  const [{ data: activeProps }, { data: activeBpp }] = await Promise.all([
+    adminClient
+      .from("properties")
+      .select("plan_tier, created_at")
+      .eq("user_id", userId)
+      .eq("subscription_status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1),
+    adminClient
+      .from("bpp_accounts")
+      .select("plan_tier, created_at")
+      .eq("user_id", userId)
+      .eq("subscription_status", "active")
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  const candidates = [...(activeProps ?? []), ...(activeBpp ?? [])].sort((a, b) =>
+    String(b.created_at).localeCompare(String(a.created_at)),
+  );
+  const mostRecentTier = candidates[0]?.plan_tier as string | null | undefined;
   await adminClient
     .from("profiles")
     .update({ plan: mostRecentTier ?? "free_ai_review" })
@@ -106,16 +120,29 @@ async function grantReferralRewardIfDue(
     const customerId = referrer?.stripe_customer_id as string | null | undefined;
     if (!customerId) return; // referrer isn't a paying customer themselves yet
 
-    const { data: activeProps } = await adminClient
-      .from("properties")
-      .select("stripe_subscription_id")
-      .eq("user_id", referrerId)
-      .eq("subscription_status", "active")
-      .not("stripe_subscription_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const subscriptionId = activeProps?.[0]?.stripe_subscription_id as string | undefined;
-    if (!subscriptionId) return; // referrer has no active property subscription of their own
+    const [{ data: activeProps }, { data: activeBpp }] = await Promise.all([
+      adminClient
+        .from("properties")
+        .select("stripe_subscription_id, created_at")
+        .eq("user_id", referrerId)
+        .eq("subscription_status", "active")
+        .not("stripe_subscription_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
+      adminClient
+        .from("bpp_accounts")
+        .select("stripe_subscription_id, created_at")
+        .eq("user_id", referrerId)
+        .eq("subscription_status", "active")
+        .not("stripe_subscription_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+    const candidates = [...(activeProps ?? []), ...(activeBpp ?? [])].sort((a, b) =>
+      String(b.created_at).localeCompare(String(a.created_at)),
+    );
+    const subscriptionId = candidates[0]?.stripe_subscription_id as string | undefined;
+    if (!subscriptionId) return; // referrer has no active subscription of their own
 
     const referrerSub = await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ["items.data.price"],
@@ -212,12 +239,16 @@ Deno.serve(async (req: Request) => {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.client_reference_id;
       const propertyId = session.metadata?.propertyId;
+      const bppAccountId = session.metadata?.bppAccountId;
+      const isBpp = session.metadata?.subjectType === "bpp_account";
       const tier =
         session.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
       const bracket = session.metadata?.bracket ?? null;
-      if (userId && propertyId && typeof session.subscription === "string") {
+      const subjectId = isBpp ? bppAccountId : propertyId;
+      const table = isBpp ? "bpp_accounts" : "properties";
+      if (userId && subjectId && typeof session.subscription === "string") {
         await adminClient
-          .from("properties")
+          .from(table)
           .update({
             stripe_subscription_id: session.subscription,
             subscription_status: "active",
@@ -226,7 +257,7 @@ Deno.serve(async (req: Request) => {
             cancel_at_period_end: false,
             cancel_at: null,
           })
-          .eq("id", propertyId)
+          .eq("id", subjectId)
           .eq("user_id", userId);
 
         if (typeof session.customer === "string") {
@@ -236,14 +267,24 @@ Deno.serve(async (req: Request) => {
             .eq("id", userId);
         }
 
+        const { data: subjectRow } = await adminClient
+          .from(table)
+          .select(isBpp ? "business_name" : "address")
+          .eq("id", subjectId)
+          .maybeSingle();
+        const subjectLabel = isBpp
+          ? ((subjectRow?.business_name as string | null) ?? "")
+          : ((subjectRow?.address as string | null) ?? "");
+
         await syncProfilePlan(adminClient, userId);
         await grantReferralRewardIfDue(stripe, adminClient, userId);
         await sendPurchaseConfirmationEmail(stripe, adminClient, {
           userId,
-          propertyId,
+          subjectLabel,
+          subjectLabelKind: isBpp ? "Business" : "Property",
           subscriptionId: session.subscription,
           tier,
-          bracket: bracket as Bracket | null,
+          bracket: bracket as Bracket | BppBracket | null,
           amountCents: session.amount_total ?? 0,
           kind: "new_subscription",
         });
@@ -291,24 +332,38 @@ Deno.serve(async (req: Request) => {
       }
     } else if (event.type === "customer.subscription.updated") {
       const subscription = event.data.object as Stripe.Subscription;
+      // Checked in order — properties first (the far more common case), then
+      // bpp_accounts, since a subscription id only ever matches one table.
       const { data: property } = await adminClient
         .from("properties")
         .select("id, user_id")
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
-      if (property) {
+      const { data: bppAccount } = property
+        ? { data: null }
+        : await adminClient
+            .from("bpp_accounts")
+            .select("id, user_id")
+            .eq("stripe_subscription_id", subscription.id)
+            .maybeSingle();
+      const subject = property
+        ? { table: "properties" as const, id: property.id as string, userId: property.user_id as string }
+        : bppAccount
+          ? { table: "bpp_accounts" as const, id: bppAccount.id as string, userId: bppAccount.user_id as string }
+          : null;
+      if (subject) {
         // tier/bracket re-derived from metadata on every update, not just at
         // creation — switch-property-plan changes a subscription's price and
         // metadata.tier in place (same subscription id, no new checkout/
         // 'created' event), so this is what actually lands the new tier on
-        // the properties row. A harmless no-op re-write of the same values
-        // for every other kind of update (cancel/resume/payment retry, none
-        // of which touch metadata.tier).
+        // the row. A harmless no-op re-write of the same values for every
+        // other kind of update (cancel/resume/payment retry, none of which
+        // touch metadata.tier).
         const tier =
           subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
         const bracket = subscription.metadata?.bracket ?? null;
         await adminClient
-          .from("properties")
+          .from(subject.table)
           .update({
             subscription_status: subscription.status,
             plan_tier: tier,
@@ -318,23 +373,30 @@ Deno.serve(async (req: Request) => {
               ? new Date(subscription.cancel_at * 1000).toISOString()
               : null,
           })
-          .eq("id", property.id);
-        await syncProfilePlan(adminClient, property.user_id as string);
+          .eq("id", subject.id);
+        await syncProfilePlan(adminClient, subject.userId);
         // Catches an API-created (bulk-subscribe) subscription that was
         // created 'incomplete' and has now cleared to active — the 'created'
         // handler skipped the referral grant then. One-time via the guard in
         // grantReferralRewardIfDue.
         if (subscription.status === "active" || subscription.status === "trialing") {
-          await grantReferralRewardIfDue(stripe, adminClient, property.user_id as string);
+          await grantReferralRewardIfDue(stripe, adminClient, subject.userId);
         }
       }
     } else if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object as Stripe.Subscription;
       const { data: property } = await adminClient
         .from("properties")
-        .select("id, user_id, plan_tier, value_bracket")
+        .select("id, user_id, plan_tier, value_bracket, address")
         .eq("stripe_subscription_id", subscription.id)
         .maybeSingle();
+      const { data: bppAccount } = property
+        ? { data: null }
+        : await adminClient
+            .from("bpp_accounts")
+            .select("id, user_id, plan_tier, value_bracket, business_name")
+            .eq("stripe_subscription_id", subscription.id)
+            .maybeSingle();
       if (property) {
         await adminClient
           .from("properties")
@@ -347,9 +409,27 @@ Deno.serve(async (req: Request) => {
         await syncProfilePlan(adminClient, property.user_id as string);
         await sendCancellationEmail(adminClient, {
           userId: property.user_id as string,
-          propertyId: property.id as string,
+          subjectLabel: (property.address as string | null) ?? "",
+          subjectLabelKind: "Property",
           tier: property.plan_tier as Tier | null,
           bracket: property.value_bracket as Bracket | null,
+        });
+      } else if (bppAccount) {
+        await adminClient
+          .from("bpp_accounts")
+          .update({
+            subscription_status: "canceled",
+            cancel_at_period_end: false,
+            cancel_at: null,
+          })
+          .eq("id", bppAccount.id);
+        await syncProfilePlan(adminClient, bppAccount.user_id as string);
+        await sendCancellationEmail(adminClient, {
+          userId: bppAccount.user_id as string,
+          subjectLabel: (bppAccount.business_name as string | null) ?? "",
+          subjectLabelKind: "Business",
+          tier: bppAccount.plan_tier as Tier | null,
+          bracket: bppAccount.value_bracket as BppBracket | null,
         });
       }
     }

@@ -59,7 +59,18 @@ export type AttendanceType = "Property Owner" | "Authorized Agent" | "Both";
 
 export type ProtestRecord = {
   id: string;
-  propertyId: string;
+  // Exactly one of propertyId/bppAccountId is ever set — a BPP protest has
+  // no property_id (see protests_subject_check in schema.sql). Real-estate
+  // code that only ever reads/creates property-backed protests (the
+  // overwhelming majority of this codebase) can keep treating propertyId as
+  // present; it's typed nullable so a BPP row round-trips honestly instead
+  // of lying about having a property.
+  propertyId: string | null;
+  // Optional (not just nullable), same reason as informalReviewTime/
+  // filingConfirmationNumber below: the many ProtestRecord fixtures/builders
+  // that predate BPP don't all need updating; fromRow (the real path)
+  // always populates it.
+  bppAccountId?: string | null;
   status: ProtestStatus;
   notes: string | null;
   requestedAt: string;
@@ -104,11 +115,18 @@ export type ProtestRecord = {
   filingChannel?: "online" | "mail" | "in_person" | "email" | null;
   certifiedMailTracking?: string | null;
   evidenceSubmittedConfirmedAt?: string | null;
+  // Who at CorvusPT is actually handling this case — admin-set (see
+  // updateProtestAssignedRep in admin.ts), read here so HearingPrepSection
+  // can show it to the customer. Same optional-fixture convention as the
+  // fields above.
+  assignedRepresentative?: string | null;
+  assignedRepSetAt?: string | null;
 };
 
 type ProtestRow = {
   id: string;
-  property_id: string;
+  property_id: string | null;
+  bpp_account_id: string | null;
   status: ProtestStatus;
   notes: string | null;
   requested_at: string;
@@ -137,15 +155,18 @@ type ProtestRow = {
   filing_channel: "online" | "mail" | "in_person" | "email" | null;
   certified_mail_tracking: string | null;
   evidence_submitted_confirmed_at: string | null;
+  assigned_representative: string | null;
+  assigned_rep_set_at: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return {
     id: row.id,
     propertyId: row.property_id,
+    bppAccountId: row.bpp_account_id,
     status: row.status,
     notes: row.notes,
     requestedAt: row.requested_at,
@@ -174,6 +195,8 @@ function fromRow(row: ProtestRow): ProtestRecord {
     filingChannel: row.filing_channel,
     certifiedMailTracking: row.certified_mail_tracking,
     evidenceSubmittedConfirmedAt: row.evidence_submitted_confirmed_at,
+    assignedRepresentative: row.assigned_representative,
+    assignedRepSetAt: row.assigned_rep_set_at,
   };
 }
 
@@ -219,6 +242,86 @@ export async function requestProtest(
   }).catch((err) => console.error("Protest request staff notification failed:", err));
 
   return created;
+}
+
+// BPP sibling of requestProtest above — same shape, but keyed to a BPP
+// account instead of a property (bpp_is_paid() gates the insert server-side,
+// same as property_is_paid() does for requestProtest). Only makes sense once
+// the county's own notice_value actually disagrees with what was rendered
+// (see bppNeedsProtest in bpp-accounts.ts) — callers check that before
+// offering this, same as the UI-level isPaid checks around requestProtest.
+export async function requestBppProtest(
+  userId: string,
+  bppAccountId: string,
+  details?: {
+    businessName?: string;
+    userEmail?: string;
+    originalValue?: number | null;
+    taxYear?: number | null;
+  },
+): Promise<ProtestRecord> {
+  const { data, error } = await supabase
+    .from("protests")
+    .insert({
+      bpp_account_id: bppAccountId,
+      user_id: userId,
+      original_value: details?.originalValue ?? null,
+      tax_year: details?.taxYear ?? null,
+    })
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  const created = fromRow(data as ProtestRow);
+
+  const businessName = details?.businessName ?? `BPP account ${bppAccountId}`;
+  submitWeb3Form({
+    subject: "New BPP protest filing request — CorvusPT.ai",
+    from_name: "CorvusPT.ai",
+    property_address: businessName,
+    property_id: bppAccountId,
+    user_email: details?.userEmail ?? "(unknown)",
+    message: `A BPP protest filing was requested for ${businessName} by ${details?.userEmail ?? `user ${userId}`}. Update its status in the admin panel.`,
+  }).catch((err) => console.error("BPP protest request staff notification failed:", err));
+
+  return created;
+}
+
+// Records BPP's own agreement acceptance + owner info + AI acknowledgement +
+// e-signature — all on the protests row itself (bpp_* columns added in
+// schema.sql) rather than the real-estate flow's separate
+// service_agreement_acceptances/protest_authorizations tables. See
+// BppProtestFlow.tsx: everything is held in component state across its
+// wizard steps and written here in one call once the owner actually signs,
+// since (unlike the real-estate flow) there's no protest row to attach an
+// early "agreement accepted" write to until requestBppProtest() above has
+// already run.
+export async function saveBppAuthorization(
+  protestId: string,
+  authorization: {
+    ownerFirstName: string;
+    ownerLastName: string;
+    ownerEmail: string;
+    ownerPhone: string;
+    signatureType: "draw" | "type";
+    signatureData: string;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      bpp_agreement_accepted_at: now,
+      bpp_owner_first_name: authorization.ownerFirstName,
+      bpp_owner_last_name: authorization.ownerLastName,
+      bpp_owner_email: authorization.ownerEmail,
+      bpp_owner_phone: authorization.ownerPhone,
+      bpp_ai_ack_at: now,
+      bpp_signature_type: authorization.signatureType,
+      bpp_signature_data: authorization.signatureData,
+      bpp_signed_at: now,
+    })
+    .eq("id", protestId);
+  if (error) throw error;
 }
 
 // Records that the customer has acknowledged Corvus's "AI Guidance & Filing

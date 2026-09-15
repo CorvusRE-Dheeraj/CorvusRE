@@ -12,11 +12,20 @@ export type AdminFinancials = {
   subscriptionCustomers: number;
   subscriptionsByStatus: Record<string, number>;
   planMix: { label: string; count: number; mrrCents: number }[];
+  // Real Estate (properties) vs BPP (bpp_accounts) split of the same active
+  // subscriptions planMix already breaks down by tier/bracket — "property"
+  // absorbs every pre-BPP subscription too (they predate metadata.
+  // subjectType, which only create-bpp-checkout-session sets).
+  byProductLine: {
+    property: { count: number; mrrCents: number };
+    bpp: { count: number; mrrCents: number };
+  };
   collectedRecentCents: number;
   refundedRecentCents: number;
   collectedByMonth: { month: string; amountCents: number }[];
   signups: number;
   propertiesByStatus: Record<string, number>;
+  bppAccountsByStatus: Record<string, number>;
 };
 
 export async function getAdminFinancials(): Promise<AdminFinancials> {

@@ -7,6 +7,7 @@ import { MarkdownLite } from "@/components/MarkdownLite";
 import {
   updatePropertyIdentity,
   buildAiReportIntakePatch,
+  setAutoRefile,
   type PropertyRecord,
 } from "@/lib/properties";
 import {
@@ -487,6 +488,7 @@ export function CaseDetailView({
                   property={property}
                   caseData={caseData}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
                 />
                 <CaseRecordSection
                   userId={userId}
@@ -4677,6 +4679,28 @@ function HearingPrepSection({
         ))}
       </div>
 
+      {(protest.attendanceType === "Authorized Agent" || protest.attendanceType === "Both") && (
+        <div className="mt-2 rounded-md border border-border p-2.5 text-xs">
+          {protest.assignedRepresentative ? (
+            <>
+              <span className="font-medium">Your CorvusPT representative: </span>
+              {protest.assignedRepresentative}
+              {protest.assignedRepSetAt && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  (assigned {new Date(protest.assignedRepSetAt).toLocaleDateString()})
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              CorvusPT is assigning a representative for this hearing — check back before your
+              hearing date.
+            </span>
+          )}
+        </div>
+      )}
+
       {!guide && (
         <div className="mt-3">
           <button
@@ -6334,13 +6358,22 @@ export function CaseProgress({
   property,
   caseData,
   onUpdate,
+  onPropertyUpdate,
 }: {
   protest: ProtestRecord;
   property: PropertyRecord;
   caseData: ProtestCase | null;
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  // Optional — only the real customer-facing case view (CaseDetailModal)
+  // passes this; the admin panel's own CaseProgress usage
+  // (AdminCaseProgressModal.tsx) works off a synthetic property stub with no
+  // real update path, so it simply doesn't get the auto-refile toggle below.
+  // Auto-refile is a customer self-service preference, not something staff
+  // need to set on someone's behalf.
+  onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [autoRefileSaving, setAutoRefileSaving] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [offerValue, setOfferValue] = useState("");
   const [offerDate, setOfferDate] = useState(new Date().toISOString().slice(0, 10));
@@ -6483,6 +6516,22 @@ export function CaseProgress({
 
   const results = getCaseResults(protest, property);
 
+  async function handleToggleAutoRefile(enabled: boolean) {
+    setAutoRefileSaving(true);
+    try {
+      const updated = await setAutoRefile(property.id, enabled);
+      onPropertyUpdate?.({
+        autoRefile: updated.autoRefile,
+        autoRefileAuthorizedAt: updated.autoRefileAuthorizedAt,
+      });
+      toast.success(enabled ? "Auto re-file turned on." : "Auto re-file turned off.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update auto re-file.");
+    } finally {
+      setAutoRefileSaving(false);
+    }
+  }
+
   return (
     <div id="case-progress" className="mt-4 card-elev p-4">
       <h4 className="font-serif text-base font-semibold">Case Progress</h4>
@@ -6508,7 +6557,35 @@ export function CaseProgress({
             Case closed — no final value on file.
           </p>
         )
-      ) : (
+      ) : null}
+
+      {protest.status === "resolved" && onPropertyUpdate && (
+        <label className="mt-4 flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={!!property.autoRefile}
+            disabled={autoRefileSaving}
+            onChange={(e) => handleToggleAutoRefile(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Auto re-file next year</span>
+            {property.autoRefile && property.autoRefileAuthorizedAt && (
+              <span className="text-muted-foreground">
+                {" "}
+                — authorized {new Date(property.autoRefileAuthorizedAt).toLocaleDateString()}
+              </span>
+            )}
+            <span className="block text-xs text-muted-foreground">
+              When on, CorvusPT automatically starts next year&apos;s protest once the new tax
+              year's cycle begins — no action needed from you beyond signing the actual Notice of
+              Protest when it's ready. Off by default; turn it off any time.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {protest.status !== "resolved" && (
         <div className="mt-3 grid gap-4">
           {/* Settlement offer */}
           {protest.status === "offer_received" ? (

@@ -55,6 +55,10 @@ export type PropertyRecord = {
   valueBracket?: PropertyValueBracket | null;
   cancelAtPeriodEnd?: boolean;
   cancelAt?: string | null;
+  // Opt-in year-over-year auto-refile — see setAutoRefile() and the schema.sql
+  // comment on these two columns. Optional, same reason as the six above.
+  autoRefile?: boolean;
+  autoRefileAuthorizedAt?: string | null;
 };
 
 type PropertyRow = {
@@ -82,6 +86,8 @@ type PropertyRow = {
   value_bracket: PropertyValueBracket | null;
   cancel_at_period_end: boolean;
   cancel_at: string | null;
+  auto_refile: boolean;
+  auto_refile_authorized_at: string | null;
 };
 
 function fromRow(row: PropertyRow): PropertyRecord {
@@ -112,11 +118,13 @@ function fromRow(row: PropertyRow): PropertyRecord {
     valueBracket: row.value_bracket,
     cancelAtPeriodEnd: row.cancel_at_period_end,
     cancelAt: row.cancel_at,
+    autoRefile: row.auto_refile,
+    autoRefileAuthorizedAt: row.auto_refile_authorized_at,
   };
 }
 
 const SELECT_COLUMNS =
-  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at";
+  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
 
 export async function listProperties(userId: string): Promise<PropertyRecord[]> {
   const { data, error } = await supabase
@@ -252,6 +260,27 @@ export async function updatePropertyIdentity(
   const { data, error } = await supabase
     .from("properties")
     .update(update)
+    .eq("id", id)
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromRow(data as PropertyRow);
+}
+
+// Opt-in year-over-year auto-refile. Turning it ON records a real,
+// timestamped consent (auto_refile_authorized_at) — the "otherwise agreed in
+// writing" the Service Agreement's own Term and Termination clause requires
+// to extend representation past the tax year it was originally signed for
+// (see the schema.sql comment on these columns). Turning it OFF clears that
+// timestamp too, so re-enabling later captures fresh consent rather than
+// silently reviving stale authorization from months or years back.
+export async function setAutoRefile(id: string, enabled: boolean): Promise<PropertyRecord> {
+  const { data, error } = await supabase
+    .from("properties")
+    .update({
+      auto_refile: enabled,
+      auto_refile_authorized_at: enabled ? new Date().toISOString() : null,
+    })
     .eq("id", id)
     .select(SELECT_COLUMNS)
     .single();

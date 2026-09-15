@@ -21,10 +21,9 @@ export const Route = createFileRoute("/dashboard/_layout/tax-bills")({
   component: TaxBills,
 });
 
-// Locked per request — real page/logic below is untouched, just not
-// rendered. Flip to false (and remove the matching `locked: true` on this
-// item in AppShell.tsx's NAV) to bring it back.
-const LOCKED = true;
+// Shipped for real 2026-09-15 — was locked pending the BPP rollout ahead of
+// it; the page/logic below was already complete and untouched by that work.
+const LOCKED = false;
 
 function TaxBills() {
   if (LOCKED) {

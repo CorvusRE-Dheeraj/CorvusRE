@@ -9,13 +9,18 @@ import {
   syncMySubscriptions,
   cancelPropertySubscription,
   resumePropertySubscription,
+  cancelBppSubscription,
+  resumeBppSubscription,
   formatMoney,
   TIER_BRACKET_PRICES,
   VALUE_BRACKETS,
+  BPP_TIER_BRACKET_PRICES,
+  BPP_VALUE_BRACKETS,
   type PlanValue,
   type MySubscription,
 } from "@/lib/billing";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
+import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
 
 export const Route = createFileRoute("/dashboard/_layout/billing")({
@@ -28,8 +33,24 @@ const TIER_LABEL: Record<string, string> = {
 };
 
 const BRACKET_LABEL: Record<string, string> = Object.fromEntries(
-  VALUE_BRACKETS.map((b) => [b.value, b.label]),
+  [...VALUE_BRACKETS, ...BPP_VALUE_BRACKETS].map((b) => [b.value, b.label]),
 );
+
+// A subscription's list price (pre-discount), looked up from whichever
+// bracket table its bracket string actually belongs to — property brackets
+// and BPP brackets are differently-shaped strings, so this can't just be one
+// Record lookup the way TIER_BRACKET_PRICES alone was.
+function listPriceCents(tier: string, bracket: string): number | null {
+  const propertyPrices = TIER_BRACKET_PRICES[tier as keyof typeof TIER_BRACKET_PRICES];
+  if (propertyPrices && bracket in propertyPrices) {
+    return propertyPrices[bracket as keyof typeof propertyPrices] * 100;
+  }
+  const bppPrices = BPP_TIER_BRACKET_PRICES[tier as keyof typeof BPP_TIER_BRACKET_PRICES];
+  if (bppPrices && bracket in bppPrices) {
+    return bppPrices[bracket as keyof typeof bppPrices] * 100;
+  }
+  return null;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   active: "Active",
@@ -57,6 +78,7 @@ function Billing() {
   const { user } = useAuth();
   const [plan, setPlan] = useState<PlanValue | null>(null);
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
+  const [bppAccounts, setBppAccounts] = useState<BppAccountRecord[]>([]);
   const [subs, setSubs] = useState<MySubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [subsError, setSubsError] = useState(false);
@@ -65,10 +87,11 @@ function Billing() {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([getMyBilling(user.id), listProperties(user.id)])
-      .then(([b, props]) => {
+    Promise.all([getMyBilling(user.id), listProperties(user.id), listBppAccounts(user.id)])
+      .then(([b, props, bpp]) => {
         setPlan(b.plan);
         setProperties(props);
+        setBppAccounts(bpp);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -111,21 +134,24 @@ function Billing() {
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
-  // Same immediate cancel the Properties page uses (cancel-property-subscription
-  // ends the Stripe subscription now, not at period end) — keyed by the
-  // subscription's own propertyId, so it only ever works for a subscription
-  // still linked to a live property. On success drop it from the list; the
-  // list-my-subscriptions filter would exclude it on the next load anyway.
+  // Same immediate cancel the Properties/BPP Accounts page uses (cancel-
+  // property-subscription/cancel-bpp-subscription end the Stripe subscription
+  // now, not at period end) — keyed by the subscription's own propertyId or
+  // bppAccountId, so it only ever works for a subscription still linked to a
+  // live subject. On success drop it from the list; the list-my-subscriptions
+  // filter would exclude it on the next load anyway.
   async function handleCancel(s: MySubscription, label: string) {
-    if (!s.propertyId) return;
+    if (!s.propertyId && !s.bppAccountId) return;
+    const subjectWord = s.bppAccountId ? "BPP account" : "property";
     const ok = window.confirm(
       `Cancel the subscription for ${label}? It ends immediately — you'll lose paid AI Report ` +
-        `access and the ability to request a new protest filing for this property.`,
+        `access and the ability to request a new protest filing for this ${subjectWord}.`,
     );
     if (!ok) return;
     setBusyId(s.id);
     try {
-      await cancelPropertySubscription(s.propertyId);
+      if (s.bppAccountId) await cancelBppSubscription(s.bppAccountId);
+      else await cancelPropertySubscription(s.propertyId!);
       toast.success("Subscription canceled.");
       setSubs((prev) => prev.filter((x) => x.id !== s.id));
     } catch (err) {
@@ -136,10 +162,11 @@ function Billing() {
   }
 
   async function handleResume(s: MySubscription) {
-    if (!s.propertyId) return;
+    if (!s.propertyId && !s.bppAccountId) return;
     setBusyId(s.id);
     try {
-      await resumePropertySubscription(s.propertyId);
+      if (s.bppAccountId) await resumeBppSubscription(s.bppAccountId);
+      else await resumePropertySubscription(s.propertyId!);
       toast.success("Subscription resumed — it will keep renewing as normal.");
       setSubs((prev) =>
         prev.map((x) => (x.id === s.id ? { ...x, cancelAtPeriodEnd: false, cancelAt: null } : x)),
@@ -153,6 +180,7 @@ function Billing() {
 
   const isBeta = plan === "beta";
   const propsById = new Map(properties.map((p) => [p.id, p]));
+  const bppById = new Map(bppAccounts.map((a) => [a.id, a]));
 
   // A subscription set to cancel is still billed until its period end, but it
   // isn't part of the ongoing monthly commitment — keep it out of the running
@@ -171,7 +199,9 @@ function Billing() {
         <h1 className="font-serif text-2xl font-semibold">Billing</h1>
         <PaymentsModeChip />
       </div>
-      <p className="text-muted-foreground text-sm">Your CorvusPT subscriptions, by property.</p>
+      <p className="text-muted-foreground text-sm">
+        Your CorvusPT subscriptions, by property and BPP account.
+      </p>
 
       {loading ? (
         <p className="text-muted-foreground mt-6 text-sm">Loading…</p>
@@ -189,7 +219,7 @@ function Billing() {
           <p className="text-muted-foreground text-sm">
             {subsError
               ? "Couldn't load your subscriptions just now. Try again shortly, or open the billing portal."
-              : "You don't have any paid property subscriptions yet."}
+              : "You don't have any paid subscriptions yet."}
           </p>
           <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
             <Link
@@ -229,7 +259,7 @@ function Billing() {
                 <div className="mt-1 font-serif text-2xl font-semibold">
                   {money(monthlyTotalCents)}
                 </div>
-                <div className="text-muted-foreground text-xs">across all properties</div>
+                <div className="text-muted-foreground text-xs">across all subscriptions</div>
               </div>
               <div>
                 <div className="text-muted-foreground text-xs uppercase tracking-wide">
@@ -255,7 +285,15 @@ function Billing() {
                 rel="noopener noreferrer"
                 className="btn-outline"
               >
-                Add or cancel a property
+                Manage Properties
+              </Link>
+              <Link
+                to="/dashboard/bpp-accounts"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-outline"
+              >
+                Manage BPP Accounts
               </Link>
               <Link
                 to="/pricing"
@@ -278,20 +316,26 @@ function Billing() {
           <ul className="grid gap-3">
             {subs.map((s) => {
               const prop = s.propertyId ? propsById.get(s.propertyId) : undefined;
+              const bpp = s.bppAccountId ? bppById.get(s.bppAccountId) : undefined;
               const tierLabel = s.tier ? (TIER_LABEL[s.tier] ?? s.tier) : null;
               const bracketLabel = s.bracket ? (BRACKET_LABEL[s.bracket] ?? null) : null;
-              const listCents =
-                s.tier && s.bracket ? TIER_BRACKET_PRICES[s.tier][s.bracket] * 100 : null;
+              const listCents = s.tier && s.bracket ? listPriceCents(s.tier, s.bracket) : null;
               const discounted =
                 listCents != null && s.amountCents != null && s.amountCents < listCents - 1;
               const heading =
                 prop?.address ??
+                bpp?.businessName ??
                 s.productName ??
-                (tierLabel ? `${tierLabel} subscription` : "Property subscription");
+                (tierLabel
+                  ? `${tierLabel} subscription`
+                  : bpp
+                    ? "BPP subscription"
+                    : "Property subscription");
               const meta = [
                 tierLabel,
                 bracketLabel,
                 prop?.accountNumber && `Acct ${prop.accountNumber}`,
+                bpp?.accountNumber && `Acct ${bpp.accountNumber}`,
               ]
                 .filter(Boolean)
                 .join(" · ");
@@ -339,7 +383,7 @@ function Billing() {
                   )}
 
                   <div className="border-border mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-                    {prop ? (
+                    {prop || bpp ? (
                       s.cancelAtPeriodEnd ? (
                         <button
                           onClick={() => handleResume(s)}
@@ -360,7 +404,8 @@ function Billing() {
                     ) : (
                       <>
                         <span className="text-muted-foreground text-[11px]">
-                          Not linked to a current property — it may have been deleted.
+                          Not linked to a current property or BPP account — it may have been
+                          deleted.
                         </span>
                         <button
                           onClick={handleManage}

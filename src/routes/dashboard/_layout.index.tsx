@@ -12,6 +12,7 @@ import {
   FileText,
   Scale,
   TrendingDown,
+  PiggyBank,
   Loader2,
   Mic,
   Volume2,
@@ -49,6 +50,7 @@ import {
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { listDocuments, type DocumentRecord } from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
 import { askRouter } from "@/lib/ask-router";
 import { askAboutDocument } from "@/lib/document-ai";
@@ -154,8 +156,10 @@ function Overview() {
     nav({ to: "/ai-report" });
   }
 
-  const addressFor = (propertyId: string) =>
-    properties.find((p) => p.id === propertyId)?.address ?? "Property removed";
+  const addressFor = (propertyId: string | null) =>
+    propertyId
+      ? (properties.find((p) => p.id === propertyId)?.address ?? "Property removed")
+      : "BPP account";
 
   // Prefers the real per-property estimate computed during intake (comps- or
   // formula-grounded — see src/lib/savings-estimate.ts) whenever it's on file.
@@ -177,6 +181,16 @@ function Overview() {
         );
       }, 0),
     [properties],
+  );
+
+  // Real, decision-backed lifetime savings across every resolved case — see
+  // portfolio-savings.ts. Deliberately separate from estimatedSavings above:
+  // that's a forward-looking estimate for properties with no case yet, this
+  // is what already actually happened. All three lists are already fetched
+  // for this page, so this is free — no extra query.
+  const lifetimeSavings = useMemo(
+    () => computePortfolioSavings(protests, properties, bppAccounts).lifetimeSavings,
+    [protests, properties, bppAccounts],
   );
 
   const deadlines = properties
@@ -536,7 +550,7 @@ function Overview() {
       {/* Stats */}
       <div>
         <h2 className="font-serif text-xl font-bold">Your Portfolio at a Glance</h2>
-        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatCard
             label="Properties"
             value={loaded ? properties.length : null}
@@ -576,6 +590,15 @@ function Overview() {
             delayMs={160}
             icon={TrendingDown}
             color={ICON_COLORS[5]}
+          />
+          <StatCard
+            label="Lifetime Savings"
+            value={loaded ? lifetimeSavings : null}
+            format={compactCurrency}
+            to="/dashboard/savings"
+            delayMs={200}
+            icon={PiggyBank}
+            color={ICON_COLORS[3]}
           />
         </div>
       </div>
@@ -649,7 +672,11 @@ function StatCard({
 }: {
   label: string;
   value: number | null;
-  to?: "/dashboard/properties" | "/dashboard/bpp-accounts" | "/dashboard/documents";
+  to?:
+    | "/dashboard/properties"
+    | "/dashboard/bpp-accounts"
+    | "/dashboard/documents"
+    | "/dashboard/savings";
   format?: (n: number) => string;
   delayMs?: number;
   icon: LucideIcon;
@@ -818,7 +845,7 @@ function ProtestStatusChart({
   addressFor,
 }: {
   protests: ProtestRecord[];
-  addressFor: (propertyId: string) => string;
+  addressFor: (propertyId: string | null) => string;
 }) {
   const counts = protests.reduce(
     (acc, p) => {

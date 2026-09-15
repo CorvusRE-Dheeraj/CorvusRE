@@ -79,6 +79,14 @@ Deno.serve(async (req: Request) => {
     // ── Subscriptions -> MRR, active count, status mix, plan mix ──
     const byStatus: Record<string, number> = {};
     const planMap = new Map<string, { label: string; count: number; mrrCents: number }>();
+    // "property" is the default for every pre-BPP subscription (they predate
+    // metadata.subjectType, which create-bpp-checkout-session is the first
+    // to set) — see stripe-webhook's own same-convention subjectType
+    // handling.
+    const byProductLine: Record<"property" | "bpp", { count: number; mrrCents: number }> = {
+      property: { count: 0, mrrCents: 0 },
+      bpp: { count: 0, mrrCents: 0 },
+    };
     let mrrCents = 0;
     let activeCount = 0;
     const customers = new Set<string>();
@@ -98,14 +106,23 @@ Deno.serve(async (req: Request) => {
       if (live) {
         activeCount++;
         mrrCents += subMonthly;
-        const tier = sub.metadata?.planTier ?? "unknown";
-        const bracket = sub.metadata?.valueBracket ?? "";
+        // metadata.tier/bracket (not planTier/valueBracket — no such keys are
+        // ever set by create-checkout-session or create-bpp-checkout-session)
+        // is the real shape create-checkout-session/create-bpp-checkout-
+        // session actually write; this previously always read the wrong
+        // keys and showed every subscription as "unknown" with no bracket.
+        const tier = sub.metadata?.tier ?? "unknown";
+        const bracket = sub.metadata?.bracket ?? "";
         const key = `${tier}|${bracket}`;
         const label = bracket ? `${tier} · ${bracket}` : tier;
         const slot = planMap.get(key) ?? { label, count: 0, mrrCents: 0 };
         slot.count++;
         slot.mrrCents += subMonthly;
         planMap.set(key, slot);
+
+        const line = sub.metadata?.subjectType === "bpp_account" ? "bpp" : "property";
+        byProductLine[line].count++;
+        byProductLine[line].mrrCents += subMonthly;
       }
     }
 
@@ -143,6 +160,14 @@ Deno.serve(async (req: Request) => {
       const s = (p.subscription_status as string | null) ?? "none";
       propsByStatus[s] = (propsByStatus[s] ?? 0) + 1;
     }
+    const { data: bppAccounts } = await adminClient
+      .from("bpp_accounts")
+      .select("subscription_status");
+    const bppByStatus: Record<string, number> = {};
+    for (const a of bppAccounts ?? []) {
+      const s = (a.subscription_status as string | null) ?? "none";
+      bppByStatus[s] = (bppByStatus[s] ?? 0) + 1;
+    }
 
     return new Response(
       JSON.stringify({
@@ -155,11 +180,22 @@ Deno.serve(async (req: Request) => {
         planMix: [...planMap.values()]
           .map((p) => ({ label: p.label, count: p.count, mrrCents: Math.round(p.mrrCents) }))
           .sort((a, b) => b.mrrCents - a.mrrCents),
+        byProductLine: {
+          property: {
+            count: byProductLine.property.count,
+            mrrCents: Math.round(byProductLine.property.mrrCents),
+          },
+          bpp: {
+            count: byProductLine.bpp.count,
+            mrrCents: Math.round(byProductLine.bpp.mrrCents),
+          },
+        },
         collectedRecentCents: Math.round(collectedAllTimeCents),
         refundedRecentCents: Math.round(refundedAllTimeCents),
         collectedByMonth: months,
         signups: signups ?? 0,
         propertiesByStatus: propsByStatus,
+        bppAccountsByStatus: bppByStatus,
       }),
       { status: 200, headers: corsHeaders },
     );

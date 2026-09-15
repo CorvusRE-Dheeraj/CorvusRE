@@ -1,7 +1,12 @@
 import { listProperties, type PropertyRecord } from "./properties";
 import { listProtests, type ProtestRecord } from "./protests";
 import { listTaxBills, type TaxBillRecord } from "./tax-bills";
-import { listBppAccounts, type BppAccountRecord } from "./bpp-accounts";
+import {
+  listBppAccounts,
+  nextBppRenditionDeadline,
+  bppNeedsProtest,
+  type BppAccountRecord,
+} from "./bpp-accounts";
 import { listReminders, type Reminder } from "./reminders";
 
 export type CalendarEventType =
@@ -59,16 +64,6 @@ export const EVENT_TYPE_COLOR: Record<CalendarEventType, string> = {
   refile_reminder: "bg-rose-400",
   reminder: "bg-fuchsia-500",
 };
-
-// Texas's BPP rendition deadline is a fixed statutory date (April 15) rather than
-// something tracked per-account in the DB — computed here instead of stored.
-function nextBppRenditionDeadline(from: Date): string {
-  const year = from.getFullYear();
-  const thisYearDeadline = new Date(Date.UTC(year, 3, 15));
-  const deadline =
-    from <= thisYearDeadline ? thisYearDeadline : new Date(Date.UTC(year + 1, 3, 15));
-  return deadline.toISOString().slice(0, 10);
-}
 
 function toIsoDate(value: string): string {
   return value.length >= 10 ? value.slice(0, 10) : value;
@@ -209,6 +204,7 @@ function fromProtest(
     pr.status === "resolved" &&
     pr.taxYear != null &&
     pr.taxYear < currentYear &&
+    pr.propertyId &&
     !propertiesWithCurrentProtest.has(pr.propertyId)
   ) {
     events.push({
@@ -273,19 +269,37 @@ function fromTaxBill(bill: TaxBillRecord, properties: PropertyRecord[]): Calenda
   return events;
 }
 
-function fromBppAccount(account: BppAccountRecord, now: Date): CalendarEvent {
-  const date = nextBppRenditionDeadline(now);
-  return {
-    id: `bpp-rendition:${account.id}:${date}`,
-    date,
+function fromBppAccount(account: BppAccountRecord, now: Date): CalendarEvent[] {
+  const events: CalendarEvent[] = [];
+  const renditionDate = toIsoDate(account.renditionDeadline ?? nextBppRenditionDeadline(now));
+  events.push({
+    id: `bpp-rendition:${account.id}`,
+    date: renditionDate,
     type: "bpp_rendition",
     title: `BPP rendition deadline — ${account.businessName}`,
     amount: null,
     propertyId: null,
     linkTo: "/dashboard/bpp-accounts",
-    resolved: false,
+    resolved: !!account.renditionFiledAt,
     propertyLabel: account.businessName,
-  };
+  });
+  // Only meaningful once the county's own notice_value has actually come
+  // back disagreeing with what was rendered — same "there's something real
+  // to protest" gate bppNeedsProtest applies everywhere else.
+  if (account.protestDeadline && bppNeedsProtest(account)) {
+    events.push({
+      id: `bpp-protest-deadline:${account.id}`,
+      date: toIsoDate(account.protestDeadline),
+      type: "protest_deadline",
+      title: `BPP protest deadline — ${account.businessName}`,
+      amount: null,
+      propertyId: null,
+      linkTo: "/dashboard/bpp-accounts",
+      resolved: new Date(account.protestDeadline) < now,
+      propertyLabel: account.businessName,
+    });
+  }
+  return events;
 }
 
 function fromReminder(r: Reminder, properties: PropertyRecord[]): CalendarEvent {
@@ -321,14 +335,16 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
   // check in fromProtest can suppress itself once the user has actually
   // re-filed rather than reminding forever off a stale, already-resolved row.
   const propertiesWithCurrentProtest = new Set(
-    protests.filter((p) => p.taxYear != null && p.taxYear >= currentYear).map((p) => p.propertyId),
+    protests
+      .filter((p) => p.taxYear != null && p.taxYear >= currentYear && p.propertyId)
+      .map((p) => p.propertyId as string),
   );
 
   const events: CalendarEvent[] = [
     ...properties.flatMap((p) => fromProperty(p, taxBillPropertyIds)),
     ...protests.flatMap((pr) => fromProtest(pr, properties, propertiesWithCurrentProtest)),
     ...taxBills.flatMap((b) => fromTaxBill(b, properties)),
-    ...bppAccounts.map((a) => fromBppAccount(a, now)),
+    ...bppAccounts.flatMap((a) => fromBppAccount(a, now)),
     ...reminders.map((r) => fromReminder(r, properties)),
   ];
 

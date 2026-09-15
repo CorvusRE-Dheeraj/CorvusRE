@@ -48,9 +48,12 @@ export function findHearingConflicts(
   properties: PropertyRecord[],
 ): HearingConflictGroup[] {
   const propertyById = new Map(properties.map((p) => [p.id, p] as const));
+  // BPP protests (propertyId null) have no property to cross-reference an
+  // address/portfolio conflict against — this is a property-portfolio-only
+  // check, same scope as the `properties` param it already takes.
   const scheduled = protests.filter(
-    (p) => p.status === "hearing_scheduled" && p.hearingDate,
-  ) as (ProtestRecord & { hearingDate: string })[];
+    (p) => p.status === "hearing_scheduled" && p.hearingDate && p.propertyId,
+  ) as (ProtestRecord & { hearingDate: string; propertyId: string })[];
 
   // Group by calendar date (not by exact string equality of a full
   // timestamp — hearingDate is a date, sameDay compares just the date part

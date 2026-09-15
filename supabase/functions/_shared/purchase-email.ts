@@ -7,7 +7,24 @@
 // RESEND_API_KEY secret (shared with the other transactional emails).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
-import { TIER_LABEL, BRACKET_LABEL, type Tier, type Bracket } from "./pricing.ts";
+import {
+  TIER_LABEL,
+  BRACKET_LABEL,
+  BPP_BRACKET_LABEL,
+  type Tier,
+  type Bracket,
+  type BppBracket,
+} from "./pricing.ts";
+
+// Real-estate and BPP brackets are differently-shaped strings ("under2m" vs
+// "under250k") — this module doesn't otherwise need to know which subject
+// it's formatting for, so it looks a bracket up in whichever label map
+// actually has it rather than taking a typed Bracket that would only cover
+// one of the two.
+const ALL_BRACKET_LABELS: Record<string, string> = { ...BRACKET_LABEL, ...BPP_BRACKET_LABEL };
+function bracketLabel(bracket: string | null): string | null {
+  return bracket ? (ALL_BRACKET_LABELS[bracket] ?? null) : null;
+}
 
 export function formatUsd(cents: number): string {
   return (cents / 100).toLocaleString("en-US", {
@@ -24,10 +41,14 @@ export async function sendPurchaseConfirmationEmail(
   adminClient: ReturnType<typeof createClient>,
   opts: {
     userId: string;
-    propertyId: string;
+    // Precomputed by the caller (property address or BPP business name) —
+    // this function no longer looks the row up itself, so it works for
+    // either subject table without needing to know which one.
+    subjectLabel: string;
+    subjectLabelKind?: "Property" | "Business";
     subscriptionId: string;
     tier: Tier;
-    bracket: Bracket | null;
+    bracket: Bracket | BppBracket | null;
     amountCents: number; // what was actually charged (or, if negative, credited) today
     kind: "new_subscription" | "plan_switch";
   },
@@ -45,12 +66,8 @@ export async function sendPurchaseConfirmationEmail(
     if (!toEmail) throw new Error("No email on file for this user");
     const firstName = ((profile?.first_name as string | null) ?? "").trim();
 
-    const { data: property } = await adminClient
-      .from("properties")
-      .select("address")
-      .eq("id", opts.propertyId)
-      .maybeSingle();
-    const address = ((property?.address as string | null) ?? "this property").trim();
+    const address = (opts.subjectLabel || "this property").trim();
+    const subjectLabelKind = opts.subjectLabelKind ?? "Property";
 
     const subscription = await stripe.subscriptions.retrieve(opts.subscriptionId, {
       expand: ["items.data.price"],
@@ -63,7 +80,7 @@ export async function sendPurchaseConfirmationEmail(
       "en-US",
       { year: "numeric", month: "long", day: "numeric" },
     );
-    const planLabel = `${TIER_LABEL[opts.tier]}${opts.bracket ? ` (${BRACKET_LABEL[opts.bracket]})` : ""}`;
+    const planLabel = `${TIER_LABEL[opts.tier]}${opts.bracket ? ` (${bracketLabel(opts.bracket)})` : ""}`;
     const isCredit = opts.amountCents < 0;
     const todayLineLabel = isCredit ? "Credited to your account today" : "Charged today";
     const todayLineAmount = formatUsd(Math.abs(opts.amountCents));
@@ -98,7 +115,7 @@ export async function sendPurchaseConfirmationEmail(
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f8fa; border-radius:12px;">
                   <tr><td style="padding:20px 24px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px; color:#16233a;">
-                      <tr><td style="padding:6px 0; color:#67788f;">Property</td><td style="padding:6px 0; text-align:right; font-weight:600;">${address}</td></tr>
+                      <tr><td style="padding:6px 0; color:#67788f;">${subjectLabelKind}</td><td style="padding:6px 0; text-align:right; font-weight:600;">${address}</td></tr>
                       <tr><td style="padding:6px 0; color:#67788f;">Plan</td><td style="padding:6px 0; text-align:right; font-weight:600;">${planLabel}</td></tr>
                       <tr><td style="padding:6px 0; color:#67788f; border-top:1px solid #e2e8ef;">${todayLineLabel}</td><td style="padding:6px 0; text-align:right; font-weight:700; border-top:1px solid #e2e8ef; color:${isCredit ? "#0f9e6e" : "#16233a"};">${isCredit ? "-" : ""}${todayLineAmount}</td></tr>
                       <tr><td style="padding:6px 0; color:#67788f;">Your monthly rate going forward</td><td style="padding:6px 0; text-align:right; font-weight:600;">${formatUsd(monthlyCents)}/mo</td></tr>
@@ -165,9 +182,10 @@ export async function sendCancellationEmail(
   adminClient: ReturnType<typeof createClient>,
   opts: {
     userId: string;
-    propertyId: string;
+    subjectLabel: string;
+    subjectLabelKind?: "Property" | "Business";
     tier: Tier | null;
-    bracket: Bracket | null;
+    bracket: Bracket | BppBracket | null;
   },
 ): Promise<void> {
   try {
@@ -183,14 +201,10 @@ export async function sendCancellationEmail(
     if (!toEmail) throw new Error("No email on file for this user");
     const firstName = ((profile?.first_name as string | null) ?? "").trim();
 
-    const { data: property } = await adminClient
-      .from("properties")
-      .select("address")
-      .eq("id", opts.propertyId)
-      .maybeSingle();
-    const address = ((property?.address as string | null) ?? "this property").trim();
+    const address = (opts.subjectLabel || "this property").trim();
+    const subjectLabelKind = opts.subjectLabelKind ?? "Property";
     const planLabel = opts.tier
-      ? `${TIER_LABEL[opts.tier]}${opts.bracket ? ` (${BRACKET_LABEL[opts.bracket]})` : ""}`
+      ? `${TIER_LABEL[opts.tier]}${opts.bracket ? ` (${bracketLabel(opts.bracket)})` : ""}`
       : null;
     const effectiveDate = new Date().toLocaleDateString("en-US", {
       year: "numeric",
@@ -214,7 +228,7 @@ export async function sendCancellationEmail(
               <td style="padding:32px 32px 8px 32px;">
                 <p style="margin:0 0 4px 0; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#0f9e6e;">Cancellation confirmed</p>
                 <h1 style="margin:0 0 12px 0; font-size:24px; line-height:1.3; color:#16233a;">Your subscription was canceled</h1>
-                <p style="margin:0 0 20px 0; font-size:15px; line-height:1.6; color:#42506a;">${firstName ? `${firstName}, y` : "Y"}our CorvusPT subscription for this property has been canceled, effective today. You won't be charged again for it.</p>
+                <p style="margin:0 0 20px 0; font-size:15px; line-height:1.6; color:#42506a;">${firstName ? `${firstName}, y` : "Y"}our CorvusPT subscription for this ${subjectLabelKind.toLowerCase()} has been canceled, effective today. You won't be charged again for it.</p>
               </td>
             </tr>
             <tr>
@@ -222,7 +236,7 @@ export async function sendCancellationEmail(
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f8fa; border-radius:12px;">
                   <tr><td style="padding:20px 24px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px; color:#16233a;">
-                      <tr><td style="padding:6px 0; color:#67788f;">Property</td><td style="padding:6px 0; text-align:right; font-weight:600;">${address}</td></tr>
+                      <tr><td style="padding:6px 0; color:#67788f;">${subjectLabelKind}</td><td style="padding:6px 0; text-align:right; font-weight:600;">${address}</td></tr>
                       ${planLabel ? `<tr><td style="padding:6px 0; color:#67788f;">Plan canceled</td><td style="padding:6px 0; text-align:right; font-weight:600;">${planLabel}</td></tr>` : ""}
                       <tr><td style="padding:6px 0; color:#67788f;">Effective date</td><td style="padding:6px 0; text-align:right; font-weight:600;">${effectiveDate}</td></tr>
                     </table>
@@ -233,7 +247,7 @@ export async function sendCancellationEmail(
             <tr>
               <td style="padding:16px 32px 32px 32px;">
                 <p style="margin:0; font-size:12.5px; line-height:1.6; color:#8592a6;">
-                  This property will no longer be actively worked by CorvusPT, and you'll lose access to its AI reports and case tools. If this was a mistake, you can start a new subscription for this property any time from your Properties page.
+                  This ${subjectLabelKind.toLowerCase()} will no longer be actively worked by CorvusPT, and you'll lose access to its AI reports and case tools. If this was a mistake, you can start a new subscription any time from your dashboard.
                 </p>
               </td>
             </tr>

@@ -16,17 +16,17 @@ import { useAuth } from "@/lib/auth";
 // of here — they're account-level, not a property-tax workflow section, so
 // grouping them with Sign out reads more clearly than sitting in this row.
 // `locked` is purely a visual signal here (the link still navigates) — the
-// actual gate is the ComingSoonLock render each locked page shows itself,
-// see bpp-accounts.tsx/tax-bills.tsx. Keep in sync with those pages' own
-// LOCKED flag when toggling either back on.
+// actual gate is the ComingSoonLock render a still-locked page shows itself.
+// Both BPP Accounts (2026-09-15) and Tax Bills (2026-09-15) have shipped for
+// real and no longer have a LOCKED flag to keep in sync with this one.
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, locked: false },
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
-  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
+  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: false },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
-  { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
+  { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: false },
 ] as const;
 
 // Pages that keep their own full-width marketing/tooling layout instead of the

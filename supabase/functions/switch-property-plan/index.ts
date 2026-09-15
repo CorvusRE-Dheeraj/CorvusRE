@@ -178,7 +178,7 @@ Deno.serve(async (req: Request) => {
     const settledCents = latestInvoice?.total ?? unitAmount;
     await sendPurchaseConfirmationEmail(stripe, adminClient, {
       userId: user.id,
-      propertyId,
+      subjectLabel: (property.address as string | null) ?? "",
       subscriptionId: property.stripe_subscription_id,
       tier,
       bracket,

@@ -13,6 +13,7 @@ import {
   listAllProtests,
   updateProtestStatus,
   updateProtestNotes,
+  updateProtestAssignedRep,
   listDocumentsForProperty,
   getCaseSummary,
   toProtestRecord,
@@ -210,9 +211,39 @@ function AdminPanel() {
     refreshAuditLog();
   }
 
+  async function handleProtestAssignedRepChange(protestId: string, assignedRepresentative: string) {
+    const record = protests.find((p) => p.id === protestId);
+    const requester = users.find((u) => u.id === record?.userId);
+    await updateProtestAssignedRep(protestId, assignedRepresentative, {
+      propertyAddress: record?.propertyAddress,
+      requesterEmail: requester?.email,
+    });
+    const trimmed = assignedRepresentative.trim();
+    setProtests((cur) =>
+      cur.map((p) =>
+        p.id === protestId
+          ? {
+              ...p,
+              assignedRepresentative: trimmed || null,
+              assignedRepSetAt: trimmed ? new Date().toISOString() : null,
+            }
+          : p,
+      ),
+    );
+    refreshAuditLog();
+  }
+
   // CaseProgress (reused from the customer dashboard) already made the write —
   // this just keeps the modal and the row's status dropdown in sync with it.
-  function handleCaseProgressUpdate(protestId: string, patch: Partial<ProtestRecord>) {
+  function handleCaseProgressUpdate(
+    protestId: string,
+    // Never actually carries propertyId/bppAccountId — CaseProgress only
+    // ever patches case-progress fields (status/hearing/settlement/etc.) —
+    // excluded here so ProtestRecord's own nullable propertyId (BPP
+    // protests have none) doesn't conflict with AdminProtestRecord's
+    // required one, which this admin queue never populates from a BPP row.
+    patch: Partial<Omit<ProtestRecord, "propertyId" | "bppAccountId">>,
+  ) {
     setCaseRecord((prev) => (prev && prev.id === protestId ? { ...prev, ...patch } : prev));
     setProtests((cur) => cur.map((p) => (p.id === protestId ? { ...p, ...patch } : p)));
   }
@@ -488,6 +519,7 @@ function AdminPanel() {
                 }
                 onProtestStatusChange={handleProtestStatusChange}
                 onProtestNotesChange={handleProtestNotesChange}
+                onProtestAssignedRepChange={handleProtestAssignedRepChange}
                 onOpenCase={setCaseRecord}
               />
             ))
@@ -1298,6 +1330,7 @@ function ProtestRow({
   onToggleExpand,
   onStatusChange,
   onNotesChange,
+  onAssignedRepChange,
   onOpenCase,
   delayMs = 0,
 }: {
@@ -1307,11 +1340,14 @@ function ProtestRow({
   onToggleExpand: () => void;
   onStatusChange: (status: ProtestStatus) => void;
   onNotesChange: (notes: string) => Promise<void>;
+  onAssignedRepChange: (assignedRepresentative: string) => Promise<void>;
   onOpenCase: () => void;
   delayMs?: number;
 }) {
   const [notes, setNotes] = useState(record.notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [assignedRep, setAssignedRep] = useState(record.assignedRepresentative ?? "");
+  const [savingAssignedRep, setSavingAssignedRep] = useState(false);
   const [documents, setDocuments] = useState<AdminDocumentRecord[] | null>(null);
   const [docsError, setDocsError] = useState<string | null>(null);
   const [summary, setSummary] = useState<CaseSummaryResult | null>(null);
@@ -1321,6 +1357,10 @@ function ProtestRow({
   useEffect(() => {
     setNotes(record.notes ?? "");
   }, [record.notes]);
+
+  useEffect(() => {
+    setAssignedRep(record.assignedRepresentative ?? "");
+  }, [record.assignedRepresentative]);
 
   useEffect(() => {
     if (!expanded || documents !== null) return;
@@ -1340,6 +1380,20 @@ function ProtestRow({
       toast.error(err instanceof Error ? err.message : "Could not save notes.");
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  async function handleSaveAssignedRep() {
+    setSavingAssignedRep(true);
+    try {
+      await onAssignedRepChange(assignedRep);
+      toast.success("Assigned representative saved.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not save the assigned representative.",
+      );
+    } finally {
+      setSavingAssignedRep(false);
     }
   }
 
@@ -1481,6 +1535,26 @@ function ProtestRow({
             </div>
 
             <div>
+              <div className="text-sm font-medium mb-1">Assigned Representative</div>
+              <p className="text-xs text-muted-foreground mb-1.5">
+                Shown to the customer once set — who at CorvusPT is actually handling this case.
+              </p>
+              <input
+                value={assignedRep}
+                onChange={(e) => setAssignedRep(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="e.g. Jane Doe, jane@corvuspt.com, (469) 555-0100"
+              />
+              <button
+                onClick={handleSaveAssignedRep}
+                disabled={savingAssignedRep}
+                className="btn-outline text-sm mt-2 disabled:opacity-60"
+              >
+                {savingAssignedRep ? "Saving…" : "Save Representative"}
+              </button>
+            </div>
+
+            <div>
               <button
                 onClick={handleAiSummary}
                 disabled={summaryLoading}
@@ -1535,6 +1609,7 @@ function UserRow({
   onToggleExpandProtest,
   onProtestStatusChange,
   onProtestNotesChange,
+  onProtestAssignedRepChange,
   onOpenCase,
 }: {
   record: AdminUserRecord;
@@ -1559,6 +1634,7 @@ function UserRow({
   onToggleExpandProtest: (protestId: string) => void;
   onProtestStatusChange: (protestId: string, status: ProtestStatus) => void;
   onProtestNotesChange: (protestId: string, notes: string) => Promise<void>;
+  onProtestAssignedRepChange: (protestId: string, assignedRepresentative: string) => Promise<void>;
   onOpenCase: (record: AdminProtestRecord) => void;
 }) {
   // A real signup (Google OAuth, or a form abandoned before the name step)
@@ -1703,6 +1779,7 @@ function UserRow({
                           onToggleExpand={() => onToggleExpandProtest(p.id)}
                           onStatusChange={(status) => onProtestStatusChange(p.id, status)}
                           onNotesChange={(notes) => onProtestNotesChange(p.id, notes)}
+                          onAssignedRepChange={(rep) => onProtestAssignedRepChange(p.id, rep)}
                           onOpenCase={() => onOpenCase(p)}
                           delayMs={Math.min(i * 40, 320)}
                         />
@@ -2125,6 +2202,7 @@ function FinancialsTab({
   const planData = data.planMix.map((p) => ({ name: p.label, value: p.count }));
   const statusRows = Object.entries(data.subscriptionsByStatus).sort((a, b) => b[1] - a[1]);
   const propRows = Object.entries(data.propertiesByStatus).sort((a, b) => b[1] - a[1]);
+  const bppRows = Object.entries(data.bppAccountsByStatus).sort((a, b) => b[1] - a[1]);
 
   return (
     <section className="mt-8">
@@ -2238,24 +2316,65 @@ function FinancialsTab({
             {data.mode === "live" ? "live" : "test-mode"} Stripe numbers above.
           </p>
         </div>
+        <div className="card-elev p-4 text-sm">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            BPP accounts by subscription status
+          </div>
+          {bppRows.length === 0 ? (
+            <p className="text-muted-foreground">No BPP accounts yet.</p>
+          ) : (
+            bppRows.map(([k, v]) => (
+              <div
+                key={k}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="capitalize text-muted-foreground">{k.replace(/_/g, " ")}</span>
+                <span className="font-medium">{v}</span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {data.planMix.length > 0 && (
-        <div className="card-elev mt-6 p-4 text-sm">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            MRR by plan
-          </div>
-          {data.planMix.map((p) => (
-            <div
-              key={p.label}
-              className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
-            >
-              <span className="text-muted-foreground">
-                {p.label} <span className="text-xs">× {p.count}</span>
-              </span>
-              <span className="font-medium">{dollars(p.mrrCents)}/mo</span>
+        <div className="mt-6 grid gap-6 sm:grid-cols-2">
+          <div className="card-elev p-4 text-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              MRR by plan
             </div>
-          ))}
+            {data.planMix.map((p) => (
+              <div
+                key={p.label}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="text-muted-foreground">
+                  {p.label} <span className="text-xs">× {p.count}</span>
+                </span>
+                <span className="font-medium">{dollars(p.mrrCents)}/mo</span>
+              </div>
+            ))}
+          </div>
+          <div className="card-elev p-4 text-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              MRR by product line
+            </div>
+            {(
+              [
+                ["Real Estate", data.byProductLine.property],
+                ["BPP", data.byProductLine.bpp],
+              ] as const
+            ).map(([label, line]) => (
+              <div
+                key={label}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="text-muted-foreground">
+                  {label} <span className="text-xs">× {line.count}</span>
+                </span>
+                <span className="font-medium">{dollars(line.mrrCents)}/mo</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </section>

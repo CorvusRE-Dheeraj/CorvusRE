@@ -71,3 +71,47 @@ export function subscriptionProductName(
   }`;
   return (addr ? `${addr} — ${planLabel}` : planLabel).slice(0, 240);
 }
+
+// ── BPP (Business Personal Property) — mirrors src/lib/billing.ts's own
+// BPP_VALUE_BRACKETS/BPP_TIER_BRACKET_PRICES/bracketForBppValue, which a Deno
+// function can't import from src/. Rendered BPP values run far lower than
+// real estate, so BPP gets its own bracket boundaries, but the same two
+// tiers and the same price points (the tiers are a service-level choice, not
+// a property-type one). No 2nd-account discount for BPP yet.
+export type BppBracket = "under250k" | "250kTo1m" | "over1m";
+
+export const BPP_BRACKET_LABEL: Record<BppBracket, string> = {
+  under250k: "$0 - $250K",
+  "250kTo1m": "$250K - $1M",
+  over1m: "$1M+",
+};
+
+export const BPP_TIER_BRACKET_PRICES: Record<Tier, Record<BppBracket, number>> = {
+  owner_managed: { under250k: 99, "250kTo1m": 299, over1m: 499 },
+  corvusrf_managed: { under250k: 199, "250kTo1m": 499, over1m: 799 },
+};
+
+export function bracketForBppValue(value: number | null | undefined): BppBracket {
+  if (value == null) return "under250k";
+  if (value < 250_000) return "under250k";
+  if (value < 1_000_000) return "250kTo1m";
+  return "over1m";
+}
+
+export function isBppBracket(v: unknown): v is BppBracket {
+  return v === "under250k" || v === "250kTo1m" || v === "over1m";
+}
+
+export function bppUnitAmountCents(tier: Tier, bracket: BppBracket): number {
+  return Math.round(BPP_TIER_BRACKET_PRICES[tier][bracket] * 100);
+}
+
+export function bppSubscriptionProductName(
+  tier: Tier,
+  bracket: BppBracket,
+  businessName: string,
+): string {
+  const name = (businessName ?? "").trim();
+  const planLabel = `${TIER_LABEL[tier]} BPP (${BPP_BRACKET_LABEL[bracket]})`;
+  return (name ? `${name} — ${planLabel}` : planLabel).slice(0, 240);
+}
