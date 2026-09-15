@@ -9,10 +9,11 @@ import {
   DESIGN_STAGES,
   DESIGN_STAGE_LABEL,
   type DesignStage,
+  type DesignRequestRow,
 } from "@/lib/design-requests";
-import { scopeLabel } from "@/lib/design";
-import { currency, currencyRange, weeksLabel, dateShort } from "@/lib/format";
-import { Section, Stat, Loading, Pill } from "@/components/dp-ui";
+import { scopeLabel, type DesignBrief } from "@/lib/design";
+import { currency, currencyRange, weeksLabel, dateShort, parseArea } from "@/lib/format";
+import { Section, Stat, Loading, Pill, Field, inputCls } from "@/components/dp-ui";
 
 export const Route = createFileRoute("/dashboard/_layout/design")({
   head: () => ({ meta: [{ title: "Design — CorvusDP" }] }),
@@ -111,6 +112,9 @@ function DesignDashboard() {
         right={
           <div className="flex items-center gap-2">
             {dr.approved_at && <Pill tone="green">Approved {dateShort(dr.approved_at)}</Pill>}
+            <button className="btn-outline text-sm" onClick={() => window.print()}>
+              Print
+            </button>
             <button className="btn-outline text-sm" onClick={downloadProposal}>
               Download proposal
             </button>
@@ -156,7 +160,15 @@ function DesignDashboard() {
         </Section>
       )}
 
-      <Section title="Cost breakdown" subtitle="Design fee by discipline (PRD 1.2.10.A).">
+      <Section
+        title="Cost breakdown"
+        subtitle="Design fee by discipline (PRD 1.2.10.A)."
+        right={
+          <button className="btn-outline text-sm" onClick={() => downloadCostBreakdownCsv(dr, b)}>
+            Export CSV
+          </button>
+        }
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -191,6 +203,8 @@ function DesignDashboard() {
           separate from the design fee.
         </p>
       </Section>
+
+      <InvestmentSnapshot buildCostLow={b.buildCostLow} buildCostHigh={b.buildCostHigh} buildingArea={dr.building_area} />
 
       <Section title="Suggested approach" subtitle="PRD 1.2.12.A.">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -241,6 +255,108 @@ function DesignDashboard() {
       </Section>
     </div>
   );
+}
+
+// Competitor-inspired (Zenerate/ArchiWise-style pro forma) — a real
+// deterministic calculation from the user's OWN inputs, never an AI-guessed
+// rent number. Purely client-side/ephemeral: nothing persisted, so it's
+// safe to add with no schema change and free to recompute on every
+// keystroke.
+function InvestmentSnapshot({
+  buildCostLow,
+  buildCostHigh,
+  buildingArea,
+}: {
+  buildCostLow: number;
+  buildCostHigh: number;
+  buildingArea: string | null;
+}) {
+  const [rentPerSf, setRentPerSf] = useState("");
+  const [opexPct, setOpexPct] = useState("35");
+  const [capRate, setCapRate] = useState("6");
+
+  const area = parseArea(buildingArea);
+  const rent = parseFloat(rentPerSf);
+  const opex = parseFloat(opexPct);
+  const cap = parseFloat(capRate);
+  const ready = area != null && rent > 0 && opex >= 0 && opex < 100 && cap > 0;
+
+  const gpi = ready ? rent * area! : null;
+  const noi = ready ? gpi! * (1 - opex / 100) : null;
+  const impliedValue = ready ? noi! / (cap / 100) : null;
+  const avgCost = (buildCostLow + buildCostHigh) / 2;
+  const yieldOnCost = ready && avgCost > 0 ? (noi! / avgCost) * 100 : null;
+
+  return (
+    <Section
+      title="Investment snapshot"
+      subtitle="A quick pro forma from your own rent assumption — a real calculation, not an AI guess at your market."
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Expected rent ($/sf/yr)" hint="Net operating rent for this market">
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            className={inputCls}
+            value={rentPerSf}
+            onChange={(e) => setRentPerSf(e.target.value)}
+            placeholder="e.g. 24"
+          />
+        </Field>
+        <Field label="Operating expense ratio (%)">
+          <input
+            type="number"
+            min="0"
+            max="99"
+            className={inputCls}
+            value={opexPct}
+            onChange={(e) => setOpexPct(e.target.value)}
+          />
+        </Field>
+        <Field label="Target cap rate (%)">
+          <input
+            type="number"
+            min="0.1"
+            step="0.1"
+            className={inputCls}
+            value={capRate}
+            onChange={(e) => setCapRate(e.target.value)}
+          />
+        </Field>
+      </div>
+      {ready ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <Stat label="Gross potential income" value={currency(gpi)} />
+          <Stat label="Net operating income" value={currency(noi)} />
+          <Stat label="Implied value" value={currency(impliedValue)} />
+          <Stat label="Yield on cost" value={`${yieldOnCost!.toFixed(1)}%`} />
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Enter an expected rent per square foot to see NOI, implied value at your target cap
+          rate, and yield on the estimated build cost{area == null ? " (needs a building area on file)" : ""}.
+        </p>
+      )}
+    </Section>
+  );
+}
+
+function downloadCostBreakdownCsv(dr: DesignRequestRow, b: DesignBrief) {
+  const rows = [
+    ["Discipline", "Low", "High"],
+    ...b.costBreakdown.map((c) => [c.discipline, String(c.low), String(c.high)]),
+    ["Total design fee", String(b.budgetLow), String(b.budgetHigh)],
+    ["Estimated build cost", String(b.buildCostLow), String(b.buildCostHigh)],
+  ];
+  const csv = rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `design-cost-breakdown-${(dr.address ?? "project").replace(/[^\w]+/g, "-").slice(0, 40)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 // PRD 1.2.19.B — "Timeline bar / milestones." Staff advance the underlying

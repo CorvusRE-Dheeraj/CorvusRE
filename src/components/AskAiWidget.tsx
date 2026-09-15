@@ -89,7 +89,11 @@ export function AskAiWidget() {
         // right behind the assistant's own text, hurting legibility on
         // both. A functional overlay needs a solid background regardless
         // of what's behind it.
-        <div className="card-elev fixed inset-x-4 bottom-20 z-50 flex max-h-[75vh] flex-col overflow-hidden sm:inset-x-auto sm:right-6 sm:bottom-24 sm:h-[28rem] sm:w-96">
+        <div
+          role="dialog"
+          aria-label="CorvusDP Assistant"
+          className="card-elev fixed inset-x-4 bottom-20 z-50 flex max-h-[75vh] flex-col overflow-hidden sm:inset-x-auto sm:right-6 sm:bottom-24 sm:h-[28rem] sm:w-96"
+        >
           <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent/15 text-accent">
@@ -112,7 +116,13 @@ export function AskAiWidget() {
             </button>
           </div>
 
-          <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <div
+            ref={listRef}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3"
+          >
             {messages.map((m, i) => (
               <div
                 key={i}

@@ -13,6 +13,12 @@ import {
   updateEngagementStatus,
   getDocumentSignedUrl,
   listAiLogs,
+  listAllUsers,
+  setUserIsAdmin,
+  listInvitedUsers,
+  deleteInvitedUser,
+  sendSignupInvite,
+  listAuditLog,
   logAdminAction,
   type LeadRow,
   type AdminProjectRow,
@@ -21,6 +27,9 @@ import {
   type AdminDocumentRow,
   type AdminEngagementRow,
   type AiLogRow,
+  type AdminUserRow,
+  type InvitedUserRow,
+  type AdminAuditLogRow,
 } from "@/lib/admin";
 import {
   nextDesignStage,
@@ -29,14 +38,26 @@ import {
   type DesignStage,
 } from "@/lib/design-requests";
 import { dateShort, daysUntil } from "@/lib/format";
-import { Section, Pill, Stat, humanize } from "@/components/dp-ui";
+import { Section, Pill, Stat, Field, inputCls, humanize } from "@/components/dp-ui";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — CorvusDP" }] }),
   component: Admin,
 });
 
-type Tab = "projects" | "design" | "engagements" | "permits" | "documents" | "leads" | "ai logs";
+type Tab =
+  | "projects"
+  | "design"
+  | "engagements"
+  | "permits"
+  | "documents"
+  | "leads"
+  | "ai logs"
+  | "users"
+  | "invited"
+  | "financials"
+  | "activity"
+  | "settings";
 
 const TABS: Tab[] = [
   "projects",
@@ -46,6 +67,11 @@ const TABS: Tab[] = [
   "documents",
   "leads",
   "ai logs",
+  "users",
+  "invited",
+  "financials",
+  "activity",
+  "settings",
 ];
 
 const AI_KIND_LABEL: Record<string, string> = {
@@ -114,6 +140,21 @@ function Admin() {
     queryKey: ["admin", "ai-logs"],
     queryFn: listAiLogs,
     enabled: authorized === true && tab === "ai logs",
+  });
+  const users = useQuery<AdminUserRow[]>({
+    queryKey: ["admin", "users"],
+    queryFn: listAllUsers,
+    enabled: authorized === true,
+  });
+  const invited = useQuery<InvitedUserRow[]>({
+    queryKey: ["admin", "invited"],
+    queryFn: listInvitedUsers,
+    enabled: authorized === true,
+  });
+  const auditLog = useQuery<AdminAuditLogRow[]>({
+    queryKey: ["admin", "activity"],
+    queryFn: listAuditLog,
+    enabled: authorized === true && tab === "activity",
   });
 
   if (authorized !== true) {
@@ -361,6 +402,219 @@ function Admin() {
             )}
           </Section>
         )}
+
+        {tab === "users" && (
+          <Section
+            title={`Users (${users.data?.length ?? 0})`}
+            subtitle="Every signed-up account. Toggle admin access here — nowhere else can flip it."
+          >
+            <Table
+              cols={["Name", "Email", "Plan", "Referral code", "Joined", "Admin"]}
+              rows={(users.data ?? []).map((u) => [
+                [u.first_name, u.last_name].filter(Boolean).join(" ") || "—",
+                u.email,
+                <Pill key="p" tone={u.plan === "free" ? "gray" : "green"}>
+                  {humanize(u.plan)}
+                </Pill>,
+                <span key="r" className="font-mono text-xs">
+                  {u.referral_code ?? "—"}
+                </span>,
+                dateShort(u.created_at),
+                <AdminToggle key="a" userRow={u} onChanged={() => users.refetch()} />,
+              ])}
+              loading={users.isLoading}
+            />
+          </Section>
+        )}
+
+        {tab === "invited" && (
+          <Section
+            title={`Invited users (${invited.data?.length ?? 0})`}
+            subtitle="Staff-sent sign-up invites that haven't converted yet — cleared automatically once that email signs up."
+          >
+            <InviteForm onSent={() => invited.refetch()} />
+            <div className="mt-4">
+              <Table
+                cols={["Email", "Name", "Invited", "Last sent", "Resends", ""]}
+                rows={(invited.data ?? []).map((i) => [
+                  i.email,
+                  [i.first_name, i.last_name].filter(Boolean).join(" ") || "—",
+                  dateShort(i.invited_at),
+                  dateShort(i.last_sent_at),
+                  String(i.resend_count),
+                  <button
+                    key="d"
+                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+                    onClick={async () => {
+                      await deleteInvitedUser(i.id);
+                      invited.refetch();
+                    }}
+                  >
+                    Remove
+                  </button>,
+                ])}
+                loading={invited.isLoading}
+              />
+            </div>
+          </Section>
+        )}
+
+        {tab === "financials" && (
+          <Section
+            title="Financials"
+            subtitle="Plan distribution from real signed-up accounts. Revenue/MRR will populate here once Stripe checkout is wired up."
+          >
+            <FinancialsSummary users={users.data ?? []} loading={users.isLoading} />
+          </Section>
+        )}
+
+        {tab === "activity" && (
+          <Section
+            title={`Activity log (${auditLog.data?.length ?? 0})`}
+            subtitle="Every admin action taken in this console (engagement/design-stage advances, admin-role changes, …)."
+          >
+            <Table
+              cols={["When", "Admin", "Action", "Target", "Detail"]}
+              rows={(auditLog.data ?? []).map((a) => [
+                dateShort(a.created_at),
+                a.actor_email ?? "—",
+                humanize(a.action),
+                <span key="t" className="font-mono text-xs">
+                  {a.target ?? "—"}
+                </span>,
+                a.detail ?? "—",
+              ])}
+              loading={auditLog.isLoading}
+            />
+          </Section>
+        )}
+
+        {tab === "settings" && (
+          <Section title="Settings" subtitle="Account-wide switches.">
+            <p className="text-sm text-muted-foreground">
+              Payment mode controls (test/live) will appear here once Stripe checkout is wired up.
+              Nothing else is configurable site-wide yet.
+            </p>
+          </Section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminToggle({
+  userRow,
+  onChanged,
+}: {
+  userRow: AdminUserRow;
+  onChanged: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  return (
+    <button
+      className={`text-xs font-semibold underline underline-offset-2 disabled:opacity-50 ${
+        userRow.is_admin ? "text-destructive" : "text-accent"
+      }`}
+      disabled={saving}
+      onClick={async () => {
+        setSaving(true);
+        try {
+          await setUserIsAdmin(userRow.id, !userRow.is_admin);
+          await logAdminAction({
+            action: "admin_role_change",
+            target: userRow.email,
+            detail: userRow.is_admin ? "removed admin" : "made admin",
+          });
+          onChanged();
+        } catch (err) {
+          console.error("Could not change admin role:", err);
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      {userRow.is_admin ? "Remove admin" : "Make admin"}
+    </button>
+  );
+}
+
+function InviteForm({ onSent }: { onSent: () => void }) {
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSending(true);
+    try {
+      await sendSignupInvite({ email, firstName: firstName || undefined });
+      setEmail("");
+      setFirstName("");
+      onSent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send that invite.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3">
+      <div className="min-w-[10rem]">
+        <Field label="First name">
+          <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </Field>
+      </div>
+      <div className="min-w-[14rem] flex-1">
+        <Field label="Email" required>
+          <input
+            type="email"
+            required
+            className={inputCls}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+      </div>
+      <button className="btn-accent disabled:opacity-60" disabled={sending}>
+        {sending ? "Sending…" : "Send invite"}
+      </button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </form>
+  );
+}
+
+function FinancialsSummary({ users, loading }: { users: AdminUserRow[]; loading: boolean }) {
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  const byPlan = new Map<string, number>();
+  for (const u of users) byPlan.set(u.plan, (byPlan.get(u.plan) ?? 0) + 1);
+  const paid = users.length - (byPlan.get("free") ?? 0);
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Total accounts" value={users.length} />
+        <Stat label="Paid accounts" value={paid} />
+        <Stat label="Free accounts" value={byPlan.get("free") ?? 0} />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+              <th className="px-2 py-2 font-medium">Plan</th>
+              <th className="px-2 py-2 font-medium">Accounts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...byPlan.entries()].map(([plan, count]) => (
+              <tr key={plan} className="row-hover border-b border-border/60">
+                <td className="px-2 py-2">{humanize(plan)}</td>
+                <td className="px-2 py-2 tabular-nums">{count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

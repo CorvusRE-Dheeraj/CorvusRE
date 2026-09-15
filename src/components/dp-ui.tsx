@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export function Section({
@@ -158,13 +159,17 @@ export function EmptyProject() {
       <p className="mt-1 text-sm text-muted-foreground">
         Run a permitting analysis and save it to populate your dashboard.
       </p>
-      <a href="/permitting/analyze" className="btn-accent mt-4 inline-flex">
+      <Link to="/permitting/analyze" className="btn-accent mt-4 inline-flex">
         Start Permitting Analysis
-      </a>
+      </Link>
     </div>
   );
 }
 
 export function Loading() {
-  return <div className="py-16 text-center text-sm text-muted-foreground">Loading…</div>;
+  return (
+    <div role="status" aria-live="polite" className="py-16 text-center text-sm text-muted-foreground">
+      Loading…
+    </div>
+  );
 }
