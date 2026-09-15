@@ -2220,6 +2220,34 @@ alter table public.protests add column if not exists bpp_signature_type text;
 alter table public.protests add column if not exists bpp_signature_data text;
 alter table public.protests add column if not exists bpp_signed_at timestamptz;
 
+-- Opt-in automatic year-over-year re-filing (see src/routes/_shared/auto-
+-- refile-cases edge function, pg_cron'd daily). Deliberately opt-in, not
+-- opt-out: an earlier product decision here was "reminder only, not
+-- auto-renewal" (see the refile_reminder calendar event in tax-calendar.ts,
+-- which still fires for every property/account regardless of this flag) —
+-- this respects that by never surprising anyone who didn't explicitly turn
+-- it on. auto_refile_authorized_at is the real, timestamped consent record:
+-- the existing Service Agreement's own Term and Termination clause scopes
+-- itself to "the property and tax year identified above unless otherwise
+-- agreed in writing" — checking this toggle IS that "otherwise agreed,"
+-- for future tax years specifically. This does NOT skip the real Notice of
+-- Protest e-signature every filing still requires (Form 50-132, signed in
+-- CaseDetailModal like any other case) — it only skips having to click
+-- through ProtestAuthorizationFlow's agreement/owner-info/AI-ack wizard
+-- again for a property CorvusPT is already representing.
+alter table public.properties add column if not exists auto_refile boolean not null default false;
+alter table public.properties add column if not exists auto_refile_authorized_at timestamptz;
+alter table public.bpp_accounts add column if not exists auto_refile boolean not null default false;
+alter table public.bpp_accounts add column if not exists auto_refile_authorized_at timestamptz;
+
+-- Column-level UPDATE grants are additive across separate GRANT statements
+-- (Postgres never revokes a previously granted column without an explicit
+-- REVOKE) — these two simply add to the existing grants defined earlier in
+-- this file for each table, rather than needing to repeat those tables'
+-- full column lists here.
+grant update (auto_refile, auto_refile_authorized_at) on public.properties to authenticated;
+grant update (auto_refile, auto_refile_authorized_at) on public.bpp_accounts to authenticated;
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:
