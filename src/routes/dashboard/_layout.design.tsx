@@ -1,11 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import {
   getActiveDesignRequest,
   approveDesignBrief,
   requestDesignConsultation,
+  DESIGN_STAGES,
+  DESIGN_STAGE_LABEL,
+  type DesignStage,
 } from "@/lib/design-requests";
 import { scopeLabel } from "@/lib/design";
 import { currency, currencyRange, weeksLabel, dateShort } from "@/lib/format";
@@ -144,6 +147,15 @@ function DesignDashboard() {
         </div>
       </Section>
 
+      {dr.stage !== "brief" && dr.stage !== "approved" && (
+        <Section
+          title="Design progress"
+          subtitle="Staff-tracked as your design team moves through each stage (PRD 1.2.19)."
+        >
+          <DesignStageTracker stage={dr.stage as DesignStage} />
+        </Section>
+      )}
+
       <Section title="Cost breakdown" subtitle="Design fee by discipline (PRD 1.2.10.A).">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -227,6 +239,50 @@ function DesignDashboard() {
           ))}
         </ul>
       </Section>
+    </div>
+  );
+}
+
+// PRD 1.2.19.B — "Timeline bar / milestones." Staff advance the underlying
+// stage from the admin console; this just renders where the request
+// currently sits among the same three phases PRD 1.2.11.A names.
+const TRACKED_STAGES: DesignStage[] = ["concept", "development", "final_drawings", "completed"];
+
+function DesignStageTracker({ stage }: { stage: DesignStage }) {
+  const currentIndex = TRACKED_STAGES.indexOf(stage);
+  return (
+    <div>
+      <div className="flex items-center">
+        {TRACKED_STAGES.map((s, i) => {
+          const done = currentIndex >= 0 && i <= currentIndex;
+          return (
+            <Fragment key={s}>
+              {i > 0 && (
+                <span className={`h-px flex-1 ${done ? "bg-accent" : "bg-border"}`} aria-hidden />
+              )}
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  done ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                {i + 1}
+              </span>
+            </Fragment>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex">
+        {TRACKED_STAGES.map((s, i) => (
+          <span
+            key={s}
+            className={`flex-1 text-center text-xs ${
+              currentIndex >= i ? "font-medium text-foreground" : "text-muted-foreground"
+            } ${i === 0 ? "-ml-4 text-left" : i === TRACKED_STAGES.length - 1 ? "-mr-4 text-right" : ""}`}
+          >
+            {DESIGN_STAGE_LABEL[s]}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

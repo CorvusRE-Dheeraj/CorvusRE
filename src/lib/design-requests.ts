@@ -50,6 +50,41 @@ export async function saveDesignRequest(userId: string, intake: DpIntakeState): 
   return (data as { id: string }).id;
 }
 
+// PRD 1.2.19 Design Stage Tracking & Timeline — once a request is approved
+// and the design team is engaged (tracked today via the admin Engagements
+// queue, not an automated payment step — PRD 1.2.15-18's hire/quote/payment
+// flow still needs real business process, not just a status field), staff
+// advance it through the same three stages PRD 1.2.11.A names for the
+// timeline itself, so the customer sees one consistent progress tracker.
+export const DESIGN_STAGES = [
+  "brief",
+  "approved",
+  "concept",
+  "development",
+  "final_drawings",
+  "completed",
+] as const;
+export type DesignStage = (typeof DESIGN_STAGES)[number];
+
+export const DESIGN_STAGE_LABEL: Record<DesignStage, string> = {
+  brief: "Brief",
+  approved: "Approved",
+  concept: "Concept design",
+  development: "Design development",
+  final_drawings: "Final drawings",
+  completed: "Completed",
+};
+
+export function nextDesignStage(stage: string): DesignStage | null {
+  const i = DESIGN_STAGES.indexOf(stage as DesignStage);
+  return i < 0 || i === DESIGN_STAGES.length - 1 ? null : DESIGN_STAGES[i + 1];
+}
+
+export async function advanceDesignRequestStage(id: string, stage: DesignStage): Promise<void> {
+  const { error } = await supabase.from("design_requests").update({ stage }).eq("id", id);
+  if (error) throw error;
+}
+
 // PRD 1.2.8.A / 1.2.8.B — record the customer's intent before the paid work.
 export async function approveDesignBrief(id: string): Promise<void> {
   const { error } = await supabase

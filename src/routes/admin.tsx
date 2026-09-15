@@ -22,6 +22,12 @@ import {
   type AdminEngagementRow,
   type AiLogRow,
 } from "@/lib/admin";
+import {
+  nextDesignStage,
+  advanceDesignRequestStage,
+  DESIGN_STAGE_LABEL,
+  type DesignStage,
+} from "@/lib/design-requests";
 import { dateShort, daysUntil } from "@/lib/format";
 import { Section, Pill, Stat, humanize } from "@/components/dp-ui";
 
@@ -188,15 +194,21 @@ function Admin() {
         )}
 
         {tab === "design" && (
-          <Section title={`Design requests (${design.data?.length ?? 0})`}>
+          <Section
+            title={`Design requests (${design.data?.length ?? 0})`}
+            subtitle="Advance a request through concept → development → final drawings once the design team is engaged (PRD 1.2.19)."
+          >
             <Table
-              cols={["Location", "Scope", "Sector", "Stage", "Created"]}
+              cols={["Location", "Scope", "Sector", "Stage", "Created", ""]}
               rows={(design.data ?? []).map((d) => [
                 d.address ?? d.city ?? "—",
                 humanize(d.scope),
                 humanize(d.sector),
-                humanize(d.stage),
+                <Pill key="s" tone={d.stage === "completed" ? "green" : "blue"}>
+                  {DESIGN_STAGE_LABEL[d.stage as DesignStage] ?? humanize(d.stage)}
+                </Pill>,
                 dateShort(d.created_at),
+                <DesignStageAction key="a" row={d} onChanged={() => design.refetch()} />,
               ])}
               loading={design.isLoading}
             />
@@ -389,6 +401,39 @@ function AiLogEntry({ log }: { log: AiLogRow }) {
         </div>
       )}
     </li>
+  );
+}
+
+function DesignStageAction({
+  row,
+  onChanged,
+}: {
+  row: AdminDesignRow;
+  onChanged: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const next = nextDesignStage(row.stage);
+  // Nothing to advance to from "brief" here — that transition is the
+  // customer's own "Approve & start detailed design" action, not staff's.
+  if (!next || row.stage === "brief") return <span className="text-xs text-muted-foreground">—</span>;
+  return (
+    <button
+      className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+      disabled={saving}
+      onClick={async () => {
+        setSaving(true);
+        await advanceDesignRequestStage(row.id, next);
+        await logAdminAction({
+          action: "design_stage_advance",
+          target: row.id,
+          detail: `${row.stage} → ${next}`,
+        });
+        setSaving(false);
+        onChanged();
+      }}
+    >
+      Advance to {DESIGN_STAGE_LABEL[next]}
+    </button>
   );
 }
 
