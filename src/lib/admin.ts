@@ -398,6 +398,10 @@ export type AdminProtestRecord = {
   finalValue: number | null;
   escalationPath: EscalationPath | null;
   closedAt: string | null;
+  // Who at CorvusPT is actually handling this case — admin-set (see
+  // updateProtestAssignedRep below).
+  assignedRepresentative: string | null;
+  assignedRepSetAt: string | null;
 };
 
 type AdminProtestRow = {
@@ -418,6 +422,8 @@ type AdminProtestRow = {
   escalation_path: EscalationPath | null;
   closed_at: string | null;
   tax_year: number | null;
+  assigned_representative: string | null;
+  assigned_rep_set_at: string | null;
   properties: {
     address: string;
     cad: string | null;
@@ -438,7 +444,7 @@ export async function listAllProtests(): Promise<AdminProtestRecord[]> {
   const { data, error } = await supabase
     .from("protests")
     .select(
-      "id, property_id, user_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, properties(address, cad, property_type, protest_deadline, total_value, land_value, improvement_value, tax_year, account_number)",
+      "id, property_id, user_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, assigned_representative, assigned_rep_set_at, properties(address, cad, property_type, protest_deadline, total_value, land_value, improvement_value, tax_year, account_number)",
     )
     .order("requested_at", { ascending: false });
   if (error) throw error;
@@ -469,6 +475,8 @@ export async function listAllProtests(): Promise<AdminProtestRecord[]> {
     finalValue: row.final_value,
     escalationPath: row.escalation_path,
     closedAt: row.closed_at,
+    assignedRepresentative: row.assigned_representative,
+    assignedRepSetAt: row.assigned_rep_set_at,
   }));
 }
 
@@ -573,6 +581,32 @@ export async function updateProtestNotes(
     action: "update_protest_notes",
     targetEmail: context?.requesterEmail,
     detail: `${context?.propertyAddress ?? "protest"}: notes updated`,
+  });
+}
+
+// Who at CorvusPT is actually handling this case — see HearingPrepSection in
+// CaseDetailModal.tsx, which shows this to the customer once set. Blank
+// clears the assignment (assigned_rep_set_at goes back to null too, so a
+// later re-assignment records a fresh timestamp rather than an old one).
+export async function updateProtestAssignedRep(
+  protestId: string,
+  assignedRepresentative: string,
+  context?: { propertyAddress?: string | null; requesterEmail?: string },
+): Promise<void> {
+  const trimmed = assignedRepresentative.trim();
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      assigned_representative: trimmed || null,
+      assigned_rep_set_at: trimmed ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", protestId);
+  if (error) throw error;
+  await logAdminAction({
+    action: "update_protest_assigned_rep",
+    targetEmail: context?.requesterEmail,
+    detail: `${context?.propertyAddress ?? "protest"}: assigned representative → ${trimmed || "(cleared)"}`,
   });
 }
 

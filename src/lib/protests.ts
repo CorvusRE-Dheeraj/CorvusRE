@@ -115,6 +115,12 @@ export type ProtestRecord = {
   filingChannel?: "online" | "mail" | "in_person" | "email" | null;
   certifiedMailTracking?: string | null;
   evidenceSubmittedConfirmedAt?: string | null;
+  // Who at CorvusPT is actually handling this case — admin-set (see
+  // updateProtestAssignedRep in admin.ts), read here so HearingPrepSection
+  // can show it to the customer. Same optional-fixture convention as the
+  // fields above.
+  assignedRepresentative?: string | null;
+  assignedRepSetAt?: string | null;
 };
 
 type ProtestRow = {
@@ -149,10 +155,12 @@ type ProtestRow = {
   filing_channel: "online" | "mail" | "in_person" | "email" | null;
   certified_mail_tracking: string | null;
   evidence_submitted_confirmed_at: string | null;
+  assigned_representative: string | null;
+  assigned_rep_set_at: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return {
@@ -187,6 +195,8 @@ function fromRow(row: ProtestRow): ProtestRecord {
     filingChannel: row.filing_channel,
     certifiedMailTracking: row.certified_mail_tracking,
     evidenceSubmittedConfirmedAt: row.evidence_submitted_confirmed_at,
+    assignedRepresentative: row.assigned_representative,
+    assignedRepSetAt: row.assigned_rep_set_at,
   };
 }
 

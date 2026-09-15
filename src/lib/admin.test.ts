@@ -29,6 +29,8 @@ function adminRecord(overrides: Partial<AdminProtestRecord> = {}): AdminProtestR
     finalValue: null,
     escalationPath: null,
     closedAt: null,
+    assignedRepresentative: null,
+    assignedRepSetAt: null,
     ...overrides,
   };
 }

@@ -4679,6 +4679,28 @@ function HearingPrepSection({
         ))}
       </div>
 
+      {(protest.attendanceType === "Authorized Agent" || protest.attendanceType === "Both") && (
+        <div className="mt-2 rounded-md border border-border p-2.5 text-xs">
+          {protest.assignedRepresentative ? (
+            <>
+              <span className="font-medium">Your CorvusPT representative: </span>
+              {protest.assignedRepresentative}
+              {protest.assignedRepSetAt && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  (assigned {new Date(protest.assignedRepSetAt).toLocaleDateString()})
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              CorvusPT is assigning a representative for this hearing — check back before your
+              hearing date.
+            </span>
+          )}
+        </div>
+      )}
+
       {!guide && (
         <div className="mt-3">
           <button
