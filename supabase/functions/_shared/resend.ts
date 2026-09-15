@@ -3,7 +3,11 @@
 // corvusre.com sending domain (a separate RESEND_API_KEY secret is still
 // required on this project; Supabase secrets can't be copied across
 // projects, only re-entered).
-export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<void> {
+export async function sendEmail(opts: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}): Promise<void> {
   const resendKey = Deno.env.get("RESEND_API_KEY");
   if (!resendKey) throw new Error("Missing RESEND_API_KEY");
 
