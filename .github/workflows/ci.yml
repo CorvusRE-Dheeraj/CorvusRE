@@ -7,11 +7,14 @@ name: CI
 # This workflow: (1) guards that the tests + the production build pass, and
 # (2) on a green push to `dev`, kicks the CorvusPT deploy so corvusre.com/corvusdp/
 # always tracks this repo's `dev`.
-
+#
+# Deliberately triggers on `dev` only — same as the CorvusPT door's own
+# deploy.yml (push: branches: [dev] + workflow_dispatch, nothing on feature
+# branches or pull_request). Verification of a feature branch happens
+# locally (npm run test / npm run build) before it's merged, not via a
+# GitHub-side run on every push or PR.
 on:
   push:
-    branches: [dev, feature-dev-dheeraj]
-  pull_request:
     branches: [dev]
   workflow_dispatch:
 
