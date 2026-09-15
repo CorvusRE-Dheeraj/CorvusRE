@@ -21,6 +21,7 @@ export type DesignRequestRow = {
   approved_at: string | null;
   consultation_requested_at: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 export async function saveDesignRequest(userId: string, intake: DpIntakeState): Promise<string> {
@@ -107,9 +108,35 @@ export async function getActiveDesignRequest(userId: string): Promise<DesignRequ
     .from("design_requests")
     .select("*")
     .eq("user_id", userId)
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw error;
   return (data as DesignRequestRow) ?? null;
+}
+
+export async function listDesignRequests(userId: string): Promise<DesignRequestRow[]> {
+  const { data, error } = await supabase
+    .from("design_requests")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as DesignRequestRow[]) ?? [];
+}
+
+// Same "manage properties" pattern as src/lib/projects.ts setActiveProject/
+// deleteProject — a second design request otherwise silently replaces the
+// dashboard's view of the first with no way back.
+export async function setActiveDesignRequest(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("design_requests")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteDesignRequest(id: string): Promise<void> {
+  const { error } = await supabase.from("design_requests").delete().eq("id", id);
+  if (error) throw error;
 }
