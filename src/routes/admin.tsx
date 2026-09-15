@@ -2133,6 +2133,7 @@ function FinancialsTab({
   const planData = data.planMix.map((p) => ({ name: p.label, value: p.count }));
   const statusRows = Object.entries(data.subscriptionsByStatus).sort((a, b) => b[1] - a[1]);
   const propRows = Object.entries(data.propertiesByStatus).sort((a, b) => b[1] - a[1]);
+  const bppRows = Object.entries(data.bppAccountsByStatus).sort((a, b) => b[1] - a[1]);
 
   return (
     <section className="mt-8">
@@ -2246,24 +2247,65 @@ function FinancialsTab({
             {data.mode === "live" ? "live" : "test-mode"} Stripe numbers above.
           </p>
         </div>
+        <div className="card-elev p-4 text-sm">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            BPP accounts by subscription status
+          </div>
+          {bppRows.length === 0 ? (
+            <p className="text-muted-foreground">No BPP accounts yet.</p>
+          ) : (
+            bppRows.map(([k, v]) => (
+              <div
+                key={k}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="capitalize text-muted-foreground">{k.replace(/_/g, " ")}</span>
+                <span className="font-medium">{v}</span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {data.planMix.length > 0 && (
-        <div className="card-elev mt-6 p-4 text-sm">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            MRR by plan
-          </div>
-          {data.planMix.map((p) => (
-            <div
-              key={p.label}
-              className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
-            >
-              <span className="text-muted-foreground">
-                {p.label} <span className="text-xs">× {p.count}</span>
-              </span>
-              <span className="font-medium">{dollars(p.mrrCents)}/mo</span>
+        <div className="mt-6 grid gap-6 sm:grid-cols-2">
+          <div className="card-elev p-4 text-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              MRR by plan
             </div>
-          ))}
+            {data.planMix.map((p) => (
+              <div
+                key={p.label}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="text-muted-foreground">
+                  {p.label} <span className="text-xs">× {p.count}</span>
+                </span>
+                <span className="font-medium">{dollars(p.mrrCents)}/mo</span>
+              </div>
+            ))}
+          </div>
+          <div className="card-elev p-4 text-sm">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              MRR by product line
+            </div>
+            {(
+              [
+                ["Real Estate", data.byProductLine.property],
+                ["BPP", data.byProductLine.bpp],
+              ] as const
+            ).map(([label, line]) => (
+              <div
+                key={label}
+                className="flex justify-between border-t border-border/60 py-1.5 first:border-0"
+              >
+                <span className="text-muted-foreground">
+                  {label} <span className="text-xs">× {line.count}</span>
+                </span>
+                <span className="font-medium">{dollars(line.mrrCents)}/mo</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </section>
