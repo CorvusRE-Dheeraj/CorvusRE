@@ -39,6 +39,7 @@ import {
 } from "@/lib/design-requests";
 import { dateShort, daysUntil } from "@/lib/format";
 import { Section, Pill, Stat, Field, inputCls, humanize } from "@/components/dp-ui";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — CorvusDP" }] }),
@@ -292,9 +293,15 @@ function Admin() {
             subtitle="Submission, aging/risk, approval, and expiry tracking in one view (PRD 2.1.47–52)."
           >
             <div className="grid gap-3 sm:grid-cols-3">
-              <Stat label="Open permits" value={openPermits.length} />
-              <Stat label="At risk (21+ days, no movement)" value={atRiskPermits.length} />
-              <Stat label="Expiring within 60 days" value={expiringPermits.length} />
+              <Stat label="Open permits" value={<AnimatedNumber value={openPermits.length} />} />
+              <Stat
+                label="At risk (21+ days, no movement)"
+                value={<AnimatedNumber value={atRiskPermits.length} />}
+              />
+              <Stat
+                label="Expiring within 60 days"
+                value={<AnimatedNumber value={expiringPermits.length} />}
+              />
             </div>
             <div className="mt-4 flex gap-1">
               {(["all", "at_risk", "expiring"] as const).map((f) => (
@@ -594,9 +601,9 @@ function FinancialsSummary({ users, loading }: { users: AdminUserRow[]; loading:
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Total accounts" value={users.length} />
-        <Stat label="Paid accounts" value={paid} />
-        <Stat label="Free accounts" value={byPlan.get("free") ?? 0} />
+        <Stat label="Total accounts" value={<AnimatedNumber value={users.length} />} />
+        <Stat label="Paid accounts" value={<AnimatedNumber value={paid} />} />
+        <Stat label="Free accounts" value={<AnimatedNumber value={byPlan.get("free") ?? 0} />} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -771,7 +778,11 @@ function Table({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} className="row-hover border-b border-border/60">
+            <tr
+              key={i}
+              className="list-item-enter row-hover border-b border-border/60"
+              style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+            >
               {r.map((cell, j) => (
                 <td key={j} className="px-2 py-2 align-top">
                   {cell}

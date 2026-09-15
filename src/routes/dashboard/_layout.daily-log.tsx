@@ -75,8 +75,12 @@ function DailyLog() {
           <p className="text-sm text-muted-foreground">No log entries yet.</p>
         ) : (
           <ul className="grid gap-2">
-            {(logs.data ?? []).map((l) => (
-              <li key={l.id} className="rounded-lg border border-border p-3 text-sm">
+            {(logs.data ?? []).map((l, i) => (
+              <li
+                key={l.id}
+                className="list-item-enter rounded-lg border border-border p-3 text-sm"
+                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{dateShort(l.log_date)}</span>
                   <span className="text-xs text-muted-foreground">

@@ -66,8 +66,12 @@ function Rfis() {
           <p className="text-sm text-muted-foreground">No RFIs logged yet.</p>
         ) : (
           <ul className="grid gap-3">
-            {(rfis.data ?? []).map((r) => (
-              <li key={r.id} className="rounded-lg border border-border p-4 text-sm">
+            {(rfis.data ?? []).map((r, i) => (
+              <li
+                key={r.id}
+                className="list-item-enter rounded-lg border border-border p-4 text-sm"
+                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{r.subject}</span>
                   <Pill tone={STATUS_TONE[r.status] ?? "gray"}>{humanize(r.status)}</Pill>

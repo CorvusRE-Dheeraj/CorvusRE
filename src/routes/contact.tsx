@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Field, inputCls, Section } from "@/components/dp-ui";
-import { sendContactMessage, isContactFormConfigured } from "@/lib/web3forms";
+import { sendInquiry } from "@/lib/inquiries";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({ meta: [{ title: "Contact — CorvusDP" }] }),
@@ -18,7 +18,13 @@ function Contact() {
     setStatus("sending");
     setError(null);
     try {
-      await sendContactMessage(form);
+      await sendInquiry({
+        kind: "contact",
+        name: form.name,
+        email: form.email,
+        company: form.company || undefined,
+        message: form.message,
+      });
       setStatus("sent");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -45,11 +51,6 @@ function Contact() {
       <p className="mt-2 text-muted-foreground">
         Questions about a project, a jurisdiction, or a managed engagement.
       </p>
-      {!isContactFormConfigured && (
-        <p className="mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 p-3 text-xs">
-          This deployment has no contact-form key configured — email us directly instead.
-        </p>
-      )}
       <form onSubmit={submit} className="mt-6">
         <Section title="Message">
           <div className="grid gap-4">

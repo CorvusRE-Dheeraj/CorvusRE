@@ -82,8 +82,12 @@ function Permits() {
               </tr>
             </thead>
             <tbody>
-              {permits.map((p) => (
-                <tr key={p.id} className="row-hover border-b border-border/60">
+              {permits.map((p, i) => (
+                <tr
+                  key={p.id}
+                  className="list-item-enter row-hover border-b border-border/60"
+                  style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                >
                   <td className="px-2 py-2 font-medium">{p.name}</td>
                   <td className="px-2 py-2">{p.category}</td>
                   <td className="px-2 py-2 text-muted-foreground">{p.agency ?? "—"}</td>

@@ -38,7 +38,14 @@ function Prepare() {
     setBusy(true);
     const scope = `${a.permits.length} permits · ${a.complexity.level} complexity · ${a.jurisdiction.authority} · est. ${weeksLabel(a.timeline.totalWeeksMin, a.timeline.totalWeeksMax)} · fees ${currencyRange(a.fees.totalLow, a.fees.totalHigh)}`;
     try {
-      await createEngagementRequest({ userId: user.id, projectId, scopeSummary: scope, note });
+      await createEngagementRequest({
+        userId: user.id,
+        projectId,
+        scopeSummary: scope,
+        note,
+        requesterEmail: user.email ?? undefined,
+        projectAddress: project.address ?? project.name ?? undefined,
+      });
       await eng.refetch();
       setNote("");
     } finally {

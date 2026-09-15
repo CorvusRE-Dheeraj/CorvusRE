@@ -546,6 +546,15 @@ header .container-page {
   }
 }
 
+/* Progress-bar fills (roadmap %, checklist %, construction-readiness %)
+   were snapping straight to the new width on every update instead of
+   animating there — this eases the width change itself, not an
+   entrance/exit, so it stays on under reduced-motion (a snapped instant
+   change reads the same as "no animation", nothing to gate). */
+@utility progress-fill {
+  transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Ambient motion for the homepage hero scene (clouds drifting, sun glow
    breathing, trees swaying) — each element carries its own animation-duration/
    -delay inline (see HeroBackground.tsx) so multiple clouds/trees don't move

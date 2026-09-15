@@ -16,6 +16,7 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 import { ConstructionScene } from "@/components/illustrations/ConstructionScene";
 import { supabase } from "@/lib/supabase";
 import { readDpIntake } from "@/lib/dp-intake";
+import { notifyInquiry } from "@/lib/inquiries";
 
 export const Route = createFileRoute("/construction")({
   head: () => ({
@@ -104,6 +105,22 @@ function Construction() {
     } catch {
       /* non-blocking */
     }
+    void notifyInquiry({
+      kind: "construction_lead",
+      email: form.email || undefined,
+      meta: {
+        Property: form.address,
+        "Build type": form.build,
+        "Property type": form.sector || undefined,
+        "Structure type": form.structure,
+        "Building size (sf)": form.size || undefined,
+        Floors: form.floors || undefined,
+        "Design drawings": form.hasDrawings,
+        Permits: form.hasPermits,
+        Budget: form.budget || undefined,
+        "Target completion": form.completion || undefined,
+      },
+    });
     setSent(true);
   }
 

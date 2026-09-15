@@ -298,7 +298,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <NavItem item={TRAILING[2]} />
         <ProjectSwitcher />
       </nav>
-      <div className="min-w-0 page-enter">{children}</div>
+      {/* Keyed by pathname so switching dashboard tabs actually remounts this
+          wrapper and replays the page-enter animation each time — without
+          the key, this div is the same DOM node across every tab switch
+          (only <Outlet/>'s children swap inside it), so the CSS animation
+          only ever played once, on the very first dashboard load. */}
+      <div key={pathname} className="min-w-0 page-enter">
+        {children}
+      </div>
     </div>
   );
 }

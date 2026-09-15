@@ -109,7 +109,10 @@ function Approvals() {
           <span className="text-muted-foreground">{readiness}%</span>
         </div>
         <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary">
-          <div className="h-full rounded-full bg-accent" style={{ width: `${readiness}%` }} />
+          <div
+            className="progress-fill h-full rounded-full bg-accent"
+            style={{ width: `${readiness}%` }}
+          />
         </div>
         <ul className="mt-3 grid gap-1.5 text-sm">
           {permits.map((p) => (
