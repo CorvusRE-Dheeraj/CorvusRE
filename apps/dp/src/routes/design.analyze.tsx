@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Lock, Sparkles, RotateCcw } from "lucide-react";
 import {
+  emptyIntake,
   readDpIntake,
   updateDpIntake,
   type DpIntakeState,
@@ -34,8 +35,17 @@ const SCOPES: { value: DesignScope; label: string }[] = [
 function DesignAnalyze() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const [state, setState] = useState<DpIntakeState>(() => ({ ...readDpIntake(), track: "design" }));
+  // See permitting.analyze.tsx — reading sessionStorage in the useState
+  // initializer makes the hydrated render differ from the prerendered HTML
+  // (React 19 then discards and re-renders the tree). Restore on mount.
+  const [state, setState] = useState<DpIntakeState>(() => ({
+    ...emptyIntake(),
+    track: "design",
+  }));
   const [step, setStep] = useState(0);
+  useEffect(() => {
+    setState({ ...readDpIntake(), track: "design" });
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
