@@ -168,19 +168,34 @@ main {
 .account-menu {
   position: relative;
 }
+/* Warm gold rather than the hub's navy --brand, with a soft blurred glow
+   around it -- the same neon-glow visual language the door tiles below use
+   (see .door-panel::before's own drop-shadow glow), just as a simple
+   box-shadow halo here since a plain circle doesn't need that technique's
+   per-edge complexity. */
 .account-avatar {
+  --avatar-color: #eab308;
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 999px;
   border: none;
-  background: var(--brand);
-  color: var(--brand-foreground);
+  background: var(--avatar-color);
+  color: #1a1200;
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow:
+    0 0 0.75rem 0.125rem color-mix(in oklch, var(--avatar-color) 75%, transparent),
+    0 0 1.75rem 0.375rem color-mix(in oklch, var(--avatar-color) 45%, transparent);
+  transition: box-shadow 0.2s ease;
+}
+.account-avatar:hover {
+  box-shadow:
+    0 0 1rem 0.1875rem color-mix(in oklch, var(--avatar-color) 85%, transparent),
+    0 0 2.25rem 0.5rem color-mix(in oklch, var(--avatar-color) 55%, transparent);
 }
 .account-dropdown {
   position: absolute;
