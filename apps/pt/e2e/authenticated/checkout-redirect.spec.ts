@@ -5,7 +5,13 @@ import { requireTestAccount, signIn } from "./helpers";
 // real payment — see playwright.config.ts's top comment. Requires the
 // seeded test account to have Stripe test-mode price IDs configured on the
 // create-checkout-session edge function (STRIPE_PRICE_ID_OWNER_MANAGED).
-test("subscribing on Pricing redirects to a real Stripe Checkout session", async ({ page }) => {
+//
+// Checkout moved off /pricing onto each property's own "Actions" menu on
+// /dashboard/properties a while back (see "One real Stripe subscription per
+// property, not one shared subscription") — this spec previously still
+// clicked a "Subscribe" button on /pricing that no longer exists there
+// (/pricing is informational only now, linking to /dashboard/properties).
+test("subscribing on a property redirects to a real Stripe Checkout session", async ({ page }) => {
   const { email, password } = requireTestAccount();
   await signIn(page, email, password);
 
@@ -35,11 +41,25 @@ test("subscribing on Pricing redirects to a real Stripe Checkout session", async
     (route) => route.abort(),
   );
 
-  await page.goto("/pricing");
+  await page.goto("/dashboard/properties", { waitUntil: "domcontentloaded" });
+
+  // A not-yet-subscribed property's "Actions" menu offers "Protest Property"
+  // (see _layout.properties.tsx's showProtest = !isPaid), which opens a
+  // dialog to pick a tier. Targeted by its distinct seeded address (not
+  // ".first()") so this doesn't collide with protest-authorization.spec.ts's
+  // own (deliberately already-subscribed) property when both specs run in
+  // parallel against the same account.
+  await page.getByRole("button", { name: "Actions for 123 CI Test Ln, Austin, TX 78701" }).click();
+  await page.getByRole("menuitem", { name: "Protest Property" }).click();
+
+  // The dialog offers two tiers ("Choose Owner-Managed" / "Choose CorvusRF
+  // Managed") — either one exercises the same checkout path, so just take
+  // the first.
   await page
-    .getByRole("button", { name: /^Subscribe/ })
+    .getByRole("button", { name: /^Choose / })
     .first()
     .click();
+
   // A generous timeout: this edge function calls out to Stripe's API, and a
   // cold Supabase Edge Function start (common right after a deploy, which is
   // exactly when CI runs this) can add several seconds on top of that.

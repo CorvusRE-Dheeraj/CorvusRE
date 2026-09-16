@@ -148,6 +148,20 @@ main {
   }
 }
 
+/* Groups the hint text with the Sign In link so the header's 3-column grid
+   (brand | tagline | actions) still holds regardless of whether the hint
+   itself is hidden at this width. */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+.header-signin {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
 /* The whole home page: header + one full-height row of five doors + a thin
    footer, stacked to exactly one viewport with no scroll — body becomes the
    flex column so we never have to hand-compute header/footer heights. Scoped

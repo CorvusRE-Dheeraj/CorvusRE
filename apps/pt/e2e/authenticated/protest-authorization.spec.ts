@@ -10,25 +10,49 @@ test.afterEach(async () => {
   if (credentials) await cleanupLatestProtest(credentials.email, credentials.password);
 });
 
-// Requires the seeded test account to already have at least one saved
-// property with protestDeadline/totalValue set (add-a-property is exercised
-// by the guest intake spec, not repeated here to keep this focused on the
-// authorization + request step specifically).
+// Requires the seeded test account to already have a saved, ALREADY-
+// SUBSCRIBED property (subscription_status/plan_tier/protest_deadline set
+// directly in the DB, not via a real Stripe payment -- CI can't complete
+// one) with total_value set, since "Request Protest Filing" only appears
+// once a property is paid (an unsubscribed property's AI Report shows
+// "Subscribe" buttons instead -- that path is checkout-redirect.spec.ts's
+// job). Targeted by its distinct seeded address rather than ".first()" so
+// this doesn't collide with checkout-redirect.spec.ts's own (deliberately
+// unsubscribed) property when both specs run in parallel against the same
+// account.
 test("signing the authorization and requesting a protest creates a case", async ({ page }) => {
+  // Default 30s isn't enough headroom for a real multi-step wizard plus a
+  // possible first-time AI analysis on top of it (see the comment on
+  // requestFilingButton below) -- matches view-case.spec.ts's own
+  // test.setTimeout for the same reason.
+  test.setTimeout(120_000);
   const { email, password } = requireTestAccount();
   credentials = { email, password };
   await signIn(page, email, password);
 
   await page.goto("/dashboard/properties");
-  const firstProperty = page.locator(".card-elev", { hasText: "Open AI Report" }).first();
+  const firstProperty = page
+    .locator(".card-elev", { hasText: "456 CI Subscribed Ave" })
+    .first();
   await firstProperty.getByRole("button", { name: "Open AI Report" }).click();
 
   // The AI Report page swaps this button for "View Case" once its own
   // existingProtest fetch resolves — clicking before that settles is racing
-  // a DOM swap, not a real interaction. Waiting for the fetches to quiet down
-  // first avoids hitting the button mid-swap.
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Request Protest Filing" }).click();
+  // a DOM swap, not a real interaction. waitForLoadState("networkidle") used
+  // to cover this, but for a property with no cached AI analysis yet (a
+  // freshly seeded account, e.g.) opening this page kicks off a real,
+  // possibly slow Gemini call that can keep the network busy well past
+  // networkidle's own patience, timing this out even though the page is
+  // working correctly. Waiting directly for the actual button this test
+  // needs (with a generous timeout for that first-time analysis) is both
+  // more robust and closer to what this comment always actually meant.
+  //
+  // The button's own label is "File Protest" here (the AI Report page) --
+  // "Request Protest Filing" is a *different* entry point into the same
+  // flow, on the Properties list page's "Actions" dropdown, not this one.
+  const requestFilingButton = page.getByRole("button", { name: "File Protest" });
+  await requestFilingButton.waitFor({ state: "visible", timeout: 60_000 });
+  await requestFilingButton.click();
 
   // The dialog (Radix Dialog, see ProtestAuthorizationFlow.tsx) briefly
   // re-renders its content as it finishes mounting/opening — interacting

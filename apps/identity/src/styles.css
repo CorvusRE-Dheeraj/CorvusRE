@@ -88,6 +88,38 @@ input {
   font-size: 14px;
 }
 
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.google-btn:hover:not(:disabled) {
+  background: #f7f7f5;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
