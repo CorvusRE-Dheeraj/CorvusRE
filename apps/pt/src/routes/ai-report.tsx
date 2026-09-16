@@ -2246,14 +2246,44 @@ function Report() {
   // Go to Module 8" button, ?openModule=evidence) — waits for billingChecked
   // so a paying customer never sees a flash of the paywall first, and only
   // ever fires once (openId stays whatever the user does with it after).
+  //
+  // billingChecked alone isn't enough, though: for owner_managed/
+  // corvusrf_managed, hasFullAccess for a paid-tier module also depends on
+  // resolvedProperty's own subscription (a SEPARATE async lookup keyed off
+  // state.address — see the effect above), which billingChecked (an
+  // ACCOUNT-level "myPlan" signal) says nothing about. Firing as soon as
+  // billingChecked flips can race ahead of that property lookup and show a
+  // real subscribed customer the wrong paywall on a direct deep link —
+  // reproduced live via ?openModule=improvement, where hasFullAccess was
+  // still its default false at the moment this fired even though the
+  // property had an active subscription. Wait for the property lookup to
+  // actually have a chance to settle first, unless there's genuinely no
+  // address for it to look up (then it will never resolve, and
+  // hasFullAccess staying false is the correct answer, not a race).
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   useEffect(() => {
     if (!deepLinkModuleId || deepLinkHandled || !billingChecked) return;
     const target = MODULES.find((m) => m.id === deepLinkModuleId);
-    if (target) openModule(target);
+    if (!target) {
+      setDeepLinkHandled(true);
+      return;
+    }
+    const unconditionalAccess =
+      myPlan === "beta" || myPlan === "ai_report" || myPlan === "managed_protest";
+    const propertyLookupPending = !!state.address && !resolvedProperty;
+    if (target.n > FREE_MODULE_COUNT && !unconditionalAccess && propertyLookupPending) return;
+    openModule(target);
     setDeepLinkHandled(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkModuleId, deepLinkHandled, billingChecked, hasFullAccess]);
+  }, [
+    deepLinkModuleId,
+    deepLinkHandled,
+    billingChecked,
+    hasFullAccess,
+    resolvedProperty,
+    myPlan,
+    state.address,
+  ]);
 
   // The exact same estimateSavings() call the intake savings screen uses (see
   // savings-estimate.ts) — comps tier first, then the formula tier (base rate +
@@ -9127,6 +9157,225 @@ function Module2Content({
   );
 }
 
+// Module 5 — same philosophy as Modules 1/2: lead with what Corvus actually
+// found about the building, what it means for value, and how that compares
+// to the CAD's own improvement value; push the technical machinery (effective
+// age, economic life, physical/functional/external depreciation — the real
+// deterministic math in computeDepreciation) into a collapsed Detailed
+// Analysis section. One upload path — straight into Module 8 — rather than a
+// per-component category picker; the evidence system re-tags and re-runs this
+// module's analysis on its own once new photos/documents land.
+function Module5Content({
+  d,
+  m,
+  state,
+  overrides,
+  onMarkNotApplicable,
+  onClearNotApplicable,
+  improvementDocs,
+  onOpenModule,
+}: {
+  d: ModuleResultMap["improvement"];
+  m: Module;
+  state: IntakeState;
+  overrides: ModuleOverride[];
+  onMarkNotApplicable: (moduleId: string, itemKey?: string) => void;
+  onClearNotApplicable: (moduleId: string, itemKey?: string) => void;
+  improvementDocs: DocumentRecord[];
+  onOpenModule: (moduleId: string) => void;
+}) {
+  const economicLife = getTypicalEconomicLife(state.propertyType);
+  const depreciation = computeDepreciation(
+    d.effectiveAgeYears,
+    economicLife,
+    d.functionalObsolescencePct,
+    d.externalObsolescencePct,
+    state.improvementValue ?? null,
+  );
+
+  const missingComponents = d.buildingComponents.filter((c) => !c.hasPhoto && !c.notApplicable);
+  const hasRealMetrics =
+    d.effectiveAgeYears != null ||
+    d.functionalObsolescencePct != null ||
+    d.externalObsolescencePct != null;
+  const hasValueImpact =
+    depreciation.conditionAdjustedValue != null && state.improvementValue != null;
+  const needsMoreInfo = missingComponents.length > 0 || !hasRealMetrics;
+
+  const affectingValue = [
+    d.functionalObsolescencePct != null ? d.functionalObsolescenceBasis : null,
+    d.externalObsolescencePct != null ? d.externalObsolescenceBasis : null,
+  ].filter((s): s is string => !!s);
+
+  return (
+    <div className="mt-4 grid gap-5">
+      {/* 1. What We Found — the building itself, component by component. */}
+      <div>
+        {d.guidance && <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />}
+        <div className="mt-3 flex flex-col items-center">
+          <SpeedometerGauge value={d.priorityScore} size="md" />
+          <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
+        </div>
+        <div className="mt-3 grid gap-1.5">
+          {d.buildingComponents.map((c) => (
+            <BuildingComponentRow
+              key={c.component}
+              c={
+                !c.hasPhoto && isItemNotApplicable(overrides, "improvement", c.component)
+                  ? { ...c, notApplicable: true }
+                  : c
+              }
+              onMarkNotApplicable={() => onMarkNotApplicable("improvement", c.component)}
+              onClearNotApplicable={() => onClearNotApplicable("improvement", c.component)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* 2. What May Be Affecting Its Value — real AI-grounded findings only. */}
+      {affectingValue.length > 0 && (
+        <div className="rounded-lg bg-warning/10 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            What May Be Affecting Its Value
+          </div>
+          <ul className="grid gap-1 text-xs text-foreground/90">
+            {affectingValue.map((s, i) => (
+              <li key={i}>• {s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 3. How It Compares With the CAD Value — only ever shown once real
+          numbers exist; never a placeholder row. */}
+      {hasValueImpact && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            How It Compares With the CAD Value
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <FactBox label="CAD Improvement Value" value={currency(state.improvementValue)} />
+            <FactBox
+              label="Condition-Adjusted Value"
+              value={currency(depreciation.conditionAdjustedValue)}
+            />
+            <FactBox
+              label="Impact"
+              value={`${currency(depreciation.impactDollar ?? 0)} (${depreciation.impactPct}%)`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 4. Evidence Supporting Our Finding */}
+      {improvementDocs.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Evidence Supporting Our Finding
+          </div>
+          <ul className="grid gap-1 text-xs">
+            {improvementDocs.map((doc) => (
+              <li key={doc.id} className="flex items-center justify-between gap-2">
+                <span className="truncate text-muted-foreground">{doc.fileName}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  {doc.documentType?.replace(/^Improvement:\s*/, "") ?? "Improvement Evidence"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 5. Corvus AI's Finding — the conclusion: does the evidence support a
+          lower value, or is more still needed. */}
+      {d.keyFinding && (
+        <div className={`rounded-lg p-4 ${m.color.bg}`}>
+          <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
+            Corvus AI's Finding
+          </div>
+          <p className="mt-1 text-sm text-foreground/90">{d.keyFinding}</p>
+        </div>
+      )}
+
+      {/* 6. Recommended Next Step — one action only. */}
+      {needsMoreInfo && (
+        <div className={`rounded-lg p-5 ${m.color.bg}`}>
+          <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+            Recommended Next Step
+          </div>
+          <p className="mt-1 text-sm font-semibold">
+            Complete the missing property information so Corvus AI can finish your protest
+            analysis.
+          </p>
+          <div className="mt-3">
+            <button
+              onClick={() => onOpenModule("evidence")}
+              className="btn-accent text-sm font-bold"
+            >
+              Upload Property Information
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Detailed Analysis — collapsed by default; the background math
+          (effective age, economic life, depreciation) the customer never
+          needs to read to understand the conclusion above. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>Condition Metrics</span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
+          <ExecutiveStat
+            label="Effective Age"
+            value={d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"}
+          />
+          <ExecutiveStat
+            label="Economic Life"
+            value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
+          />
+          <ExecutiveStat
+            label="Physical Depreciation"
+            value={
+              depreciation.physicalDepreciationPct != null
+                ? `${depreciation.physicalDepreciationPct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="Functional Obsolescence"
+            value={
+              d.functionalObsolescencePct != null
+                ? `${d.functionalObsolescencePct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="External Obsolescence"
+            value={
+              d.externalObsolescencePct != null
+                ? `${d.externalObsolescencePct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="Total Depreciation"
+            value={
+              depreciation.totalDepreciationPct != null
+                ? `${depreciation.totalDepreciationPct}%`
+                : "Additional Data Needed"
+            }
+          />
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // Renders the actual per-module body — split from ModulePreviewBody below so
 // the "Ask AI" Q&A box (see ModuleQABox) can be appended once, after whichever
 // early-return branch below fires, instead of being duplicated into each one.
@@ -9296,9 +9545,6 @@ function ModulePreviewContent({
   // of by priority. Priority stays the default (Part 3 explicitly wants
   // prioritization first); this is just a different lens on the same data.
   const [evidenceGroupBy, setEvidenceGroupBy] = useState<"priority" | "category">("priority");
-  // Module 5's optional "which component" tag on the single upload — "" means
-  // let AI decide (categorizeEvidenceUploads).
-  const [improvementUploadCat, setImprovementUploadCat] = useState("");
 
   if (m.requiresUserData) {
     if (isModuleNotApplicable(overrides, "income")) {
@@ -10124,265 +10370,17 @@ function ModulePreviewContent({
           doc.documentType === EVIDENCE_DOCUMENT_TYPE ||
           doc.documentType?.startsWith("Improvement: "),
       );
-      const improvementComponentKinds = ["Roof", "HVAC", "Exterior", "Interior"] as const;
-      // One upload -> AI reads each file and tags it to the component it
-      // shows (Roof / HVAC / Exterior / Interior), or leaves it generic
-      // Improvement Evidence when it can't tell. Mirrors Module 6/7/8.
-      async function handleImprovementAutoUpload(files: File[]) {
-        setCategorizingEvidence(true);
-        try {
-          const categorized = await categorizeEvidenceUploads(
-            [...improvementComponentKinds],
-            files,
-          );
-          const groups = new Map<string, File[]>();
-          for (const file of files) {
-            const matched = categorized.find((c) => c.fileName === file.name)?.matchedItem ?? null;
-            const key =
-              matched && (improvementComponentKinds as readonly string[]).includes(matched)
-                ? `Improvement: ${matched}`
-                : EVIDENCE_DOCUMENT_TYPE;
-            const g = groups.get(key);
-            if (g) g.push(file);
-            else groups.set(key, [file]);
-          }
-          for (const [documentType, groupFiles] of groups) {
-            await onUploadEvidence(groupFiles, undefined, documentType);
-          }
-        } finally {
-          setCategorizingEvidence(false);
-        }
-      }
-      // One upload button. If the user picked a component from the dropdown,
-      // tag straight to it; otherwise let AI read + tag each file.
-      async function handleImprovementUpload(files: File[]) {
-        if (!improvementUploadCat) {
-          await handleImprovementAutoUpload(files);
-          return;
-        }
-        const documentType =
-          improvementUploadCat === "Other"
-            ? EVIDENCE_DOCUMENT_TYPE
-            : `Improvement: ${improvementUploadCat}`;
-        await onUploadEvidence(files, undefined, documentType);
-      }
-      const economicLife = getTypicalEconomicLife(state.propertyType);
-      const depreciation = computeDepreciation(
-        d.effectiveAgeYears,
-        economicLife,
-        d.functionalObsolescencePct,
-        d.externalObsolescencePct,
-        state.improvementValue ?? null,
-      );
       return (
-        <div className="mt-4 grid gap-4">
-          <PipelineDiagram />
-
-          <div className="flex flex-col items-center">
-            <SpeedometerGauge value={d.priorityScore} size="md" />
-            <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
-          </div>
-
-          {d.guidance && <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />}
-
-          {/* Building Condition Overview — 4 fixed components, real photo-
-              grounded findings (see MODULE_SPECS.improvement and
-              enforceBuildingComponentRealData). "No Photo Provided" is
-              honest, never a guessed condition. */}
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Building Condition Overview
-            </div>
-            <div className="grid gap-1.5">
-              {d.buildingComponents.map((c) => (
-                <BuildingComponentRow
-                  key={c.component}
-                  c={
-                    // Same instant-feedback reasoning as the site factors
-                    // above — reflect the override immediately rather than
-                    // waiting on the forced reload it also triggers.
-                    !c.hasPhoto && isItemNotApplicable(overrides, "improvement", c.component)
-                      ? { ...c, notApplicable: true }
-                      : c
-                  }
-                  onMarkNotApplicable={() => onMarkNotApplicable("improvement", c.component)}
-                  onClearNotApplicable={() => onClearNotApplicable("improvement", c.component)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Condition Metrics — Physical Depreciation and Total
-              Depreciation are real deterministic math (see
-              computeDepreciation in improvement-condition.ts), never
-              AI-computed; Effective Age/Functional/External Obsolescence
-              are the AI's own photo-grounded estimates, honestly null when
-              there's no real basis. */}
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Condition Metrics
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <ExecutiveStat
-                label="Effective Age"
-                value={
-                  d.effectiveAgeYears != null
-                    ? `${d.effectiveAgeYears} yrs`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Economic Life"
-                value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
-              />
-              <ExecutiveStat
-                label="Physical Depreciation"
-                value={
-                  depreciation.physicalDepreciationPct != null
-                    ? `${depreciation.physicalDepreciationPct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Functional Obsolescence"
-                value={
-                  d.functionalObsolescencePct != null
-                    ? `${d.functionalObsolescencePct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="External Obsolescence"
-                value={
-                  d.externalObsolescencePct != null
-                    ? `${d.externalObsolescencePct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Total Depreciation"
-                value={
-                  depreciation.totalDepreciationPct != null
-                    ? `${depreciation.totalDepreciationPct}%`
-                    : "Additional Data Needed"
-                }
-              />
-            </div>
-          </div>
-
-          {/* Value Impact — only ever rendered once computeDepreciation()
-              actually returned real numbers; never a placeholder row. */}
-          {depreciation.conditionAdjustedValue != null && state.improvementValue != null && (
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Value Impact
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <FactBox label="CAD Improvement Value" value={currency(state.improvementValue)} />
-                <FactBox
-                  label="Condition-Adjusted Value"
-                  value={currency(depreciation.conditionAdjustedValue)}
-                />
-                <FactBox
-                  label="Impact"
-                  value={`${currency(depreciation.impactDollar ?? 0)} (${depreciation.impactPct}%)`}
-                />
-              </div>
-            </div>
-          )}
-
-          {d.keyFinding && (
-            <div className={`rounded-lg p-4 ${m.color.bg}`}>
-              <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Key Finding
-              </div>
-              <p className="mt-1 text-sm text-foreground/90">{d.keyFinding}</p>
-            </div>
-          )}
-
-          {allowEvidenceUpload && (
-            <div className="mt-4 border-t border-border/60 pt-4 print:hidden">
-              <div className="text-sm font-medium">Add Evidence</div>
-              <p className="text-xs text-muted-foreground">
-                Property photos, repair estimates, or appraisals — AI will cite specific details
-                from what you upload instead of only general guidance. Everything you add is filed
-                in your Documents and shared with every module.
-              </p>
-              {improvementDocs.length > 0 && (
-                <ul className="mt-2 grid gap-1 text-xs">
-                  {improvementDocs.map((doc) => (
-                    <li key={doc.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-muted-foreground">{doc.fileName}</span>
-                      <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                        {doc.documentType?.replace(/^Improvement:\s*/, "") ??
-                          "Improvement Evidence"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <select
-                  value={improvementUploadCat}
-                  onChange={(e) => setImprovementUploadCat(e.target.value)}
-                  disabled={uploadingEvidence || categorizingEvidence}
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
-                  aria-label="Document category"
-                >
-                  <option value="">Category: let AI tag it</option>
-                  {improvementComponentKinds.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                  <option value="Other">Other improvement evidence</option>
-                </select>
-                <label
-                  className={`btn-outline text-sm cursor-pointer ${uploadingEvidence || categorizingEvidence ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  {categorizingEvidence
-                    ? "Reading documents…"
-                    : uploadingEvidence
-                      ? "Uploading…"
-                      : "Upload Evidence"}
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    multiple
-                    className="hidden"
-                    disabled={uploadingEvidence || categorizingEvidence}
-                    onChange={(e) => {
-                      const selected = e.target.files ? Array.from(e.target.files) : [];
-                      e.target.value = "";
-                      if (selected.length > 0) handleImprovementUpload(selected);
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={fetchingPublicData}
-                  onClick={onFetchPublicData}
-                  className="btn-outline text-sm disabled:opacity-60"
-                >
-                  {fetchingPublicData ? "Fetching…" : "Ask Corvus to Fetch Details"}
-                </button>
-                {improvementDocs.length > 0 && (
-                  <button
-                    disabled={loading}
-                    onClick={onForceReload}
-                    className="btn-outline text-sm disabled:opacity-60"
-                  >
-                    Regenerate with Evidence
-                  </button>
-                )}
-              </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                “Fetch Details” pulls the latest public county + federal data for this property and
-                files it in Documents for every module.
-              </p>
-            </div>
-          )}
-        </div>
+        <Module5Content
+          d={d}
+          m={m}
+          state={state}
+          overrides={overrides}
+          onMarkNotApplicable={onMarkNotApplicable}
+          onClearNotApplicable={onClearNotApplicable}
+          improvementDocs={improvementDocs}
+          onOpenModule={onOpenModule}
+        />
       );
     }
     case "zoning": {
