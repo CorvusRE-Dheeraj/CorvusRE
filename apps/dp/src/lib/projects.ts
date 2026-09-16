@@ -225,7 +225,18 @@ export async function getProjectBundle(projectId: string): Promise<ProjectBundle
   const [projectRes, permitsRes, checklistRes, notifsRes] = await Promise.all([
     supabase.from("projects").select("*").eq("id", projectId).single(),
     supabase.from("project_permits").select("*").eq("project_id", projectId).order("sort"),
-    supabase.from("project_checklist_items").select("*").eq("project_id", projectId),
+    // Explicitly ordered: with no ORDER BY, Postgres hands back heap order,
+    // and an UPDATE rewrites the row at the end of the heap — so ticking a
+    // checklist item made it jump to the bottom of its group and reshuffled
+    // the whole list on every single click. created_at first (batch order),
+    // id as the tiebreaker, since one project's items are all inserted in a
+    // single statement and therefore share a timestamp.
+    supabase
+      .from("project_checklist_items")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
     supabase
       .from("project_notifications")
       .select("*")

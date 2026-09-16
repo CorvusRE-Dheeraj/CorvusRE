@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -76,6 +76,12 @@ const READINESS = [
 
 function Construction() {
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  // The submit button had no guard at all, so a second click while the
+  // insert/email were still in flight filed a second `leads` row AND sent a
+  // second staff email. `sending` disables the button from the next render;
+  // the ref is what actually blocks clicks dispatched before that render.
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({
     address: "",
     build: "New Construction",
@@ -92,6 +98,9 @@ function Construction() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSending(true);
     const intake = readDpIntake();
     try {
       await supabase.from("leads").insert({
@@ -121,6 +130,7 @@ function Construction() {
         "Target completion": form.completion || undefined,
       },
     });
+    setSending(false);
     setSent(true);
   }
 
@@ -373,7 +383,9 @@ function Construction() {
                 />
               </Field>
             </div>
-            <button className="btn-accent mt-5">Send project details</button>
+            <button className="btn-accent mt-5 disabled:opacity-60" disabled={sending}>
+              {sending ? "Sending…" : "Send project details"}
+            </button>
           </Section>
         </form>
       </section>

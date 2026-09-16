@@ -2,6 +2,8 @@ node_modules/
 dist/
 .DS_Store
 *.log
+.env
+.env.local
 
 # The Supabase CLI always writes link/deploy state under <cwd>/supabase/,
 # regardless of the actual folder name — deploying from supabase-pt/ or

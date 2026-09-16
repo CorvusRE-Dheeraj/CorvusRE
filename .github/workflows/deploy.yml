@@ -15,7 +15,7 @@ name: Deploy CorvusRE
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:
@@ -87,6 +87,8 @@ jobs:
 
   build-dp:
     runs-on: ubuntu-latest
+    env:
+      HAS_DP_E2E_AUTH_SECRET: ${{ secrets.DP_E2E_TEST_EMAIL != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -94,7 +96,34 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+
       - run: npm run test -w apps/dp
+
+      - run: npx playwright install --with-deps chromium
+
+      # Guest e2e subset — no sign-in needed. Stops one step short of the
+      # analysis wizards' final "unlock/save" CTA, which writes a real
+      # `leads` row even for a signed-out visitor (see e2e/guest's specs).
+      - run: npm run test:e2e -w apps/dp
+        env:
+          VITE_SUPABASE_URL: https://xzhilwwlfajxhklkiteb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
+
+      # Authenticated e2e subset — runs against a dedicated, permanent test
+      # account on DP's own Supabase project (a different project than PT's,
+      # so this needs its own secret pair, not PT's E2E_TEST_EMAIL/PASSWORD).
+      # See e2e/authenticated/helpers.ts for how its seeded project was
+      # created and how each spec cleans up after itself.
+      - run: npm run test:e2e:auth -w apps/dp
+        if: ${{ env.HAS_DP_E2E_AUTH_SECRET == 'true' }}
+        env:
+          VITE_SUPABASE_URL: https://xzhilwwlfajxhklkiteb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
+          DP_E2E_TEST_EMAIL: ${{ secrets.DP_E2E_TEST_EMAIL }}
+          DP_E2E_TEST_PASSWORD: ${{ secrets.DP_E2E_TEST_PASSWORD }}
+
       - run: npm run build -w apps/dp
         env:
           SITE_BASE: /corvusdp/

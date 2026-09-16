@@ -61,6 +61,13 @@ export type DpIntakeState = {
 
 const KEY = "corvusdp_intake";
 
+/** A blank intake. Exported so the prerendered/first (pre-hydration) render of
+ *  the wizards can use it without touching sessionStorage — see the mount
+ *  effect in permitting.analyze.tsx / design.analyze.tsx. */
+export function emptyIntake(): DpIntakeState {
+  return emptyState();
+}
+
 function emptyState(): DpIntakeState {
   return {
     sessionId:

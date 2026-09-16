@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveProjectBundle } from "@/hooks/use-project";
 import { useAuth } from "@/lib/auth";
@@ -24,6 +24,11 @@ function Prepare() {
   });
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // `busy` only disables the button on the NEXT render, so several clicks
+  // dispatched before React re-renders all sailed through — a fast
+  // double-click produced two engagement_requests rows, two in-app
+  // notifications and two staff emails. This latch is synchronous.
+  const submittingRef = useRef(false);
 
   if (loading) return <Loading />;
   if (!hasProject || !project?.analysis) return <EmptyProject />;
@@ -35,9 +40,18 @@ function Prepare() {
 
   async function requestEngagement() {
     if (!projectId || !user) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
     const scope = `${a.permits.length} permits · ${a.complexity.level} complexity · ${a.jurisdiction.authority} · est. ${weeksLabel(a.timeline.totalWeeksMin, a.timeline.totalWeeksMax)} · fees ${currencyRange(a.fees.totalLow, a.fees.totalHigh)}`;
     try {
+      // Re-check server-side as well, so a second tab (or a stale copy of
+      // this page) can't file a duplicate request either.
+      const existing = await getEngagementRequest(projectId);
+      if (existing) {
+        await eng.refetch();
+        return;
+      }
       await createEngagementRequest({
         userId: user.id,
         projectId,
@@ -49,6 +63,7 @@ function Prepare() {
       await eng.refetch();
       setNote("");
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   }

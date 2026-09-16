@@ -65,7 +65,11 @@ function Approvals() {
                       defaultValue={p.expiry_date ?? ""}
                       onBlur={async (e) => {
                         if (e.target.value !== (p.expiry_date ?? "")) {
-                          await updatePermit(p.id, { expiry_date: e.target.value });
+                          // `|| null`: expiry_date is a `date` column, so
+                          // clearing the field posted "" and Postgres rejected
+                          // it (400) — the date silently stayed set, with the
+                          // rejection surfacing only as an unhandled promise.
+                          await updatePermit(p.id, { expiry_date: e.target.value || null });
                           refetch();
                         }
                       }}

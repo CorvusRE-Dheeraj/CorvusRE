@@ -313,8 +313,20 @@ export async function listEngagementRequests(): Promise<AdminEngagementRow[]> {
 }
 
 export async function updateEngagementStatus(id: string, status: string): Promise<void> {
-  const { error } = await supabase.from("engagement_requests").update({ status }).eq("id", id);
+  // `.select()` so RLS filtering the row out comes back as zero rows rather
+  // than a plain success — an UPDATE that matches nothing is NOT an error to
+  // PostgREST, which is exactly how the missing "admin: update engagement"
+  // policy went unnoticed: the console kept writing audit entries for status
+  // changes that never happened.
+  const { data, error } = await supabase
+    .from("engagement_requests")
+    .update({ status })
+    .eq("id", id)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("That engagement request could not be updated (no matching row).");
+  }
 }
 
 // "Task - AI Logs and Outputs" — every real AI call's input/output, written

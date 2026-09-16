@@ -2260,6 +2260,37 @@ grant update (auto_refile, auto_refile_authorized_at) on public.bpp_accounts to 
 alter table public.protests add column if not exists assigned_representative text;
 alter table public.protests add column if not exists assigned_rep_set_at timestamptz;
 
+-- The same "never client-writable" rule the properties/bpp_accounts UPDATE
+-- grants above already enforce, applied to INSERT — which was missed. RLS
+-- only ever checked `auth.uid() = user_id` on insert, and the table-level
+-- INSERT grant covered every column, so a signed-in user could POST a brand
+-- new property row with subscription_status='active' (plus plan_tier /
+-- value_bracket / a made-up stripe_subscription_id) straight from the
+-- browser console and get full paid access without ever paying — and then
+-- file a protest on it, since the protests insert policy gates on
+-- property_is_paid(), which reads exactly that column. Verified against the
+-- live project before this fix: the insert was accepted and the protest went
+-- through. Column-level INSERT grants close it the same way the UPDATE ones
+-- do; every column src/lib/properties.ts (addProperty) and
+-- src/lib/bpp-accounts.ts (addBppAccount) actually write is listed, and the
+-- subscription columns are deliberately absent. Columns omitted from an
+-- INSERT statement still take their defaults — no grant needed for id /
+-- created_at / cancel_at_period_end.
+revoke insert on public.properties from authenticated;
+grant insert (
+  user_id, address, cad, account_number, owner_name, property_type,
+  land_value, improvement_value, total_value, tax_year, protest_deadline,
+  payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis,
+  value_history
+) on public.properties to authenticated;
+
+revoke insert on public.bpp_accounts from authenticated;
+grant insert (
+  user_id, business_name, account_number, cad, location_address, tax_year,
+  rendered_value, prior_value, notice_value, rendition_deadline,
+  protest_deadline, estimated_savings
+) on public.bpp_accounts to authenticated;
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:
