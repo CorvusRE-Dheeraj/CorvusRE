@@ -2165,8 +2165,24 @@ function Report() {
   // it, so switching properties can revoke access, not just grant it. Never
   // touches beta/legacy plans (guarded by myPlan), which effect above
   // already decided unconditionally.
+  //
+  // Gated on the plans that grant access WITHOUT a property subscription
+  // (beta + the two legacy flat-rate ones, all decided unconditionally by the
+  // effect above), NOT on an allow-list of the two per-property tiers. That
+  // allow-list was itself a bug: profiles.plan is only a coarse mirror of
+  // "the tier of the most recently created active subscription" (see
+  // getMyBilling's own comment in billing.ts), and it can legitimately read
+  // 'free_ai_review' while a property still has a live subscription — most
+  // obviously when an admin picks "Free AI Review" in the admin panel's plan
+  // dropdown, which writes profiles.plan directly and is the one plan value
+  // that dropdown still lets them choose. This effect then bailed out and
+  // left hasFullAccess false, showing a paying customer the paywall on a
+  // property they have an active subscription for, until some later Stripe
+  // webhook happened to resync the mirror. Reproduced live before this fix.
+  // The PROPERTY's own subscriptionStatus is the authority here; the mirror
+  // never decides access on its own.
   useEffect(() => {
-    if (myPlan !== "owner_managed" && myPlan !== "corvusrf_managed") return;
+    if (myPlan === "beta" || myPlan === "ai_report" || myPlan === "managed_protest") return;
     setHasFullAccess(resolvedProperty?.subscriptionStatus === "active");
   }, [myPlan, resolvedProperty]);
 
