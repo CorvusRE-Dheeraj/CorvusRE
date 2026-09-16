@@ -7,10 +7,11 @@ name: Deploy CorvusRE
 # of them before publishing exactly one artifact.
 #
 # Phases 1/2 landed the real CorvusPT/CorvusDP apps in apps/pt, apps/dp —
-# build-pt/build-dp below now run their real test/e2e/build steps with each
+# build-pt/build-dp below run their real test/e2e/build steps with each
 # door's real (public, client-side-by-design) env vars, same values their
-# old standalone pipelines used. apps/identity is still a Phase 0 placeholder
-# until Phase 5 (login bridge) replaces it.
+# old standalone pipelines used. Phase 4 replaced apps/identity's placeholder
+# with the real shared /auth/ sign-in app (CorvusPT is the identity source —
+# see supabase-dp/functions/mint-door-session for the login-bridge mechanics).
 
 on:
   push:
@@ -116,6 +117,8 @@ jobs:
       - run: npm ci
       - run: npm run test -w apps/identity
       - run: npm run build -w apps/identity
+        env:
+          SITE_BASE: /auth/
       - uses: actions/upload-artifact@v4
         with:
           name: identity-dist
