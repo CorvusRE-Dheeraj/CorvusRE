@@ -74,6 +74,7 @@ import {
   type HealthScoreResult,
   type HealthScoreBreakdownEntry,
 } from "@/lib/ai-health-score";
+import { analyzeEvidenceLink } from "@/lib/evidence-link";
 import {
   getModuleAnalysis,
   askModuleQuestion,
@@ -3016,6 +3017,7 @@ function Report() {
                 uploadingEvidence={false}
                 onUploadEvidence={() => {}}
                 onForceReload={() => {}}
+                onReloadModule={() => {}}
                 onFetchCadDetails={() => {}}
                 onRefreshSiteGis={() => {}}
                 siteGisRefreshing={false}
@@ -3140,6 +3142,7 @@ function Report() {
               if (target) openModule(target);
             }}
             onStartProtest={startProtest}
+            onReloadModule={(id) => loadModule(id, { force: true })}
             onViewCase={() => {
               if (!resolvedProperty) return;
               // Same-window navigation (per product direction) — opening it
@@ -8654,244 +8657,538 @@ function SourcesList({
   );
 }
 
-// Static reference table for "AI Analysis — Data Required & Sources" — not
-// per-property (SourcesList above is the per-property version); this is the
-// general methodology reference: what the AI would ideally use for each
-// analysis category, where it would come from, and — honestly — whether this
-// app actually has that source integrated today. Several rows the user asked
-// for (recent sale price/date, building SF, GIS/FEMA flood data, zoning
-// records, MLS) are marked "Not integrated" rather than silently implied as
-// live: Texas doesn't publicly disclose sale prices at all (see Module 3's
-// comps-analysis.ts), and this app has no GIS/FEMA/MLS/zoning-record
-// integration today. Status reflects only what's really wired up.
-type DataRequirementRow = {
-  category: string;
-  required: string;
-  source: string;
-  usedFor: string;
-  status: "Available" | "Partial" | "Not integrated";
-  // Retained for reference only — the per-row upload controls were replaced
-  // by one "Upload supporting documents" button at the bottom of the list
-  // (the AI sorts each file to the categories it helps), so `hint` no longer
-  // renders. Left in place as documentation of what each row wants.
-  userUpload?: { hint: string; documentType: string };
-};
+// Module 1's "Help Corvus AI Complete the Analysis" / "What Corvus AI
+// Checked" / "Recommended Next Step" — reads the SAME real per-property
+// evidence items Module 8 already computes (moduleData.evidence, an
+// EvidenceItem[] with a real Verified/Found/Missing status per item, not a
+// generic static checklist — see ModuleResultMap["evidence"] in
+// ai-report-modules.ts). Three actions per missing item — Upload Evidence,
+// Add Information Link, Answer a Few Questions — all feed into the exact
+// same upload/answer plumbing Module 8's own UI uses, so the evidence pool
+// updates the same way regardless of which module the user is looking at;
+// the caller never needs to see or hear the words "Module 8".
+function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
+  return status === "Verified" ? "Reviewed" : status === "Found" ? "More Information Helpful" : "Data Not Available";
+}
 
-const DATA_REQUIREMENTS: DataRequirementRow[] = [
-  {
-    category: "Current CAD Appraised Value",
-    required: "Total appraised value, land value, improvement value, market value",
-    source: "County Appraisal District (CAD)",
-    usedFor: "Establishes the current tax valuation baseline",
-    status: "Available",
-  },
-  {
-    category: "Historical Assessment",
-    required: "Prior years' land/improvement/total values; year-over-year change",
-    source: "CAD historical records",
-    usedFor: "Identifies unusual increases or valuation trends",
-    status: "Available",
-  },
-  {
-    category: "Comparable Valuation",
-    required: "Comparable addresses, CAD value, distance, land size, similarity",
-    source: "CAD (same-subdivision public records)",
-    usedFor: "Compares this property's valuation against similar nearby ones",
-    status: "Partial",
-    userUpload: {
-      hint: "Have an appraisal, broker price opinion, or your own comp list? Upload it.",
-      documentType: "Data: Comparable Valuation",
-    },
-  },
-  {
-    category: "Market Information",
-    required: "Recent sale price, sale date, listing price, cap rate",
-    source: "County deed records + MLS",
-    usedFor: "Would show whether CAD value looks disconnected from the market",
-    status: "Not integrated",
-    userUpload: {
-      hint: "Upload a closing statement, purchase contract, listing sheet, or recent appraisal.",
-      documentType: "Data: Market Information",
-    },
-  },
-  {
-    category: "Property Characteristics",
-    required: "Building SF, year built, stories, construction type",
-    source: "CAD improvement records + GIS",
-    usedFor: "Would ensure comparisons use the right physical characteristics",
-    status: "Not integrated",
-    userUpload: {
-      hint: "Upload a survey, building plans, floor plan, or an appraisal listing square footage.",
-      documentType: "Data: Property Characteristics",
-    },
-  },
-  {
-    category: "Site Conditions",
-    required: "Lot shape, access, flood zone, topography, easements",
-    source: "FEMA NFHL (flood zone) + USGS (elevation) — real, point-level only",
-    usedFor: "Flood zone and a single elevation point; every other factor still needs upload",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a survey, plat, flood determination, or photos of drainage / access / easement issues.",
-      documentType: "Data: Site Conditions",
-    },
-  },
-  {
-    category: "Improvement Condition",
-    required: "Condition rating, deferred maintenance, renovation history",
-    source: "User-uploaded photos/documents",
-    usedFor: "Whether the building's condition supports a lower valuation",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload photos, an inspection report, or repair estimates for deferred maintenance.",
-      documentType: "Data: Improvement Condition",
-    },
-  },
-  {
-    category: "Zoning / Classification",
-    required: "Current zoning, CAD property class, legal description",
-    source: "CAD record (zoning field, where populated) + stated property type",
-    usedFor: "Checks whether the CAD classification looks consistent",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a zoning verification letter, plat, or the legal description from your deed.",
-      documentType: "Data: Zoning / Classification",
-    },
-  },
-  {
-    category: "Income Indicators",
-    required: "Rent, occupancy, NOI, expenses, cap rate",
-    source: "User-provided P&L / rent roll",
-    usedFor: "Income-based valuation indicator for applicable properties",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a rent roll, profit & loss statement, or the current leases.",
-      documentType: "Data: Income Indicators",
-    },
-  },
-  {
-    category: "Existing Evidence",
-    required: "Prior protest results, notices, photos, leases, surveys",
-    source: "User uploads",
-    usedFor: "Strengthens or weakens the identified opportunity",
-    status: "Available",
-    userUpload: {
-      hint: "Upload prior protest results, the appraisal notice, photos, leases, or surveys.",
-      documentType: "Data: Existing Evidence",
-    },
-  },
-  {
-    category: "Data Confidence",
-    required: "Source reliability, completeness, comp count, missing fields",
-    source: "Calculated by AI from all collected data",
-    usedFor: "Determines how reliable this analysis and score are",
-    status: "Available",
-  },
-  {
-    category: "Potential Valuation Gaps",
-    required: "CAD value vs. comparable/market/income indicators",
-    source: "Calculated from the CAD + comparable data above",
-    usedFor: "Identifies the size of a potential overvaluation",
-    status: "Partial",
-  },
-];
-
-const DATA_STATUS_STYLE: Record<DataRequirementRow["status"], string> = {
-  Available: "bg-success/15 text-success",
-  Partial: "bg-warning/20 text-warning-foreground",
-  "Not integrated": "bg-secondary text-muted-foreground",
-};
-
-// A full-width vertical list, not a wide table — no horizontal scrolling at
-// all. Each category is collapsed to just its name + Status badge (the two
-// things worth scanning at a glance); tap a row to expand it in place and
-// reveal the three detail fields stacked below, same click-to-expand
-// convention as ComparableTable's rows above.
-function DataRequirementsTable({
-  onUpload,
-  uploading,
+function Module1Content({
+  data,
+  state,
+  estimated,
+  m,
+  moduleData,
+  resolvedProperty,
+  allowEvidenceUpload,
+  uploadingEvidence,
+  onUploadEvidence,
+  onAnswerStrategy,
+  onStartProtest,
+  onReloadModule,
+  compsMap,
+  evidenceDocs,
 }: {
-  // One upload control at the bottom (not per row). Files go into the
-  // property's evidence pool and the AI re-runs the analysis on its own,
-  // sorting each document to the categories it actually helps — the owner
-  // doesn't have to match a file to a row. Absent for a signed-out / no-
-  // access viewer: they still see what's needed, just can't act on it here.
-  onUpload?: (files: File[]) => void;
-  uploading?: boolean;
+  data: HealthScoreResult;
+  state: IntakeState;
+  estimated: { hasEstimate: boolean; reduction: number; savings: number };
+  m: Module;
+  moduleData: Record<string, ModuleAsyncState>;
+  resolvedProperty: PropertyRecord | null;
+  allowEvidenceUpload: boolean;
+  uploadingEvidence: boolean;
+  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
+  onAnswerStrategy: (strategyId: string, answer: string) => void;
+  onStartProtest: () => void;
+  onReloadModule: (moduleId: string) => void;
+  compsMap: { data: CompsResult | null; loading: boolean };
+  evidenceDocs: DocumentRecord[];
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [missingInfoOpen, setMissingInfoOpen] = useState(false);
+  const [autoFocusAnswerFor, setAutoFocusAnswerFor] = useState<string | null>(null);
+  const missingInfoRef = useRef<HTMLDivElement>(null);
+
+  const evidenceState = moduleData.evidence;
+  const evidenceItems = (evidenceState?.data as ModuleResultMap["evidence"] | undefined)?.items;
+
+  // Kick off Module 8's own analysis the first time Module 1 opens and it
+  // hasn't run yet — this section's whole point is to show REAL per-property
+  // gaps, not a generic list, so it needs that data whether or not the user
+  // ever opens Module 8 directly.
+  useEffect(() => {
+    if (!evidenceState?.data && !evidenceState?.loading && !evidenceState?.error) {
+      onReloadModule("evidence");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const missingItems = (evidenceItems ?? []).filter((it) => it.status === "Missing");
+  const criticalMissing = missingItems.some((it) => it.priority === "Critical");
+  const readyToProtest = data.dataSufficient && !criticalMissing;
+
+  const tier = data.score >= 70 ? "Strong" : data.score >= 40 ? "Moderate" : "Limited";
+
+  function scrollToMissingInfo(focusAnswerItem?: string) {
+    setMissingInfoOpen(true);
+    if (focusAnswerItem) setAutoFocusAnswerFor(focusAnswerItem);
+    requestAnimationFrame(() => missingInfoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  function handleLinkAccepted(slug: string, url: string, summary: string) {
+    const file = new File([`Source link: ${url}\n\n${summary}`], "linked-source.txt", {
+      type: "text/plain",
+    });
+    onUploadEvidence([file], undefined, `Evidence Category: ${slug}`);
+    onReloadModule("evidence");
+  }
+
   return (
-    <div className="grid gap-1.5">
-      {DATA_REQUIREMENTS.map((r) => {
-        const isOpen = expanded === r.category;
-        return (
-          <div key={r.category} className="rounded-lg border border-border">
-            <button
-              type="button"
-              onClick={() => setExpanded(isOpen ? null : r.category)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
-            >
-              <span className="truncate text-xs font-medium">{r.category}</span>
-              <span className="flex shrink-0 items-center gap-2">
-                <span
-                  className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${DATA_STATUS_STYLE[r.status]}`}
-                >
-                  {r.status}
-                </span>
-                <ArrowRight
-                  className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`}
-                />
-              </span>
-            </button>
-            {isOpen && (
-              <div className="grid gap-2 border-t border-border/60 px-3 py-2 text-xs">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Exact Data Required
-                  </div>
-                  <p className="text-muted-foreground">{r.required}</p>
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Primary Data Source
-                  </div>
-                  <p className="text-muted-foreground">{r.source}</p>
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    What AI Uses It For
-                  </div>
-                  <p className="text-muted-foreground">{r.usedFor}</p>
-                </div>
+    <div className="mt-4 grid gap-5">
+      {/* 1. Your Protest Recommendation — conclusion + the 4 headline numbers,
+          shown as separate labelled stats. Never combined into one "$X — Y%"
+          string: a dollar amount and a percentage are two different numbers
+          and reading them as one implies a relationship that isn't real. */}
+      <div>
+        {data.executiveConclusion && (
+          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+        )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
+          <div className="text-center">
+            <SpeedometerGauge value={data.score} size="lg" />
+            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
+              {tier} Protest Opportunity
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label="Current Assessment" value={state.totalValue ? currency(state.totalValue) : "—"} />
+            <Stat
+              label="Potential Assessment Reduction"
+              value={
+                estimated.hasEstimate && state.totalValue
+                  ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                  : "Not yet available"
+              }
+            />
+            <Stat
+              label="Estimated Tax Savings"
+              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
+              tone="success"
+            />
+            <Stat label="Confidence" value={`${data.confidencePct}%`} />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Why a Protest May Be Worthwhile (and what works against it) */}
+      {(data.factorsIncreasing.length > 0 || data.factorsReducing.length > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {data.factorsIncreasing.length > 0 && (
+            <div className="rounded-lg bg-success/10 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
+                <TrendingUp className="h-3.5 w-3.5" />
+                Why a Protest May Be Worthwhile
               </div>
+              <ul className="grid gap-1 text-xs text-foreground/90">
+                {data.factorsIncreasing.map((f, i) => (
+                  <li key={i}>• {f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {data.factorsReducing.length > 0 && (
+            <div className="rounded-lg bg-secondary/60 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <TrendingDown className="h-3.5 w-3.5" />
+                Working Against It
+              </div>
+              <ul className="grid gap-1 text-xs text-foreground/90">
+                {data.factorsReducing.map((f, i) => (
+                  <li key={i}>• {f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Confidence */}
+      <div className="card-elev p-4">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Confidence
+        </div>
+        <MiniMeter value={data.confidencePct} label="Analysis confidence" />
+      </div>
+
+      {/* 4. What Makes the Analysis Less Certain — real per-property gaps,
+          not the AI's "why the case is weaker" factorsReducing (a different,
+          already-shown concept above). Derived from Module 8's own
+          non-Verified items so this is never invented copy. */}
+      {missingItems.length > 0 && (
+        <div className="rounded-lg bg-warning/10 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            What Makes the Analysis Less Certain
+          </div>
+          {data.confidenceReasoning && (
+            <p className="mb-1.5 text-xs text-foreground/90">{data.confidenceReasoning}</p>
+          )}
+          <ul className="grid gap-1 text-xs text-foreground/90">
+            {missingItems.slice(0, 5).map((it) => (
+              <li key={it.item}>• {it.item} is not yet on file</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 5. Help Corvus AI Complete the Analysis — collapsed by default */}
+      <div ref={missingInfoRef} className="card-elev overflow-hidden p-0">
+        <button
+          type="button"
+          onClick={() => setMissingInfoOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+        >
+          <span className="text-sm font-semibold">
+            Help Corvus AI Complete the Analysis
+            {missingItems.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {missingItems.length} item{missingItems.length === 1 ? "" : "s"} still needed
+              </span>
+            )}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${missingInfoOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {missingInfoOpen && (
+          <div className="grid gap-2 border-t border-border/60 p-4">
+            {evidenceState?.loading && !evidenceItems ? (
+              <p className="text-xs text-muted-foreground">Checking what's still needed…</p>
+            ) : missingItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Nothing outstanding right now — Corvus AI has what it needs from what's on file.
+              </p>
+            ) : (
+              missingItems.map((it) => (
+                <MissingItemRow
+                  key={it.item}
+                  item={it}
+                  resolvedProperty={resolvedProperty}
+                  allowEvidenceUpload={allowEvidenceUpload}
+                  uploadingEvidence={uploadingEvidence}
+                  onUploadEvidence={onUploadEvidence}
+                  onAnswerStrategy={onAnswerStrategy}
+                  onLinkAccepted={handleLinkAccepted}
+                  autoFocusAnswer={autoFocusAnswerFor === it.item}
+                />
+              ))
             )}
           </div>
-        );
-      })}
+        )}
+      </div>
 
-      {onUpload && (
-        <div className="mt-1 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-3 text-center">
-          <p className="text-xs text-muted-foreground">
-            Have documents that fill any of these gaps — an appraisal, survey, rent roll, photos,
-            prior protest results? Upload them and the AI re-runs its analysis, sorting each file to
-            where it helps.
-          </p>
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-background px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
+      {/* 6. Recommended Next Step — large and unambiguous, one action only. */}
+      <div className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}>
+        {readyToProtest ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Recommended Next Step
+            </div>
+            <button
+              onClick={onStartProtest}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              START MY PROTEST
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Depending on your subscription, Corvus AI or our team handles the filing, county
+              communication, hearing support, and settlement coordination.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+              Recommended Next Step
+            </div>
+            <p className="mt-1 text-sm font-semibold">
+              Complete the missing property information so Corvus AI can finish your protest
+              analysis.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => scrollToMissingInfo()} className="btn-accent text-sm font-bold">
+                Add Property Information
+              </button>
+              <button
+                onClick={() => scrollToMissingInfo(missingItems[0]?.item)}
+                className="btn-outline text-sm"
+              >
+                Answer Property Questions
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 7. Detailed Analysis — collapsed by default; native <details> since
+          nothing outside this block needs to control whether it's open. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              What Corvus AI Checked
+              {evidenceItems && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {evidenceItems.length + data.scoreBreakdown.length} property and valuation factors
+                  analyzed
+                </span>
+              )}
+            </span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid gap-4 border-t border-border/60 p-4">
+          {evidenceItems && evidenceItems.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                What Corvus AI Checked
+              </div>
+              <ul className="grid gap-1.5 text-xs">
+                {evidenceItems.map((it) => (
+                  <li key={it.item} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{it.item}</span>
+                    <span
+                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        it.status === "Verified"
+                          ? "bg-success/15 text-success"
+                          : it.status === "Found"
+                            ? "bg-accent/15 text-accent"
+                            : "bg-secondary/60 text-muted-foreground"
+                      }`}
+                    >
+                      {evidenceStatusLabel(it.status)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.scoreBreakdown.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Score Breakdown
+              </div>
+              <ScoreBreakdownList breakdown={data.scoreBreakdown} />
+            </div>
+          )}
+
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Supporting Data
+            </div>
+            <SupportingDataGrid state={state} compsMap={compsMap} />
+          </div>
+
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Sources
+            </div>
+            <SourcesList state={state} compsMap={compsMap} evidenceDocs={evidenceDocs} />
+          </div>
+
+          {data.methodology && (
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                AI Methodology
+              </div>
+              <MarkdownLite className="text-xs text-muted-foreground" text={data.methodology} />
+            </div>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "success";
+}) {
+  return (
+    <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
+      <div
+        className={`text-[10px] font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
+      >
+        {label}
+      </div>
+      <div className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// One missing evidence item's row inside "Help Corvus AI Complete the
+// Analysis" — three independent ways to fill it in, matching the shared
+// upload/answer plumbing Module 8's own EvidenceCategoryRow already uses so
+// whichever one the user picks feeds the same real evidence pool.
+function MissingItemRow({
+  item,
+  resolvedProperty,
+  allowEvidenceUpload,
+  uploadingEvidence,
+  onUploadEvidence,
+  onAnswerStrategy,
+  onLinkAccepted,
+  autoFocusAnswer,
+}: {
+  item: ModuleResultMap["evidence"]["items"][number];
+  resolvedProperty: PropertyRecord | null;
+  allowEvidenceUpload: boolean;
+  uploadingEvidence: boolean;
+  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
+  onAnswerStrategy: (strategyId: string, answer: string) => void;
+  onLinkAccepted: (slug: string, url: string, summary: string) => void;
+  autoFocusAnswer: boolean;
+}) {
+  const [activeAction, setActiveAction] = useState<"upload" | "link" | "answer" | null>(
+    autoFocusAnswer ? "answer" : null,
+  );
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkResult, setLinkResult] = useState<{ accepted: boolean; reason: string } | null>(null);
+  const slug = evidenceItemSlug(item.item);
+
+  async function handleAnalyzeLink() {
+    if (!linkUrl.trim()) return;
+    setLinkBusy(true);
+    setLinkResult(null);
+    try {
+      const result = await analyzeEvidenceLink({
+        url: linkUrl.trim(),
+        missingItem: item.item,
+        propertyAddress: resolvedProperty?.address,
+        taxYear: resolvedProperty?.taxYear,
+      });
+      setLinkResult({ accepted: result.accepted, reason: result.reason });
+      if (result.accepted) {
+        onLinkAccepted(slug, linkUrl.trim(), result.summary);
+        setLinkUrl("");
+      }
+    } catch (err) {
+      setLinkResult({ accepted: false, reason: getErrorMessage(err, "Could not check that link.") });
+    } finally {
+      setLinkBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{item.item}</span>
+        {item.priority === "Critical" && (
+          <span className="whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+            Critical
+          </span>
+        )}
+      </div>
+      {allowEvidenceUpload && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveAction((v) => (v === "upload" ? null : "upload"))}
+            className="btn-outline text-xs"
+          >
+            Upload Evidence
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveAction((v) => (v === "link" ? null : "link"))}
+            className="btn-outline text-xs"
+          >
+            Add Information Link
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveAction((v) => (v === "answer" ? null : "answer"))}
+            className="btn-outline text-xs"
+          >
+            Answer a Few Questions
+          </button>
+        </div>
+      )}
+
+      {activeAction === "upload" && (
+        <div className="mt-2">
+          <label
+            className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {uploadingEvidence ? "Uploading…" : "Choose file"}
             <input
               type="file"
               accept="image/*,.pdf"
               multiple
-              disabled={uploading}
               className="hidden"
+              disabled={uploadingEvidence}
               onChange={(e) => {
-                const selected = Array.from(e.target.files ?? []);
-                if (selected.length > 0) onUpload(selected);
+                const selected = e.target.files ? Array.from(e.target.files) : [];
                 e.target.value = "";
+                if (selected.length > 0)
+                  onUploadEvidence(selected, undefined, `Evidence Category: ${slug}`);
               }}
             />
-            <Upload className="h-3.5 w-3.5" />
-            {uploading ? "Uploading…" : "Upload supporting documents"}
           </label>
+        </div>
+      )}
+
+      {activeAction === "link" && (
+        <div className="mt-2 grid gap-2">
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://…"
+              className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              onClick={handleAnalyzeLink}
+              disabled={linkBusy || !linkUrl.trim()}
+              className="btn-outline text-xs disabled:opacity-50"
+            >
+              {linkBusy ? "Checking…" : "Analyze"}
+            </button>
+          </div>
+          {linkResult && (
+            <p
+              className={`flex items-start gap-1.5 text-xs ${linkResult.accepted ? "text-success" : "text-muted-foreground"}`}
+            >
+              {linkResult.accepted ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              )}
+              {linkResult.reason}
+            </p>
+          )}
+        </div>
+      )}
+
+      {activeAction === "answer" && (
+        <div className="mt-2">
+          <input
+            type="text"
+            autoFocus={autoFocusAnswer}
+            placeholder="Type an answer instead…"
+            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+            onBlur={(e) => {
+              if (e.target.value.trim()) onAnswerStrategy(slug, e.target.value.trim());
+            }}
+          />
         </div>
       )}
     </div>
@@ -8932,6 +9229,7 @@ function ModulePreviewContent({
   noticeSignedAt,
   onOpenModule,
   onStartProtest,
+  onReloadModule,
   onViewCase,
   overrides,
   onMarkNotApplicable,
@@ -9005,6 +9303,12 @@ function ModulePreviewContent({
   noticeSignedAt: string | null;
   onOpenModule: (moduleId: string) => void;
   onStartProtest: () => void;
+  // Module 1 only — force-reload a module OTHER than whichever one is
+  // currently open (onForceReload only reloads the open module). Used so
+  // accepting a link / uploading evidence from inside Module 1 re-runs
+  // Module 8's real analysis in the background, without navigating the user
+  // there — see Module1Content.
+  onReloadModule: (moduleId: string) => void;
   onViewCase: () => void;
   // Real, user-confirmed "not applicable" marks — see module-overrides.ts.
   // onMarkNotApplicable/onClearNotApplicable default `itemKey` to the
@@ -9605,197 +9909,23 @@ function ModulePreviewContent({
 
   if (m.id === "health") {
     const data = moduleState.data as HealthScoreResult;
-    const label =
-      data.score >= 70
-        ? "Strong Opportunity"
-        : data.score >= 40
-          ? "Moderate Opportunity"
-          : "Limited Opportunity";
-    const answerKey = "health";
     return (
-      <div className="mt-4 grid gap-4">
-        {data.executiveConclusion && (
-          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
-        )}
-
-        <div className="min-w-0">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            AI Analysis — Data Required &amp; Sources
-          </div>
-          <DataRequirementsTable
-            onUpload={
-              allowEvidenceUpload
-                ? (files) => onUploadEvidence(files, undefined, PROTEST_EVIDENCE_DOCUMENT_TYPE)
-                : undefined
-            }
-            uploading={uploadingEvidence}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
-          <div className="text-center">
-            <SpeedometerGauge value={data.score} size="lg" />
-            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
-              {label}
-            </div>
-            {!data.dataSufficient && (
-              <div className="mt-1 text-xs font-semibold text-warning-foreground">
-                Additional Data Needed
-              </div>
-            )}
-          </div>
-          {estimated.savings > 0 && (
-            <div className="rounded-lg bg-success/10 p-4 text-center">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
-                Potential Tax Savings
-              </div>
-              <div className="mt-1 font-serif text-3xl font-bold text-success">
-                {currency(estimated.savings)}
-              </div>
-              {state.totalValue ? (
-                <div className="mt-0.5 text-xs text-success/80">
-                  {Math.round((estimated.reduction / state.totalValue) * 100)}% of assessed value
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {data.scoreBreakdown.length > 0 && (
-          <div className="card-elev p-4">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Score Breakdown
-            </div>
-            <ScoreBreakdownList breakdown={data.scoreBreakdown} />
-          </div>
-        )}
-
-        {(data.factorsIncreasing.length > 0 || data.factorsReducing.length > 0) && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {data.factorsIncreasing.length > 0 && (
-              <div className="rounded-lg bg-success/10 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Factors Increasing Protest Opportunity
-                </div>
-                <ul className="grid gap-1 text-xs text-foreground/90">
-                  {data.factorsIncreasing.map((f, i) => (
-                    <li key={i}>• {f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {data.factorsReducing.length > 0 && (
-              <div className="rounded-lg bg-destructive/10 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-destructive">
-                  <TrendingDown className="h-3.5 w-3.5" />
-                  Factors Reducing Protest Opportunity
-                </div>
-                <ul className="grid gap-1 text-xs text-foreground/90">
-                  {data.factorsReducing.map((f, i) => (
-                    <li key={i}>• {f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Supporting Data
-          </div>
-          <SupportingDataGrid state={state} compsMap={compsMap} />
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Sources
-          </div>
-          <SourcesList state={state} compsMap={compsMap} evidenceDocs={evidenceDocs} />
-        </div>
-
-        <div className="card-elev p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence
-          </div>
-          <MiniMeter value={data.confidencePct} label="Analysis confidence" />
-          {data.confidenceReasoning && (
-            <MarkdownLite
-              className="mt-2 text-xs text-muted-foreground"
-              text={data.confidenceReasoning}
-            />
-          )}
-        </div>
-
-        {data.methodology && (
-          <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              AI Methodology
-            </div>
-            <MarkdownLite className="text-xs text-muted-foreground" text={data.methodology} />
-          </div>
-        )}
-
-        {data.nextStep && (
-          <div className={`rounded-lg p-4 ${m.color.bg}`}>
-            <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-              Recommended Next Step
-            </div>
-            <div className="mt-1 text-sm font-semibold">
-              <MarkdownLite text={data.nextStep} />
-            </div>
-          </div>
-        )}
-
-        {!data.dataSufficient && (
-          <div className="border-t border-border/60 pt-4 print:hidden">
-            <div className="text-xs font-semibold text-warning-foreground">
-              Additional Data Needed
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Upload supporting documents or answer below so AI can complete this analysis with real
-              evidence.
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label
-                className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
-              >
-                {uploadingEvidence ? "Uploading…" : "Upload Evidence"}
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  className="hidden"
-                  disabled={uploadingEvidence}
-                  onChange={(e) => {
-                    const selected = e.target.files ? Array.from(e.target.files) : [];
-                    e.target.value = "";
-                    if (selected.length > 0) onUploadEvidence(selected, answerKey);
-                  }}
-                />
-              </label>
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                defaultValue={state.strategyAnswers?.[answerKey] ?? ""}
-                onBlur={(e) => {
-                  if (e.target.value.trim()) onAnswerStrategy(answerKey, e.target.value.trim());
-                }}
-                placeholder="Or type an answer instead…"
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            {!state.strategyAnswers?.[answerKey] && evidenceDocs.length === 0 && (
-              <p className="mt-2 text-[11px] italic text-muted-foreground">
-                Estimate — not guaranteed, missing evidence.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+      <Module1Content
+        data={data}
+        state={state}
+        estimated={estimated}
+        m={m}
+        moduleData={moduleData}
+        resolvedProperty={resolvedProperty}
+        allowEvidenceUpload={allowEvidenceUpload}
+        uploadingEvidence={uploadingEvidence}
+        onUploadEvidence={onUploadEvidence}
+        onAnswerStrategy={onAnswerStrategy}
+        onStartProtest={onStartProtest}
+        onReloadModule={onReloadModule}
+        compsMap={compsMap}
+        evidenceDocs={evidenceDocs}
+      />
     );
   }
 
