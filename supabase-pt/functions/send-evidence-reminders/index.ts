@@ -24,6 +24,7 @@
 // last_reminder_sent_at or claims success for a message it didn't actually
 // send.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +52,11 @@ type DueItem = { rowId: string; protestId: string; label: string; deadline: stri
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Scheduled job: only pg_cron (service-role key as Bearer auth) may run
+  // this. verify_jwt alone lets any signed-in user trigger it across every
+  // other user's data -- see ../_shared/service-role-only.ts.
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

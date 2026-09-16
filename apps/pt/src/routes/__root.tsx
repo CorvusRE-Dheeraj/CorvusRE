@@ -69,8 +69,13 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
           >
             Try again
           </button>
+          {/* A hard <a> (not <Link>) on purpose — this boundary catches a
+              router/render failure, so a full page load is the reliable way
+              out. It still has to respect Vite's base path: BASE_URL is "/"
+              in dev but "/corvuspt/" on the GitHub Pages build, where a
+              hardcoded "/" dropped the user on a 404 instead of home. */}
           <a
-            href="/"
+            href={import.meta.env.BASE_URL}
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go home
