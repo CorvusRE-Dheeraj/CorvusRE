@@ -74,7 +74,6 @@ import {
   type HealthScoreResult,
   type HealthScoreBreakdownEntry,
 } from "@/lib/ai-health-score";
-import { analyzeEvidenceLink } from "@/lib/evidence-link";
 import {
   getModuleAnalysis,
   askModuleQuestion,
@@ -8657,16 +8656,15 @@ function SourcesList({
   );
 }
 
-// Module 1's "Help Corvus AI Complete the Analysis" / "What Corvus AI
-// Checked" / "Recommended Next Step" — reads the SAME real per-property
-// evidence items Module 8 already computes (moduleData.evidence, an
-// EvidenceItem[] with a real Verified/Found/Missing status per item, not a
-// generic static checklist — see ModuleResultMap["evidence"] in
-// ai-report-modules.ts). Three actions per missing item — Upload Evidence,
-// Add Information Link, Answer a Few Questions — all feed into the exact
-// same upload/answer plumbing Module 8's own UI uses, so the evidence pool
-// updates the same way regardless of which module the user is looking at;
-// the caller never needs to see or hear the words "Module 8".
+// Module 1 — deliberately minimal. Earlier drafts put a full missing-items
+// checklist (per-item Upload/Link/Answer) directly in Module 1; feedback
+// after seeing it built was that the page had gotten too complicated for
+// what it needs to answer: "Should I protest? Why? What should I do next?"
+// The one action this module offers now is a straight hop into Module 8 (the
+// real evidence system) — no duplicate document list rendered here. "What
+// Corvus AI Checked" still reads Module 8's real per-item status for the
+// collapsed Detailed Analysis section, since that's real data worth keeping
+// available, just not surfaced as a whole extra workflow up front.
 function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
   return status === "Verified" ? "Reviewed" : status === "Found" ? "More Information Helpful" : "Data Not Available";
 }
@@ -8677,13 +8675,9 @@ function Module1Content({
   estimated,
   m,
   moduleData,
-  resolvedProperty,
-  allowEvidenceUpload,
-  uploadingEvidence,
-  onUploadEvidence,
-  onAnswerStrategy,
   onStartProtest,
   onReloadModule,
+  onOpenModule,
   compsMap,
   evidenceDocs,
 }: {
@@ -8692,27 +8686,19 @@ function Module1Content({
   estimated: { hasEstimate: boolean; reduction: number; savings: number };
   m: Module;
   moduleData: Record<string, ModuleAsyncState>;
-  resolvedProperty: PropertyRecord | null;
-  allowEvidenceUpload: boolean;
-  uploadingEvidence: boolean;
-  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
-  onAnswerStrategy: (strategyId: string, answer: string) => void;
   onStartProtest: () => void;
   onReloadModule: (moduleId: string) => void;
+  onOpenModule: (moduleId: string) => void;
   compsMap: { data: CompsResult | null; loading: boolean };
   evidenceDocs: DocumentRecord[];
 }) {
-  const [missingInfoOpen, setMissingInfoOpen] = useState(false);
-  const [autoFocusAnswerFor, setAutoFocusAnswerFor] = useState<string | null>(null);
-  const missingInfoRef = useRef<HTMLDivElement>(null);
-
   const evidenceState = moduleData.evidence;
   const evidenceItems = (evidenceState?.data as ModuleResultMap["evidence"] | undefined)?.items;
 
   // Kick off Module 8's own analysis the first time Module 1 opens and it
-  // hasn't run yet — this section's whole point is to show REAL per-property
-  // gaps, not a generic list, so it needs that data whether or not the user
-  // ever opens Module 8 directly.
+  // hasn't run yet — the readiness gate below and the collapsed Detailed
+  // Analysis section both need real per-property evidence status, whether or
+  // not the user ever opens Module 8 directly.
   useEffect(() => {
     if (!evidenceState?.data && !evidenceState?.loading && !evidenceState?.error) {
       onReloadModule("evidence");
@@ -8720,29 +8706,16 @@ function Module1Content({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const missingItems = (evidenceItems ?? []).filter((it) => it.status === "Missing");
-  const criticalMissing = missingItems.some((it) => it.priority === "Critical");
+  const criticalMissing = (evidenceItems ?? []).some(
+    (it) => it.status === "Missing" && it.priority === "Critical",
+  );
   const readyToProtest = data.dataSufficient && !criticalMissing;
 
   const tier = data.score >= 70 ? "Strong" : data.score >= 40 ? "Moderate" : "Limited";
 
-  function scrollToMissingInfo(focusAnswerItem?: string) {
-    setMissingInfoOpen(true);
-    if (focusAnswerItem) setAutoFocusAnswerFor(focusAnswerItem);
-    requestAnimationFrame(() => missingInfoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
-
-  function handleLinkAccepted(slug: string, url: string, summary: string) {
-    const file = new File([`Source link: ${url}\n\n${summary}`], "linked-source.txt", {
-      type: "text/plain",
-    });
-    onUploadEvidence([file], undefined, `Evidence Category: ${slug}`);
-    onReloadModule("evidence");
-  }
-
   return (
     <div className="mt-4 grid gap-5">
-      {/* 1. Your Protest Recommendation — conclusion + the 4 headline numbers,
+      {/* 1. Your Protest Recommendation — conclusion + the 3 headline numbers,
           shown as separate labelled stats. Never combined into one "$X — Y%"
           string: a dollar amount and a percentage are two different numbers
           and reading them as one implies a relationship that isn't real. */}
@@ -8757,8 +8730,12 @@ function Module1Content({
               {tier} Protest Opportunity
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Stat label="Current Assessment" value={state.totalValue ? currency(state.totalValue) : "—"} />
+          <div className="grid grid-cols-3 gap-3">
+            <Stat
+              label="Potential Tax Savings"
+              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
+              tone="success"
+            />
             <Stat
               label="Potential Assessment Reduction"
               value={
@@ -8768,129 +8745,40 @@ function Module1Content({
               }
             />
             <Stat
-              label="Estimated Tax Savings"
-              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
-              tone="success"
+              label="Current Assessed Value"
+              value={state.totalValue ? currency(state.totalValue) : "—"}
             />
-            <Stat label="Confidence" value={`${data.confidencePct}%`} />
           </div>
         </div>
       </div>
 
-      {/* 2. Why a Protest May Be Worthwhile (and what works against it) */}
-      {(data.factorsIncreasing.length > 0 || data.factorsReducing.length > 0) && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {data.factorsIncreasing.length > 0 && (
-            <div className="rounded-lg bg-success/10 p-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Why a Protest May Be Worthwhile
-              </div>
-              <ul className="grid gap-1 text-xs text-foreground/90">
-                {data.factorsIncreasing.map((f, i) => (
-                  <li key={i}>• {f}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {data.factorsReducing.length > 0 && (
-            <div className="rounded-lg bg-secondary/60 p-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                <TrendingDown className="h-3.5 w-3.5" />
-                Working Against It
-              </div>
-              <ul className="grid gap-1 text-xs text-foreground/90">
-                {data.factorsReducing.map((f, i) => (
-                  <li key={i}>• {f}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 3. Confidence */}
-      <div className="card-elev p-4">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Confidence
-        </div>
-        <MiniMeter value={data.confidencePct} label="Analysis confidence" />
-      </div>
-
-      {/* 4. What Makes the Analysis Less Certain — real per-property gaps,
-          not the AI's "why the case is weaker" factorsReducing (a different,
-          already-shown concept above). Derived from Module 8's own
-          non-Verified items so this is never invented copy. */}
-      {missingItems.length > 0 && (
-        <div className="rounded-lg bg-warning/10 p-3">
-          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            What Makes the Analysis Less Certain
+      {/* 2. Why — the reasons, plus confidence folded in as one compact line
+          rather than its own separate meter card. */}
+      {data.factorsIncreasing.length > 0 && (
+        <div className="rounded-lg bg-success/10 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Why
           </div>
-          {data.confidenceReasoning && (
-            <p className="mb-1.5 text-xs text-foreground/90">{data.confidenceReasoning}</p>
-          )}
           <ul className="grid gap-1 text-xs text-foreground/90">
-            {missingItems.slice(0, 5).map((it) => (
-              <li key={it.item}>• {it.item} is not yet on file</li>
+            {data.factorsIncreasing.map((f, i) => (
+              <li key={i}>• {f}</li>
             ))}
           </ul>
+          <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Confidence: {data.confidencePct}%
+            {!data.dataSufficient && " — More information needed"}
+          </div>
         </div>
       )}
 
-      {/* 5. Help Corvus AI Complete the Analysis — collapsed by default */}
-      <div ref={missingInfoRef} className="card-elev overflow-hidden p-0">
-        <button
-          type="button"
-          onClick={() => setMissingInfoOpen((v) => !v)}
-          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
-        >
-          <span className="text-sm font-semibold">
-            Help Corvus AI Complete the Analysis
-            {missingItems.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {missingItems.length} item{missingItems.length === 1 ? "" : "s"} still needed
-              </span>
-            )}
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${missingInfoOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-        {missingInfoOpen && (
-          <div className="grid gap-2 border-t border-border/60 p-4">
-            {evidenceState?.loading && !evidenceItems ? (
-              <p className="text-xs text-muted-foreground">Checking what's still needed…</p>
-            ) : missingItems.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Nothing outstanding right now — Corvus AI has what it needs from what's on file.
-              </p>
-            ) : (
-              missingItems.map((it) => (
-                <MissingItemRow
-                  key={it.item}
-                  item={it}
-                  resolvedProperty={resolvedProperty}
-                  allowEvidenceUpload={allowEvidenceUpload}
-                  uploadingEvidence={uploadingEvidence}
-                  onUploadEvidence={onUploadEvidence}
-                  onAnswerStrategy={onAnswerStrategy}
-                  onLinkAccepted={handleLinkAccepted}
-                  autoFocusAnswer={autoFocusAnswerFor === it.item}
-                />
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 6. Recommended Next Step — large and unambiguous, one action only. */}
+      {/* 3. Recommended Next Step — large and unambiguous, one action only. */}
       <div className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}>
         {readyToProtest ? (
           <>
             <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
-              Recommended Next Step
+              Corvus AI Recommends a Protest
             </div>
             <button
               onClick={onStartProtest}
@@ -8912,22 +8800,19 @@ function Module1Content({
               Complete the missing property information so Corvus AI can finish your protest
               analysis.
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={() => scrollToMissingInfo()} className="btn-accent text-sm font-bold">
-                Add Property Information
-              </button>
+            <div className="mt-3">
               <button
-                onClick={() => scrollToMissingInfo(missingItems[0]?.item)}
-                className="btn-outline text-sm"
+                onClick={() => onOpenModule("evidence")}
+                className="btn-accent text-sm font-bold"
               >
-                Answer Property Questions
+                Upload Property Information
               </button>
             </div>
           </>
         )}
       </div>
 
-      {/* 7. Detailed Analysis — collapsed by default; native <details> since
+      {/* 4. Detailed Analysis — collapsed by default; native <details> since
           nothing outside this block needs to control whether it's open. */}
       <details className="card-elev overflow-hidden p-0">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
@@ -9035,165 +8920,6 @@ function Stat({
 // Analysis" — three independent ways to fill it in, matching the shared
 // upload/answer plumbing Module 8's own EvidenceCategoryRow already uses so
 // whichever one the user picks feeds the same real evidence pool.
-function MissingItemRow({
-  item,
-  resolvedProperty,
-  allowEvidenceUpload,
-  uploadingEvidence,
-  onUploadEvidence,
-  onAnswerStrategy,
-  onLinkAccepted,
-  autoFocusAnswer,
-}: {
-  item: ModuleResultMap["evidence"]["items"][number];
-  resolvedProperty: PropertyRecord | null;
-  allowEvidenceUpload: boolean;
-  uploadingEvidence: boolean;
-  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
-  onAnswerStrategy: (strategyId: string, answer: string) => void;
-  onLinkAccepted: (slug: string, url: string, summary: string) => void;
-  autoFocusAnswer: boolean;
-}) {
-  const [activeAction, setActiveAction] = useState<"upload" | "link" | "answer" | null>(
-    autoFocusAnswer ? "answer" : null,
-  );
-  const [linkUrl, setLinkUrl] = useState("");
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [linkResult, setLinkResult] = useState<{ accepted: boolean; reason: string } | null>(null);
-  const slug = evidenceItemSlug(item.item);
-
-  async function handleAnalyzeLink() {
-    if (!linkUrl.trim()) return;
-    setLinkBusy(true);
-    setLinkResult(null);
-    try {
-      const result = await analyzeEvidenceLink({
-        url: linkUrl.trim(),
-        missingItem: item.item,
-        propertyAddress: resolvedProperty?.address,
-        taxYear: resolvedProperty?.taxYear,
-      });
-      setLinkResult({ accepted: result.accepted, reason: result.reason });
-      if (result.accepted) {
-        onLinkAccepted(slug, linkUrl.trim(), result.summary);
-        setLinkUrl("");
-      }
-    } catch (err) {
-      setLinkResult({ accepted: false, reason: getErrorMessage(err, "Could not check that link.") });
-    } finally {
-      setLinkBusy(false);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{item.item}</span>
-        {item.priority === "Critical" && (
-          <span className="whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
-            Critical
-          </span>
-        )}
-      </div>
-      {allowEvidenceUpload && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveAction((v) => (v === "upload" ? null : "upload"))}
-            className="btn-outline text-xs"
-          >
-            Upload Evidence
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveAction((v) => (v === "link" ? null : "link"))}
-            className="btn-outline text-xs"
-          >
-            Add Information Link
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveAction((v) => (v === "answer" ? null : "answer"))}
-            className="btn-outline text-xs"
-          >
-            Answer a Few Questions
-          </button>
-        </div>
-      )}
-
-      {activeAction === "upload" && (
-        <div className="mt-2">
-          <label
-            className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
-          >
-            {uploadingEvidence ? "Uploading…" : "Choose file"}
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              multiple
-              className="hidden"
-              disabled={uploadingEvidence}
-              onChange={(e) => {
-                const selected = e.target.files ? Array.from(e.target.files) : [];
-                e.target.value = "";
-                if (selected.length > 0)
-                  onUploadEvidence(selected, undefined, `Evidence Category: ${slug}`);
-              }}
-            />
-          </label>
-        </div>
-      )}
-
-      {activeAction === "link" && (
-        <div className="mt-2 grid gap-2">
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="https://…"
-              className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-            />
-            <button
-              type="button"
-              onClick={handleAnalyzeLink}
-              disabled={linkBusy || !linkUrl.trim()}
-              className="btn-outline text-xs disabled:opacity-50"
-            >
-              {linkBusy ? "Checking…" : "Analyze"}
-            </button>
-          </div>
-          {linkResult && (
-            <p
-              className={`flex items-start gap-1.5 text-xs ${linkResult.accepted ? "text-success" : "text-muted-foreground"}`}
-            >
-              {linkResult.accepted ? (
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              ) : (
-                <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              )}
-              {linkResult.reason}
-            </p>
-          )}
-        </div>
-      )}
-
-      {activeAction === "answer" && (
-        <div className="mt-2">
-          <input
-            type="text"
-            autoFocus={autoFocusAnswer}
-            placeholder="Type an answer instead…"
-            className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-            onBlur={(e) => {
-              if (e.target.value.trim()) onAnswerStrategy(slug, e.target.value.trim());
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
 
 // Renders the actual per-module body — split from ModulePreviewBody below so
 // the "Ask AI" Q&A box (see ModuleQABox) can be appended once, after whichever
@@ -9916,13 +9642,9 @@ function ModulePreviewContent({
         estimated={estimated}
         m={m}
         moduleData={moduleData}
-        resolvedProperty={resolvedProperty}
-        allowEvidenceUpload={allowEvidenceUpload}
-        uploadingEvidence={uploadingEvidence}
-        onUploadEvidence={onUploadEvidence}
-        onAnswerStrategy={onAnswerStrategy}
         onStartProtest={onStartProtest}
         onReloadModule={onReloadModule}
+        onOpenModule={onOpenModule}
         compsMap={compsMap}
         evidenceDocs={evidenceDocs}
       />
@@ -11597,7 +11319,13 @@ function ModulePreviewContent({
 function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
   const showQA = !props.m.requiresUserData && props.m.id !== "savings" && !!props.moduleState?.data;
   const showDataSheet =
-    props.allowEvidenceUpload && props.m.id !== "savings" && !!props.moduleState?.data;
+    props.allowEvidenceUpload &&
+    props.m.id !== "savings" &&
+    // Module 1 has its own direct path into Module 8 (the real evidence
+    // system) now — a second, separate "AI drafts assumed values" sheet
+    // alongside it duplicated the same job with lower-quality output.
+    props.m.id !== "health" &&
+    !!props.moduleState?.data;
   return (
     <>
       <ModulePreviewContent {...props} />
