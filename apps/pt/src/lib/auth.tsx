@@ -24,8 +24,18 @@ const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
 // Shared across every tab of this browser (see the effect below for why a
 // per-tab in-memory clock isn't enough) — just a timestamp, nothing
-// sensitive, so plain localStorage is fine.
-const LAST_ACTIVITY_KEY = "corvuspt.lastActivityAt";
+// sensitive, so plain localStorage is fine. Also shared with CorvusDP's own
+// auth.tsx (was "corvuspt.lastActivityAt") -- both keys already live in the
+// same-origin localStorage regardless of the /corvuspt/ vs /corvusdp/ path,
+// so one shared key gives a de facto shared idle clock across doors: activity
+// on one door resets the clock the other door checks next time it's open.
+const LAST_ACTIVITY_KEY = "corvusre.lastActivityAt";
+// Written whenever this door signs out (see the onAuthStateChange handler
+// below) so any other door's open tab on the same origin signs itself out
+// too. CorvusPT is the shared identity source, so this door's own sign-out
+// IS the identity sign-out -- no separate client to also sign out of here,
+// unlike CorvusDP's side of this same mechanism.
+const SIGNED_OUT_KEY = "corvusre.signedOutAt";
 // Real user-presence signals only — deliberately not anything the app
 // itself triggers (a background poll, a timer-driven refetch), or an idle
 // tab just left open would look "active" forever and this control would do
@@ -73,7 +83,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // that has never touched intake at all. Signing out is the one clear
       // signal that whatever was in progress no longer applies to whoever
       // signs in next in this tab.
-      if (event === "SIGNED_OUT") resetIntake();
+      if (event === "SIGNED_OUT") {
+        resetIntake();
+        // Broadcast so any other door's already-open tab signs itself out
+        // too (see the storage-event listener below).
+        try {
+          localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+        } catch {
+          // storage-blocked edge case -- this tab still signed out locally,
+          // just won't propagate to other tabs.
+        }
+      }
       // Fire-and-forget on every real sign-in (password, Google, sign-up) —
       // deliberately not on mere session restoration on page load, which
       // fires INITIAL_SESSION instead, not SIGNED_IN. Safe to call more
@@ -108,6 +128,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     function handleStorageActivityPing(e: StorageEvent) {
       if (e.key === LAST_ACTIVITY_KEY) signingOutRef.current = false;
+      // Another door signed out (or this door did, in another tab) -- this
+      // tab's own onAuthStateChange SIGNED_OUT branch above fires once this
+      // completes, which is what actually clears state/redirects.
+      if (e.key === SIGNED_OUT_KEY && !signingOutRef.current) {
+        signingOutRef.current = true;
+        supabase.auth.signOut().finally(() => {
+          signingOutRef.current = false;
+        });
+      }
     }
 
     // Reads the SAME shared timestamp every tab of this browser writes to —

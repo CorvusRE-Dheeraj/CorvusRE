@@ -1,9 +1,23 @@
 {
   "name": "corvus-identity",
   "private": true,
-  "description": "Placeholder — replaced by the shared sign-in app in migration Phase 5 (login bridge).",
+  "type": "module",
+  "description": "CorvusRE's shared sign-in app -- one login screen for every door. Deliberately a plain React/Vite SPA (not TanStack Start) since it's a single form, not a multi-route app. Uses CorvusPT's existing Supabase project as the identity source (see the migration plan for why no new project was created).",
   "scripts": {
-    "test": "echo \"(placeholder) no tests yet\"",
-    "build": "node build.js"
+    "test": "echo \"(no tests yet)\"",
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.3.0"
   }
 }

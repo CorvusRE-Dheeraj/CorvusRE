@@ -47,6 +47,26 @@ function SignIn() {
     if (authedUser) nav({ to: returnTo, replace: true });
   }, [authedUser, nav, returnTo]);
 
+  // CorvusRE login bridge (Phase 4): a plain sign-in landing (no explicit
+  // signup intent) now goes through the one shared sign-in screen instead
+  // of this door's own form, so "sign in" means the same thing everywhere.
+  // Deliberately NOT redirected when mode=signup or a referral code (ref)
+  // is present — those carry real DP-specific business logic (referral
+  // rewards, richer profile fields collected at signup) that the shared
+  // screen doesn't replicate; that flow keeps using this door's own form.
+  // A full page navigation (not router nav()) since /auth/ is a separate
+  // built app, not a route in this one.
+  useEffect(() => {
+    if (authedUser) return;
+    if (sp.mode === "signup" || sp.ref) return;
+    const here = `${import.meta.env.BASE_URL}${returnTo.replace(/^\//, "")}`;
+    window.location.replace(`/auth/?redirect=${encodeURIComponent(here)}`);
+  }, [authedUser, sp.mode, sp.ref, returnTo]);
+
+  if (!authedUser && sp.mode !== "signup" && !sp.ref) {
+    return null;
+  }
+
   const [mode, setMode] = useState<"signin" | "signup">(
     sp.mode === "signup" || sp.ref ? "signup" : "signin",
   );

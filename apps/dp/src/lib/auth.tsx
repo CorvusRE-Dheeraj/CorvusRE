@@ -2,8 +2,10 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { Session, User } from "@supabase/supabase-js";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
+import { identitySupabase } from "@/lib/identity";
 import { resetDpIntake } from "@/lib/dp-intake";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
+import { tryBridgeFromIdentity } from "@/lib/login-bridge";
 
 type AuthState = {
   user: User | null;
@@ -18,7 +20,17 @@ const AuthContext = createContext<AuthState>({ user: null, session: null, loadin
 // session's own JWT expiry/refresh.
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
-const LAST_ACTIVITY_KEY = "corvusdp.lastActivityAt";
+// Shared with CorvusPT's own auth.tsx (was "corvusdp.lastActivityAt") --
+// both keys already live in the same-origin localStorage regardless of the
+// /corvuspt/ vs /corvusdp/ path, so using one shared key gives a de facto
+// shared idle clock across doors for free: activity on one door resets the
+// clock the other door checks next time it's open.
+const LAST_ACTIVITY_KEY = "corvusre.lastActivityAt";
+// Written whenever this door signs out (see the onAuthStateChange handler
+// below) so any other door's open tab on the same origin signs itself out
+// too -- "sign out" should mean signed out everywhere, not just this one
+// door while the underlying identity session quietly lives on.
+const SIGNED_OUT_KEY = "corvusre.signedOutAt";
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "scroll", "touchstart", "wheel"] as const;
 
 function markActivity() {
@@ -45,15 +57,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signingOutRef = useRef(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setState({ user: data.session?.user ?? null, session: data.session, loading: false });
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        setState({ user: data.session.user, session: data.session, loading: false });
+        return;
+      }
+      // No local CorvusDP session yet -- before concluding "signed out",
+      // try the CorvusRE login bridge (see lib/login-bridge.ts): if this
+      // browser already has a CorvusPT session for an email that also has
+      // a CorvusDP account, this silently establishes a real one here too.
+      const bridged = await tryBridgeFromIdentity();
+      if (!bridged) {
+        setState({ user: null, session: null, loading: false });
+      }
+      // else: verifyOtp() inside the bridge already fired a real SIGNED_IN
+      // event, which the listener below picks up and sets state from.
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       // The anonymous analysis flow's sessionStorage state isn't scoped to an
       // account — signing out is the one clear signal that whatever was in
       // progress no longer applies to whoever signs in next in this tab.
-      if (event === "SIGNED_OUT") resetDpIntake();
+      if (event === "SIGNED_OUT") {
+        resetDpIntake();
+        // Propagate to every door: kill the shared identity session (so a
+        // direct visit to CorvusPT, or the bridge on another door's tab,
+        // doesn't silently keep this person signed in) and broadcast so any
+        // other already-open door tab signs itself out too (see the
+        // storage-event listener below).
+        identitySupabase.auth.signOut().catch(() => {});
+        try {
+          localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+        } catch {
+          // storage-blocked edge case -- this door still signed out locally,
+          // just won't propagate to other tabs.
+        }
+      }
       // Fire-and-forget on every real sign-in (password, Google, Microsoft,
       // sign-up) — deliberately not on mere session restoration on page load
       // (that fires INITIAL_SESSION, not SIGNED_IN). Safe to call this often
@@ -79,6 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     function handleStorageActivityPing(e: StorageEvent) {
       if (e.key === LAST_ACTIVITY_KEY) signingOutRef.current = false;
+      // Another door's tab (or this door in another tab) just signed out --
+      // this tab's own onAuthStateChange SIGNED_OUT branch above will fire
+      // once this completes, which is what actually clears state/redirects.
+      if (e.key === SIGNED_OUT_KEY && !signingOutRef.current) {
+        signingOutRef.current = true;
+        supabase.auth.signOut().finally(() => {
+          signingOutRef.current = false;
+        });
+      }
     }
 
     async function checkIdle() {
