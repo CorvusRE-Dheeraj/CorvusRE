@@ -7,7 +7,12 @@
   <meta name="description" content="CorvusRE — the parent home for Corvus Property Tax, Buy/Sell/Lease, and more." />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/hub.css" />
+  <!-- Cache-busted (unlike the actual apps' content-hashed JS/CSS, this
+       filename never changes on its own) -- browsers and the CDN can both
+       cache a stylesheet well past a hard refresh's expectations, so a real
+       edit here needs a version bump or it can take a while to actually
+       reach every visitor. Bump this any time hub.css changes. -->
+  <link rel="stylesheet" href="/hub.css?v=3" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" />
 </head>
