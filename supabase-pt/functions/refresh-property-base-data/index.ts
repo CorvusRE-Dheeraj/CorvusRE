@@ -10,6 +10,7 @@
 // base-data PDF is regenerated client-side on their next AI Report open (or
 // via its "Refresh" button); this job's responsibility is detect + notify.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,6 +116,11 @@ function diffCad(a: CadSnap | null, b: CadSnap | null): string | null {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Scheduled job: only pg_cron (service-role key as Bearer auth) may run
+  // this. verify_jwt alone lets any signed-in user trigger it across every
+  // other user's data -- see ../_shared/service-role-only.ts.
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

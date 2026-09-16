@@ -24,6 +24,8 @@
 // created (best-effort — a failed email never rolls back the real protest
 // row, which has already been created and is real work either way).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
+import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,11 +43,23 @@ async function sendConfirmation(
 ): Promise<void> {
   if (!resendKey) return;
   try {
+    const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+    const html = emailShell({
+      eyebrow: "Auto re-file",
+      heading: `Your ${taxYear} protest is started`,
+      intro:
+        `As you authorized, CorvusPT automatically started a new ${taxYear} protest for ` +
+        `<strong>${escapeHtml(label)}</strong> — your prior case resolved and this one picks up where it left off.`,
+      ctaLabel: "Go to View Case",
+      ctaHref: `${appUrl}/dashboard/properties`,
+      footnote:
+        "Review and sign the Notice of Protest once it's ready. You can turn off auto re-file for this case any time from its Case Progress section.",
+    });
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "CorvusPT <onboarding@resend.dev>",
+        from: "CorvusPT <info@corvusre.com>",
         to: [to],
         subject: `CorvusPT started your ${taxYear} protest for ${label}`,
         text:
@@ -53,6 +67,7 @@ async function sendConfirmation(
           `— your prior case resolved and this one picks up where it left off.\n\n` +
           `Open CorvusPT and go to View Case to review and sign the Notice of Protest once it's ` +
           `ready. You can turn off auto re-file for this case any time from its Case Progress section.`,
+        html,
       }),
     });
     if (!res.ok)
@@ -67,6 +82,11 @@ async function sendConfirmation(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Scheduled job: only pg_cron (service-role key as Bearer auth) may run
+  // this. verify_jwt alone lets any signed-in user trigger it across every
+  // other user's data -- see ../_shared/service-role-only.ts.
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

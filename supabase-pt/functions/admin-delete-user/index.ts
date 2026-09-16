@@ -5,6 +5,7 @@
 // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are auto-injected by
 // the Edge Runtime for every function — no manual secret configuration needed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { purgeUserDocumentFiles } from "../_shared/purge-user-storage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,6 +76,12 @@ Deno.serve(async (req: Request) => {
       .select("email")
       .eq("id", userId)
       .maybeSingle();
+
+    // Same gap as delete-my-account: the auth.users cascade removes the DB
+    // rows but leaves this user's files sitting in the private `documents`
+    // bucket. Purge them first, while the documents rows holding their paths
+    // still exist. See ../_shared/purge-user-storage.ts.
+    await purgeUserDocumentFiles(adminClient, userId);
 
     const { error: deleteErr } = await adminClient.auth.admin.deleteUser(userId);
     if (deleteErr) throw deleteErr;

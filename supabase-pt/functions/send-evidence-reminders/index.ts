@@ -24,6 +24,8 @@
 // last_reminder_sent_at or claims success for a message it didn't actually
 // send.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
+import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,6 +53,11 @@ type DueItem = { rowId: string; protestId: string; label: string; deadline: stri
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Scheduled job: only pg_cron (service-role key as Bearer auth) may run
+  // this. verify_jwt alone lets any signed-in user trigger it across every
+  // other user's data -- see ../_shared/service-role-only.ts.
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -125,6 +132,27 @@ Deno.serve(async (req: Request) => {
         `\n\n${lines}\n\n` +
         `Open CorvusPT, go to View Case, and use Generate Evidence Package to finish each one.`;
 
+      const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+      const intro =
+        items.length === 1
+          ? `Your evidence for <strong>${escapeHtml(items[0].label)}</strong> hasn't been marked submitted yet.`
+          : `Evidence hasn't been marked submitted yet for ${items.length} of your cases:`;
+      const rows = items
+        .map(
+          (it) =>
+            `<tr><td style="padding:7px 0; vertical-align:top; width:22px;">📎</td><td style="padding:7px 0;"><strong>${escapeHtml(it.label)}</strong>${it.deadline ? ` <span style="color:#8592a6;">(deadline: ${escapeHtml(it.deadline)})</span>` : ""}</td></tr>`,
+        )
+        .join("");
+      const html = emailShell({
+        eyebrow: "Reminder",
+        heading: "Evidence still needed",
+        intro,
+        bodyRows: rows,
+        ctaLabel: "Go to View Case",
+        ctaHref: `${appUrl}/dashboard/properties`,
+        footnote: "Use Generate Evidence Package on each case to finish it.",
+      });
+
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -132,10 +160,11 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "CorvusPT <onboarding@resend.dev>",
+          from: "CorvusPT <info@corvusre.com>",
           to: [to],
           subject,
           text,
+          html,
         }),
       });
       if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);

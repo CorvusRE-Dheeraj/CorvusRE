@@ -464,8 +464,16 @@ function SignIn() {
                 />
                 <span>
                   I have read and agree to the{" "}
+                  {/* Deliberately raw <a target="_blank"> (not <Link>) so
+                      reading the terms doesn't throw away a half-filled
+                      signup form — but the href must carry Vite's base path.
+                      import.meta.env.BASE_URL is "/" in dev and "/corvuspt/"
+                      on the GitHub Pages build, so a hardcoded "/terms" 404s
+                      in production. Same rule as every other hand-built URL
+                      in this app (forgot-password's redirectTo,
+                      buildSignupInviteLink, CaseDetailModal's window.open). */}
                   <a
-                    href="/terms"
+                    href={`${import.meta.env.BASE_URL}terms`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-accent underline underline-offset-2"
@@ -474,7 +482,7 @@ function SignIn() {
                   </a>{" "}
                   and{" "}
                   <a
-                    href="/privacy"
+                    href={`${import.meta.env.BASE_URL}privacy`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-accent underline underline-offset-2"

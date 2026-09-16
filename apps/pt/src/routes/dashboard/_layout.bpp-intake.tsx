@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -40,6 +40,9 @@ function BppIntake() {
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Synchronous double-submit guard — see handleSave below for why the
+  // `saving` state (and the button's own disabled attribute) isn't enough.
+  const savingRef = useRef(false);
 
   // A document classified upstream by document-review.tsx (the real-property
   // intake funnel's own upload step) as a BPP document routes here — reuse
@@ -124,6 +127,15 @@ function BppIntake() {
 
   async function handleSave() {
     if (!user || !businessValid) return;
+    // `disabled={saving}` alone does NOT stop a real double-click: setSaving
+    // is a React state update, so the button only actually becomes disabled
+    // on the next render, and a second click landing inside that window runs
+    // this handler again. Reproduced live — two rapid clicks on "Save BPP
+    // Account" created two identical bpp_accounts rows 265ms apart. A ref
+    // flips synchronously, so the second call returns immediately. (Same
+    // pattern as signingOutRef in src/lib/auth.tsx.)
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await addBppAccount(user.id, {
@@ -142,6 +154,7 @@ function BppIntake() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save this BPP account.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

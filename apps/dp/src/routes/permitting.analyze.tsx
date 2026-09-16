@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ArrowLeft, Lock, Loader2, Sparkles, RotateCcw } from "lucide-react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
+  emptyIntake,
   readDpIntake,
   updateDpIntake,
   type DpIntakeState,
@@ -45,11 +46,27 @@ const INTENTS: { value: ProjectIntent; label: string }[] = [
 function Analyze() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const [state, setState] = useState<DpIntakeState>(() => {
+  // Every route here is prerendered to static HTML, so the first render must
+  // NOT read sessionStorage — doing that in the useState initializer made the
+  // client render a different step (and different field values) than the
+  // server had emitted, which React 19 reports as a hydration mismatch and
+  // recovers from by throwing the whole tree away and re-rendering. Restore
+  // the saved intake in a mount effect instead: same end state, no mismatch.
+  const [state, setState] = useState<DpIntakeState>(() => ({
+    ...emptyIntake(),
+    track: "permitting",
+  }));
+  const [step, setStep] = useState(0);
+  useEffect(() => {
     const s = readDpIntake();
-    return { ...s, track: "permitting" };
-  });
-  const [step, setStep] = useState(state.step && state.step <= 4 ? state.step : 0);
+    setState({ ...s, track: "permitting" });
+    // Only resume the wizard when the saved progress belongs to THIS track.
+    // `step` is one shared field across both wizards, so finishing the design
+    // brief (step 3) used to drop a visitor who then opened the permitting
+    // wizard straight into its Feasibility step — showing an analysis for a
+    // project whose intent/sector they had never been asked for.
+    setStep(s.track === "permitting" && s.step > 0 && s.step <= 4 ? s.step : 0);
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingProjectId, setExistingProjectId] = useState<string | null>(null);
