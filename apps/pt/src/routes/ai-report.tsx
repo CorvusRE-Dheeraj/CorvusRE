@@ -2223,10 +2223,23 @@ function Report() {
   ]);
 
   const estimated = useMemo(() => {
+    // `hasEstimate: false` means "no assessed value to estimate from at all"
+    // (estimateSavings() returns null for that case on purpose — see its own
+    // comment), which is NOT the same finding as "a real estimate that came
+    // out at ~$0." Callers that render a "fairly assessed / no opportunity"
+    // conclusion must check this first, or they state as fact something the
+    // data can't support.
     if (!savingsEstimate || !state.totalValue)
-      return { reduction: 0, savings: 0, rationale: null as string | null, effectiveTaxRatePct: 0 };
+      return {
+        hasEstimate: false,
+        reduction: 0,
+        savings: 0,
+        rationale: null as string | null,
+        effectiveTaxRatePct: 0,
+      };
     if (savingsEstimate.basis === "comps") {
       return {
+        hasEstimate: true,
         reduction: Math.max(0, state.totalValue - savingsEstimate.compsMedian),
         savings: savingsEstimate.amount,
         rationale: `Estimated from ${savingsEstimate.compsCount} real comparable properties, at your county's ~${savingsEstimate.effectiveTaxRatePct}% effective tax rate.`,
@@ -2234,6 +2247,7 @@ function Report() {
       };
     }
     return {
+      hasEstimate: true,
       reduction: Math.round(state.totalValue * (savingsEstimate.reductionPct / 100)),
       savings: savingsEstimate.amount,
       rationale: savingsEstimate.rationale,
@@ -2688,6 +2702,26 @@ function Report() {
                 >
                   <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
                   <AnimatedNumber value={estimated.savings} format={currency} duration={900} />
+                </p>
+              </>
+            ) : !estimated.hasEstimate ? (
+              // No estimate at all — the CAD record carried no assessed value
+              // (a brand-new/unassessed parcel, or a county feed that hasn't
+              // synced this year's values yet). estimateSavings() returns null
+              // for exactly this case rather than computing 0 * anything = 0,
+              // and intake.tsx skips its whole Savings step when it does. This
+              // banner used to fall straight through to the "fairly assessed"
+              // branch below and tell the owner, confidently and wrongly, that
+              // there was no savings opportunity — when the truth is we have
+              // no value to judge from. Say that instead.
+              <>
+                <p className="mt-2 font-serif text-2xl font-bold sm:text-3xl">
+                  We need this year's value.
+                </p>
+                <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
+                  The county record for this property doesn't carry an assessed value yet, so we
+                  can't estimate a savings opportunity. Upload your appraisal notice, or check back
+                  once the county publishes this year's value.
                 </p>
               </>
             ) : (
@@ -3282,6 +3316,7 @@ function ModuleCard({
   siteGisMap: { data: SiteGisResult | null; loading: boolean };
   siteCoords: GeocodedPoint | null;
   estimated: {
+    hasEstimate: boolean;
     reduction: number;
     savings: number;
     rationale: string | null;
@@ -3546,6 +3581,7 @@ function ModuleVisual({
   siteGisMap: { data: SiteGisResult | null; loading: boolean };
   siteCoords: GeocodedPoint | null;
   estimated: {
+    hasEstimate: boolean;
     reduction: number;
     savings: number;
     rationale: string | null;
@@ -8898,6 +8934,7 @@ function ModulePreviewContent({
 }: {
   m: Module;
   estimated: {
+    hasEstimate: boolean;
     reduction: number;
     savings: number;
     rationale: string | null;
@@ -9060,6 +9097,23 @@ function ModulePreviewContent({
   if (m.id === "savings") {
     const current = state.totalValue ?? 0;
     const reduced = Math.max(0, current - estimated.reduction);
+    // No assessed value on the CAD record at all — there is no estimate,
+    // which is a different finding from "we estimated ~$0." Same guard the
+    // top banner now applies; without it this module told the owner their
+    // property was "fairly assessed" purely because we had nothing to work
+    // from. See the `hasEstimate` comment on the `estimated` memo.
+    if (!estimated.hasEstimate) {
+      return (
+        <div className="mt-4 grid gap-3 text-center">
+          <p className="font-serif text-xl font-bold">No assessed value on file yet.</p>
+          <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+            The county record for this property doesn't carry an assessed value for this tax year,
+            so there's nothing to estimate savings from. Upload your appraisal notice, or check
+            back once the county publishes this year's value.
+          </p>
+        </div>
+      );
+    }
     // Same >= 1 threshold and reasoning as the page's own top banner and
     // intake.tsx's Savings step — a real analysis landing on (near-)$0 isn't
     // a failure, and currency() rounding a sub-$1 amount down to "$0" would
