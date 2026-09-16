@@ -108,6 +108,10 @@ function Intake() {
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
   const [noticeName, setNoticeName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Synchronous double-submit guard for "Confirm Property" — see its onClick
+  // below. `disabled={saving}` is a React state flag, so it only takes effect
+  // on the next render; a real double-click lands inside that window.
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [alreadySaved, setAlreadySaved] = useState<PropertyRecord | null>(null);
   const [nearby, setNearby] = useState<CadRecord[]>([]);
@@ -1061,8 +1065,20 @@ function Intake() {
             <button
               disabled={saving}
               onClick={async () => {
+                // `disabled={saving}` alone does NOT stop a real
+                // double-click: setSaving only disables the button on the
+                // next render, and a second click landing inside that window
+                // runs this handler again. Reproduced live — two clicks
+                // dispatched in the same tick saved the SAME property twice,
+                // leaving two identical rows on the account (each of which
+                // would then get its own subscription and protest). The ref
+                // flips synchronously, so the second call returns at once.
+                // Same pattern as signingOutRef in src/lib/auth.tsx and the
+                // matching guard in dashboard/_layout.bpp-intake.tsx.
+                if (savingRef.current) return;
                 setSaveError(null);
                 if (user && !alreadySaved) {
+                  savingRef.current = true;
                   setSaving(true);
                   try {
                     await addProperty(user.id, {
@@ -1080,6 +1096,8 @@ function Intake() {
                       valueHistory: state.valueHistory,
                     });
                   } catch (err) {
+                    // Released so a real retry after a genuine failure works.
+                    savingRef.current = false;
                     setSaving(false);
                     const message =
                       err instanceof Error
