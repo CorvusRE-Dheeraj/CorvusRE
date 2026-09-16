@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -61,6 +61,9 @@ export function BppProtestFlow({
   const [agreed, setAgreed] = useState(false);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous double-submit guard -- see handleSubmit for why the
+  // `submitting` state (and the button's disabled attribute) is not enough.
+  const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   // Real account info, not guessed — fetched fresh each time the modal opens
@@ -103,6 +106,15 @@ export function BppProtestFlow({
       );
       return;
     }
+    // `disabled={submitting}` is a React state flag: the button is only
+    // really disabled on the NEXT render, so a real double-click runs this
+    // handler twice. Reproduced live -- two clicks in one tick filed the
+    // same protest twice (two protests rows, two authorization records, two
+    // entries in the staff queue). Nothing server-side catches it either:
+    // prevent_duplicate_active_protest only blocks a duplicate from a
+    // DIFFERENT account. The ref flips synchronously.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -128,6 +140,7 @@ export function BppProtestFlow({
       setError(message);
       toast.error(message);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
