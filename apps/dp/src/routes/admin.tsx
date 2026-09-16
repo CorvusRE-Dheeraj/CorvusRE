@@ -766,28 +766,42 @@ function DesignStageAction({
   onChanged: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const next = nextDesignStage(row.stage);
   // Nothing to advance to from "brief" here — that transition is the
   // customer's own "Approve & start detailed design" action, not staff's.
   if (!next || row.stage === "brief") return <span className="text-xs text-muted-foreground">—</span>;
   return (
-    <button
-      className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
-      disabled={saving}
-      onClick={async () => {
-        setSaving(true);
-        await advanceDesignRequestStage(row.id, next);
-        await logAdminAction({
-          action: "design_stage_advance",
-          target: row.id,
-          detail: `${row.stage} → ${next}`,
-        });
-        setSaving(false);
-        onChanged();
-      }}
-    >
-      Advance to {DESIGN_STAGE_LABEL[next]}
-    </button>
+    <div className="grid gap-1">
+      <button
+        className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true);
+          setError(null);
+          try {
+            // Audit only AFTER the write actually lands — this used to log
+            // the advance unconditionally, which is how a silently
+            // RLS-blocked update still produced a "design_stage_advance"
+            // entry claiming it had happened.
+            await advanceDesignRequestStage(row.id, next);
+            await logAdminAction({
+              action: "design_stage_advance",
+              target: row.id,
+              detail: `${row.stage} → ${next}`,
+            });
+            onChanged();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not advance that request.");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        Advance to {DESIGN_STAGE_LABEL[next]}
+      </button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </div>
   );
 }
 
@@ -799,27 +813,39 @@ function EngagementActions({
   onChanged: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const nextStatus =
     row.status === "requested" ? "contacted" : row.status === "contacted" ? "completed" : null;
   if (!nextStatus) return <span className="text-xs text-muted-foreground">Done</span>;
   return (
-    <button
-      className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
-      disabled={saving}
-      onClick={async () => {
-        setSaving(true);
-        await updateEngagementStatus(row.id, nextStatus);
-        await logAdminAction({
-          action: "engagement_status_update",
-          target: row.id,
-          detail: `${row.status} → ${nextStatus}`,
-        });
-        setSaving(false);
-        onChanged();
-      }}
-    >
-      Mark {humanize(nextStatus)}
-    </button>
+    <div className="grid gap-1">
+      <button
+        className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true);
+          setError(null);
+          try {
+            // Audit only AFTER the write actually lands — see the matching
+            // note in DesignStageAction.
+            await updateEngagementStatus(row.id, nextStatus);
+            await logAdminAction({
+              action: "engagement_status_update",
+              target: row.id,
+              detail: `${row.status} → ${nextStatus}`,
+            });
+            onChanged();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not update that request.");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        Mark {humanize(nextStatus)}
+      </button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </div>
   );
 }
 

@@ -806,3 +806,25 @@ as $$
 $$;
 revoke all on function public.corvusre_email_has_account(text) from public, anon, authenticated;
 grant execute on function public.corvusre_email_has_account(text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Admin write access on the two staff-managed queues (2026-09-16).
+--
+-- Both tables only ever had an "admin: read …" SELECT policy, so the admin
+-- console's "Mark contacted / Mark completed" (engagements) and "Advance to
+-- <stage>" (design) buttons were silent no-ops: PostgREST reports an UPDATE
+-- that RLS filters down to zero rows as a plain success, so the console
+-- wrote an admin_audit_log entry claiming the change had happened while the
+-- row never moved off 'requested' / its original stage. Staff had no way to
+-- work either queue.
+--
+-- Deliberately UPDATE-only (not `for all`): staff advance status on these
+-- rows, they never create or delete a customer's request.
+-- ---------------------------------------------------------------------------
+drop policy if exists "admin: update engagement" on public.engagement_requests;
+create policy "admin: update engagement" on public.engagement_requests
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "admin: update design" on public.design_requests;
+create policy "admin: update design" on public.design_requests
+  for update using (public.is_admin()) with check (public.is_admin());
