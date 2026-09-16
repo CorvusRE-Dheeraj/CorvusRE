@@ -415,30 +415,28 @@ function Admin() {
         {tab === "users" && (
           <Section
             title={`Users (${users.data?.length ?? 0})`}
-            subtitle="Every signed-up account. Toggle admin access here — nowhere else can flip it."
+            subtitle="Manage every user, their properties, and their plan."
           >
-            <Table
-              cols={["Name", "Email", "Plan", "Referral code", "Joined", "Admin", ""]}
-              rows={(users.data ?? []).map((u) => [
-                [u.first_name, u.last_name].filter(Boolean).join(" ") || "—",
-                u.email,
-                <Pill key="p" tone={u.plan === "free" ? "gray" : "green"}>
-                  {humanize(u.plan)}
-                </Pill>,
-                <span key="r" className="font-mono text-xs">
-                  {u.referral_code ?? "—"}
-                </span>,
-                dateShort(u.created_at),
-                <AdminToggle key="a" userRow={u} onChanged={() => users.refetch()} />,
-                <UserRowActions
-                  key="actions"
-                  userRow={u}
-                  isSelf={u.id === user?.id}
-                  onDeleted={() => users.refetch()}
-                />,
-              ])}
-              loading={users.isLoading}
-            />
+            <div className="mt-2 max-w-xl">
+              <InviteForm onSent={() => users.refetch()} />
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              {users.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : (users.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No users yet.</p>
+              ) : (
+                (users.data ?? []).map((u) => (
+                  <UserCard
+                    key={u.id}
+                    userRow={u}
+                    isSelf={u.id === user?.id}
+                    onChanged={() => users.refetch()}
+                  />
+                ))
+              )}
+            </div>
           </Section>
         )}
 
@@ -517,62 +515,44 @@ function Admin() {
   );
 }
 
-function AdminToggle({
+// One real card per user -- same visual language as CorvusPT's own admin
+// Users tab (name + admin badge, contact line, joined date, then a row of
+// full-sized action buttons), not a cramped table with tiny underlined
+// text links. Colors stay CorvusDP's own (amber accent, not CorvusPT's
+// navy) -- only the layout/structure is meant to match exactly.
+function UserCard({
   userRow,
+  isSelf,
   onChanged,
 }: {
   userRow: AdminUserRow;
+  isSelf: boolean;
   onChanged: () => void;
 }) {
-  const [saving, setSaving] = useState(false);
-  return (
-    <button
-      className={`text-xs font-semibold underline underline-offset-2 disabled:opacity-50 ${
-        userRow.is_admin ? "text-destructive" : "text-accent"
-      }`}
-      disabled={saving}
-      onClick={async () => {
-        setSaving(true);
-        try {
-          await setUserIsAdmin(userRow.id, !userRow.is_admin);
-          await logAdminAction({
-            action: "admin_role_change",
-            target: userRow.email,
-            detail: userRow.is_admin ? "removed admin" : "made admin",
-          });
-          onChanged();
-        } catch (err) {
-          console.error("Could not change admin role:", err);
-        } finally {
-          setSaving(false);
-        }
-      }}
-    >
-      {userRow.is_admin ? "Remove admin" : "Make admin"}
-    </button>
-  );
-}
-
-// Delete + impersonate -- feature parity with CorvusPT's admin panel,
-// which already has both; CorvusDP's had neither. Same window.confirm +
-// client-side logAdminAction pattern as AdminToggle above, so every admin
-// action in this table looks and behaves the same way.
-function UserRowActions({
-  userRow,
-  isSelf,
-  onDeleted,
-}: {
-  userRow: AdminUserRow;
-  isSelf: boolean;
-  onDeleted: () => void;
-}) {
   const [busy, setBusy] = useState(false);
-  if (isSelf) return null;
+  const name = [userRow.first_name, userRow.last_name].filter(Boolean).join(" ");
 
+  async function handleToggleAdmin() {
+    setBusy(true);
+    try {
+      await setUserIsAdmin(userRow.id, !userRow.is_admin);
+      await logAdminAction({
+        action: "admin_role_change",
+        target: userRow.email,
+        detail: userRow.is_admin ? "removed admin" : "made admin",
+      });
+      onChanged();
+    } catch (err) {
+      console.error("Could not change admin role:", err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // window.open() called synchronously (before the await below) so it's
+  // still backed by this click's real user gesture -- opening it AFTER an
+  // await is what most browsers' popup blockers reject.
   async function handleImpersonate() {
-    // window.open() called synchronously (before the await below) so it's
-    // still backed by this click's real user gesture -- opening it AFTER
-    // an await is what most browsers' popup blockers reject.
     const tab = window.open("", "_blank");
     if (tab) tab.opener = null;
     setBusy(true);
@@ -580,10 +560,7 @@ function UserRowActions({
       const actionLink = await impersonateUser(userRow.id);
       if (tab) tab.location.href = actionLink;
       else window.open(actionLink, "_blank", "noopener,noreferrer");
-      await logAdminAction({
-        action: "impersonate_user",
-        target: userRow.email,
-      });
+      await logAdminAction({ action: "impersonate_user", target: userRow.email });
     } catch (err) {
       tab?.close();
       console.error("Could not log in as this user:", err);
@@ -604,7 +581,7 @@ function UserRowActions({
     try {
       await deleteUserAccount(userRow.id);
       await logAdminAction({ action: "delete_user", target: userRow.email });
-      onDeleted();
+      onChanged();
     } catch (err) {
       console.error("Could not delete user:", err);
     } finally {
@@ -613,24 +590,51 @@ function UserRowActions({
   }
 
   return (
-    <span className="flex items-center gap-3 whitespace-nowrap">
-      <button
-        type="button"
-        className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
-        disabled={busy}
-        onClick={handleImpersonate}
-      >
-        Log in as
-      </button>
-      <button
-        type="button"
-        className="text-xs font-semibold text-destructive underline underline-offset-2 disabled:opacity-50"
-        disabled={busy}
-        onClick={handleDelete}
-      >
-        Delete
-      </button>
-    </span>
+    <div className="card-elev p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-serif text-lg font-semibold">{name || userRow.email}</h3>
+        {userRow.is_admin && <Pill tone="green">Admin</Pill>}
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {userRow.email}
+        {userRow.referral_code && (
+          <span className="font-mono"> · ref {userRow.referral_code}</span>
+        )}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">Joined {dateShort(userRow.created_at)}</p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Pill tone={userRow.plan === "free" ? "gray" : "green"}>{humanize(userRow.plan)}</Pill>
+        {!isSelf && (
+          <>
+            <button
+              type="button"
+              className="btn-outline text-sm disabled:opacity-60"
+              disabled={busy}
+              onClick={handleImpersonate}
+            >
+              Log in as user
+            </button>
+            <button
+              type="button"
+              className="btn-outline text-sm disabled:opacity-60"
+              disabled={busy}
+              onClick={handleToggleAdmin}
+            >
+              {userRow.is_admin ? "Remove Admin" : "Make Admin"}
+            </button>
+            <button
+              type="button"
+              className="btn-outline border-destructive/40 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-60"
+              disabled={busy}
+              onClick={handleDelete}
+            >
+              Delete User
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
