@@ -33,7 +33,7 @@ export const Route = createFileRoute("/sign-in")({
 function SignIn() {
   const nav = useNavigate();
   const sp = Route.useSearch();
-  const { user: authedUser } = useAuth();
+  const { user: authedUser, loading: authLoading } = useAuth();
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   let cleaned = sp.redirect ?? "";
@@ -56,16 +56,19 @@ function SignIn() {
   // screen doesn't replicate; that flow keeps using this door's own form.
   // A full page navigation (not router nav()) since /auth/ is a separate
   // built app, not a route in this one.
+  //
+  // Gated on authLoading too: AuthProvider resolves the session
+  // asynchronously (it may even mint one via the login bridge), so firing
+  // this on the first render — when `user` is still null purely because
+  // nothing has resolved yet — bounced an ALREADY SIGNED-IN visitor out to
+  // the identity app instead of letting the effect above send them to the
+  // dashboard.
   useEffect(() => {
-    if (authedUser) return;
+    if (authLoading || authedUser) return;
     if (sp.mode === "signup" || sp.ref) return;
     const here = `${import.meta.env.BASE_URL}${returnTo.replace(/^\//, "")}`;
     window.location.replace(`/auth/?redirect=${encodeURIComponent(here)}`);
-  }, [authedUser, sp.mode, sp.ref, returnTo]);
-
-  if (!authedUser && sp.mode !== "signup" && !sp.ref) {
-    return null;
-  }
+  }, [authLoading, authedUser, sp.mode, sp.ref, returnTo]);
 
   const [mode, setMode] = useState<"signin" | "signup">(
     sp.mode === "signup" || sp.ref ? "signup" : "signin",
@@ -163,6 +166,18 @@ function SignIn() {
   }
   const handleGoogleSignIn = () => handleOAuth("google");
   const handleMicrosoftSignIn = () => handleOAuth("azure");
+
+  // Render nothing while either redirect effect above is what should
+  // happen: still resolving the session, already signed in (effect #1 is
+  // navigating to returnTo), or a plain sign-in landing that effect #2 is
+  // handing off to the shared /auth/ screen. Deliberately placed AFTER every
+  // hook — it used to sit above the useState block, so the moment
+  // `authedUser` resolved, this component went from 0 to 11 useState calls
+  // and React threw "Rendered more hooks than during the previous render",
+  // blanking the page for anyone who hit /sign-in with a live session.
+  if (authedUser || (sp.mode !== "signup" && !sp.ref)) {
+    return null;
+  }
 
   if (checkEmail) {
     return (
