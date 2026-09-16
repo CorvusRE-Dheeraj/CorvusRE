@@ -57,15 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signingOutRef = useRef(false);
 
   useEffect(() => {
-    (window as unknown as { __authMountCount?: number }).__authMountCount =
-      ((window as unknown as { __authMountCount?: number }).__authMountCount ?? 0) + 1;
-    console.log(
-      "[bridge] AuthProvider effect mounted, count=",
-      (window as unknown as { __authMountCount?: number }).__authMountCount,
-    );
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) {
-        console.log("[bridge] found existing DP session");
         setState({ user: data.session.user, session: data.session, loading: false });
         return;
       }
@@ -73,9 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // try the CorvusRE login bridge (see lib/login-bridge.ts): if this
       // browser already has a CorvusPT session for an email that also has
       // a CorvusDP account, this silently establishes a real one here too.
-      console.log("[bridge] no local DP session, trying bridge...");
       const bridged = await tryBridgeFromIdentity();
-      console.log("[bridge] bridge result:", bridged);
       if (!bridged) {
         setState({ user: null, session: null, loading: false });
       }
@@ -112,6 +103,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("Could not send welcome email:", err),
         );
       }
+      // INITIAL_SESSION fires automatically the moment this listener is
+      // registered, always with whatever's synchronously already in local
+      // storage at that instant (session: null on this door for anyone who
+      // needs the bridge, since there IS no local session yet). Setting
+      // state from it here raced ahead of the getSession().then() bridge
+      // attempt above -- which is genuinely async (an Edge Function round
+      // trip) -- flipping loading to false with no user well before the
+      // bridge had a chance to finish, and the dashboard guard bounced to
+      // sign-in on that premature state. The getSession() call above is
+      // what correctly owns resolving the initial state (including trying
+      // the bridge first); this listener only needs to react to events
+      // that happen AFTER that, never INITIAL_SESSION itself.
+      if (event === "INITIAL_SESSION") return;
       setState({ user: session?.user ?? null, session, loading: false });
     });
 

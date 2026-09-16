@@ -15,7 +15,6 @@ export async function tryBridgeFromIdentity(): Promise<boolean> {
     const {
       data: { session: identitySession },
     } = await identitySupabase.auth.getSession();
-    console.log("[bridge] identitySession:", !!identitySession);
     if (!identitySession) return false;
 
     const { data, error } = await supabase.functions.invoke<{
@@ -26,7 +25,6 @@ export async function tryBridgeFromIdentity(): Promise<boolean> {
     }>("mint-door-session", {
       body: { ptAccessToken: identitySession.access_token },
     });
-    console.log("[bridge] mint-door-session result:", { data, error: error?.message });
     // 404 ("no_account_on_this_door") is an expected, common outcome -- not
     // a real error -- so this doesn't log/rethrow, it just declines to bridge.
     if (error || !data?.hashedToken) return false;
@@ -35,10 +33,8 @@ export async function tryBridgeFromIdentity(): Promise<boolean> {
       type: data.verificationType as "magiclink",
       token_hash: data.hashedToken,
     });
-    console.log("[bridge] verifyOtp error:", verifyErr?.message);
     return !verifyErr;
-  } catch (err) {
-    console.log("[bridge] caught exception:", err instanceof Error ? err.message : err);
+  } catch {
     // Best-effort -- any failure here should look exactly like "not signed
     // in yet", never a crash on the dashboard's own auth check.
     return false;

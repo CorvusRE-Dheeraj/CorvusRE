@@ -12,9 +12,7 @@ function DashboardLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    console.log("[bridge] dashboard guard check: loading=", loading, "user=", !!user);
     if (!loading && !user) {
-      console.log("[bridge] dashboard guard REDIRECTING to sign-in");
       nav({ to: "/sign-in", search: { redirect: path } });
     }
   }, [loading, user, nav, path]);
