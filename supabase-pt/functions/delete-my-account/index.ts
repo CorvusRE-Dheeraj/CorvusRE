@@ -7,6 +7,7 @@
 // deletes the caller's own account, identified from their own JWT. No admin check
 // needed: a signed-in user is always authorized to delete themselves.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { purgeUserDocumentFiles } from "../_shared/purge-user-storage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +44,11 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    // The cascade covers the DB rows but NOT the files in the private
+    // `documents` bucket — those have to go first, while the documents rows
+    // that hold their paths still exist. See ../_shared/purge-user-storage.ts.
+    await purgeUserDocumentFiles(adminClient, user.id);
+
     const { error: deleteErr } = await adminClient.auth.admin.deleteUser(user.id);
     if (deleteErr) throw deleteErr;
 
