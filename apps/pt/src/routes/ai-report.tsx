@@ -153,6 +153,11 @@ import {
 } from "@/lib/documents";
 import { tagUploadedDocument, setDocumentModules, MODULE_TAG_LABEL } from "@/lib/document-modules";
 import {
+  generatePropertySummary,
+  buildPropertySummaryFile,
+  PROPERTY_SUMMARY_DOCUMENT_TYPE,
+} from "@/lib/property-summary";
+import {
   generateDataSheet,
   buildDataSheetFile,
   DATA_SHEET_DOCUMENT_TYPE_PREFIX,
@@ -1402,6 +1407,57 @@ function Report() {
     }
   }
 
+  // One AI-written property profile for the whole report — restates the
+  // real property record plus whatever real analysis has already run
+  // (Module 1's score, Module 2's strategy, comps count), grounded only in
+  // what's actually on file. Filed in Documents, untagged to any one
+  // module. See generate-property-summary for the actual prompt.
+  const [generatingPropertySummary, setGeneratingPropertySummary] = useState(false);
+  async function handleGeneratePropertySummary() {
+    if (!user) return;
+    const property = await ensureProperty();
+    if (!property) {
+      toast.error("Could not save this property. Please try again.");
+      return;
+    }
+    setGeneratingPropertySummary(true);
+    try {
+      const healthData = moduleData.health?.data as HealthScoreResult | undefined;
+      const strategyData = moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined;
+      const summary = await generatePropertySummary(
+        {
+          address: state.address,
+          cad: state.cad,
+          ownerName: state.ownerName,
+          accountNumber: state.accountNumber,
+          propertyType: state.propertyType,
+          landValue: state.landValue,
+          improvementValue: state.improvementValue,
+          totalValue: state.totalValue,
+          taxYear: state.taxYear,
+          valueHistory: (state.valueHistory ?? [])
+            .map((h) => ({ year: h.year, total: h.appraisedValue ?? h.marketValue }))
+            .filter((h): h is { year: number; total: number } => h.total != null),
+        },
+        {
+          healthScore: healthData?.score ?? null,
+          healthConclusion: healthData?.executiveConclusion ?? null,
+          strategyRecommendation: strategyData?.topStrategySummary ?? null,
+          compsCount: compsMap.data?.comps?.length ?? null,
+          estimatedSavings: estimated.hasEstimate ? estimated.savings : null,
+        },
+      );
+      const file = await buildPropertySummaryFile(summary);
+      const doc = await uploadDocument(user.id, property.id, file, PROPERTY_SUMMARY_DOCUMENT_TYPE);
+      setEvidenceDocs((prev) => [...prev, doc]);
+      toast.success(`Property summary added to your documents: ${summary.title}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate a property summary.");
+    } finally {
+      setGeneratingPropertySummary(false);
+    }
+  }
+
   // opts.force  — always regenerate via the AI (Regenerate with AI).
   // opts.recheck — re-read module_results even though data is already shown:
   //   an identical input hash re-serves the stored bytes (no AI call), only a
@@ -2630,6 +2686,16 @@ function Report() {
             <Field label="Total" value={currency(state.totalValue)} bold />
           </dl>
           <ValueHistorySection history={state.valueHistory ?? []} />
+          {user && (
+            <button
+              type="button"
+              onClick={handleGeneratePropertySummary}
+              disabled={generatingPropertySummary}
+              className="btn-outline mt-4 text-sm disabled:opacity-60"
+            >
+              {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
+            </button>
+          )}
         </div>
         <div className="card-elev overflow-hidden">
           <iframe
@@ -8916,10 +8982,150 @@ function Stat({
   );
 }
 
-// One missing evidence item's row inside "Help Corvus AI Complete the
-// Analysis" — three independent ways to fill it in, matching the shared
-// upload/answer plumbing Module 8's own EvidenceCategoryRow already uses so
-// whichever one the user picks feeds the same real evidence pool.
+// Module 2 — same philosophy as Module 1's simplified layout: lead with the
+// plain recommendation, keep the full per-strategy breakdown (evidence
+// upload/answer per strategy, the ranked list) collapsed by default rather
+// than shown up front. Unlike Module 1 (one opportunity score), a property
+// can genuinely have more than one strategy worth pursuing at once, so the
+// headline card lists every strategy strong enough to feature — not just
+// the top-ranked one — rather than picking a single winner.
+const STRATEGY_FEATURE_THRESHOLD = 40;
+
+function strategyTier(score: number): string {
+  return score >= 70 ? "Strong" : score >= STRATEGY_FEATURE_THRESHOLD ? "Moderate" : "Limited";
+}
+
+function Module2Content({
+  d,
+  m,
+  state,
+  evidenceDocs,
+  uploadingEvidence,
+  onUploadEvidence,
+  onAnswerStrategy,
+  onForceReload,
+  onOpenModule,
+  refreshing,
+}: {
+  d: ModuleResultMap["strategy"];
+  m: Module;
+  state: IntakeState;
+  evidenceDocs: DocumentRecord[];
+  uploadingEvidence: boolean;
+  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
+  onAnswerStrategy: (strategyId: string, answer: string) => void;
+  onForceReload: () => void;
+  onOpenModule: (moduleId: string) => void;
+  refreshing: boolean;
+}) {
+  const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
+  const shown = featured.length > 0 ? featured : d.strategies.slice(0, 1);
+  const needsMoreInfo = shown.some((s) => !s.dataSufficient || s.missingEvidence.length > 0);
+
+  return (
+    <div className="mt-4 grid gap-5">
+      {/* 1. Recommendation — every strategy worth featuring, not just #1. */}
+      <div>
+        {d.topStrategySummary && (
+          <AiVerdictLine icon={m.icon} text={d.topStrategySummary} color={m.color} />
+        )}
+        <div className="mt-3 grid gap-2">
+          {shown.map((s) => (
+            <div key={s.name} className="card-elev p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">{s.name}</h3>
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: scoreColor(s.strengthScore) }}
+                >
+                  {strategyTier(s.strengthScore)} · {s.confidencePct}% confidence
+                </span>
+              </div>
+              {s.primaryReason && (
+                <p className="mt-1 text-sm text-muted-foreground">{s.primaryReason}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Recommended Next Step — one action only. */}
+      <div className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}>
+        {needsMoreInfo ? (
+          <>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+              Recommended Next Step
+            </div>
+            <p className="mt-1 text-sm font-semibold">
+              Complete the missing property information so Corvus AI can finish evaluating these
+              strategies.
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => onOpenModule("evidence")}
+                className="btn-accent text-sm font-bold"
+              >
+                Upload Property Information
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Corvus AI Recommends These Strategies
+            </div>
+            <p className="mt-1 text-sm opacity-90">
+              {shown.length === 1
+                ? "This strategy is ready to support your protest."
+                : "These strategies are ready to support your protest."}
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* 3. Detailed Analysis — collapsed by default; the full ranked list
+          and every per-strategy evidence card, unchanged. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              What Corvus AI Checked
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {d.strategies.length} strateg{d.strategies.length === 1 ? "y" : "ies"} evaluated
+              </span>
+            </span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid gap-4 border-t border-border/60 p-4 [&>*]:min-w-0">
+          <div className="card-elev min-w-0 p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Ranked Strategies
+            </div>
+            <StrategyRankList strategies={d.strategies} color={m.color} />
+          </div>
+          <div className="grid gap-3 [&>*]:min-w-0">
+            {d.strategies.map((s, i) => (
+              <StrategyDetail
+                key={s.name}
+                s={s}
+                rank={i + 1}
+                color={m.color}
+                evidenceDocs={evidenceDocs}
+                uploadingEvidence={uploadingEvidence}
+                onUploadEvidence={onUploadEvidence}
+                answer={state.strategyAnswers?.[strategySlug(s.name)]}
+                onAnswerStrategy={onAnswerStrategy}
+                onRefresh={onForceReload}
+                refreshing={refreshing}
+              />
+            ))}
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
 
 // Renders the actual per-module body — split from ModulePreviewBody below so
 // the "Ask AI" Q&A box (see ModuleQABox) can be appended once, after whichever
@@ -9662,34 +9868,18 @@ function ModulePreviewContent({
         );
       }
       return (
-        <div className="mt-4 grid gap-4 [&>*]:min-w-0">
-          {d.topStrategySummary && (
-            <AiVerdictLine icon={m.icon} text={d.topStrategySummary} color={m.color} />
-          )}
-          <div className="card-elev min-w-0 p-4">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Ranked Strategies
-            </div>
-            <StrategyRankList strategies={d.strategies} color={m.color} />
-          </div>
-          <div className="grid gap-3 [&>*]:min-w-0">
-            {d.strategies.map((s, i) => (
-              <StrategyDetail
-                key={s.name}
-                s={s}
-                rank={i + 1}
-                color={m.color}
-                evidenceDocs={evidenceDocs}
-                uploadingEvidence={uploadingEvidence}
-                onUploadEvidence={onUploadEvidence}
-                answer={state.strategyAnswers?.[strategySlug(s.name)]}
-                onAnswerStrategy={onAnswerStrategy}
-                onRefresh={onForceReload}
-                refreshing={moduleState?.loading}
-              />
-            ))}
-          </div>
-        </div>
+        <Module2Content
+          d={d}
+          m={m}
+          state={state}
+          evidenceDocs={evidenceDocs}
+          uploadingEvidence={uploadingEvidence}
+          onUploadEvidence={onUploadEvidence}
+          onAnswerStrategy={onAnswerStrategy}
+          onForceReload={onForceReload}
+          onOpenModule={onOpenModule}
+          refreshing={!!moduleState?.loading}
+        />
       );
     }
     case "site": {
