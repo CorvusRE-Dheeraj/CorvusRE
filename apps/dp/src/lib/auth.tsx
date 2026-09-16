@@ -57,8 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signingOutRef = useRef(false);
 
   useEffect(() => {
+    (window as unknown as { __authMountCount?: number }).__authMountCount =
+      ((window as unknown as { __authMountCount?: number }).__authMountCount ?? 0) + 1;
+    console.log(
+      "[bridge] AuthProvider effect mounted, count=",
+      (window as unknown as { __authMountCount?: number }).__authMountCount,
+    );
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) {
+        console.log("[bridge] found existing DP session");
         setState({ user: data.session.user, session: data.session, loading: false });
         return;
       }
@@ -66,7 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // try the CorvusRE login bridge (see lib/login-bridge.ts): if this
       // browser already has a CorvusPT session for an email that also has
       // a CorvusDP account, this silently establishes a real one here too.
+      console.log("[bridge] no local DP session, trying bridge...");
       const bridged = await tryBridgeFromIdentity();
+      console.log("[bridge] bridge result:", bridged);
       if (!bridged) {
         setState({ user: null, session: null, loading: false });
       }
