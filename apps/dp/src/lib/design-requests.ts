@@ -82,8 +82,19 @@ export function nextDesignStage(stage: string): DesignStage | null {
 }
 
 export async function advanceDesignRequestStage(id: string, stage: DesignStage): Promise<void> {
-  const { error } = await supabase.from("design_requests").update({ stage }).eq("id", id);
+  // `.select()` so an RLS-filtered UPDATE surfaces as zero rows instead of a
+  // plain success — see the matching note in lib/admin.ts's
+  // updateEngagementStatus. This is the staff-side action, so it depends on
+  // the "admin: update design" policy, not the owner one.
+  const { data, error } = await supabase
+    .from("design_requests")
+    .update({ stage })
+    .eq("id", id)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("That design request could not be advanced (no matching row).");
+  }
 }
 
 // PRD 1.2.8.A / 1.2.8.B — record the customer's intent before the paid work.
