@@ -162,6 +162,64 @@ main {
   font-size: 0.875rem;
 }
 
+/* The signed-in replacement for the Sign In link -- an initials avatar with
+   a small dropdown (choose a door / sign out), rendered by the account-
+   status script once it finds a valid session in local storage. */
+.account-menu {
+  position: relative;
+}
+.account-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--brand);
+  color: var(--brand-foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  min-width: 15rem;
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.375rem;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+.account-dropdown a,
+.account-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.375rem;
+  border: none;
+  background: none;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.account-dropdown a:hover,
+.account-dropdown button:hover {
+  background: var(--secondary);
+}
+.account-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.25rem 0;
+}
+
 /* The whole home page: header + one full-height row of five doors + a thin
    footer, stacked to exactly one viewport with no scroll — body becomes the
    flex column so we never have to hand-compute header/footer heights. Scoped

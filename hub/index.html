@@ -26,7 +26,14 @@
       <span class="header-tagline">All your real estate needs in one place</span>
       <span class="header-actions">
         <span class="doors-hint">Choose a door to enter</span>
-        <a href="/auth/" class="btn-outline header-signin">Sign In</a>
+        <!-- Populated by the account-status script below: a "Sign In" link
+             for a fresh visitor, or an initials avatar + dropdown (choose a
+             door / sign out) for a browser that already has a CorvusRE
+             identity session. Server-rendered as the signed-out link so the
+             page still works with JS disabled / before the script runs. -->
+        <span id="accountArea">
+          <a href="/auth/" class="btn-outline header-signin">Sign In</a>
+        </span>
       </span>
     </div>
   </header>
@@ -447,6 +454,135 @@
             submitBtn.disabled = false;
             submitBtn.textContent = "Request Beta Access";
           });
+      });
+    })();
+
+    // Makes the hub itself reflect whether this browser already has a
+    // CorvusRE identity session, instead of always showing a plain "Sign
+    // In" link regardless of actual state -- clicking that when already
+    // signed in used to look broken (silently landing back on this exact
+    // page). CorvusPT is the shared identity source (see the migration
+    // notes), so its session -- "sb-iotzuhuajbsxxuccuihn-auth-token" in
+    // localStorage, the same key CorvusPT's own app and /auth/ both use --
+    // is what this checks. Deliberately reads that raw key rather than
+    // loading the Supabase SDK here: the hub is plain, framework-free
+    // static HTML on purpose (see hub.css's own comment on that), and a
+    // session either exists in storage or it doesn't -- no network call
+    // needed just to show who's signed in.
+    (function () {
+      var IDENTITY_SESSION_KEY = "sb-iotzuhuajbsxxuccuihn-auth-token";
+      var SIGNED_OUT_KEY = "corvusre.signedOutAt";
+      var area = document.getElementById("accountArea");
+      if (!area) return;
+
+      function readSession() {
+        var raw;
+        try {
+          raw = localStorage.getItem(IDENTITY_SESSION_KEY);
+        } catch (e) {
+          return null;
+        }
+        if (!raw) return null;
+        var parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (e) {
+          return null;
+        }
+        var email = parsed && parsed.user && parsed.user.email;
+        var expiresAt = parsed && parsed.expires_at;
+        if (!email || !expiresAt || expiresAt * 1000 <= Date.now()) return null;
+        return { email: email };
+      }
+
+      function initialsFor(email) {
+        var local = email.split("@")[0];
+        var parts = local.split(/[._-]+/).filter(Boolean);
+        var chars = parts.length >= 2 ? parts[0][0] + parts[1][0] : local.slice(0, 2);
+        return chars.toUpperCase();
+      }
+
+      function signOut() {
+        try {
+          localStorage.removeItem(IDENTITY_SESSION_KEY);
+          localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+        } catch (e) {
+          // storage-blocked edge case -- reloading still re-checks and
+          // falls back to the signed-out view either way.
+        }
+        window.location.reload();
+      }
+
+      function renderSignedIn(session) {
+        var wrap = document.createElement("div");
+        wrap.className = "account-menu";
+
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "account-avatar";
+        button.setAttribute("aria-haspopup", "true");
+        button.setAttribute("aria-expanded", "false");
+        button.title = "Signed in as " + session.email;
+        button.textContent = initialsFor(session.email);
+
+        var menu = document.createElement("div");
+        menu.className = "account-dropdown";
+        menu.hidden = true;
+
+        var doors = [
+          { label: "CorvusPT — Property Tax Management", href: "/corvuspt/dashboard" },
+          { label: "CorvusDP — Design, Plan, Permit", href: "/corvusdp/dashboard" },
+        ];
+        doors.forEach(function (d) {
+          var a = document.createElement("a");
+          a.href = d.href;
+          a.textContent = d.label;
+          menu.appendChild(a);
+        });
+
+        var divider = document.createElement("div");
+        divider.className = "account-dropdown-divider";
+        menu.appendChild(divider);
+
+        var signOutBtn = document.createElement("button");
+        signOutBtn.type = "button";
+        signOutBtn.textContent = "Sign out";
+        signOutBtn.addEventListener("click", signOut);
+        menu.appendChild(signOutBtn);
+
+        function closeMenu() {
+          menu.hidden = true;
+          button.setAttribute("aria-expanded", "false");
+        }
+        button.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var willOpen = menu.hidden;
+          menu.hidden = !willOpen;
+          button.setAttribute("aria-expanded", String(willOpen));
+        });
+        document.addEventListener("click", function (e) {
+          if (!wrap.contains(e.target)) closeMenu();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") closeMenu();
+        });
+
+        wrap.appendChild(button);
+        wrap.appendChild(menu);
+        area.innerHTML = "";
+        area.appendChild(wrap);
+      }
+
+      var session = readSession();
+      if (session) renderSignedIn(session);
+
+      // Another tab signing out (any door, or this same hub) should drop
+      // this hub back to the signed-out view too, without needing a manual
+      // reload.
+      window.addEventListener("storage", function (e) {
+        if (e.key === SIGNED_OUT_KEY || e.key === IDENTITY_SESSION_KEY) {
+          window.location.reload();
+        }
       });
     })();
   </script>
