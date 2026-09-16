@@ -15,6 +15,8 @@ import {
   listAiLogs,
   listAllUsers,
   setUserIsAdmin,
+  deleteUserAccount,
+  impersonateUser,
   listInvitedUsers,
   deleteInvitedUser,
   sendSignupInvite,
@@ -416,7 +418,7 @@ function Admin() {
             subtitle="Every signed-up account. Toggle admin access here — nowhere else can flip it."
           >
             <Table
-              cols={["Name", "Email", "Plan", "Referral code", "Joined", "Admin"]}
+              cols={["Name", "Email", "Plan", "Referral code", "Joined", "Admin", ""]}
               rows={(users.data ?? []).map((u) => [
                 [u.first_name, u.last_name].filter(Boolean).join(" ") || "—",
                 u.email,
@@ -428,6 +430,12 @@ function Admin() {
                 </span>,
                 dateShort(u.created_at),
                 <AdminToggle key="a" userRow={u} onChanged={() => users.refetch()} />,
+                <UserRowActions
+                  key="actions"
+                  userRow={u}
+                  isSelf={u.id === user?.id}
+                  onDeleted={() => users.refetch()}
+                />,
               ])}
               loading={users.isLoading}
             />
@@ -542,6 +550,87 @@ function AdminToggle({
     >
       {userRow.is_admin ? "Remove admin" : "Make admin"}
     </button>
+  );
+}
+
+// Delete + impersonate -- feature parity with CorvusPT's admin panel,
+// which already has both; CorvusDP's had neither. Same window.confirm +
+// client-side logAdminAction pattern as AdminToggle above, so every admin
+// action in this table looks and behaves the same way.
+function UserRowActions({
+  userRow,
+  isSelf,
+  onDeleted,
+}: {
+  userRow: AdminUserRow;
+  isSelf: boolean;
+  onDeleted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (isSelf) return null;
+
+  async function handleImpersonate() {
+    // window.open() called synchronously (before the await below) so it's
+    // still backed by this click's real user gesture -- opening it AFTER
+    // an await is what most browsers' popup blockers reject.
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+    setBusy(true);
+    try {
+      const actionLink = await impersonateUser(userRow.id);
+      if (tab) tab.location.href = actionLink;
+      else window.open(actionLink, "_blank", "noopener,noreferrer");
+      await logAdminAction({
+        action: "impersonate_user",
+        target: userRow.email,
+      });
+    } catch (err) {
+      tab?.close();
+      console.error("Could not log in as this user:", err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !window.confirm(
+        `Delete ${userRow.email}? This removes their account, projects, and profile permanently.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await deleteUserAccount(userRow.id);
+      await logAdminAction({ action: "delete_user", target: userRow.email });
+      onDeleted();
+    } catch (err) {
+      console.error("Could not delete user:", err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-3 whitespace-nowrap">
+      <button
+        type="button"
+        className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+        disabled={busy}
+        onClick={handleImpersonate}
+      >
+        Log in as
+      </button>
+      <button
+        type="button"
+        className="text-xs font-semibold text-destructive underline underline-offset-2 disabled:opacity-50"
+        disabled={busy}
+        onClick={handleDelete}
+      >
+        Delete
+      </button>
+    </span>
   );
 }
 

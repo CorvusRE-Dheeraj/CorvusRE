@@ -36,6 +36,27 @@ export async function setUserIsAdmin(targetId: string, makeAdmin: boolean): Prom
   if (error) throw error;
 }
 
+// Feature parity with CorvusPT's admin panel, which already has this —
+// CorvusDP's had no way to delete a user at all. profiles/projects both
+// cascade on auth.users delete (schema.sql), so this one call cleans up
+// everything the account owns.
+export async function deleteUserAccount(targetId: string): Promise<void> {
+  await invokeEdgeFunction("admin-delete-user", { userId: targetId });
+}
+
+// Same generateLink({type:"magiclink"}) mechanic the login bridge itself
+// uses (see supabase-dp/functions/mint-door-session) — returns a one-time
+// login link for the target user; the caller opens it in a new tab so the
+// admin's own session is untouched. Mirrors CorvusPT's admin panel, which
+// already has this.
+export async function impersonateUser(targetId: string, redirectPath?: string): Promise<string> {
+  const data = await invokeEdgeFunction<{ ok: boolean; actionLink: string }>(
+    "admin-impersonate-user",
+    { userId: targetId, redirectPath },
+  );
+  return data.actionLink;
+}
+
 export type InvitedUserRow = {
   id: string;
   email: string;
