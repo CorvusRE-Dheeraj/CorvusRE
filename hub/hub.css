@@ -211,6 +211,14 @@ main {
   flex-direction: column;
   z-index: 20;
 }
+/* The class's own display:flex above otherwise beats the browser's default
+   [hidden]{display:none} UA rule on specificity, since a plain class alone
+   is lower-specificity than this combined class+attribute selector -- so
+   without this, the JS-toggled `hidden` property never actually hides the
+   dropdown, and it renders open by default. */
+.account-dropdown[hidden] {
+  display: none;
+}
 .account-dropdown a,
 .account-dropdown button {
   display: block;
