@@ -3,7 +3,12 @@ import { supabase } from "./lib/supabase";
 import { safeRedirectTarget } from "./redirect";
 
 type Mode = "sign-in" | "sign-up";
-type Status = "idle" | "checking-session" | "busy" | "check-email" | "error";
+type Status = "idle" | "checking-session" | "busy" | "check-email" | "choose-door" | "error";
+
+const DOORS = [
+  { label: "CorvusPT — Property Tax Management", path: "/corvuspt/dashboard" },
+  { label: "CorvusDP — Design, Plan, Permit", path: "/corvusdp/dashboard" },
+];
 
 // One shared sign-in screen for every CorvusRE door. On success, this is a
 // full page navigation (window.location) to the door that sent the visitor
@@ -16,6 +21,23 @@ export function App() {
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
 
+  // Where to go once a real session exists (fresh sign-in, or one already
+  // found on mount): a specific door if one was requested (a door sent the
+  // visitor here with ?redirect=..., or Google OAuth carried it through),
+  // otherwise the "choose a door" screen below -- never a silent bounce back
+  // to wherever this page happened to be reached from (the hub's own
+  // generic Sign In link doesn't name a door, and blindly defaulting that
+  // to "/" used to make an already-signed-in visitor's click look like
+  // nothing had happened at all).
+  function proceed() {
+    const target = safeRedirectTarget();
+    if (target) {
+      window.location.assign(target);
+    } else {
+      setStatus("choose-door");
+    }
+  }
+
   // Completes the Google OAuth round trip: signInWithGoogle() below sends
   // the browser to Google and back to THIS page (never straight to a door)
   // with the session tokens in the URL hash, specifically so this app's own
@@ -24,15 +46,17 @@ export function App() {
   // with PT-issued tokens in the URL would have that door's client try to
   // treat them as its own, which they aren't (different project, different
   // signing key), and fail. Once a real session exists here, finish the
-  // trip to whatever door originally sent the visitor here.
+  // trip to whatever door originally sent the visitor here (or offer a
+  // choice, per proceed() above).
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        window.location.assign(safeRedirectTarget());
+        proceed();
         return;
       }
       setStatus("idle");
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function submit(e: FormEvent) {
@@ -47,7 +71,7 @@ export function App() {
         setStatus("error");
         return;
       }
-      window.location.assign(safeRedirectTarget());
+      proceed();
       return;
     }
 
@@ -62,17 +86,20 @@ export function App() {
       setStatus("check-email");
       return;
     }
-    window.location.assign(safeRedirectTarget());
+    proceed();
   }
 
   async function signInWithGoogle() {
     setStatus("busy");
     setError(null);
-    // Carries the same redirect target forward as a query param -- Supabase
-    // appends #access_token=... to whatever URL this is, query params
-    // survive intact. Lands back on THIS page (see the effect above), not
-    // directly on a door.
-    const redirectTo = `${window.location.origin}${window.location.pathname}?redirect=${encodeURIComponent(safeRedirectTarget())}`;
+    // Carries the same redirect target forward as a query param (blank if
+    // there wasn't one) -- Supabase appends #access_token=... to whatever
+    // URL this is, query params survive intact. Lands back on THIS page
+    // (see the effect above), not directly on a door.
+    const target = safeRedirectTarget();
+    const redirectTo = `${window.location.origin}${window.location.pathname}${
+      target ? `?redirect=${encodeURIComponent(target)}` : ""
+    }`;
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -85,11 +112,40 @@ export function App() {
     // navigating to Google.
   }
 
+  async function signOut() {
+    await supabase.auth.signOut();
+    setStatus("idle");
+  }
+
   if (status === "checking-session") {
     // Deliberately blank rather than flashing the sign-in form for the
     // instant it takes to check for (and, after Google OAuth, consume) an
     // existing session.
     return null;
+  }
+
+  if (status === "choose-door") {
+    return (
+      <div className="wrap">
+        <div className="card">
+          <Logo />
+          <h1>You're signed in</h1>
+          <p className="sub">Choose a door to continue.</p>
+          <div className="door-list">
+            {DOORS.map((d) => (
+              <a key={d.path} href={d.path} className="door-link">
+                {d.label}
+              </a>
+            ))}
+          </div>
+          <div className="toggle">
+            <button type="button" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (status === "check-email") {

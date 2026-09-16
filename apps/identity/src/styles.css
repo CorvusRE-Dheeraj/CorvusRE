@@ -167,3 +167,26 @@ button:disabled {
   color: var(--muted);
   text-align: center;
 }
+
+.door-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.door-link {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--fg);
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.door-link:hover {
+  border-color: var(--accent);
+  background: #f7f7f5;
+}
