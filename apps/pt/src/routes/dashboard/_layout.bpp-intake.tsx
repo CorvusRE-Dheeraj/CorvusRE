@@ -269,7 +269,7 @@ function BppIntake() {
                 className={field}
                 value={taxYear}
                 onChange={(e) => setTaxYear(e.target.value)}
-                placeholder={String(new Date().getFullYear())}
+                placeholder="2026"
               />
             </label>
             <label className={label}>

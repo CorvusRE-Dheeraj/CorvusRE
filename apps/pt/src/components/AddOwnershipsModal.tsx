@@ -271,7 +271,9 @@ export function AddOwnershipsModal({
           landValue: row.record.landValue ?? undefined,
           improvementValue: row.record.improvementValue ?? undefined,
           totalValue: row.record.totalValue ?? undefined,
-          taxYear: row.record.taxYear ?? undefined,
+          // Pinned to 2026 regardless of the county feed — see
+          // CURRENT_TAX_YEAR in lib/tax-calendar.ts.
+          taxYear: 2026,
         });
         added.push(property);
       } catch (err) {

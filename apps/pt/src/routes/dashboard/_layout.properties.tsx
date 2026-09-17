@@ -87,7 +87,8 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
   component: Properties,
 });
 
-const CURRENT_YEAR = new Date().getFullYear();
+// Pinned, not computed — see CURRENT_TAX_YEAR in lib/tax-calendar.ts.
+const CURRENT_YEAR = 2026;
 
 // --- List view / sort / filter toolbar -----------------------------------
 // All client-side over the already-loaded `properties` array — no refetch.

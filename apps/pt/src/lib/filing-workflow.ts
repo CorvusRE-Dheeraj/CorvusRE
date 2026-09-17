@@ -24,9 +24,9 @@ export const FILING_STEP_META: Record<FilingStepId, { label: string; blurb: stri
       "Complete, review, sign, and file your Notice of Protest (Comptroller Form 50-132) with the county.",
   },
   agent: {
-    label: "Agent / Representative",
+    label: "Agent / Representative (Optional)",
     blurb:
-      "Appoint the tax agent or representative who will act for you (Comptroller Form 50-162).",
+      "Appoint the tax agent or representative who will act for you (Comptroller Form 50-162) — optional, skip it if you're representing yourself.",
   },
   affidavit: {
     label: "Evidence Affidavit",
@@ -56,18 +56,27 @@ function willNotAppearInPerson(hearingAppearance: string | null): boolean {
   return !/^\s*in person\s*$/i.test(hearingAppearance);
 }
 
-export function requiredFilingSteps(input: FilingStepInput): FilingStepId[] {
-  // Pre-Filing Check always comes first — it runs between Corvus's guidance and
-  // the protest form.
-  const steps: FilingStepId[] = ["prefiling", "file"];
-
-  if (
+// Whether the case has actually told the county an agent represents the
+// owner — same condition that used to gate whether the Agent step appeared
+// at all. Still used (see optionalFilingSteps below) to decide whether that
+// step is optional or a real requirement, now that it's always shown.
+function agentStepNeeded(input: FilingStepInput): boolean {
+  return (
     input.attendanceType === "Authorized Agent" ||
     input.attendanceType === "Both" ||
     input.hasAgentAuthorization
-  ) {
-    steps.push("agent");
-  }
+  );
+}
+
+export function requiredFilingSteps(input: FilingStepInput): FilingStepId[] {
+  // Pre-Filing Check always comes first — it runs between Corvus's guidance and
+  // the protest form. Agent / Representative is now always offered too
+  // (previously only appeared once the case already signalled an agent was
+  // involved) — an owner who decides partway through to use an agent
+  // shouldn't have to hunt for where that lives. It's optional unless the
+  // case has actually signalled an agent is involved — see
+  // optionalFilingSteps/firstIncompleteFilingStep for how that's enforced.
+  const steps: FilingStepId[] = ["prefiling", "file", "agent"];
 
   if (willNotAppearInPerson(input.hearingAppearance)) {
     steps.push("affidavit");
@@ -107,15 +116,28 @@ export function isFilingStepDone(id: FilingStepId, s: FilingStepStatusInput): bo
   }
 }
 
-// The first step in `steps` (in order) that isn't done yet — falls back to
-// the first step overall once everything is (nothing left to point at as
-// "next", so the caller should treat that as its own case rather than trust
-// this return value as "still incomplete").
+// Steps present in `steps` that never block this case's workflow from
+// advancing — free to leave undone indefinitely, unlike every other step.
+// Agent / Representative only qualifies when the case hasn't actually
+// signalled an agent is involved; once it has (agentStepNeeded), appointing
+// one is real required work again, same as before this step was always
+// shown up front.
+export function optionalFilingSteps(input: FilingStepInput): FilingStepId[] {
+  return agentStepNeeded(input) ? [] : ["agent"];
+}
+
+// The first step in `steps` (in order) that isn't done yet, skipping
+// whichever of `optional` are present — falls back to the first step overall
+// once everything required is (nothing left to point at as "next", so the
+// caller should treat that as its own case rather than trust this return
+// value as "still incomplete").
 export function firstIncompleteFilingStep(
   steps: FilingStepId[],
   s: FilingStepStatusInput,
+  optional: FilingStepId[] = [],
 ): FilingStepId {
-  return steps.find((id) => !isFilingStepDone(id, s)) ?? steps[0];
+  const required = steps.filter((id) => !optional.includes(id));
+  return required.find((id) => !isFilingStepDone(id, s)) ?? steps[0];
 }
 
 // "What has to go with the protest vs. what can follow" — shown once the

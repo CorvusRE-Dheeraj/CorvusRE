@@ -1217,9 +1217,10 @@ function Report() {
   }
 
   // Shared pool across Improvement Condition's evidence upload and Module 2's
-  // per-strategy evidence gate (up to 5-6 strategies) — raised from the original
-  // 4 (Improvement-only) to give each a realistic amount of headroom.
-  const MAX_EVIDENCE_FILES = 8;
+  // per-strategy evidence gate (up to 5-6 strategies) — raised from 4
+  // (Improvement-only) to 8, then to 20 per explicit request for more
+  // headroom on properties with many documents.
+  const MAX_EVIDENCE_FILES = 20;
 
   // Takes a plain File[] rather than the FileList straight off an <input> — FileList
   // is a live view of the input, so if the caller clears input.value right after

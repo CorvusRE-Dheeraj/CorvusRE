@@ -9,6 +9,14 @@ import {
 } from "./bpp-accounts";
 import { listReminders, type Reminder } from "./reminders";
 
+// Pinned rather than computed from the real clock, per explicit product
+// direction — some counties' live feeds (e.g. Denton) already report next
+// year's preliminary tax year ahead of this year's protest season closing,
+// which was surfacing as the wrong "current" tax year across the app. Update
+// this by hand once 2026 is actually done, rather than letting it silently
+// drift with whatever a county's feed (or the real calendar) says.
+export const CURRENT_TAX_YEAR = 2026;
+
 export type CalendarEventType =
   | "protest_deadline"
   | "informal_review"
@@ -199,7 +207,7 @@ function fromProtest(
   // in getCalendarEvents) — otherwise this would keep reminding forever
   // even after the user actually re-filed, since this OLD row's own taxYear
   // never changes.
-  const currentYear = new Date().getFullYear();
+  const currentYear = CURRENT_TAX_YEAR;
   if (
     pr.status === "resolved" &&
     pr.taxYear != null &&
@@ -329,7 +337,7 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
 
   const taxBillPropertyIds = new Set(taxBills.map((b) => b.propertyId));
   const now = new Date();
-  const currentYear = now.getFullYear();
+  const currentYear = CURRENT_TAX_YEAR;
   // Which properties already have a protest for the current (or a future)
   // tax year — computed once here, not per-protest, so the refile_reminder
   // check in fromProtest can suppress itself once the user has actually
