@@ -169,6 +169,7 @@ import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
 import { draftProtestReason } from "@/lib/protest-reason";
 import {
   requiredFilingSteps,
+  optionalFilingSteps,
   FILING_STEP_META,
   isFilingStepDone,
   firstIncompleteFilingStep,
@@ -2743,15 +2744,20 @@ export function DocumentsSection({
       .catch(() => {});
   }, [protest.id]);
 
-  const filingSteps = useMemo(
-    () =>
-      requiredFilingSteps({
-        attendanceType: protest.attendanceType,
-        hasAgentAuthorization: false,
-        hearingAppearance: noticeHearingAppearance,
-      }),
+  const filingInput = useMemo(
+    () => ({
+      attendanceType: protest.attendanceType,
+      hasAgentAuthorization: false,
+      hearingAppearance: noticeHearingAppearance,
+    }),
     [protest.attendanceType, noticeHearingAppearance],
   );
+  const filingSteps = useMemo(() => requiredFilingSteps(filingInput), [filingInput]);
+  // Agent / Representative is optional unless this case has actually
+  // signalled an agent is involved (see optionalFilingSteps) — it's always
+  // shown, but shouldn't hold up auto-advance/"first incomplete" while it's
+  // just an open option, not real required work.
+  const optionalSteps = useMemo(() => optionalFilingSteps(filingInput), [filingInput]);
   const preFilingItems = getPreFilingCheck(property, protest, evidenceDocuments.length);
   const preFilingBlocked = isPreFilingBlocked(preFilingItems);
   // Shared with filing-workflow.ts so this step bar and anything else reading
@@ -2765,7 +2771,7 @@ export function DocumentsSection({
     evidenceSubmittedConfirmedAt: protest.evidenceSubmittedConfirmedAt ?? null,
   };
   const stepDone = (id: FilingStepId) => isFilingStepDone(id, filingStepStatus);
-  const firstIncomplete = firstIncompleteFilingStep(filingSteps, filingStepStatus);
+  const firstIncomplete = firstIncompleteFilingStep(filingSteps, filingStepStatus, optionalSteps);
   const [activeStep, setActiveStep] = useState<FilingStepId>(
     preFilingBlocked ? "prefiling" : firstIncomplete,
   );

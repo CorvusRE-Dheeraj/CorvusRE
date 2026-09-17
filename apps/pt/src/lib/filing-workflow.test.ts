@@ -15,8 +15,8 @@ function input(over: Partial<FilingStepInput> = {}): FilingStepInput {
 }
 
 describe("requiredFilingSteps", () => {
-  it("owner appears in person, no agent → Pre-Filing Check, File Protest, Evidence", () => {
-    expect(requiredFilingSteps(input())).toEqual(["prefiling", "file", "evidence"]);
+  it("owner appears in person, no agent → Pre-Filing Check, File Protest, Agent (optional), Evidence", () => {
+    expect(requiredFilingSteps(input())).toEqual(["prefiling", "file", "agent", "evidence"]);
   });
 
   it("always starts with Pre-Filing Check then File, and ends with Evidence", () => {
@@ -27,13 +27,14 @@ describe("requiredFilingSteps", () => {
     expect(s[s.length - 1]).toBe("evidence");
   });
 
-  it("adds the Agent step when an agent will represent the owner", () => {
+  it("always includes the Agent step, whether or not the case already signals an agent", () => {
     expect(requiredFilingSteps(input({ attendanceType: "Authorized Agent" }))).toEqual([
       "prefiling",
       "file",
       "agent",
       "evidence",
     ]);
+    expect(requiredFilingSteps(input({ attendanceType: "Property Owner" }))).toContain("agent");
     expect(requiredFilingSteps(input({ hasAgentAuthorization: true }))).toContain("agent");
   });
 
@@ -91,7 +92,7 @@ describe("describeFilingRequirements", () => {
       null,
     );
     expect(full.canWaitUntil.map((i) => i.label)).toEqual([
-      "Agent / Representative",
+      "Agent / Representative (Optional)",
       "Evidence Affidavit",
       "Evidence",
     ]);
