@@ -191,7 +191,14 @@ import { CalendarDays } from "lucide-react";
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
-type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision";
+type CaseTabId =
+  | "overview"
+  | "file"
+  | "informal"
+  | "formal"
+  | "hearing"
+  | "decision"
+  | "appeal";
 
 const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
@@ -201,10 +208,16 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
     lockedHint: "Read and accept the filing notice on Overview first.",
   },
   { id: "informal", label: "Informal Review", lockedHint: "Unlocks once your protest is filed." },
+  { id: "formal", label: "Formal Review", lockedHint: "Unlocks once your protest is filed." },
   { id: "hearing", label: "Hearing", lockedHint: "Unlocks once your protest is filed." },
   {
     id: "decision",
-    label: "Decision & Appeal",
+    label: "Decision",
+    lockedHint: "Unlocks after your hearing or a decision is recorded.",
+  },
+  {
+    id: "appeal",
+    label: "Appeal / Arbitration",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
 ];
@@ -215,8 +228,10 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   overview: "Where your case stands right now, and the one thing to do next.",
   file: "Fill, sign, and file your Notice of Protest with the county — and gather your evidence.",
   informal: "Work the county's proposed value informally, before a formal hearing.",
-  hearing: "Log your hearing notice, then prepare your evidence and talking points.",
-  decision: "Record the ARB's decision and weigh binding arbitration or a district-court appeal.",
+  formal: "Your case has moved to the county's formal ARB review — log the hearing notice here.",
+  hearing: "Prepare your evidence and talking points for the hearing.",
+  decision: "Record the ARB's decision.",
+  appeal: "Weigh binding arbitration or a district-court appeal.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -230,10 +245,10 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-upload-evidence": "file",
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
-  "case-hearing-notice": "hearing",
+  "case-hearing-notice": "formal",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
-  "case-escalation": "decision",
+  "case-escalation": "appeal",
 };
 
 function caseTabUnlocked(
@@ -249,9 +264,11 @@ function caseTabUnlocked(
     case "file":
       return filed || !needsGuidanceAck;
     case "informal":
+    case "formal":
     case "hearing":
       return filed;
     case "decision":
+    case "appeal":
       return (
         ["decision_received", "appealing", "arbitrating", "resolved"].includes(s) ||
         protest.hearingDate != null ||
@@ -571,8 +588,8 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Hearing --- */}
-          {activeTab === "hearing" && current.status !== "requested" && (
+          {/* --- Formal Review --- */}
+          {activeTab === "formal" && current.status !== "requested" && (
             <div>
               <HearingNoticeSection
                 userId={userId}
@@ -580,6 +597,12 @@ export function CaseDetailView({
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
+            </div>
+          )}
+
+          {/* --- Hearing --- */}
+          {activeTab === "hearing" && current.status !== "requested" && (
+            <div>
               <HearingPrepSection
                 protest={current}
                 property={property}
@@ -591,7 +614,7 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Decision & Appeal --- */}
+          {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
               <DecisionNoticeSection
@@ -600,6 +623,12 @@ export function CaseDetailView({
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
+            </div>
+          )}
+
+          {/* --- Appeal / Arbitration --- */}
+          {activeTab === "appeal" && (
+            <div>
               <EscalationEvaluationSection
                 protest={current}
                 property={property}
