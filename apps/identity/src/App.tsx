@@ -6,8 +6,8 @@ type Mode = "sign-in" | "sign-up";
 type Status = "idle" | "checking-session" | "busy" | "check-email" | "choose-door" | "error";
 
 const DOORS = [
-  { label: "CorvusPT — Property Tax Management", path: "/corvuspt/dashboard" },
-  { label: "CorvusDP — Design, Plan, Permit", path: "/corvusdp/dashboard" },
+  { label: "CorvusPT — Property Tax Management", path: "/corvuspt/" },
+  { label: "CorvusDP — Design, Plan, Permit", path: "/corvusdp/" },
 ];
 
 // One shared sign-in screen for every CorvusRE door. On success, this is a
