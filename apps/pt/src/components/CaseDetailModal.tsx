@@ -192,14 +192,7 @@ import { CalendarDays } from "lucide-react";
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
-type CaseTabId =
-  | "overview"
-  | "file"
-  | "informal"
-  | "formal"
-  | "hearing"
-  | "decision"
-  | "appeal";
+type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision" | "appeal";
 
 const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
@@ -209,8 +202,7 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
     lockedHint: "Read and accept the filing notice on Overview first.",
   },
   { id: "informal", label: "Informal Review", lockedHint: "Unlocks once your protest is filed." },
-  { id: "formal", label: "Formal Review", lockedHint: "Unlocks once your protest is filed." },
-  { id: "hearing", label: "Hearing", lockedHint: "Unlocks once your protest is filed." },
+  { id: "hearing", label: "Formal Hearing", lockedHint: "Unlocks once your protest is filed." },
   {
     id: "decision",
     label: "Decision",
@@ -229,8 +221,8 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   overview: "Where your case stands right now, and the one thing to do next.",
   file: "Fill, sign, and file your Notice of Protest with the county — and gather your evidence.",
   informal: "Work the county's proposed value informally, before a formal hearing.",
-  formal: "Your case has moved to the county's formal ARB review — log the hearing notice here.",
-  hearing: "Prepare your evidence and talking points for the hearing.",
+  hearing:
+    "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
   decision: "Record the ARB's decision.",
   appeal: "Weigh binding arbitration or a district-court appeal.",
 };
@@ -246,7 +238,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-upload-evidence": "file",
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
-  "case-hearing-notice": "formal",
+  "case-hearing-notice": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
   "case-escalation": "appeal",
@@ -265,7 +257,6 @@ function caseTabUnlocked(
     case "file":
       return filed || !needsGuidanceAck;
     case "informal":
-    case "formal":
     case "hearing":
       return filed;
     case "decision":
@@ -589,21 +580,15 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Formal Review --- */}
-          {activeTab === "formal" && current.status !== "requested" && (
-            <div>
+          {/* --- Formal Hearing --- */}
+          {activeTab === "hearing" && current.status !== "requested" && (
+            <div className="space-y-5">
               <HearingNoticeSection
                 userId={userId}
                 protest={current}
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
-            </div>
-          )}
-
-          {/* --- Hearing --- */}
-          {activeTab === "hearing" && current.status !== "requested" && (
-            <div>
               <HearingPrepSection
                 protest={current}
                 property={property}
