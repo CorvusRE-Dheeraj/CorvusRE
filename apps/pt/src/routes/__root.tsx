@@ -149,9 +149,13 @@ function RootComponent() {
           >
             Skip to main content
           </a>
-          <div className="print:hidden">
-            <SiteNav />
-          </div>
+          {/* No wrapping div around SiteNav — a div here would become the
+              header's own sticky containing block, and since it would be
+              exactly as tall as the header itself, the header would have
+              zero room to actually stick (it'd immediately hit that div's
+              bottom edge and scroll away with the page). print:hidden moved
+              onto the header element itself instead (see SiteChrome.tsx). */}
+          <SiteNav />
           <main id="main-content" className="min-h-[70vh]">
             <AppShell>
               <Outlet />
