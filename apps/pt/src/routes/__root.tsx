@@ -19,6 +19,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { LegalGate } from "../components/LegalGate";
+import { ProfileGate } from "../components/ProfileGate";
 import { AppShell, shouldShowShell } from "../components/AppShell";
 
 function NotFoundComponent() {
@@ -167,6 +168,7 @@ function RootComponent() {
           </div>
           <AskAiWidget />
           <LegalGate />
+          <ProfileGate />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

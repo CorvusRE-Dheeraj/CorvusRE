@@ -64,8 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // No local CorvusDP session yet -- before concluding "signed out",
       // try the CorvusRE login bridge (see lib/login-bridge.ts): if this
-      // browser already has a CorvusPT session for an email that also has
-      // a CorvusDP account, this silently establishes a real one here too.
+      // browser already has a CorvusPT (identity) session, this silently
+      // establishes a real CorvusDP one too, auto-provisioning a fresh
+      // account on a first-ever visit.
       const bridged = await tryBridgeFromIdentity();
       if (!bridged) {
         setState({ user: null, session: null, loading: false });
