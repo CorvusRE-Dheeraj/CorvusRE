@@ -3,40 +3,43 @@ import { identitySupabase } from "./identity";
 
 // If this browser already has a CorvusPT (identity) session but no CorvusDP
 // session yet, silently mint a real CorvusDP session for the same person --
-// no redirect, no new tab. Returns true if a session was established.
+// no redirect, no new tab. Returns "new" / "existing" if a session was
+// established (and which kind), or null if it wasn't.
 //
-// Deliberately does NOT auto-provision a CorvusDP account: mint-door-session
-// only succeeds for an email that already has one (see that function's own
-// comments for why -- generateLink would otherwise silently create one).
-// A fresh visitor with no CorvusDP account simply falls through to today's
-// existing "signed out" behavior, same as before this bridge existed.
-export async function tryBridgeFromIdentity(): Promise<boolean> {
+// mint-door-session now auto-provisions a fresh CorvusDP account the first
+// time a given identity email bridges in -- every /sign-in landing (sign-in
+// AND sign-up) redirects to the shared identity screen (apps/identity), so
+// this bridge is the ONLY place a first-time CorvusDP visitor's account
+// actually gets created. It arrives with no name/company/etc; ProfileGate
+// (src/components/ProfileGate.tsx) collects those right after, the first
+// time a nameless account lands on a real page.
+export async function tryBridgeFromIdentity(): Promise<"new" | "existing" | null> {
   try {
     const {
       data: { session: identitySession },
     } = await identitySupabase.auth.getSession();
-    if (!identitySession) return false;
+    if (!identitySession) return null;
 
     const { data, error } = await supabase.functions.invoke<{
       ok: boolean;
       email: string;
       hashedToken: string;
       verificationType: string;
+      isNewAccount: boolean;
     }>("mint-door-session", {
       body: { ptAccessToken: identitySession.access_token },
     });
-    // 404 ("no_account_on_this_door") is an expected, common outcome -- not
-    // a real error -- so this doesn't log/rethrow, it just declines to bridge.
-    if (error || !data?.hashedToken) return false;
+    if (error || !data?.hashedToken) return null;
 
     const { error: verifyErr } = await supabase.auth.verifyOtp({
       type: data.verificationType as "magiclink",
       token_hash: data.hashedToken,
     });
-    return !verifyErr;
+    if (verifyErr) return null;
+    return data.isNewAccount ? "new" : "existing";
   } catch {
     // Best-effort -- any failure here should look exactly like "not signed
     // in yet", never a crash on the dashboard's own auth check.
-    return false;
+    return null;
   }
 }

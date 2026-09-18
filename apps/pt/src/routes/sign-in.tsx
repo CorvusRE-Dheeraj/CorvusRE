@@ -140,6 +140,25 @@ function SignIn() {
     nav({ to: returnTo, replace: true });
   }, [authLoading, user, ownerMatches, checkEmail, nav, returnTo]);
 
+  // CorvusRE login bridge: every /sign-in landing (sign-in OR sign-up intent)
+  // now goes through the one shared sign-in screen instead of this door's
+  // own form, matching CorvusDP — "sign in" (and "sign up") means the same
+  // thing everywhere, even though CorvusPT's Supabase project is also the
+  // shared identity source (signing in there natively still works, this
+  // just makes the front door consistent across every CorvusRE door).
+  // CorvusPT-specific signup fields (name, phone, company, beta opt-in) that
+  // the shared screen doesn't collect are picked up afterward by ProfileGate
+  // the first time a nameless bridged-in account lands on a real page; the
+  // CAD owner-match lookup that used to run right after this form's own
+  // signUp() call no longer fires for that path (see the admin panel /
+  // README for the current state of that gap). A full page navigation (not
+  // router nav()) since /auth/ is a separate built app, not a route here.
+  useEffect(() => {
+    if (authLoading || user) return;
+    const here = `${import.meta.env.BASE_URL}${returnTo.replace(/^\//, "")}`;
+    window.location.replace(`/auth/?redirect=${encodeURIComponent(here)}`);
+  }, [authLoading, user, returnTo]);
+
   function switchMode(next: "signin" | "signup") {
     setMode(next);
     setError(null);
