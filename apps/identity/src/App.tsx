@@ -24,11 +24,23 @@ const DOORS = [
 // here, not a client-side route change -- /auth/ and each door are
 // separate built apps, not one router.
 export function App() {
-  const [mode, setMode] = useState<Mode>("sign-in");
+  // A door redirecting a forgot-password landing here (?screen=forgot) opens
+  // straight on that screen instead of plain sign-in -- see each door's own
+  // forgot-password.tsx, which now just forwards here.
+  const [mode, setMode] = useState<Mode>(
+    new URLSearchParams(window.location.search).get("screen") === "forgot"
+      ? "forgot-password"
+      : "sign-in",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
+  // A short, plain-text explanation a door sets when it sends a signed-out
+  // visitor here (e.g. an idle-timeout sign-out) -- shown once on the plain
+  // sign-in screen so the redirect doesn't feel unexplained. Read once on
+  // mount, same as `redirect` -- this page never mutates its own URL.
+  const [reason] = useState(() => new URLSearchParams(window.location.search).get("reason"));
   // Separate from `status` -- the forgot/reset screens are picked by status
   // (reached via a link click or a recovery-email URL, not the sign-in/up
   // toggle), so a failed submit on either must NOT fall back to "error"
@@ -335,6 +347,7 @@ export function App() {
         <Logo />
         <h1>{mode === "sign-in" ? "Sign in" : "Create your account"}</h1>
         <p className="sub">One account works across every CorvusRE door.</p>
+        {reason && <p className="notice">{reason}</p>}
 
         <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={status === "busy"}>
           <GoogleIcon />
