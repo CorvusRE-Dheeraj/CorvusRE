@@ -88,7 +88,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="w-full px-6 py-10 sm:px-10 lg:px-16">
       <div className="grid grid-cols-1 gap-2">
-        <nav className="flex min-w-0 justify-center gap-1 overflow-x-auto pb-2">
+        {/* Sticks just under SiteNav's own sticky header (top-16 matches its
+            h-16) so this tab bar stays reachable on long pages (Properties,
+            Documents) instead of scrolling away — bg-background keeps page
+            content from showing through once it's actually stuck. */}
+        <nav className="sticky top-16 z-30 flex min-w-0 justify-center gap-1 overflow-x-auto bg-background pb-2 pt-2">
           {NAV.map((item) => {
             const Icon = item.icon;
             return (
