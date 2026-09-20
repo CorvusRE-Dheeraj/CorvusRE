@@ -973,9 +973,9 @@ function Properties() {
             </button>
           </div>
         ) : view === "list" ? (
-          <div className="card-elev overflow-x-auto p-0">
+          <div className="card-elev max-h-[70vh] overflow-auto p-0">
             <table className="w-full min-w-[56rem] border-collapse text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <th className="w-9 px-3 py-2.5" />
                   <th className="min-w-[14rem] px-3 py-2.5">Address</th>
@@ -1058,7 +1058,12 @@ function Properties() {
             </table>
           </div>
         ) : (
-          <div className="grid gap-4">
+          // Scrolls internally instead of growing the whole page — with
+          // enough properties, the page itself used to get very long
+          // (search/sort toolbar above stays put; this is the only part
+          // that scrolls). pr-1 keeps the scrollbar from sitting flush
+          // against each card's own right edge.
+          <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1">
             {displayProperties.map((p, i) => {
               const { existingProtest, canReFile, cad, recordUrl, isPaid } = rowInfo(p);
               return (

@@ -205,6 +205,7 @@ import { ProtestAuthorizationFlow } from "@/components/ProtestAuthorizationFlow"
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { LoadingLine } from "@/components/LoadingLine";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { PropertyImage } from "@/components/PropertyImage";
 import {
   hashModuleInput,
@@ -11598,8 +11599,8 @@ function ModuleQABox({
   const [thread, setThread] = useState<{ question: string; answer: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
-    const q = question.trim();
+  async function submit(override?: string) {
+    const q = (override ?? question).trim();
     if (!q || asking) return;
     setAsking(true);
     setError(null);
@@ -11649,9 +11650,14 @@ function ModuleQABox({
           disabled={asking}
           className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm disabled:opacity-60"
         />
+        <AskAiMicButton
+          onTranscript={setQuestion}
+          onFinal={(text) => void submit(text)}
+          disabled={asking}
+        />
         <button
           type="button"
-          onClick={submit}
+          onClick={() => submit()}
           disabled={asking || !question.trim()}
           className="btn-outline text-sm disabled:opacity-50"
         >

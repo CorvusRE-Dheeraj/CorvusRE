@@ -3,6 +3,7 @@ import { Sparkles, X, Send, Loader2, Bot } from "lucide-react";
 import { useActiveProjectBundle } from "@/hooks/use-project";
 import { askAssistant, type AssistantProjectContext, type ChatMessage } from "@/lib/ai";
 import { cn } from "@/lib/utils";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 
 // Site-wide chat entry point, mounted once at the root (see __root.tsx) so it
 // survives client-side navigation and stays open across pages. On the public
@@ -52,8 +53,8 @@ export function AskAiWidget() {
     };
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || sending) return;
     setError(null);
     setInput("");
@@ -156,6 +157,11 @@ export function AskAiWidget() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about permits, design, or your project…"
               className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <AskAiMicButton
+              onTranscript={setInput}
+              onFinal={(text) => void send(text)}
+              disabled={sending}
             />
             <button
               type="submit"

@@ -21,9 +21,11 @@ export const Route = createFileRoute("/dashboard/_layout/tax-bills")({
   component: TaxBills,
 });
 
-// Shipped for real 2026-09-15 — was locked pending the BPP rollout ahead of
-// it; the page/logic below was already complete and untouched by that work.
-const LOCKED = false;
+// Re-locked 2026-09-20 — still under active development, gray out (see
+// AppShell.tsx's own `locked: true` for this tab) and block direct access
+// too, not just the nav link. The page/logic below is untouched, just
+// unreachable while this is true.
+const LOCKED = true;
 
 function TaxBills() {
   if (LOCKED) {
