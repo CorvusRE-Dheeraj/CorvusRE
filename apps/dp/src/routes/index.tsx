@@ -2,8 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   FileCheck2,
   DraftingCompass,
-  HardHat,
-  Banknote,
   ArrowRight,
   Sparkles,
   MapPinned,
@@ -16,6 +14,7 @@ import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { BlueprintScene } from "@/components/illustrations/BlueprintScene";
 import { SitePlanScene } from "@/components/illustrations/SitePlanScene";
 import { ConstructionScene } from "@/components/illustrations/ConstructionScene";
+import { LayeredSiteModelScene } from "@/components/illustrations/LayeredSiteModelScene";
 import type { ComponentType } from "react";
 
 export const Route = createFileRoute("/")({
@@ -50,23 +49,6 @@ const DOORS = [
       "A program becomes an AI design brief: scope & deliverables, a room-level space plan, a phased timeline, and a fee basis by discipline.",
     cta: "Start a Design Brief",
     live: true,
-  },
-  {
-    to: "/construction",
-    icon: HardHat,
-    title: "Construction",
-    blurb:
-      "Pre-construction clearance, daily logs, inspections, submittals, and subcontractor tracking for the build phase.",
-    cta: "Tell us about the build",
-    live: true,
-  },
-  {
-    to: "/finance",
-    icon: Banknote,
-    title: "Financing",
-    blurb: "Development and construction finance — on the CorvusRE roadmap.",
-    cta: "Preview",
-    live: false,
   },
 ] as const;
 
@@ -134,10 +116,10 @@ function Landing() {
 
           <div className="illo-float relative">
             <div className="glass p-4 sm:p-6">
-              <BlueprintScene />
+              <LayeredSiteModelScene />
               <div className="mt-3 flex items-center justify-between">
-                <span className="spec-label">Dwg. A-201 · Elevation</span>
-                <span className="spec-label">Scale 1:96</span>
+                <span className="spec-label">Digital Site Model</span>
+                <span className="spec-label">5 layers, one project</span>
               </div>
             </div>
           </div>
