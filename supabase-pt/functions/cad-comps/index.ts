@@ -12,9 +12,29 @@
 // abstract/subdivision code) — a real grouping CADs themselves use, confirmed live
 // 2026-07-28 (Denton: asCode "SF0503A" alone returned 936 rows spanning every year
 // for every property in that one subdivision). Deduped to one row per property
-// (its most recent year), the subject excluded, sorted by how close each comp's
-// market value is to the subject's — the dimension that actually matters for a
-// property-tax comps argument, not raw distance.
+// (its most recent year), the subject excluded, then capped to a 5-mile radius
+// of the subject (a same-asCode subdivision is usually compact, but not always —
+// some span an oddly large or split area, and a same-subdivision property 15
+// miles away isn't a real "nearby comp" no matter how it's grouped) before
+// sorting by how close each comp's market value is to the subject's — the
+// dimension that actually matters for a property-tax comps argument once
+// they're all genuinely nearby, not raw distance beyond that cutoff.
+const COMPS_RADIUS_MILES = 5;
+const EARTH_RADIUS_MILES = 3958.8;
+
+// Haversine, not a flat lat/lon delta — Texas subdivisions span enough
+// longitude at these latitudes (~29-33°N) that a naive Euclidean distance on
+// raw degrees measurably over/under-counts miles depending on which county
+// this runs for.
+function milesBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return EARTH_RADIUS_MILES * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -195,6 +215,11 @@ Deno.serve(async (req: Request) => {
       .filter((row) => parseNum(row.pid) !== subjectPid)
       .map(toCompProperty)
       .filter((c): c is CompProperty => c !== null)
+      .filter(
+        (c) =>
+          milesBetween(subjectProp.latitude, subjectProp.longitude, c.latitude, c.longitude) <=
+          COMPS_RADIUS_MILES,
+      )
       .sort((a, b) => {
         const subjectValue = subjectProp.marketValue ?? 0;
         const da = a.marketValue == null ? Infinity : Math.abs(a.marketValue - subjectValue);
