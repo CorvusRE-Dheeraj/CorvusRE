@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { JourneyTracker } from "@/components/JourneyTracker";
 import {
   updatePropertyIdentity,
   buildAiReportIntakePatch,
@@ -540,6 +541,13 @@ export function CaseDetailView({
                 caseData={caseData}
                 onReload={load}
               />
+              {/* Journey tracker is otherwise root-level, Properties-page-only
+                  (see SignedInJourney in routes/__root.tsx) — kept here too
+                  since Prepare & File is where the filing steps it tracks
+                  (Submit/Track/Decision/Savings) actually get worked. */}
+              <div className="mt-6">
+                <JourneyTracker />
+              </div>
             </div>
           )}
 
