@@ -2291,6 +2291,35 @@ grant insert (
   protest_deadline, estimated_savings
 ) on public.bpp_accounts to authenticated;
 
+-- Evidence-reminder notification preferences (2026-09-20) — one account-level
+-- control exposed in Settings (src/routes/dashboard/_layout.settings.tsx),
+-- instead of only the per-case "Remind me" dropdown on each case's Evidence
+-- section, plus a token for the one-click unsubscribe link in the reminder
+-- email itself. Weekly, not daily, is now the default for both — a customer
+-- with several properties was getting one separate reminder email per
+-- property every single day, which read as spam.
+alter table public.profiles add column if not exists notification_prefs jsonb not null default
+  '{"evidence_reminders":"weekly"}'::jsonb;
+alter table public.profiles add column if not exists unsubscribe_token text;
+create unique index if not exists profiles_unsubscribe_token_key
+  on public.profiles (unsubscribe_token)
+  where unsubscribe_token is not null;
+
+-- Re-grant to include the new self-service column (unsubscribe_token is
+-- deliberately absent — only send-evidence-reminders, service-role, ever
+-- sets it).
+revoke update on public.profiles from authenticated;
+grant update (first_name, last_name, phone, company_name, calendar_feed_token, notification_prefs)
+  on public.profiles to authenticated;
+
+alter table public.protest_form_submissions alter column reminder_frequency set default 'weekly';
+-- Existing rows still sitting at the old daily default move to weekly too —
+-- this is a policy change, not just a new-row default. Rows already
+-- explicitly set to 'off' are untouched.
+update public.protest_form_submissions
+  set reminder_frequency = 'weekly'
+  where form_type = 'evidence' and reminder_frequency = 'daily';
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:

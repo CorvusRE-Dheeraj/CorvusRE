@@ -15,6 +15,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendRenewalReminderEmail } from "../_shared/renewal-email.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
 
 const MS_PER_DAY = 86_400_000;
 const REMINDER_WINDOW_DAYS = 30;
@@ -26,10 +27,8 @@ Deno.serve(async (req: Request) => {
   if (pf) return pf;
 
   try {
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
@@ -59,7 +58,7 @@ Deno.serve(async (req: Request) => {
     const userIds = [...new Set(rows.map((r) => (r as any).projects?.user_id).filter(Boolean))];
     const { data: profiles, error: pErr } = await admin
       .from("profiles")
-      .select("id, email, notification_prefs")
+      .select("id, email, notification_prefs, unsubscribe_token")
       .in("id", userIds);
     if (pErr) throw pErr;
     const profileById = new Map((profiles ?? []).map((p) => [p.id as string, p]));
@@ -89,12 +88,18 @@ Deno.serve(async (req: Request) => {
       }
 
       try {
+        const token = await getOrCreateUnsubscribeToken(
+          admin,
+          profile!.id as string,
+          profile!.unsubscribe_token as string | null,
+        );
         await sendRenewalReminderEmail({
           email: profile!.email as string,
           permitName: row.name as string,
           projectAddress: project?.address ?? null,
           expiryDate: row.expiry_date as string,
           daysLeft,
+          unsubscribeUrl: unsubscribeUrl(supabaseUrl, token, "email"),
         });
         await admin
           .from("project_permits")

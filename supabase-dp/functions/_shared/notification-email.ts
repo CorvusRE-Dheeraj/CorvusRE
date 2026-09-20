@@ -9,6 +9,7 @@ export async function sendNotificationEmail(opts: {
   title: string;
   body: string | null;
   kind: string;
+  unsubscribeUrl?: string;
 }): Promise<void> {
   try {
     const eyebrow = opts.kind === "permit_status" ? "Permit update" : "Project update";
@@ -30,6 +31,7 @@ export async function sendNotificationEmail(opts: {
       ctaUrl: `${appUrl()}/dashboard`,
       footerNote:
         "You're getting this because email notifications are on for your CorvusDP account. Turn them off any time from Dashboard → Settings → Notification preferences.",
+      unsubscribeUrl: opts.unsubscribeUrl,
     });
 
     await sendEmail({ to: opts.email, subject: opts.title, html });

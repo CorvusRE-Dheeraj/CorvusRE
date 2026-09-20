@@ -3,7 +3,15 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { getMyProfile, updateMyProfile, deleteMyAccount } from "@/lib/profile";
+import {
+  getMyProfile,
+  updateMyProfile,
+  updateNotificationPrefs,
+  deleteMyAccount,
+  DEFAULT_NOTIFICATION_PREFS,
+  type NotificationPrefs,
+} from "@/lib/profile";
+import { setAllEvidenceReminderFrequency, type ReminderFrequency } from "@/lib/protest-form-submissions";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +34,9 @@ function Settings() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [notificationPrefs, setNotificationPrefs] =
+    useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -43,6 +54,7 @@ function Settings() {
         setLastName(p.lastName ?? "");
         setPhone(p.phone ?? "");
         setCompanyName(p.companyName ?? "");
+        setNotificationPrefs(p.notificationPrefs);
       })
       .catch((err) =>
         toast.error(err instanceof Error ? err.message : "Could not load your profile."),
@@ -66,6 +78,27 @@ function Settings() {
       toast.error(err instanceof Error ? err.message : "Could not save your profile.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Applies immediately to every existing case, not just future ones — a
+  // customer switching to Weekly (or Off) means it right now, not "starting
+  // with my next case." The same switch this email's own unsubscribe link
+  // flips (see supabase-pt/functions/unsubscribe-evidence-reminders).
+  async function handleReminderFrequencyChange(frequency: ReminderFrequency) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    setNotificationPrefs({ evidenceReminders: frequency });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { evidenceReminders: frequency });
+      await setAllEvidenceReminderFrequency(user.id, frequency);
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
     }
   }
 
@@ -254,6 +287,31 @@ function Settings() {
             {changingPassword ? "Updating…" : "Update Password"}
           </button>
         </form>
+      )}
+
+      {!loading && (
+        <div className="mt-8 card-elev max-w-xl p-6">
+          <h2 className="font-semibold">Notification Preferences</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            How often you get reminded when a case still needs evidence submitted. Applies across
+            every property and BPP account, right away.
+          </p>
+          <label className="mt-4 grid gap-1 max-w-xs">
+            <span className="text-xs font-medium text-muted-foreground">Evidence reminders</span>
+            <select
+              value={notificationPrefs.evidenceReminders}
+              disabled={savingPrefs}
+              onChange={(e) =>
+                handleReminderFrequencyChange(e.target.value as ReminderFrequency)
+              }
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+        </div>
       )}
 
       {!loading && (

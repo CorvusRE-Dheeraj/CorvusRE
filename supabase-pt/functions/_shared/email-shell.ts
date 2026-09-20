@@ -23,6 +23,8 @@ export function emailShell(opts: {
   ctaLabel: string;
   ctaHref: string;
   footnote?: string;
+  /** A one-click, no-login link to turn this specific reminder off — shown in the footer. */
+  unsubscribeUrl?: string;
 }): string {
   return `<!doctype html>
 <html>
@@ -76,6 +78,11 @@ export function emailShell(opts: {
               <td style="padding:20px 32px; background-color:#f6f8fa; border-top:1px solid #e7ecf1;">
                 <p style="margin:0; font-size:12px; line-height:1.6; color:#8592a6;">
                   CorvusPT — AI-Powered Texas Property Tax.
+                  ${
+                    opts.unsubscribeUrl
+                      ? ` <a href="${opts.unsubscribeUrl}" style="color:#8592a6; text-decoration:underline;">Manage email preferences</a>`
+                      : ""
+                  }
                 </p>
               </td>
             </tr>
