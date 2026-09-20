@@ -687,7 +687,9 @@ function StatCard({
       <span className={`grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}>
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 text-sm font-medium text-muted-foreground">{label}</div>
+      <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
+        {label}
+      </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
         {value === null ? "…" : <AnimatedNumber value={value} format={format} />}
       </div>
@@ -697,7 +699,14 @@ function StatCard({
     return (
       <Link
         to={to}
-        className="card-elev aspect-square flex flex-col p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        // Was aspect-square (fixed height) — the label grew to 2.1875rem
+        // (2.5x its old text-sm) per direct instruction, and a fixed-height
+        // square card clipped/overlapped a two-line label like "BPP
+        // Accounts" or "Lifetime Savings" at that size instead of wrapping
+        // cleanly. min-h keeps the cards from looking collapsed when the
+        // label is short (e.g. "Cases"), without capping how tall a
+        // wrapped label is allowed to push the card.
+        className="card-elev flex min-h-[11rem] flex-col p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -706,7 +715,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev aspect-square flex flex-col p-5"
+      className="card-elev flex min-h-[11rem] flex-col p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
