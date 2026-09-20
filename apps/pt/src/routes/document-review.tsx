@@ -22,6 +22,7 @@ import { addProperty } from "@/lib/properties";
 import { uploadDocument } from "@/lib/documents";
 import { addTaxBill, recordRefund } from "@/lib/tax-bills";
 import { Modal } from "@/components/Modal";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { LoadingLine } from "@/components/LoadingLine";
 import { PropertyMaps } from "@/components/PropertyMaps";
 import { cadLookup } from "@/lib/cad-lookup";
@@ -889,25 +890,30 @@ function AskModal({ onClose, ask }: { onClose: () => void; ask: (q: string) => P
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  async function submit(override?: string) {
+    const question = (override ?? q).trim();
+    if (!question) return;
+    setLoading(true);
+    setErr(null);
+    setA(null);
+    try {
+      const res = await ask(question);
+      setA(res);
+    } catch (e2) {
+      console.error(e2);
+      setErr(e2 instanceof Error ? e2.message : "Could not get an answer. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Modal onClose={onClose}>
       <h3 className="font-serif text-xl font-semibold">Ask AI about this document</h3>
       <form
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
-          if (!q.trim()) return;
-          setLoading(true);
-          setErr(null);
-          setA(null);
-          try {
-            const res = await ask(q.trim());
-            setA(res);
-          } catch (e2) {
-            console.error(e2);
-            setErr(e2 instanceof Error ? e2.message : "Could not get an answer. Please try again.");
-          } finally {
-            setLoading(false);
-          }
+          void submit();
         }}
         className="mt-4 grid gap-2"
       >
@@ -917,9 +923,16 @@ function AskModal({ onClose, ask }: { onClose: () => void; ask: (q: string) => P
           placeholder="e.g. What is my protest deadline? Is the notice value higher than last year?"
           className="rounded-md border border-input bg-background px-3 py-2 min-h-[80px] text-sm"
         />
-        <button className="btn-primary btn-primary-hover" disabled={loading}>
-          {loading ? "Thinking…" : "Ask AI"}
-        </button>
+        <div className="flex items-center gap-2">
+          <AskAiMicButton
+            onTranscript={setQ}
+            onFinal={(text) => void submit(text)}
+            disabled={loading}
+          />
+          <button className="btn-primary btn-primary-hover" disabled={loading}>
+            {loading ? "Thinking…" : "Ask AI"}
+          </button>
+        </div>
       </form>
       {err && <p className="mt-3 text-sm text-destructive">{err}</p>}
       {a && (

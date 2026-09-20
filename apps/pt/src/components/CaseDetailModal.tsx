@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
   buildAiReportIntakePatch,
@@ -3942,7 +3943,14 @@ function InformalReviewSection({
 
   async function handleAsk(e: FormEvent) {
     e.preventDefault();
-    const q = question.trim();
+    await askQuestion();
+  }
+
+  // Split out from handleAsk so the mic's onFinal can submit the just-spoken
+  // text directly instead of relying on `question` state having flushed from
+  // the same setQuestion() call that filled it — the two can otherwise race.
+  async function askQuestion(override?: string) {
+    const q = (override ?? question).trim();
     if (!q || asking) return;
     setAsking(true);
     setQaError(null);
@@ -4267,6 +4275,11 @@ function InformalReviewSection({
             aria-label="Ask about the informal review"
             placeholder="e.g. Can I bring new comps to the informal that weren't in my protest?"
             className="min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          />
+          <AskAiMicButton
+            onTranscript={setQuestion}
+            onFinal={(text) => void askQuestion(text)}
+            disabled={asking}
           />
           <button
             type="submit"
