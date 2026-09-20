@@ -3526,7 +3526,7 @@ function EvidencePackageBuilder({
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [reminderFrequency, setReminderFrequencyState] = useState<ReminderFrequency>("daily");
+  const [reminderFrequency, setReminderFrequencyState] = useState<ReminderFrequency>("weekly");
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
@@ -3546,13 +3546,14 @@ function EvidencePackageBuilder({
         const preselected = selectRelevantEvidence(evidenceDocuments, items);
         setSelectedIds((preselected.length > 0 ? preselected : evidenceDocuments).map((d) => d.id));
         setDeadline(notice?.evidenceSubmissionDeadline ?? null);
-        setReminderFrequencyState(submission?.reminderFrequency ?? "daily");
+        setReminderFrequencyState(submission?.reminderFrequency ?? "weekly");
         // Seed a real row at the default frequency so send-evidence-reminders
-        // has something to find — "by default, daily reminders" shouldn't
-        // require the user to first open this dropdown and pick "Daily"
-        // themselves.
+        // has something to find — "by default, weekly reminders" shouldn't
+        // require the user to first open this dropdown and pick "Weekly"
+        // themselves. Weekly, not daily — a customer with several properties
+        // getting one email per property per day read as spam.
         if (!submission) {
-          saveReminderFrequency(userId, protest.id, "evidence", "daily").catch((err) =>
+          saveReminderFrequency(userId, protest.id, "evidence", "weekly").catch((err) =>
             console.error("Could not seed the default reminder frequency:", err),
           );
         }

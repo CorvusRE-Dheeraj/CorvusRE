@@ -10,6 +10,8 @@ export function renderEmailShell(opts: {
   ctaLabel?: string;
   ctaUrl?: string;
   footerNote?: string;
+  /** A one-click, no-login link to manage/turn off this kind of email — appended to the footer. */
+  unsubscribeUrl?: string;
 }): string {
   return `<!doctype html>
 <html>
@@ -45,6 +47,11 @@ export function renderEmailShell(opts: {
                   ${
                     opts.footerNote ??
                     "CorvusDP — AI-assisted permitting &amp; design. If you didn't expect this email, you can safely ignore it."
+                  }
+                  ${
+                    opts.unsubscribeUrl
+                      ? ` <a href="${opts.unsubscribeUrl}" style="color:#8592a6; text-decoration:underline;">Manage email preferences</a>`
+                      : ""
                   }
                 </p>
               </td>

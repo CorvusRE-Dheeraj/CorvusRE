@@ -828,3 +828,15 @@ create policy "admin: update engagement" on public.engagement_requests
 drop policy if exists "admin: update design" on public.design_requests;
 create policy "admin: update design" on public.design_requests
   for update using (public.is_admin()) with check (public.is_admin());
+
+-- One-click, no-login unsubscribe (2026-09-20) — a per-user token, generated
+-- on first use by whichever cron function sends this account its first
+-- reminder/digest email (same reasoning as calendar_feed_token on CorvusPT).
+-- Checked by unsubscribe-notifications, --no-verify-jwt since it's clicked
+-- straight out of an email with no Supabase session at all. Deliberately
+-- absent from the authenticated grant below — only that service-role
+-- function ever sets it.
+alter table public.profiles add column if not exists unsubscribe_token text;
+create unique index if not exists profiles_unsubscribe_token_key
+  on public.profiles (unsubscribe_token)
+  where unsubscribe_token is not null;

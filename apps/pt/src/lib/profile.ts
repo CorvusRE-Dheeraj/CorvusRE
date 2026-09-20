@@ -1,12 +1,27 @@
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 
+// Account-level notification controls, exposed under Settings →
+// Notification Preferences and read server-side by send-evidence-reminders
+// (never trusted from the client for anything the cron job itself decides).
+// Only one key today — evidence reminders are the only cadence-based email
+// CorvusPT sends — but this is a jsonb column specifically so a future
+// notification type is one more key, not a schema change.
+export type NotificationPrefs = {
+  evidenceReminders: "daily" | "weekly" | "off";
+};
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  evidenceReminders: "weekly",
+};
+
 export type MyProfile = {
   email: string;
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
   companyName: string | null;
+  notificationPrefs: NotificationPrefs;
 };
 
 type ProfileRow = {
@@ -15,12 +30,13 @@ type ProfileRow = {
   last_name: string | null;
   phone: string | null;
   company_name: string | null;
+  notification_prefs: { evidence_reminders?: NotificationPrefs["evidenceReminders"] } | null;
 };
 
 export async function getMyProfile(userId: string): Promise<MyProfile> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("email, first_name, last_name, phone, company_name")
+    .select("email, first_name, last_name, phone, company_name, notification_prefs")
     .eq("id", userId)
     .single();
   if (error) throw error;
@@ -31,7 +47,22 @@ export async function getMyProfile(userId: string): Promise<MyProfile> {
     lastName: row.last_name,
     phone: row.phone,
     companyName: row.company_name,
+    notificationPrefs: {
+      evidenceReminders:
+        row.notification_prefs?.evidence_reminders ?? DEFAULT_NOTIFICATION_PREFS.evidenceReminders,
+    },
   };
+}
+
+export async function updateNotificationPrefs(
+  userId: string,
+  prefs: NotificationPrefs,
+): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ notification_prefs: { evidence_reminders: prefs.evidenceReminders } })
+    .eq("id", userId);
+  if (error) throw error;
 }
 
 export async function updateMyProfile(
