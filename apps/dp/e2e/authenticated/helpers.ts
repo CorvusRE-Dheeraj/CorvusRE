@@ -27,20 +27,38 @@ export function requireTestAccount() {
   return { email: email!, password: password! };
 }
 
+// Every sign-in now happens on the shared cross-door identity screen
+// (/auth/, apps/identity) — CorvusDP's own /sign-in just redirects there
+// full-page and never mounts a form any more (see routes/sign-in.tsx), and
+// /auth/ isn't part of this app's own build/preview, so there's no local UI
+// this suite could drive to sign in. Instead: sign in directly against
+// Supabase (a plain node-side client, the exact same project this app's own
+// client points at) and seed the resulting session into localStorage under
+// the key/shape supabase-js itself would have written, before the app's own
+// client ever reads it on mount — functionally identical to a real
+// interactive sign-in, without depending on whatever the sign-in UI (here,
+// or on /auth/) currently looks like.
 export async function signIn(page: Page, email: string, password: string) {
-  // A plain /sign-in visit full-page-redirects to the external /auth/
-  // identity app (see sign-in.tsx's login-bridge effect) and never mounts
-  // DP's own form. Going with mode=signup keeps that redirect from firing,
-  // then the "Already have an account? Sign in." button flips the local
-  // component state to sign-in mode without navigating — so the redirect
-  // effect (which only watches the URL's search params) never re-triggers.
-  await page.goto("/sign-in?mode=signup", { waitUntil: "networkidle" });
-  await page.getByText("Already have an account? Sign in.").click();
-  await page.locator('input[type="email"]').waitFor({ state: "visible" });
-  await page.locator('input[type="email"]').fill(email);
-  await page.locator('input[type="password"]').first().fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"), { timeout: 15_000 });
+  const url = process.env.VITE_SUPABASE_URL!;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY!;
+  const client = createClient(url, anonKey);
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  if (error || !data.session) throw error ?? new Error("Sign-in returned no session");
+
+  // supabase-js's own default storage key, derived from the project ref in
+  // the URL — stable, documented, and what this app's own client
+  // (src/lib/supabase.ts, no storageKey override) reads on getSession().
+  // addInitScript runs before the target page's own scripts on every future
+  // navigation in this page, so the app's client finds a real session
+  // already in localStorage the moment it mounts.
+  const storageKey = `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
+  const sessionJson = JSON.stringify(data.session);
+  await page.addInitScript(
+    ({ storageKey, sessionJson }) => window.localStorage.setItem(storageKey, sessionJson),
+    { storageKey, sessionJson },
+  );
+
+  await page.goto("/dashboard", { waitUntil: "networkidle" });
   // No LegalGate-style blocking dialog exists in DP (PT-only concept) —
   // nothing else to dismiss before the app is interactive.
 }
