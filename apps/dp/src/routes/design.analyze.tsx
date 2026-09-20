@@ -25,6 +25,31 @@ export const Route = createFileRoute("/design/analyze")({
 });
 
 const STEPS = ["Property", "Project type", "Requirements", "Brief"];
+// approxSiteArea stays a single free-text string in DesignRequirements (what
+// the AI narrative prompt and saved design_requests rows already expect) --
+// these just split it into an amount + a real unit dropdown for entry/
+// display, instead of asking the user to type "acres" or "sf" themselves and
+// hoping they spell it the same way the AI does. Recognizes both the
+// existing "1.5 acres" / "65,000 sf" shape and a few common variants
+// (sq ft, square feet) so an already-saved value still parses correctly.
+const SITE_AREA_UNITS = [
+  { value: "acres", label: "acres" },
+  { value: "sf", label: "sf" },
+] as const;
+type SiteAreaUnit = (typeof SITE_AREA_UNITS)[number]["value"];
+
+function parseSiteArea(value: string | null | undefined): { amount: string; unit: SiteAreaUnit } {
+  const match = (value ?? "").trim().match(/^([\d,.]*)\s*(acres?|sf|sq\.?\s*ft\.?|square\s*feet)?/i);
+  const amount = match?.[1] ?? "";
+  const unitRaw = (match?.[2] ?? "").toLowerCase();
+  const unit: SiteAreaUnit = unitRaw.startsWith("a") ? "acres" : unitRaw ? "sf" : "acres";
+  return { amount, unit };
+}
+
+function combineSiteArea(amount: string, unit: SiteAreaUnit): string {
+  return amount.trim() ? `${amount.trim()} ${unit}` : "";
+}
+
 const SCOPES: { value: DesignScope; label: string }[] = [
   { value: "new_construction", label: "New Construction" },
   { value: "addition", label: "Addition" },
@@ -220,11 +245,51 @@ function DesignAnalyze() {
                 />
               </Field>
               <Field label="Approximate site area" hint="e.g. 1.5 acres or 65,000 sf">
-                <input
-                  className={inputCls}
-                  value={d.approxSiteArea ?? ""}
-                  onChange={(e) => patch({ design: { approxSiteArea: e.target.value } })}
-                />
+                <div className="flex gap-2">
+                  <input
+                    className={`${inputCls} min-w-0 flex-1`}
+                    inputMode="decimal"
+                    placeholder="1.5"
+                    value={parseSiteArea(d.approxSiteArea).amount}
+                    onChange={(e) =>
+                      patch({
+                        design: {
+                          approxSiteArea: combineSiteArea(
+                            e.target.value,
+                            parseSiteArea(d.approxSiteArea).unit,
+                          ),
+                        },
+                      })
+                    }
+                  />
+                  <select
+                    // Not `${inputCls} w-28` -- inputCls's own `w-full` wins
+                    // the cascade over a later `w-28` (same specificity,
+                    // Tailwind's generated stylesheet order decides ties,
+                    // not className string order), so the select silently
+                    // claimed the whole row and left ~0px for the amount
+                    // input next to it. inputCls's classes spelled out
+                    // directly, just without w-full.
+                    className="min-w-0 shrink-0 w-28 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={parseSiteArea(d.approxSiteArea).unit}
+                    onChange={(e) =>
+                      patch({
+                        design: {
+                          approxSiteArea: combineSiteArea(
+                            parseSiteArea(d.approxSiteArea).amount,
+                            e.target.value as SiteAreaUnit,
+                          ),
+                        },
+                      })
+                    }
+                  >
+                    {SITE_AREA_UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </Field>
             </div>
             <Field
