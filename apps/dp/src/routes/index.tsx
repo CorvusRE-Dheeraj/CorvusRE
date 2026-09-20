@@ -14,7 +14,7 @@ import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { BlueprintScene } from "@/components/illustrations/BlueprintScene";
 import { SitePlanScene } from "@/components/illustrations/SitePlanScene";
 import { ConstructionScene } from "@/components/illustrations/ConstructionScene";
-import { LayeredSiteModelScene } from "@/components/illustrations/LayeredSiteModelScene";
+import layeredSiteModelImg from "@/assets/layered-site-model.png";
 import type { ComponentType } from "react";
 
 export const Route = createFileRoute("/")({
@@ -116,7 +116,11 @@ function Landing() {
 
           <div className="illo-float relative">
             <div className="glass p-4 sm:p-6">
-              <LayeredSiteModelScene />
+              <img
+                src={layeredSiteModelImg}
+                alt="Layered digital site model combining jurisdiction, zoning, setback, permit and design information into one project view"
+                className="h-auto w-full rounded-lg"
+              />
               <div className="mt-3 flex items-center justify-between">
                 <span className="spec-label">Digital Site Model</span>
                 <span className="spec-label">5 layers, one project</span>
