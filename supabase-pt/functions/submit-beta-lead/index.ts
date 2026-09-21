@@ -15,6 +15,15 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
 }
@@ -58,6 +67,41 @@ Deno.serve(async (req: Request) => {
       source_door: sourceDoor,
     });
     if (insertErr) throw insertErr;
+
+    // Staff alert via Resend, like every other transactional email here --
+    // replaces the hub's old third-party form call. Best-effort: the lead is
+    // already saved (and visible in the admin panel's Beta Signups), so a
+    // failed alert email is logged, never surfaced as a failed submission.
+    try {
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      if (!resendKey) throw new Error("RESEND_API_KEY is not configured");
+      const row = (label: string, value: string | null) =>
+        value
+          ? `<tr><td style="padding:6px 16px 6px 0; color:#67788f; vertical-align:top;">${label}</td><td style="padding:6px 0; color:#16233a; font-weight:600;">${escapeHtml(value)}</td></tr>`
+          : "";
+      const html = `<!doctype html><html><body style="margin:0; padding:24px; background:#eef2f4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:14px; padding:28px;">
+    <p style="margin:0 0 4px 0; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#0f9e6e;">Staff notification</p>
+    <h1 style="margin:0 0 16px 0; font-size:22px; color:#16233a;">New CorvusRE beta request</h1>
+    <table role="presentation" style="font-size:14px; line-height:1.5;">
+      ${row("Name", fullName)}${row("Email", workEmail)}${row("Company", company)}${row("Interested in", areaOfInterest)}${row("Use case", useCase)}${row("From door", sourceDoor)}
+    </table>
+  </div></body></html>`;
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "CorvusRE <info@corvusre.com>",
+          to: ["properties@srclandbuilding.com"],
+          reply_to: workEmail,
+          subject: `New CorvusRE beta request — ${fullName}`,
+          html,
+        }),
+      });
+      if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
+    } catch (err) {
+      console.error("Beta lead staff email failed (lead itself was saved):", err);
+    }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
