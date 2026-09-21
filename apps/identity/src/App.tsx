@@ -31,6 +31,24 @@ const DOORS = [
 // signup is deliberately NOT given the code: DP has its own separate
 // referral namespace, resolved when DP's own account is created (see
 // mint-door-session), not against this project's profiles.
+const PENDING_REF_KEY = "corvusre.pendingRef";
+
+// A referral code has to survive a Google OAuth round trip (the query string
+// doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
+// so it"s parked in localStorage and applied server-side (apply-referral,
+// brand-new accounts only) the moment a session exists. Best-effort: never
+// blocks getting the person where they were headed.
+async function applyPendingReferral() {
+  try {
+    const code = localStorage.getItem(PENDING_REF_KEY);
+    if (!code) return;
+    localStorage.removeItem(PENDING_REF_KEY);
+    await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
+  } catch {
+    // ignore -- a lost referral must not break sign-in
+  }
+}
+
 function readSignupContext() {
   const q = new URLSearchParams(window.location.search);
   const target = q.get("redirect") ?? "";
@@ -45,6 +63,14 @@ function readSignupContext() {
 
 export function App() {
   const [signupCtx] = useState(readSignupContext);
+  useEffect(() => {
+    if (!signupCtx.ref) return;
+    try {
+      localStorage.setItem(PENDING_REF_KEY, signupCtx.ref);
+    } catch {
+      // storage blocked -- referral just won't attach for a Google signup
+    }
+  }, [signupCtx.ref]);
   // A door redirecting a forgot-password landing here (?screen=forgot) opens
   // straight on that screen instead of plain sign-in -- see each door's own
   // forgot-password.tsx, which now just forwards here.
@@ -78,7 +104,8 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  function proceed() {
+  async function proceed() {
+    await applyPendingReferral();
     const target = safeRedirectTarget();
     if (target) {
       window.location.assign(target);
