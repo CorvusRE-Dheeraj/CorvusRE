@@ -1,8 +1,8 @@
 // Deploy via CLI: `supabase functions deploy send-staff-notification`.
-// Replaces Web3Forms — same two real, live call sites (the public /contact
+// Staff alerts via Resend — two real, live call sites (the public /contact
 // form, and requestProtest()/requestBppProtest()'s best-effort "a new case
-// was requested" alert), now sent via Resend like every other transactional
-// email in this app instead of a third-party form-relay service.
+// was requested" alert), sent like every other transactional
+// email in this app.
 //
 // Works for a signed-OUT caller too (the contact form doesn't require
 // sign-in) — supabase-js's functions.invoke() always attaches a valid

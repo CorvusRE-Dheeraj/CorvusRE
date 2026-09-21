@@ -1074,23 +1074,25 @@ function Properties() {
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
                             type="checkbox"
                             aria-label={`Select ${p.address} for bulk subscribe`}
                             checked={selectedIds.has(p.id)}
                             onChange={() => toggleSelected(p.id)}
-                            className="h-4 w-4 shrink-0"
+                            className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
+                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
                           {p.cad}
                         </span>
                         <ActionStatusBadge property={p} protests={protests} />
                         {!isBeta && <PaymentStatusBadge property={p} />}
                       </div>
-                      <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
                       <p className="text-sm text-muted-foreground inline-flex items-center flex-wrap gap-1">
                         {p.propertyType} • Acct {p.accountNumber}
                         {p.accountNumber && (
