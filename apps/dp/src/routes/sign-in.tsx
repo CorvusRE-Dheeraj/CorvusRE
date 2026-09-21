@@ -56,8 +56,21 @@ function SignIn() {
     const here = `${import.meta.env.BASE_URL}${returnTo.replace(/^\//, "")}`;
     const params = new URLSearchParams({ redirect: here });
     if (sp.reason) params.set("reason", sp.reason);
+    // Signup context (admin invite prefill, referral link) rides along so the
+    // shared screen can open on sign-up and prefill the email. DP's own
+    // referral code is stashed for the session bridge instead -- see
+    // lib/login-bridge.ts (it belongs to DP's project, not the identity one).
+    if (sp.mode) params.set("mode", sp.mode);
+    if (sp.email) params.set("email", sp.email);
+    if (sp.ref) {
+      try {
+        localStorage.setItem("corvusdp.pendingRef", sp.ref);
+      } catch {
+        // storage blocked -- referral just won't attach
+      }
+    }
     window.location.replace(`/auth/?${params.toString()}`);
-  }, [authLoading, authedUser, returnTo, sp.reason]);
+  }, [authLoading, authedUser, returnTo, sp.reason, sp.mode, sp.email, sp.ref]);
 
   return null;
 }

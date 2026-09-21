@@ -13,11 +13,11 @@ export const Route = createFileRoute("/sign-in")({
   // pricing's "sign in to subscribe" prompt, admin invite links, referral
   // links, etc.) say where to return to and why — carried straight through
   // to the shared identity screen's own ?redirect=/?reason= params below.
-  // mode/email/firstName/lastName/beta/ref are legacy fields older call
-  // sites may still pass (this route used to render its own sign-in/sign-up
-  // form and read them to prefill it) — kept in the search schema so those
-  // call sites' typed <Link search={{...}}> props still compile, but none
-  // of them are read here any more; the shared screen doesn't collect them.
+  // mode/email/firstName/lastName/ref (admin invite links, referral links)
+  // are forwarded to the shared screen, which opens on sign-up, prefills, and
+  // hands names + the referral code to the identity project's signup trigger.
+  // beta is accepted for older call sites but not forwarded: plan changes
+  // are never client-granted (see schema.sql handle_new_user).
   validateSearch: (
     search: Record<string, unknown>,
   ): {
@@ -81,8 +81,14 @@ function SignIn() {
     const here = `${import.meta.env.BASE_URL}${returnTo.replace(/^\//, "")}`;
     const params = new URLSearchParams({ redirect: here });
     if (reason) params.set("reason", reason);
+    // Signup context (admin invite prefill, referral link) rides along so the
+    // shared screen can open on sign-up, prefill, and attach the referral.
+    for (const k of ["mode", "email", "firstName", "lastName", "ref"] as const) {
+      const v = searchParams[k];
+      if (v) params.set(k, v);
+    }
     window.location.replace(`/auth/?${params.toString()}`);
-  }, [authLoading, user, returnTo, reason]);
+  }, [authLoading, user, returnTo, reason, searchParams]);
 
   return null;
 }

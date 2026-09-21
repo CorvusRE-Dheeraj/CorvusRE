@@ -115,10 +115,19 @@ security definer set search_path = public
 as $$
 declare
   referrer_id uuid;
+  invited_beta boolean := false;
 begin
   select id into referrer_id from public.profiles
     where referral_code = upper(new.raw_user_meta_data ->> 'referral_code_used')
     limit 1;
+
+  -- Beta access can now ALSO come from an admin-issued invite: signups go
+  -- through the shared /auth/ screen, which has no beta checkbox, so an
+  -- invite that was sent with wants_beta = true is honored here, server-side
+  -- (invited_users is admin-write-only, so this can't be self-granted). Read
+  -- BEFORE the delete at the bottom clears the invite row.
+  select coalesce(bool_or(wants_beta), false) into invited_beta
+    from public.invited_users where lower(email) = lower(new.email);
 
   insert into public.profiles (id, email, first_name, last_name, phone, company_name, plan, referral_code, referred_by)
   values (
@@ -128,7 +137,7 @@ begin
     new.raw_user_meta_data ->> 'last_name',
     new.raw_user_meta_data ->> 'phone',
     new.raw_user_meta_data ->> 'company_name',
-    case when new.raw_user_meta_data ->> 'wants_beta' = 'true' then 'beta' else 'free_ai_review' end,
+    case when new.raw_user_meta_data ->> 'wants_beta' = 'true' or invited_beta then 'beta' else 'free_ai_review' end,
     upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
     referrer_id
   );

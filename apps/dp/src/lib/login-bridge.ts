@@ -13,6 +13,22 @@ import { identitySupabase } from "./identity";
 // actually gets created. It arrives with no name/company/etc; ProfileGate
 // (src/components/ProfileGate.tsx) collects those right after, the first
 // time a nameless account lands on a real page.
+const PENDING_REF_KEY = "corvusdp.pendingRef";
+function readPendingRef(): string | undefined {
+  try {
+    return localStorage.getItem(PENDING_REF_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function clearPendingRef() {
+  try {
+    localStorage.removeItem(PENDING_REF_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export async function tryBridgeFromIdentity(): Promise<"new" | "existing" | null> {
   try {
     const {
@@ -27,7 +43,13 @@ export async function tryBridgeFromIdentity(): Promise<"new" | "existing" | null
       verificationType: string;
       isNewAccount: boolean;
     }>("mint-door-session", {
-      body: { ptAccessToken: identitySession.access_token },
+      body: {
+        ptAccessToken: identitySession.access_token,
+        // A referral link's code, stashed by /sign-in before it handed off to
+        // the shared screen -- only honored server-side when this bridge is
+        // what creates the DP account (see mint-door-session).
+        referralCode: readPendingRef(),
+      },
     });
     if (error || !data?.hashedToken) return null;
 
@@ -36,6 +58,7 @@ export async function tryBridgeFromIdentity(): Promise<"new" | "existing" | null
       token_hash: data.hashedToken,
     });
     if (verifyErr) return null;
+    clearPendingRef();
     return data.isNewAccount ? "new" : "existing";
   } catch {
     // Best-effort -- any failure here should look exactly like "not signed

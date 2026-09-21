@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { ptAccessToken } = await req.json();
+    const { ptAccessToken, referralCode } = await req.json();
     if (!ptAccessToken || typeof ptAccessToken !== "string") {
       return new Response(JSON.stringify({ error: "ptAccessToken required" }), {
         status: 400,
@@ -92,6 +92,14 @@ Deno.serve(async (req: Request) => {
     const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
       type: "magiclink",
       email: ptUser.email,
+      // A referral code (from a ?ref= link the visitor landed on) only means
+      // anything at account creation -- handle_new_user() resolves it into a
+      // real referred_by server-side, and an unknown/tampered code just
+      // resolves to null. Never sent for an existing account, and shape-
+      // checked here so arbitrary text can't ride into the metadata.
+      ...(isNewAccount && typeof referralCode === "string" && /^[A-Za-z0-9]{4,16}$/.test(referralCode)
+        ? { options: { data: { referral_code_used: referralCode } } }
+        : {}),
     });
     if (linkErr) throw linkErr;
     const hashedToken = linkData?.properties?.hashed_token;
