@@ -8,21 +8,13 @@
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Edge
 // Runtime for every function — no manual secret configuration needed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
@@ -77,16 +69,23 @@ Deno.serve(async (req: Request) => {
       if (!resendKey) throw new Error("RESEND_API_KEY is not configured");
       const row = (label: string, value: string | null) =>
         value
-          ? `<tr><td style="padding:6px 16px 6px 0; color:#67788f; vertical-align:top;">${label}</td><td style="padding:6px 0; color:#16233a; font-weight:600;">${escapeHtml(value)}</td></tr>`
+          ? `<tr><td style="padding:7px 16px 7px 0; color:#67788f; vertical-align:top; white-space:nowrap;">${label}</td><td style="padding:7px 0; color:#16233a; font-weight:600;">${escapeHtml(value)}</td></tr>`
           : "";
-      const html = `<!doctype html><html><body style="margin:0; padding:24px; background:#eef2f4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:14px; padding:28px;">
-    <p style="margin:0 0 4px 0; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#0f9e6e;">Staff notification</p>
-    <h1 style="margin:0 0 16px 0; font-size:22px; color:#16233a;">New CorvusRE beta request</h1>
-    <table role="presentation" style="font-size:14px; line-height:1.5;">
-      ${row("Name", fullName)}${row("Email", workEmail)}${row("Company", company)}${row("Interested in", areaOfInterest)}${row("Use case", useCase)}${row("From door", sourceDoor)}
-    </table>
-  </div></body></html>`;
+      const html = emailShell({
+        brand: "RE",
+        eyebrow: "Staff notification",
+        heading: "New CorvusRE beta request",
+        intro: `<strong>${escapeHtml(fullName)}</strong> just asked for beta access. Reply to this email to reach them directly.`,
+        bodyRows:
+          row("Name", fullName) +
+          row("Email", workEmail) +
+          row("Company", company) +
+          row("Interested in", areaOfInterest) +
+          row("Use case", useCase) +
+          row("From door", sourceDoor),
+        ctaLabel: "View in Beta Signups",
+        ctaHref: "https://corvusre.com/corvuspt/admin",
+      });
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
