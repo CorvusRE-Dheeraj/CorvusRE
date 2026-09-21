@@ -3919,8 +3919,17 @@ function ModuleVisual({
     case "comps": {
       const d = moduleState.data as ModuleResultMap["comps"];
       return (
-        <div className="text-xs text-muted-foreground">
-          {d.checklist.length} evidence item{d.checklist.length === 1 ? "" : "s"} to gather
+        <div className="grid gap-1 text-xs text-muted-foreground">
+          {!compsMap.loading && !compsMap.data?.comps.length && (
+            <p>
+              No comparable-property map yet — live comps are only available for Denton,
+              Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
+              build the comp set yourself.
+            </p>
+          )}
+          <p>
+            {d.checklist.length} evidence item{d.checklist.length === 1 ? "" : "s"} to gather
+          </p>
         </div>
       );
     }

@@ -23,16 +23,65 @@ const DOORS = [
 // full page navigation (window.location) to the door that sent the visitor
 // here, not a client-side route change -- /auth/ and each door are
 // separate built apps, not one router.
+// Signup context a door forwards from its own /sign-in landing (referral links,
+// admin invite links) -- read once, same as redirect/reason. Names and the
+// referral code ride in signUp()'s options.data, which the identity project's
+// handle_new_user() trigger already reads server-side (a referral code is
+// only ever resolved there, never trusted client-side). A CorvusDP-bound
+// signup is deliberately NOT given the code: DP has its own separate
+// referral namespace, resolved when DP's own account is created (see
+// mint-door-session), not against this project's profiles.
+const PENDING_REF_KEY = "corvusre.pendingRef";
+
+// A referral code has to survive a Google OAuth round trip (the query string
+// doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
+// so it"s parked in localStorage and applied server-side (apply-referral,
+// brand-new accounts only) the moment a session exists. Best-effort: never
+// blocks getting the person where they were headed.
+async function applyPendingReferral() {
+  try {
+    const code = localStorage.getItem(PENDING_REF_KEY);
+    if (!code) return;
+    localStorage.removeItem(PENDING_REF_KEY);
+    await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
+  } catch {
+    // ignore -- a lost referral must not break sign-in
+  }
+}
+
+function readSignupContext() {
+  const q = new URLSearchParams(window.location.search);
+  const target = q.get("redirect") ?? "";
+  return {
+    startOnSignUp: q.get("mode") === "signup",
+    email: q.get("email") ?? "",
+    firstName: q.get("firstName") ?? "",
+    lastName: q.get("lastName") ?? "",
+    ref: target.startsWith("/corvusdp/") ? "" : (q.get("ref") ?? ""),
+  };
+}
+
 export function App() {
+  const [signupCtx] = useState(readSignupContext);
+  useEffect(() => {
+    if (!signupCtx.ref) return;
+    try {
+      localStorage.setItem(PENDING_REF_KEY, signupCtx.ref);
+    } catch {
+      // storage blocked -- referral just won't attach for a Google signup
+    }
+  }, [signupCtx.ref]);
   // A door redirecting a forgot-password landing here (?screen=forgot) opens
   // straight on that screen instead of plain sign-in -- see each door's own
   // forgot-password.tsx, which now just forwards here.
   const [mode, setMode] = useState<Mode>(
     new URLSearchParams(window.location.search).get("screen") === "forgot"
       ? "forgot-password"
-      : "sign-in",
+      : signupCtx.startOnSignUp
+        ? "sign-up"
+        : "sign-in",
   );
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(signupCtx.email);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +104,8 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  function proceed() {
+  async function proceed() {
+    await applyPendingReferral();
     const target = safeRedirectTarget();
     if (target) {
       window.location.assign(target);
@@ -149,7 +199,17 @@ export function App() {
       return;
     }
 
-    const { data, error: signUpErr } = await supabase.auth.signUp({ email, password });
+    const { data, error: signUpErr } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          ...(signupCtx.firstName ? { first_name: signupCtx.firstName } : {}),
+          ...(signupCtx.lastName ? { last_name: signupCtx.lastName } : {}),
+          ...(signupCtx.ref ? { referral_code_used: signupCtx.ref } : {}),
+        },
+      },
+    });
     if (signUpErr) {
       setError(signUpErr.message);
       setStatus("error");

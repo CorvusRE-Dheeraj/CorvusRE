@@ -46,6 +46,9 @@ const TRUEPRODIGY_OFFICE_BY_CAD: Record<string, string> = {
   "Montgomery Central Appraisal District": "Montgomery",
   "Tarrant Appraisal District": "Tarrant",
   "Travis Central Appraisal District": "Travis",
+  // Properties saved under this shorter name never matched
+  // the long one above, so every Travis property silently got zero comps.
+  "Travis CAD": "Travis",
 };
 
 type CompsInput = { cad?: string; accountNumber?: string };
