@@ -48,8 +48,8 @@ jobs:
           node-version: 22
       - name: Deploy CorvusPT (identity) functions
         if: github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-pt'
-        run: scripts/deploy-functions.sh supabase-pt iotzuhuajbsxxuccuihn "$BASE_SHA"
+        run: bash scripts/deploy-functions.sh supabase-pt iotzuhuajbsxxuccuihn "$BASE_SHA"
       - name: Deploy CorvusDP functions
         # !cancelled() so a failed CorvusPT deploy doesn't also skip this one
         if: ${{ !cancelled() && (github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-dp') }}
-        run: scripts/deploy-functions.sh supabase-dp xzhilwwlfajxhklkiteb "$BASE_SHA"
+        run: bash scripts/deploy-functions.sh supabase-dp xzhilwwlfajxhklkiteb "$BASE_SHA"
