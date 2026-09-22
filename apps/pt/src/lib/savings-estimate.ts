@@ -90,6 +90,8 @@ export async function estimateSavings(property: SavingsEstimateInput): Promise<S
       const compsResult = await getComps({
         cad: property.cad,
         accountNumber: property.accountNumber,
+        address: property.address ?? undefined,
+        totalValue: property.totalValue ?? undefined,
       });
       const subject = compsResult.subject;
       // Without the subject's own coordinates there's no way to judge "nearby" —

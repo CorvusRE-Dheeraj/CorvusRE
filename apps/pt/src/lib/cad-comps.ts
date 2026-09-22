@@ -32,12 +32,19 @@ export type CompsResult = {
   comps: CompProperty[];
 };
 
-// Only returns real data for the 4 counties on the TrueProdigy platform (Denton,
-// Montgomery, Tarrant, Travis) — every other county gets { subject: null, comps: [] }
-// rather than a fabricated map. See texas_cad_vendor_landscape memory.
+// Real data for the 4 TrueProdigy counties (Denton, Montgomery, Tarrant, Travis —
+// same-subdivision comps) and Collin (nearest same-category parcels within 5
+// miles, from the county's own parcel layer) — every other county gets
+// { subject: null, comps: [] } rather than a fabricated map.
 export async function getComps(input: {
   cad?: string;
   accountNumber?: string;
+  // Only used by counties whose comps come from a spatial parcel query (e.g.
+  // Collin) when the saved account number isn't that county's own id — the
+  // address finds the parcel, the assessed value picks between several that
+  // share one address.
+  address?: string;
+  totalValue?: number;
 }): Promise<CompsResult> {
   return invokeEdgeFunction<CompsResult>("cad-comps", input);
 }
