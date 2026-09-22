@@ -59,6 +59,17 @@ export function SiteNav() {
   const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
   const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
+  // The one thing a beforeunload listener genuinely cannot do (in any
+  // browser, since ~2016) is say anything of its own — every browser shows
+  // only its own fixed "Leave site?" text, never custom copy. This modal is
+  // the actual "give feedback" ask before they go: triggered on exit intent
+  // (the pointer leaving toward the tab bar/back button, the same heuristic
+  // exit-intent popups have always used), not tab-close itself — it can't
+  // catch every way of leaving (Ctrl+W, the OS close button), but it's the
+  // only path that can show real copy, so it runs alongside the native
+  // warning rather than replacing it.
+  const [showExitIntentPrompt, setShowExitIntentPrompt] = useState(false);
+  const exitIntentShownRef = useRef(false);
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
@@ -117,6 +128,25 @@ export function SiteNav() {
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [promptEligible]);
+
+  // Exit intent: the pointer leaving toward the top of the viewport (the
+  // tab bar, the back/close buttons) — the one moment left to show real,
+  // branded copy before they're gone, since beforeunload's own dialog can't.
+  // Fires at most once per page load (exitIntentShownRef), and never at all
+  // if they've already declined once (same SKIP_PROMPT_KEY the sign-out
+  // prompt uses) or already have the sign-out prompt open (don't stack two).
+  useEffect(() => {
+    if (!promptEligible) return;
+    function onMouseOut(e: MouseEvent) {
+      if (exitIntentShownRef.current) return;
+      if (e.clientY > 0 || e.relatedTarget) return; // only a genuine top-edge exit
+      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
+      exitIntentShownRef.current = true;
+      setShowExitIntentPrompt(true);
+    }
+    document.addEventListener("mouseout", onMouseOut);
+    return () => document.removeEventListener("mouseout", onMouseOut);
   }, [promptEligible]);
 
   function handleSignOutClick() {
@@ -408,6 +438,37 @@ export function SiteNav() {
             <button
               onClick={() => {
                 setShowSignOutPrompt(false);
+                nav({ to: "/dashboard/feedback" });
+              }}
+              className="btn-primary btn-primary-hover"
+            >
+              Give feedback
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showExitIntentPrompt} onOpenChange={setShowExitIntentPrompt}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Before you go — got 7-10 minutes for us?</DialogTitle>
+            <DialogDescription>
+              You're one of our beta testers, and we haven't heard from you yet. Help us make Corvus
+              better — it directly shapes what we build next.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              onClick={() => {
+                localStorage.setItem(SKIP_PROMPT_KEY, "1");
+                setShowExitIntentPrompt(false);
+              }}
+              className="btn-outline"
+            >
+              No thanks
+            </button>
+            <button
+              onClick={() => {
+                setShowExitIntentPrompt(false);
                 nav({ to: "/dashboard/feedback" });
               }}
               className="btn-primary btn-primary-hover"
