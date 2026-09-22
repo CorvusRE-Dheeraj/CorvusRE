@@ -4,6 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { JourneyTracker } from "@/components/JourneyTracker";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
   buildAiReportIntakePatch,
@@ -169,6 +171,7 @@ import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
 import { draftProtestReason } from "@/lib/protest-reason";
 import {
   requiredFilingSteps,
+  optionalFilingSteps,
   FILING_STEP_META,
   isFilingStepDone,
   firstIncompleteFilingStep,
@@ -191,7 +194,7 @@ import { CalendarDays } from "lucide-react";
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
-type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision";
+type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision" | "appeal";
 
 const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
@@ -201,10 +204,15 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
     lockedHint: "Read and accept the filing notice on Overview first.",
   },
   { id: "informal", label: "Informal Review", lockedHint: "Unlocks once your protest is filed." },
-  { id: "hearing", label: "Hearing", lockedHint: "Unlocks once your protest is filed." },
+  { id: "hearing", label: "Formal Hearing", lockedHint: "Unlocks once your protest is filed." },
   {
     id: "decision",
-    label: "Decision & Appeal",
+    label: "Decision",
+    lockedHint: "Unlocks after your hearing or a decision is recorded.",
+  },
+  {
+    id: "appeal",
+    label: "Appeal / Arbitration",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
 ];
@@ -215,8 +223,10 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   overview: "Where your case stands right now, and the one thing to do next.",
   file: "Fill, sign, and file your Notice of Protest with the county — and gather your evidence.",
   informal: "Work the county's proposed value informally, before a formal hearing.",
-  hearing: "Log your hearing notice, then prepare your evidence and talking points.",
-  decision: "Record the ARB's decision and weigh binding arbitration or a district-court appeal.",
+  hearing:
+    "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
+  decision: "Record the ARB's decision.",
+  appeal: "Weigh binding arbitration or a district-court appeal.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -233,7 +243,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-hearing-notice": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
-  "case-escalation": "decision",
+  "case-escalation": "appeal",
 };
 
 function caseTabUnlocked(
@@ -252,6 +262,7 @@ function caseTabUnlocked(
     case "hearing":
       return filed;
     case "decision":
+    case "appeal":
       return (
         ["decision_received", "appealing", "arbitrating", "resolved"].includes(s) ||
         protest.hearingDate != null ||
@@ -531,6 +542,13 @@ export function CaseDetailView({
                 caseData={caseData}
                 onReload={load}
               />
+              {/* Journey tracker is otherwise root-level, Properties-page-only
+                  (see SignedInJourney in routes/__root.tsx) — kept here too
+                  since Prepare & File is where the filing steps it tracks
+                  (Submit/Track/Decision/Savings) actually get worked. */}
+              <div className="mt-6">
+                <JourneyTracker />
+              </div>
             </div>
           )}
 
@@ -571,9 +589,9 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Hearing --- */}
+          {/* --- Formal Hearing --- */}
           {activeTab === "hearing" && current.status !== "requested" && (
-            <div>
+            <div className="space-y-5">
               <HearingNoticeSection
                 userId={userId}
                 protest={current}
@@ -591,7 +609,7 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Decision & Appeal --- */}
+          {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
               <DecisionNoticeSection
@@ -600,6 +618,12 @@ export function CaseDetailView({
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
+            </div>
+          )}
+
+          {/* --- Appeal / Arbitration --- */}
+          {activeTab === "appeal" && (
+            <div>
               <EscalationEvaluationSection
                 protest={current}
                 property={property}
@@ -2714,15 +2738,20 @@ export function DocumentsSection({
       .catch(() => {});
   }, [protest.id]);
 
-  const filingSteps = useMemo(
-    () =>
-      requiredFilingSteps({
-        attendanceType: protest.attendanceType,
-        hasAgentAuthorization: false,
-        hearingAppearance: noticeHearingAppearance,
-      }),
+  const filingInput = useMemo(
+    () => ({
+      attendanceType: protest.attendanceType,
+      hasAgentAuthorization: false,
+      hearingAppearance: noticeHearingAppearance,
+    }),
     [protest.attendanceType, noticeHearingAppearance],
   );
+  const filingSteps = useMemo(() => requiredFilingSteps(filingInput), [filingInput]);
+  // Agent / Representative is optional unless this case has actually
+  // signalled an agent is involved (see optionalFilingSteps) — it's always
+  // shown, but shouldn't hold up auto-advance/"first incomplete" while it's
+  // just an open option, not real required work.
+  const optionalSteps = useMemo(() => optionalFilingSteps(filingInput), [filingInput]);
   const preFilingItems = getPreFilingCheck(property, protest, evidenceDocuments.length);
   const preFilingBlocked = isPreFilingBlocked(preFilingItems);
   // Shared with filing-workflow.ts so this step bar and anything else reading
@@ -2736,7 +2765,7 @@ export function DocumentsSection({
     evidenceSubmittedConfirmedAt: protest.evidenceSubmittedConfirmedAt ?? null,
   };
   const stepDone = (id: FilingStepId) => isFilingStepDone(id, filingStepStatus);
-  const firstIncomplete = firstIncompleteFilingStep(filingSteps, filingStepStatus);
+  const firstIncomplete = firstIncompleteFilingStep(filingSteps, filingStepStatus, optionalSteps);
   const [activeStep, setActiveStep] = useState<FilingStepId>(
     preFilingBlocked ? "prefiling" : firstIncomplete,
   );
@@ -3506,7 +3535,7 @@ function EvidencePackageBuilder({
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [reminderFrequency, setReminderFrequencyState] = useState<ReminderFrequency>("daily");
+  const [reminderFrequency, setReminderFrequencyState] = useState<ReminderFrequency>("weekly");
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
@@ -3526,13 +3555,14 @@ function EvidencePackageBuilder({
         const preselected = selectRelevantEvidence(evidenceDocuments, items);
         setSelectedIds((preselected.length > 0 ? preselected : evidenceDocuments).map((d) => d.id));
         setDeadline(notice?.evidenceSubmissionDeadline ?? null);
-        setReminderFrequencyState(submission?.reminderFrequency ?? "daily");
+        setReminderFrequencyState(submission?.reminderFrequency ?? "weekly");
         // Seed a real row at the default frequency so send-evidence-reminders
-        // has something to find — "by default, daily reminders" shouldn't
-        // require the user to first open this dropdown and pick "Daily"
-        // themselves.
+        // has something to find — "by default, weekly reminders" shouldn't
+        // require the user to first open this dropdown and pick "Weekly"
+        // themselves. Weekly, not daily — a customer with several properties
+        // getting one email per property per day read as spam.
         if (!submission) {
-          saveReminderFrequency(userId, protest.id, "evidence", "daily").catch((err) =>
+          saveReminderFrequency(userId, protest.id, "evidence", "weekly").catch((err) =>
             console.error("Could not seed the default reminder frequency:", err),
           );
         }
@@ -3913,7 +3943,14 @@ function InformalReviewSection({
 
   async function handleAsk(e: FormEvent) {
     e.preventDefault();
-    const q = question.trim();
+    await askQuestion();
+  }
+
+  // Split out from handleAsk so the mic's onFinal can submit the just-spoken
+  // text directly instead of relying on `question` state having flushed from
+  // the same setQuestion() call that filled it — the two can otherwise race.
+  async function askQuestion(override?: string) {
+    const q = (override ?? question).trim();
     if (!q || asking) return;
     setAsking(true);
     setQaError(null);
@@ -4238,6 +4275,11 @@ function InformalReviewSection({
             aria-label="Ask about the informal review"
             placeholder="e.g. Can I bring new comps to the informal that weren't in my protest?"
             className="min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+          />
+          <AskAiMicButton
+            onTranscript={setQuestion}
+            onFinal={(text) => void askQuestion(text)}
+            disabled={asking}
           />
           <button
             type="submit"

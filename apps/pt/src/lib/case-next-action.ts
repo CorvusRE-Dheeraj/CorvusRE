@@ -21,6 +21,7 @@ import {
   FILING_STEP_META,
   isFilingStepDone,
   firstIncompleteFilingStep,
+  optionalFilingSteps,
   type FilingStepId,
   type FilingStepStatusInput,
 } from "./filing-workflow";
@@ -95,11 +96,13 @@ function computePrepareFileAction(
   agentFormSignedAt: string | null,
   evidenceDeclarationSignedAt: string | null,
 ): CaseNextAction {
-  const steps = requiredFilingSteps({
+  const filingInput = {
     attendanceType: protest.attendanceType,
     hasAgentAuthorization: false,
     hearingAppearance: noticeHearingAppearance,
-  });
+  };
+  const steps = requiredFilingSteps(filingInput);
+  const optionalSteps = optionalFilingSteps(filingInput);
   const preFilingItems = getPreFilingCheck(property, protest, evidenceCount);
   const preFilingBlocked = isPreFilingBlocked(preFilingItems);
   const status: FilingStepStatusInput = {
@@ -110,9 +113,17 @@ function computePrepareFileAction(
     evidenceSubmittedConfirmedAt: protest.evidenceSubmittedConfirmedAt ?? null,
   };
 
-  const requiresPrepForm = steps.includes("agent") || steps.includes("affidavit");
-  const allStepsDone = steps.every((id) => isFilingStepDone(id, status));
-  const firstIncomplete = firstIncompleteFilingStep(steps, status);
+  // Agent / Representative is optional unless the case has actually
+  // signalled an agent is involved (see optionalFilingSteps) — always
+  // present in `steps` now, but excluded from both of these while it's
+  // optional: a case with nothing left but Evidence should still read as
+  // "ready to file" even though the owner never touched the Agent step.
+  const requiresPrepForm =
+    steps.includes("affidavit") || (steps.includes("agent") && !optionalSteps.includes("agent"));
+  const allStepsDone = steps
+    .filter((id) => !optionalSteps.includes(id))
+    .every((id) => isFilingStepDone(id, status));
+  const firstIncomplete = firstIncompleteFilingStep(steps, status, optionalSteps);
 
   // The one remaining real task is getting the already-signed, already-
   // prepared packet to the county — either everything required is done and

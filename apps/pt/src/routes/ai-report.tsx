@@ -153,6 +153,11 @@ import {
 } from "@/lib/documents";
 import { tagUploadedDocument, setDocumentModules, MODULE_TAG_LABEL } from "@/lib/document-modules";
 import {
+  generatePropertySummary,
+  buildPropertySummaryFile,
+  PROPERTY_SUMMARY_DOCUMENT_TYPE,
+} from "@/lib/property-summary";
+import {
   generateDataSheet,
   buildDataSheetFile,
   DATA_SHEET_DOCUMENT_TYPE_PREFIX,
@@ -200,6 +205,7 @@ import { ProtestAuthorizationFlow } from "@/components/ProtestAuthorizationFlow"
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { LoadingLine } from "@/components/LoadingLine";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { PropertyImage } from "@/components/PropertyImage";
 import {
   hashModuleInput,
@@ -1212,9 +1218,10 @@ function Report() {
   }
 
   // Shared pool across Improvement Condition's evidence upload and Module 2's
-  // per-strategy evidence gate (up to 5-6 strategies) — raised from the original
-  // 4 (Improvement-only) to give each a realistic amount of headroom.
-  const MAX_EVIDENCE_FILES = 8;
+  // per-strategy evidence gate (up to 5-6 strategies) — raised from 4
+  // (Improvement-only) to 8, then to 20 per explicit request for more
+  // headroom on properties with many documents.
+  const MAX_EVIDENCE_FILES = 20;
 
   // Takes a plain File[] rather than the FileList straight off an <input> — FileList
   // is a live view of the input, so if the caller clears input.value right after
@@ -1399,6 +1406,57 @@ function Report() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not generate a data sheet.");
       return null;
+    }
+  }
+
+  // One AI-written property profile for the whole report — restates the
+  // real property record plus whatever real analysis has already run
+  // (Module 1's score, Module 2's strategy, comps count), grounded only in
+  // what's actually on file. Filed in Documents, untagged to any one
+  // module. See generate-property-summary for the actual prompt.
+  const [generatingPropertySummary, setGeneratingPropertySummary] = useState(false);
+  async function handleGeneratePropertySummary() {
+    if (!user) return;
+    const property = await ensureProperty();
+    if (!property) {
+      toast.error("Could not save this property. Please try again.");
+      return;
+    }
+    setGeneratingPropertySummary(true);
+    try {
+      const healthData = moduleData.health?.data as HealthScoreResult | undefined;
+      const strategyData = moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined;
+      const summary = await generatePropertySummary(
+        {
+          address: state.address,
+          cad: state.cad,
+          ownerName: state.ownerName,
+          accountNumber: state.accountNumber,
+          propertyType: state.propertyType,
+          landValue: state.landValue,
+          improvementValue: state.improvementValue,
+          totalValue: state.totalValue,
+          taxYear: state.taxYear,
+          valueHistory: (state.valueHistory ?? [])
+            .map((h) => ({ year: h.year, total: h.appraisedValue ?? h.marketValue }))
+            .filter((h): h is { year: number; total: number } => h.total != null),
+        },
+        {
+          healthScore: healthData?.score ?? null,
+          healthConclusion: healthData?.executiveConclusion ?? null,
+          strategyRecommendation: strategyData?.topStrategySummary ?? null,
+          compsCount: compsMap.data?.comps?.length ?? null,
+          estimatedSavings: estimated.hasEstimate ? estimated.savings : null,
+        },
+      );
+      const file = await buildPropertySummaryFile(summary);
+      const doc = await uploadDocument(user.id, property.id, file, PROPERTY_SUMMARY_DOCUMENT_TYPE);
+      setEvidenceDocs((prev) => [...prev, doc]);
+      toast.success(`Property summary added to your documents: ${summary.title}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate a property summary.");
+    } finally {
+      setGeneratingPropertySummary(false);
     }
   }
 
@@ -2046,7 +2104,12 @@ function Report() {
   function loadCompsMap() {
     if (compsMap.data || compsMap.loading) return;
     setCompsMap({ data: null, loading: true, attempted: true });
-    getComps({ cad: state.cad, accountNumber: state.accountNumber })
+    getComps({
+      cad: state.cad,
+      accountNumber: state.accountNumber,
+      address: state.address,
+      totalValue: state.totalValue ?? undefined,
+    })
       .then((data) => setCompsMap({ data, loading: false, attempted: true }))
       .catch(() => setCompsMap({ data: null, loading: false, attempted: true }));
   }
@@ -2190,14 +2253,44 @@ function Report() {
   // Go to Module 8" button, ?openModule=evidence) — waits for billingChecked
   // so a paying customer never sees a flash of the paywall first, and only
   // ever fires once (openId stays whatever the user does with it after).
+  //
+  // billingChecked alone isn't enough, though: for owner_managed/
+  // corvusrf_managed, hasFullAccess for a paid-tier module also depends on
+  // resolvedProperty's own subscription (a SEPARATE async lookup keyed off
+  // state.address — see the effect above), which billingChecked (an
+  // ACCOUNT-level "myPlan" signal) says nothing about. Firing as soon as
+  // billingChecked flips can race ahead of that property lookup and show a
+  // real subscribed customer the wrong paywall on a direct deep link —
+  // reproduced live via ?openModule=improvement, where hasFullAccess was
+  // still its default false at the moment this fired even though the
+  // property had an active subscription. Wait for the property lookup to
+  // actually have a chance to settle first, unless there's genuinely no
+  // address for it to look up (then it will never resolve, and
+  // hasFullAccess staying false is the correct answer, not a race).
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   useEffect(() => {
     if (!deepLinkModuleId || deepLinkHandled || !billingChecked) return;
     const target = MODULES.find((m) => m.id === deepLinkModuleId);
-    if (target) openModule(target);
+    if (!target) {
+      setDeepLinkHandled(true);
+      return;
+    }
+    const unconditionalAccess =
+      myPlan === "beta" || myPlan === "ai_report" || myPlan === "managed_protest";
+    const propertyLookupPending = !!state.address && !resolvedProperty;
+    if (target.n > FREE_MODULE_COUNT && !unconditionalAccess && propertyLookupPending) return;
+    openModule(target);
     setDeepLinkHandled(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkModuleId, deepLinkHandled, billingChecked, hasFullAccess]);
+  }, [
+    deepLinkModuleId,
+    deepLinkHandled,
+    billingChecked,
+    hasFullAccess,
+    resolvedProperty,
+    myPlan,
+    state.address,
+  ]);
 
   // The exact same estimateSavings() call the intake savings screen uses (see
   // savings-estimate.ts) — comps tier first, then the formula tier (base rate +
@@ -2630,6 +2723,16 @@ function Report() {
             <Field label="Total" value={currency(state.totalValue)} bold />
           </dl>
           <ValueHistorySection history={state.valueHistory ?? []} />
+          {user && (
+            <button
+              type="button"
+              onClick={handleGeneratePropertySummary}
+              disabled={generatingPropertySummary}
+              className="btn-outline mt-4 text-sm disabled:opacity-60"
+            >
+              {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
+            </button>
+          )}
         </div>
         <div className="card-elev overflow-hidden">
           <iframe
@@ -3016,6 +3119,7 @@ function Report() {
                 uploadingEvidence={false}
                 onUploadEvidence={() => {}}
                 onForceReload={() => {}}
+                onReloadModule={() => {}}
                 onFetchCadDetails={() => {}}
                 onRefreshSiteGis={() => {}}
                 siteGisRefreshing={false}
@@ -3140,6 +3244,7 @@ function Report() {
               if (target) openModule(target);
             }}
             onStartProtest={startProtest}
+            onReloadModule={(id) => loadModule(id, { force: true })}
             onViewCase={() => {
               if (!resolvedProperty) return;
               // Same-window navigation (per product direction) — opening it
@@ -3819,8 +3924,17 @@ function ModuleVisual({
     case "comps": {
       const d = moduleState.data as ModuleResultMap["comps"];
       return (
-        <div className="text-xs text-muted-foreground">
-          {d.checklist.length} evidence item{d.checklist.length === 1 ? "" : "s"} to gather
+        <div className="grid gap-1 text-xs text-muted-foreground">
+          {!compsMap.loading && !compsMap.data?.comps.length && (
+            <p>
+              No comparable-property map yet — live comps are only available for Collin, Denton, Grayson,
+              Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
+              build the comp set yourself.
+            </p>
+          )}
+          <p>
+            {d.checklist.length} evidence item{d.checklist.length === 1 ? "" : "s"} to gather
+          </p>
         </div>
       );
     }
@@ -8654,246 +8768,626 @@ function SourcesList({
   );
 }
 
-// Static reference table for "AI Analysis — Data Required & Sources" — not
-// per-property (SourcesList above is the per-property version); this is the
-// general methodology reference: what the AI would ideally use for each
-// analysis category, where it would come from, and — honestly — whether this
-// app actually has that source integrated today. Several rows the user asked
-// for (recent sale price/date, building SF, GIS/FEMA flood data, zoning
-// records, MLS) are marked "Not integrated" rather than silently implied as
-// live: Texas doesn't publicly disclose sale prices at all (see Module 3's
-// comps-analysis.ts), and this app has no GIS/FEMA/MLS/zoning-record
-// integration today. Status reflects only what's really wired up.
-type DataRequirementRow = {
-  category: string;
-  required: string;
-  source: string;
-  usedFor: string;
-  status: "Available" | "Partial" | "Not integrated";
-  // Retained for reference only — the per-row upload controls were replaced
-  // by one "Upload supporting documents" button at the bottom of the list
-  // (the AI sorts each file to the categories it helps), so `hint` no longer
-  // renders. Left in place as documentation of what each row wants.
-  userUpload?: { hint: string; documentType: string };
-};
+// Module 1 — deliberately minimal. Earlier drafts put a full missing-items
+// checklist (per-item Upload/Link/Answer) directly in Module 1; feedback
+// after seeing it built was that the page had gotten too complicated for
+// what it needs to answer: "Should I protest? Why? What should I do next?"
+// The one action this module offers now is a straight hop into Module 8 (the
+// real evidence system) — no duplicate document list rendered here. "What
+// Corvus AI Checked" still reads Module 8's real per-item status for the
+// collapsed Detailed Analysis section, since that's real data worth keeping
+// available, just not surfaced as a whole extra workflow up front.
+function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
+  return status === "Verified" ? "Reviewed" : status === "Found" ? "More Information Helpful" : "Data Not Available";
+}
 
-const DATA_REQUIREMENTS: DataRequirementRow[] = [
-  {
-    category: "Current CAD Appraised Value",
-    required: "Total appraised value, land value, improvement value, market value",
-    source: "County Appraisal District (CAD)",
-    usedFor: "Establishes the current tax valuation baseline",
-    status: "Available",
-  },
-  {
-    category: "Historical Assessment",
-    required: "Prior years' land/improvement/total values; year-over-year change",
-    source: "CAD historical records",
-    usedFor: "Identifies unusual increases or valuation trends",
-    status: "Available",
-  },
-  {
-    category: "Comparable Valuation",
-    required: "Comparable addresses, CAD value, distance, land size, similarity",
-    source: "CAD (same-subdivision public records)",
-    usedFor: "Compares this property's valuation against similar nearby ones",
-    status: "Partial",
-    userUpload: {
-      hint: "Have an appraisal, broker price opinion, or your own comp list? Upload it.",
-      documentType: "Data: Comparable Valuation",
-    },
-  },
-  {
-    category: "Market Information",
-    required: "Recent sale price, sale date, listing price, cap rate",
-    source: "County deed records + MLS",
-    usedFor: "Would show whether CAD value looks disconnected from the market",
-    status: "Not integrated",
-    userUpload: {
-      hint: "Upload a closing statement, purchase contract, listing sheet, or recent appraisal.",
-      documentType: "Data: Market Information",
-    },
-  },
-  {
-    category: "Property Characteristics",
-    required: "Building SF, year built, stories, construction type",
-    source: "CAD improvement records + GIS",
-    usedFor: "Would ensure comparisons use the right physical characteristics",
-    status: "Not integrated",
-    userUpload: {
-      hint: "Upload a survey, building plans, floor plan, or an appraisal listing square footage.",
-      documentType: "Data: Property Characteristics",
-    },
-  },
-  {
-    category: "Site Conditions",
-    required: "Lot shape, access, flood zone, topography, easements",
-    source: "FEMA NFHL (flood zone) + USGS (elevation) — real, point-level only",
-    usedFor: "Flood zone and a single elevation point; every other factor still needs upload",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a survey, plat, flood determination, or photos of drainage / access / easement issues.",
-      documentType: "Data: Site Conditions",
-    },
-  },
-  {
-    category: "Improvement Condition",
-    required: "Condition rating, deferred maintenance, renovation history",
-    source: "User-uploaded photos/documents",
-    usedFor: "Whether the building's condition supports a lower valuation",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload photos, an inspection report, or repair estimates for deferred maintenance.",
-      documentType: "Data: Improvement Condition",
-    },
-  },
-  {
-    category: "Zoning / Classification",
-    required: "Current zoning, CAD property class, legal description",
-    source: "CAD record (zoning field, where populated) + stated property type",
-    usedFor: "Checks whether the CAD classification looks consistent",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a zoning verification letter, plat, or the legal description from your deed.",
-      documentType: "Data: Zoning / Classification",
-    },
-  },
-  {
-    category: "Income Indicators",
-    required: "Rent, occupancy, NOI, expenses, cap rate",
-    source: "User-provided P&L / rent roll",
-    usedFor: "Income-based valuation indicator for applicable properties",
-    status: "Partial",
-    userUpload: {
-      hint: "Upload a rent roll, profit & loss statement, or the current leases.",
-      documentType: "Data: Income Indicators",
-    },
-  },
-  {
-    category: "Existing Evidence",
-    required: "Prior protest results, notices, photos, leases, surveys",
-    source: "User uploads",
-    usedFor: "Strengthens or weakens the identified opportunity",
-    status: "Available",
-    userUpload: {
-      hint: "Upload prior protest results, the appraisal notice, photos, leases, or surveys.",
-      documentType: "Data: Existing Evidence",
-    },
-  },
-  {
-    category: "Data Confidence",
-    required: "Source reliability, completeness, comp count, missing fields",
-    source: "Calculated by AI from all collected data",
-    usedFor: "Determines how reliable this analysis and score are",
-    status: "Available",
-  },
-  {
-    category: "Potential Valuation Gaps",
-    required: "CAD value vs. comparable/market/income indicators",
-    source: "Calculated from the CAD + comparable data above",
-    usedFor: "Identifies the size of a potential overvaluation",
-    status: "Partial",
-  },
-];
-
-const DATA_STATUS_STYLE: Record<DataRequirementRow["status"], string> = {
-  Available: "bg-success/15 text-success",
-  Partial: "bg-warning/20 text-warning-foreground",
-  "Not integrated": "bg-secondary text-muted-foreground",
-};
-
-// A full-width vertical list, not a wide table — no horizontal scrolling at
-// all. Each category is collapsed to just its name + Status badge (the two
-// things worth scanning at a glance); tap a row to expand it in place and
-// reveal the three detail fields stacked below, same click-to-expand
-// convention as ComparableTable's rows above.
-function DataRequirementsTable({
-  onUpload,
-  uploading,
+function Module1Content({
+  data,
+  state,
+  estimated,
+  m,
+  moduleData,
+  onStartProtest,
+  onReloadModule,
+  onOpenModule,
+  compsMap,
+  evidenceDocs,
 }: {
-  // One upload control at the bottom (not per row). Files go into the
-  // property's evidence pool and the AI re-runs the analysis on its own,
-  // sorting each document to the categories it actually helps — the owner
-  // doesn't have to match a file to a row. Absent for a signed-out / no-
-  // access viewer: they still see what's needed, just can't act on it here.
-  onUpload?: (files: File[]) => void;
-  uploading?: boolean;
+  data: HealthScoreResult;
+  state: IntakeState;
+  estimated: { hasEstimate: boolean; reduction: number; savings: number };
+  m: Module;
+  moduleData: Record<string, ModuleAsyncState>;
+  onStartProtest: () => void;
+  onReloadModule: (moduleId: string) => void;
+  onOpenModule: (moduleId: string) => void;
+  compsMap: { data: CompsResult | null; loading: boolean };
+  evidenceDocs: DocumentRecord[];
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-  return (
-    <div className="grid gap-1.5">
-      {DATA_REQUIREMENTS.map((r) => {
-        const isOpen = expanded === r.category;
-        return (
-          <div key={r.category} className="rounded-lg border border-border">
-            <button
-              type="button"
-              onClick={() => setExpanded(isOpen ? null : r.category)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
-            >
-              <span className="truncate text-xs font-medium">{r.category}</span>
-              <span className="flex shrink-0 items-center gap-2">
-                <span
-                  className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${DATA_STATUS_STYLE[r.status]}`}
-                >
-                  {r.status}
-                </span>
-                <ArrowRight
-                  className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`}
-                />
-              </span>
-            </button>
-            {isOpen && (
-              <div className="grid gap-2 border-t border-border/60 px-3 py-2 text-xs">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Exact Data Required
-                  </div>
-                  <p className="text-muted-foreground">{r.required}</p>
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Primary Data Source
-                  </div>
-                  <p className="text-muted-foreground">{r.source}</p>
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    What AI Uses It For
-                  </div>
-                  <p className="text-muted-foreground">{r.usedFor}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+  const evidenceState = moduleData.evidence;
+  const evidenceItems = (evidenceState?.data as ModuleResultMap["evidence"] | undefined)?.items;
 
-      {onUpload && (
-        <div className="mt-1 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-3 text-center">
-          <p className="text-xs text-muted-foreground">
-            Have documents that fill any of these gaps — an appraisal, survey, rent roll, photos,
-            prior protest results? Upload them and the AI re-runs its analysis, sorting each file to
-            where it helps.
-          </p>
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-background px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10">
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              multiple
-              disabled={uploading}
-              className="hidden"
-              onChange={(e) => {
-                const selected = Array.from(e.target.files ?? []);
-                if (selected.length > 0) onUpload(selected);
-                e.target.value = "";
-              }}
+  // Kick off Module 8's own analysis the first time Module 1 opens and it
+  // hasn't run yet — the readiness gate below and the collapsed Detailed
+  // Analysis section both need real per-property evidence status, whether or
+  // not the user ever opens Module 8 directly.
+  useEffect(() => {
+    if (!evidenceState?.data && !evidenceState?.loading && !evidenceState?.error) {
+      onReloadModule("evidence");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const criticalMissing = (evidenceItems ?? []).some(
+    (it) => it.status === "Missing" && it.priority === "Critical",
+  );
+  const readyToProtest = data.dataSufficient && !criticalMissing;
+
+  const tier = data.score >= 70 ? "Strong" : data.score >= 40 ? "Moderate" : "Limited";
+
+  return (
+    <div className="mt-4 grid gap-5">
+      {/* 1. Your Protest Recommendation — conclusion + the 3 headline numbers,
+          shown as separate labelled stats. Never combined into one "$X — Y%"
+          string: a dollar amount and a percentage are two different numbers
+          and reading them as one implies a relationship that isn't real. */}
+      <div>
+        {data.executiveConclusion && (
+          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+        )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
+          <div className="text-center">
+            <SpeedometerGauge value={data.score} size="lg" />
+            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
+              {tier} Protest Opportunity
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Stat
+              label="Potential Tax Savings"
+              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
+              tone="success"
             />
-            <Upload className="h-3.5 w-3.5" />
-            {uploading ? "Uploading…" : "Upload supporting documents"}
-          </label>
+            <Stat
+              label="Potential Assessment Reduction"
+              value={
+                estimated.hasEstimate && state.totalValue
+                  ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                  : "Not yet available"
+              }
+            />
+            <Stat
+              label="Current Assessed Value"
+              value={state.totalValue ? currency(state.totalValue) : "—"}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Why — the reasons, plus confidence folded in as one compact line
+          rather than its own separate meter card. */}
+      {data.factorsIncreasing.length > 0 && (
+        <div className="rounded-lg bg-success/10 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Why
+          </div>
+          <ul className="grid gap-1 text-xs text-foreground/90">
+            {data.factorsIncreasing.map((f, i) => (
+              <li key={i}>• {f}</li>
+            ))}
+          </ul>
+          <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Confidence: {data.confidencePct}%
+            {!data.dataSufficient && " — More information needed"}
+          </div>
         </div>
       )}
+
+      {/* 3. Recommended Next Step — large and unambiguous, one action only. */}
+      <div className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}>
+        {readyToProtest ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Corvus AI Recommends a Protest
+            </div>
+            <button
+              onClick={onStartProtest}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              START MY PROTEST
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Depending on your subscription, Corvus AI or our team handles the filing, county
+              communication, hearing support, and settlement coordination.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+              Recommended Next Step
+            </div>
+            <p className="mt-1 text-sm font-semibold">
+              Complete the missing property information so Corvus AI can finish your protest
+              analysis.
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => onOpenModule("evidence")}
+                className="btn-accent text-sm font-bold"
+              >
+                Upload Property Information
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 4. Detailed Analysis — collapsed by default; native <details> since
+          nothing outside this block needs to control whether it's open. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              What Corvus AI Checked
+              {evidenceItems && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {evidenceItems.length + data.scoreBreakdown.length} property and valuation factors
+                  analyzed
+                </span>
+              )}
+            </span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid gap-4 border-t border-border/60 p-4">
+          {evidenceItems && evidenceItems.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                What Corvus AI Checked
+              </div>
+              <ul className="grid gap-1.5 text-xs">
+                {evidenceItems.map((it) => (
+                  <li key={it.item} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{it.item}</span>
+                    <span
+                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        it.status === "Verified"
+                          ? "bg-success/15 text-success"
+                          : it.status === "Found"
+                            ? "bg-accent/15 text-accent"
+                            : "bg-secondary/60 text-muted-foreground"
+                      }`}
+                    >
+                      {evidenceStatusLabel(it.status)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {data.scoreBreakdown.length > 0 && (
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Score Breakdown
+              </div>
+              <ScoreBreakdownList breakdown={data.scoreBreakdown} />
+            </div>
+          )}
+
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Supporting Data
+            </div>
+            <SupportingDataGrid state={state} compsMap={compsMap} />
+          </div>
+
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Sources
+            </div>
+            <SourcesList state={state} compsMap={compsMap} evidenceDocs={evidenceDocs} />
+          </div>
+
+          {data.methodology && (
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                AI Methodology
+              </div>
+              <MarkdownLite className="text-xs text-muted-foreground" text={data.methodology} />
+            </div>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "success";
+}) {
+  return (
+    <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
+      <div
+        className={`text-[10px] font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
+      >
+        {label}
+      </div>
+      <div className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// Module 2 — same philosophy as Module 1's simplified layout: lead with the
+// plain recommendation, keep the full per-strategy breakdown (evidence
+// upload/answer per strategy, the ranked list) collapsed by default rather
+// than shown up front. Unlike Module 1 (one opportunity score), a property
+// can genuinely have more than one strategy worth pursuing at once, so the
+// headline card lists every strategy strong enough to feature — not just
+// the top-ranked one — rather than picking a single winner.
+const STRATEGY_FEATURE_THRESHOLD = 40;
+
+function strategyTier(score: number): string {
+  return score >= 70 ? "Strong" : score >= STRATEGY_FEATURE_THRESHOLD ? "Moderate" : "Limited";
+}
+
+function Module2Content({
+  d,
+  m,
+  state,
+  evidenceDocs,
+  uploadingEvidence,
+  onUploadEvidence,
+  onAnswerStrategy,
+  onForceReload,
+  onOpenModule,
+  refreshing,
+}: {
+  d: ModuleResultMap["strategy"];
+  m: Module;
+  state: IntakeState;
+  evidenceDocs: DocumentRecord[];
+  uploadingEvidence: boolean;
+  onUploadEvidence: (files: File[], strategyId?: string, documentTypeOverride?: string) => void;
+  onAnswerStrategy: (strategyId: string, answer: string) => void;
+  onForceReload: () => void;
+  onOpenModule: (moduleId: string) => void;
+  refreshing: boolean;
+}) {
+  const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
+  const shown = featured.length > 0 ? featured : d.strategies.slice(0, 1);
+  const needsMoreInfo = shown.some((s) => !s.dataSufficient || s.missingEvidence.length > 0);
+
+  return (
+    <div className="mt-4 grid gap-5">
+      {/* 1. Recommendation — every strategy worth featuring, not just #1. */}
+      <div>
+        {d.topStrategySummary && (
+          <AiVerdictLine icon={m.icon} text={d.topStrategySummary} color={m.color} />
+        )}
+        <div className="mt-3 grid gap-2">
+          {shown.map((s) => (
+            <div key={s.name} className="card-elev p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">{s.name}</h3>
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: scoreColor(s.strengthScore) }}
+                >
+                  {strategyTier(s.strengthScore)} · {s.confidencePct}% confidence
+                </span>
+              </div>
+              {s.primaryReason && (
+                <p className="mt-1 text-sm text-muted-foreground">{s.primaryReason}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Recommended Next Step — one action only. */}
+      <div className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}>
+        {needsMoreInfo ? (
+          <>
+            <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+              Recommended Next Step
+            </div>
+            <p className="mt-1 text-sm font-semibold">
+              Complete the missing property information so Corvus AI can finish evaluating these
+              strategies.
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => onOpenModule("evidence")}
+                className="btn-accent text-sm font-bold"
+              >
+                Upload Property Information
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Corvus AI Recommends These Strategies
+            </div>
+            <p className="mt-1 text-sm opacity-90">
+              {shown.length === 1
+                ? "This strategy is ready to support your protest."
+                : "These strategies are ready to support your protest."}
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* 3. Detailed Analysis — collapsed by default; the full ranked list
+          and every per-strategy evidence card, unchanged. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              What Corvus AI Checked
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {d.strategies.length} strateg{d.strategies.length === 1 ? "y" : "ies"} evaluated
+              </span>
+            </span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid gap-4 border-t border-border/60 p-4 [&>*]:min-w-0">
+          <div className="card-elev min-w-0 p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Ranked Strategies
+            </div>
+            <StrategyRankList strategies={d.strategies} color={m.color} />
+          </div>
+          <div className="grid gap-3 [&>*]:min-w-0">
+            {d.strategies.map((s, i) => (
+              <StrategyDetail
+                key={s.name}
+                s={s}
+                rank={i + 1}
+                color={m.color}
+                evidenceDocs={evidenceDocs}
+                uploadingEvidence={uploadingEvidence}
+                onUploadEvidence={onUploadEvidence}
+                answer={state.strategyAnswers?.[strategySlug(s.name)]}
+                onAnswerStrategy={onAnswerStrategy}
+                onRefresh={onForceReload}
+                refreshing={refreshing}
+              />
+            ))}
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+// Module 5 — same philosophy as Modules 1/2: lead with what Corvus actually
+// found about the building, what it means for value, and how that compares
+// to the CAD's own improvement value; push the technical machinery (effective
+// age, economic life, physical/functional/external depreciation — the real
+// deterministic math in computeDepreciation) into a collapsed Detailed
+// Analysis section. One upload path — straight into Module 8 — rather than a
+// per-component category picker; the evidence system re-tags and re-runs this
+// module's analysis on its own once new photos/documents land.
+function Module5Content({
+  d,
+  m,
+  state,
+  overrides,
+  onMarkNotApplicable,
+  onClearNotApplicable,
+  improvementDocs,
+  onOpenModule,
+}: {
+  d: ModuleResultMap["improvement"];
+  m: Module;
+  state: IntakeState;
+  overrides: ModuleOverride[];
+  onMarkNotApplicable: (moduleId: string, itemKey?: string) => void;
+  onClearNotApplicable: (moduleId: string, itemKey?: string) => void;
+  improvementDocs: DocumentRecord[];
+  onOpenModule: (moduleId: string) => void;
+}) {
+  const economicLife = getTypicalEconomicLife(state.propertyType);
+  const depreciation = computeDepreciation(
+    d.effectiveAgeYears,
+    economicLife,
+    d.functionalObsolescencePct,
+    d.externalObsolescencePct,
+    state.improvementValue ?? null,
+  );
+
+  const missingComponents = d.buildingComponents.filter((c) => !c.hasPhoto && !c.notApplicable);
+  const hasRealMetrics =
+    d.effectiveAgeYears != null ||
+    d.functionalObsolescencePct != null ||
+    d.externalObsolescencePct != null;
+  const hasValueImpact =
+    depreciation.conditionAdjustedValue != null && state.improvementValue != null;
+  const needsMoreInfo = missingComponents.length > 0 || !hasRealMetrics;
+
+  const affectingValue = [
+    d.functionalObsolescencePct != null ? d.functionalObsolescenceBasis : null,
+    d.externalObsolescencePct != null ? d.externalObsolescenceBasis : null,
+  ].filter((s): s is string => !!s);
+
+  return (
+    <div className="mt-4 grid gap-5">
+      {/* 1. What We Found — the building itself, component by component. */}
+      <div>
+        {d.guidance && <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />}
+        <div className="mt-3 flex flex-col items-center">
+          <SpeedometerGauge value={d.priorityScore} size="md" />
+          <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
+        </div>
+        <div className="mt-3 grid gap-1.5">
+          {d.buildingComponents.map((c) => (
+            <BuildingComponentRow
+              key={c.component}
+              c={
+                !c.hasPhoto && isItemNotApplicable(overrides, "improvement", c.component)
+                  ? { ...c, notApplicable: true }
+                  : c
+              }
+              onMarkNotApplicable={() => onMarkNotApplicable("improvement", c.component)}
+              onClearNotApplicable={() => onClearNotApplicable("improvement", c.component)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* 2. What May Be Affecting Its Value — real AI-grounded findings only. */}
+      {affectingValue.length > 0 && (
+        <div className="rounded-lg bg-warning/10 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            What May Be Affecting Its Value
+          </div>
+          <ul className="grid gap-1 text-xs text-foreground/90">
+            {affectingValue.map((s, i) => (
+              <li key={i}>• {s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 3. How It Compares With the CAD Value — only ever shown once real
+          numbers exist; never a placeholder row. */}
+      {hasValueImpact && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            How It Compares With the CAD Value
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <FactBox label="CAD Improvement Value" value={currency(state.improvementValue)} />
+            <FactBox
+              label="Condition-Adjusted Value"
+              value={currency(depreciation.conditionAdjustedValue)}
+            />
+            <FactBox
+              label="Impact"
+              value={`${currency(depreciation.impactDollar ?? 0)} (${depreciation.impactPct}%)`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 4. Evidence Supporting Our Finding */}
+      {improvementDocs.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Evidence Supporting Our Finding
+          </div>
+          <ul className="grid gap-1 text-xs">
+            {improvementDocs.map((doc) => (
+              <li key={doc.id} className="flex items-center justify-between gap-2">
+                <span className="truncate text-muted-foreground">{doc.fileName}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  {doc.documentType?.replace(/^Improvement:\s*/, "") ?? "Improvement Evidence"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 5. Corvus AI's Finding — the conclusion: does the evidence support a
+          lower value, or is more still needed. */}
+      {d.keyFinding && (
+        <div className={`rounded-lg p-4 ${m.color.bg}`}>
+          <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
+            Corvus AI's Finding
+          </div>
+          <p className="mt-1 text-sm text-foreground/90">{d.keyFinding}</p>
+        </div>
+      )}
+
+      {/* 6. Recommended Next Step — one action only. */}
+      {needsMoreInfo && (
+        <div className={`rounded-lg p-5 ${m.color.bg}`}>
+          <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
+            Recommended Next Step
+          </div>
+          <p className="mt-1 text-sm font-semibold">
+            Complete the missing property information so Corvus AI can finish your protest
+            analysis.
+          </p>
+          <div className="mt-3">
+            <button
+              onClick={() => onOpenModule("evidence")}
+              className="btn-accent text-sm font-bold"
+            >
+              Upload Property Information
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Detailed Analysis — collapsed by default; the background math
+          (effective age, economic life, depreciation) the customer never
+          needs to read to understand the conclusion above. */}
+      <details className="card-elev overflow-hidden p-0">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <span>Condition Metrics</span>
+            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+          </div>
+        </summary>
+        <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
+          <ExecutiveStat
+            label="Effective Age"
+            value={d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"}
+          />
+          <ExecutiveStat
+            label="Economic Life"
+            value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
+          />
+          <ExecutiveStat
+            label="Physical Depreciation"
+            value={
+              depreciation.physicalDepreciationPct != null
+                ? `${depreciation.physicalDepreciationPct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="Functional Obsolescence"
+            value={
+              d.functionalObsolescencePct != null
+                ? `${d.functionalObsolescencePct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="External Obsolescence"
+            value={
+              d.externalObsolescencePct != null
+                ? `${d.externalObsolescencePct}%`
+                : "Additional Data Needed"
+            }
+          />
+          <ExecutiveStat
+            label="Total Depreciation"
+            value={
+              depreciation.totalDepreciationPct != null
+                ? `${depreciation.totalDepreciationPct}%`
+                : "Additional Data Needed"
+            }
+          />
+        </div>
+      </details>
     </div>
   );
 }
@@ -8932,6 +9426,7 @@ function ModulePreviewContent({
   noticeSignedAt,
   onOpenModule,
   onStartProtest,
+  onReloadModule,
   onViewCase,
   overrides,
   onMarkNotApplicable,
@@ -9005,6 +9500,12 @@ function ModulePreviewContent({
   noticeSignedAt: string | null;
   onOpenModule: (moduleId: string) => void;
   onStartProtest: () => void;
+  // Module 1 only — force-reload a module OTHER than whichever one is
+  // currently open (onForceReload only reloads the open module). Used so
+  // accepting a link / uploading evidence from inside Module 1 re-runs
+  // Module 8's real analysis in the background, without navigating the user
+  // there — see Module1Content.
+  onReloadModule: (moduleId: string) => void;
   onViewCase: () => void;
   // Real, user-confirmed "not applicable" marks — see module-overrides.ts.
   // onMarkNotApplicable/onClearNotApplicable default `itemKey` to the
@@ -9060,9 +9561,6 @@ function ModulePreviewContent({
   // of by priority. Priority stays the default (Part 3 explicitly wants
   // prioritization first); this is just a different lens on the same data.
   const [evidenceGroupBy, setEvidenceGroupBy] = useState<"priority" | "category">("priority");
-  // Module 5's optional "which component" tag on the single upload — "" means
-  // let AI decide (categorizeEvidenceUploads).
-  const [improvementUploadCat, setImprovementUploadCat] = useState("");
 
   if (m.requiresUserData) {
     if (isModuleNotApplicable(overrides, "income")) {
@@ -9605,197 +10103,19 @@ function ModulePreviewContent({
 
   if (m.id === "health") {
     const data = moduleState.data as HealthScoreResult;
-    const label =
-      data.score >= 70
-        ? "Strong Opportunity"
-        : data.score >= 40
-          ? "Moderate Opportunity"
-          : "Limited Opportunity";
-    const answerKey = "health";
     return (
-      <div className="mt-4 grid gap-4">
-        {data.executiveConclusion && (
-          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
-        )}
-
-        <div className="min-w-0">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            AI Analysis — Data Required &amp; Sources
-          </div>
-          <DataRequirementsTable
-            onUpload={
-              allowEvidenceUpload
-                ? (files) => onUploadEvidence(files, undefined, PROTEST_EVIDENCE_DOCUMENT_TYPE)
-                : undefined
-            }
-            uploading={uploadingEvidence}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
-          <div className="text-center">
-            <SpeedometerGauge value={data.score} size="lg" />
-            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
-              {label}
-            </div>
-            {!data.dataSufficient && (
-              <div className="mt-1 text-xs font-semibold text-warning-foreground">
-                Additional Data Needed
-              </div>
-            )}
-          </div>
-          {estimated.savings > 0 && (
-            <div className="rounded-lg bg-success/10 p-4 text-center">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
-                Potential Tax Savings
-              </div>
-              <div className="mt-1 font-serif text-3xl font-bold text-success">
-                {currency(estimated.savings)}
-              </div>
-              {state.totalValue ? (
-                <div className="mt-0.5 text-xs text-success/80">
-                  {Math.round((estimated.reduction / state.totalValue) * 100)}% of assessed value
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        {data.scoreBreakdown.length > 0 && (
-          <div className="card-elev p-4">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Score Breakdown
-            </div>
-            <ScoreBreakdownList breakdown={data.scoreBreakdown} />
-          </div>
-        )}
-
-        {(data.factorsIncreasing.length > 0 || data.factorsReducing.length > 0) && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {data.factorsIncreasing.length > 0 && (
-              <div className="rounded-lg bg-success/10 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Factors Increasing Protest Opportunity
-                </div>
-                <ul className="grid gap-1 text-xs text-foreground/90">
-                  {data.factorsIncreasing.map((f, i) => (
-                    <li key={i}>• {f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {data.factorsReducing.length > 0 && (
-              <div className="rounded-lg bg-destructive/10 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-destructive">
-                  <TrendingDown className="h-3.5 w-3.5" />
-                  Factors Reducing Protest Opportunity
-                </div>
-                <ul className="grid gap-1 text-xs text-foreground/90">
-                  {data.factorsReducing.map((f, i) => (
-                    <li key={i}>• {f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Supporting Data
-          </div>
-          <SupportingDataGrid state={state} compsMap={compsMap} />
-        </div>
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Sources
-          </div>
-          <SourcesList state={state} compsMap={compsMap} evidenceDocs={evidenceDocs} />
-        </div>
-
-        <div className="card-elev p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence
-          </div>
-          <MiniMeter value={data.confidencePct} label="Analysis confidence" />
-          {data.confidenceReasoning && (
-            <MarkdownLite
-              className="mt-2 text-xs text-muted-foreground"
-              text={data.confidenceReasoning}
-            />
-          )}
-        </div>
-
-        {data.methodology && (
-          <div>
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              AI Methodology
-            </div>
-            <MarkdownLite className="text-xs text-muted-foreground" text={data.methodology} />
-          </div>
-        )}
-
-        {data.nextStep && (
-          <div className={`rounded-lg p-4 ${m.color.bg}`}>
-            <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-              Recommended Next Step
-            </div>
-            <div className="mt-1 text-sm font-semibold">
-              <MarkdownLite text={data.nextStep} />
-            </div>
-          </div>
-        )}
-
-        {!data.dataSufficient && (
-          <div className="border-t border-border/60 pt-4 print:hidden">
-            <div className="text-xs font-semibold text-warning-foreground">
-              Additional Data Needed
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Upload supporting documents or answer below so AI can complete this analysis with real
-              evidence.
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label
-                className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
-              >
-                {uploadingEvidence ? "Uploading…" : "Upload Evidence"}
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple
-                  className="hidden"
-                  disabled={uploadingEvidence}
-                  onChange={(e) => {
-                    const selected = e.target.files ? Array.from(e.target.files) : [];
-                    e.target.value = "";
-                    if (selected.length > 0) onUploadEvidence(selected, answerKey);
-                  }}
-                />
-              </label>
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                defaultValue={state.strategyAnswers?.[answerKey] ?? ""}
-                onBlur={(e) => {
-                  if (e.target.value.trim()) onAnswerStrategy(answerKey, e.target.value.trim());
-                }}
-                placeholder="Or type an answer instead…"
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            {!state.strategyAnswers?.[answerKey] && evidenceDocs.length === 0 && (
-              <p className="mt-2 text-[11px] italic text-muted-foreground">
-                Estimate — not guaranteed, missing evidence.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
+      <Module1Content
+        data={data}
+        state={state}
+        estimated={estimated}
+        m={m}
+        moduleData={moduleData}
+        onStartProtest={onStartProtest}
+        onReloadModule={onReloadModule}
+        onOpenModule={onOpenModule}
+        compsMap={compsMap}
+        evidenceDocs={evidenceDocs}
+      />
     );
   }
 
@@ -9810,34 +10130,18 @@ function ModulePreviewContent({
         );
       }
       return (
-        <div className="mt-4 grid gap-4 [&>*]:min-w-0">
-          {d.topStrategySummary && (
-            <AiVerdictLine icon={m.icon} text={d.topStrategySummary} color={m.color} />
-          )}
-          <div className="card-elev min-w-0 p-4">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Ranked Strategies
-            </div>
-            <StrategyRankList strategies={d.strategies} color={m.color} />
-          </div>
-          <div className="grid gap-3 [&>*]:min-w-0">
-            {d.strategies.map((s, i) => (
-              <StrategyDetail
-                key={s.name}
-                s={s}
-                rank={i + 1}
-                color={m.color}
-                evidenceDocs={evidenceDocs}
-                uploadingEvidence={uploadingEvidence}
-                onUploadEvidence={onUploadEvidence}
-                answer={state.strategyAnswers?.[strategySlug(s.name)]}
-                onAnswerStrategy={onAnswerStrategy}
-                onRefresh={onForceReload}
-                refreshing={moduleState?.loading}
-              />
-            ))}
-          </div>
-        </div>
+        <Module2Content
+          d={d}
+          m={m}
+          state={state}
+          evidenceDocs={evidenceDocs}
+          uploadingEvidence={uploadingEvidence}
+          onUploadEvidence={onUploadEvidence}
+          onAnswerStrategy={onAnswerStrategy}
+          onForceReload={onForceReload}
+          onOpenModule={onOpenModule}
+          refreshing={!!moduleState?.loading}
+        />
       );
     }
     case "site": {
@@ -10082,265 +10386,17 @@ function ModulePreviewContent({
           doc.documentType === EVIDENCE_DOCUMENT_TYPE ||
           doc.documentType?.startsWith("Improvement: "),
       );
-      const improvementComponentKinds = ["Roof", "HVAC", "Exterior", "Interior"] as const;
-      // One upload -> AI reads each file and tags it to the component it
-      // shows (Roof / HVAC / Exterior / Interior), or leaves it generic
-      // Improvement Evidence when it can't tell. Mirrors Module 6/7/8.
-      async function handleImprovementAutoUpload(files: File[]) {
-        setCategorizingEvidence(true);
-        try {
-          const categorized = await categorizeEvidenceUploads(
-            [...improvementComponentKinds],
-            files,
-          );
-          const groups = new Map<string, File[]>();
-          for (const file of files) {
-            const matched = categorized.find((c) => c.fileName === file.name)?.matchedItem ?? null;
-            const key =
-              matched && (improvementComponentKinds as readonly string[]).includes(matched)
-                ? `Improvement: ${matched}`
-                : EVIDENCE_DOCUMENT_TYPE;
-            const g = groups.get(key);
-            if (g) g.push(file);
-            else groups.set(key, [file]);
-          }
-          for (const [documentType, groupFiles] of groups) {
-            await onUploadEvidence(groupFiles, undefined, documentType);
-          }
-        } finally {
-          setCategorizingEvidence(false);
-        }
-      }
-      // One upload button. If the user picked a component from the dropdown,
-      // tag straight to it; otherwise let AI read + tag each file.
-      async function handleImprovementUpload(files: File[]) {
-        if (!improvementUploadCat) {
-          await handleImprovementAutoUpload(files);
-          return;
-        }
-        const documentType =
-          improvementUploadCat === "Other"
-            ? EVIDENCE_DOCUMENT_TYPE
-            : `Improvement: ${improvementUploadCat}`;
-        await onUploadEvidence(files, undefined, documentType);
-      }
-      const economicLife = getTypicalEconomicLife(state.propertyType);
-      const depreciation = computeDepreciation(
-        d.effectiveAgeYears,
-        economicLife,
-        d.functionalObsolescencePct,
-        d.externalObsolescencePct,
-        state.improvementValue ?? null,
-      );
       return (
-        <div className="mt-4 grid gap-4">
-          <PipelineDiagram />
-
-          <div className="flex flex-col items-center">
-            <SpeedometerGauge value={d.priorityScore} size="md" />
-            <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
-          </div>
-
-          {d.guidance && <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />}
-
-          {/* Building Condition Overview — 4 fixed components, real photo-
-              grounded findings (see MODULE_SPECS.improvement and
-              enforceBuildingComponentRealData). "No Photo Provided" is
-              honest, never a guessed condition. */}
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Building Condition Overview
-            </div>
-            <div className="grid gap-1.5">
-              {d.buildingComponents.map((c) => (
-                <BuildingComponentRow
-                  key={c.component}
-                  c={
-                    // Same instant-feedback reasoning as the site factors
-                    // above — reflect the override immediately rather than
-                    // waiting on the forced reload it also triggers.
-                    !c.hasPhoto && isItemNotApplicable(overrides, "improvement", c.component)
-                      ? { ...c, notApplicable: true }
-                      : c
-                  }
-                  onMarkNotApplicable={() => onMarkNotApplicable("improvement", c.component)}
-                  onClearNotApplicable={() => onClearNotApplicable("improvement", c.component)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Condition Metrics — Physical Depreciation and Total
-              Depreciation are real deterministic math (see
-              computeDepreciation in improvement-condition.ts), never
-              AI-computed; Effective Age/Functional/External Obsolescence
-              are the AI's own photo-grounded estimates, honestly null when
-              there's no real basis. */}
-          <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Condition Metrics
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <ExecutiveStat
-                label="Effective Age"
-                value={
-                  d.effectiveAgeYears != null
-                    ? `${d.effectiveAgeYears} yrs`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Economic Life"
-                value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
-              />
-              <ExecutiveStat
-                label="Physical Depreciation"
-                value={
-                  depreciation.physicalDepreciationPct != null
-                    ? `${depreciation.physicalDepreciationPct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Functional Obsolescence"
-                value={
-                  d.functionalObsolescencePct != null
-                    ? `${d.functionalObsolescencePct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="External Obsolescence"
-                value={
-                  d.externalObsolescencePct != null
-                    ? `${d.externalObsolescencePct}%`
-                    : "Additional Data Needed"
-                }
-              />
-              <ExecutiveStat
-                label="Total Depreciation"
-                value={
-                  depreciation.totalDepreciationPct != null
-                    ? `${depreciation.totalDepreciationPct}%`
-                    : "Additional Data Needed"
-                }
-              />
-            </div>
-          </div>
-
-          {/* Value Impact — only ever rendered once computeDepreciation()
-              actually returned real numbers; never a placeholder row. */}
-          {depreciation.conditionAdjustedValue != null && state.improvementValue != null && (
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Value Impact
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <FactBox label="CAD Improvement Value" value={currency(state.improvementValue)} />
-                <FactBox
-                  label="Condition-Adjusted Value"
-                  value={currency(depreciation.conditionAdjustedValue)}
-                />
-                <FactBox
-                  label="Impact"
-                  value={`${currency(depreciation.impactDollar ?? 0)} (${depreciation.impactPct}%)`}
-                />
-              </div>
-            </div>
-          )}
-
-          {d.keyFinding && (
-            <div className={`rounded-lg p-4 ${m.color.bg}`}>
-              <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Key Finding
-              </div>
-              <p className="mt-1 text-sm text-foreground/90">{d.keyFinding}</p>
-            </div>
-          )}
-
-          {allowEvidenceUpload && (
-            <div className="mt-4 border-t border-border/60 pt-4 print:hidden">
-              <div className="text-sm font-medium">Add Evidence</div>
-              <p className="text-xs text-muted-foreground">
-                Property photos, repair estimates, or appraisals — AI will cite specific details
-                from what you upload instead of only general guidance. Everything you add is filed
-                in your Documents and shared with every module.
-              </p>
-              {improvementDocs.length > 0 && (
-                <ul className="mt-2 grid gap-1 text-xs">
-                  {improvementDocs.map((doc) => (
-                    <li key={doc.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-muted-foreground">{doc.fileName}</span>
-                      <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                        {doc.documentType?.replace(/^Improvement:\s*/, "") ??
-                          "Improvement Evidence"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <select
-                  value={improvementUploadCat}
-                  onChange={(e) => setImprovementUploadCat(e.target.value)}
-                  disabled={uploadingEvidence || categorizingEvidence}
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
-                  aria-label="Document category"
-                >
-                  <option value="">Category: let AI tag it</option>
-                  {improvementComponentKinds.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                  <option value="Other">Other improvement evidence</option>
-                </select>
-                <label
-                  className={`btn-outline text-sm cursor-pointer ${uploadingEvidence || categorizingEvidence ? "pointer-events-none opacity-60" : ""}`}
-                >
-                  {categorizingEvidence
-                    ? "Reading documents…"
-                    : uploadingEvidence
-                      ? "Uploading…"
-                      : "Upload Evidence"}
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    multiple
-                    className="hidden"
-                    disabled={uploadingEvidence || categorizingEvidence}
-                    onChange={(e) => {
-                      const selected = e.target.files ? Array.from(e.target.files) : [];
-                      e.target.value = "";
-                      if (selected.length > 0) handleImprovementUpload(selected);
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={fetchingPublicData}
-                  onClick={onFetchPublicData}
-                  className="btn-outline text-sm disabled:opacity-60"
-                >
-                  {fetchingPublicData ? "Fetching…" : "Ask Corvus to Fetch Details"}
-                </button>
-                {improvementDocs.length > 0 && (
-                  <button
-                    disabled={loading}
-                    onClick={onForceReload}
-                    className="btn-outline text-sm disabled:opacity-60"
-                  >
-                    Regenerate with Evidence
-                  </button>
-                )}
-              </div>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">
-                “Fetch Details” pulls the latest public county + federal data for this property and
-                files it in Documents for every module.
-              </p>
-            </div>
-          )}
-        </div>
+        <Module5Content
+          d={d}
+          m={m}
+          state={state}
+          overrides={overrides}
+          onMarkNotApplicable={onMarkNotApplicable}
+          onClearNotApplicable={onClearNotApplicable}
+          improvementDocs={improvementDocs}
+          onOpenModule={onOpenModule}
+        />
       );
     }
     case "zoning": {
@@ -11467,7 +11523,13 @@ function ModulePreviewContent({
 function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
   const showQA = !props.m.requiresUserData && props.m.id !== "savings" && !!props.moduleState?.data;
   const showDataSheet =
-    props.allowEvidenceUpload && props.m.id !== "savings" && !!props.moduleState?.data;
+    props.allowEvidenceUpload &&
+    props.m.id !== "savings" &&
+    // Module 1 has its own direct path into Module 8 (the real evidence
+    // system) now — a second, separate "AI drafts assumed values" sheet
+    // alongside it duplicated the same job with lower-quality output.
+    props.m.id !== "health" &&
+    !!props.moduleState?.data;
   return (
     <>
       <ModulePreviewContent {...props} />
@@ -11551,8 +11613,8 @@ function ModuleQABox({
   const [thread, setThread] = useState<{ question: string; answer: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
-    const q = question.trim();
+  async function submit(override?: string) {
+    const q = (override ?? question).trim();
     if (!q || asking) return;
     setAsking(true);
     setError(null);
@@ -11602,9 +11664,14 @@ function ModuleQABox({
           disabled={asking}
           className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm disabled:opacity-60"
         />
+        <AskAiMicButton
+          onTranscript={setQuestion}
+          onFinal={(text) => void submit(text)}
+          disabled={asking}
+        />
         <button
           type="button"
-          onClick={submit}
+          onClick={() => submit()}
           disabled={asking || !question.trim()}
           className="btn-outline text-sm disabled:opacity-50"
         >

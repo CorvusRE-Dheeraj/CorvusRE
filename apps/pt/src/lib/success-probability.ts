@@ -96,6 +96,8 @@ export async function estimateSuccessProbability(
       const compsResult = await getComps({
         cad: property.cad,
         accountNumber: property.accountNumber,
+        address: property.address ?? undefined,
+        totalValue: property.totalValue ?? undefined,
       });
       const subject = compsResult.subject;
       if (subject) {

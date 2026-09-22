@@ -15,10 +15,17 @@ export type AdminUserRow = {
   created_at: string;
 };
 
+// The dedicated, permanent CI e2e test account (see e2e/authenticated/
+// helpers.ts) is a real row like any other, so it stays fully functional for
+// CI — it just shouldn't show up mixed in with real customers in the admin
+// panel's own Users list.
+const CI_TEST_ACCOUNT_EMAIL = "crf-ci-e2e-test@example.com";
+
 export async function listAllUsers(): Promise<AdminUserRow[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, first_name, last_name, plan, is_admin, referral_code, created_at")
+    .neq("email", CI_TEST_ACCOUNT_EMAIL)
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) throw error;

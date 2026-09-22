@@ -139,7 +139,7 @@ describe("computeCaseNextAction — Agent/Representative required", () => {
     const result = computeCaseNextAction(
       inputs({ protest: agentProtest, noticeSignedAt: "2026-02-01T00:00:00Z" }),
     );
-    expect(result.action?.label).toBe("Agent / Representative");
+    expect(result.action?.label).toBe("Agent / Representative (Optional)");
     expect(result.timeline.find((t) => t.id === "file")?.status).toBe("done");
     expect(result.timeline.find((t) => t.id === "agent")?.status).toBe("current");
   });

@@ -12,6 +12,7 @@ import { reviewDocument, askDocument } from "@/lib/document-review";
 import { getErrorMessage } from "@/lib/error-message";
 import { LoadingLine } from "@/components/LoadingLine";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { AskAiMicButton } from "@/components/AskAiMicButton";
 
 // AI Review for one document — the verdict + notes from analyze-document, the
 // long-form explanation from review-document, and a Q&A box grounded in the
@@ -79,8 +80,8 @@ export function DocumentReviewModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
 
-  async function submit() {
-    const q = question.trim();
+  async function submit(override?: string) {
+    const q = (override ?? question).trim();
     if (!q || !doc || asking) return;
     setAsking(true);
     try {
@@ -174,8 +175,13 @@ export function DocumentReviewModal({
                   placeholder="e.g. what account number is on this?"
                   className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
+                <AskAiMicButton
+                  onTranscript={setQuestion}
+                  onFinal={(text) => void submit(text)}
+                  disabled={asking}
+                />
                 <button
-                  onClick={submit}
+                  onClick={() => submit()}
                   disabled={asking || !question.trim()}
                   className="btn-primary btn-primary-hover text-sm disabled:opacity-60"
                 >

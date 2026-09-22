@@ -15,6 +15,7 @@ export async function sendWeeklyDigestEmail(opts: {
   email: string;
   firstName: string | null;
   stats: DigestStats;
+  unsubscribeUrl?: string;
 }): Promise<void> {
   const s = opts.stats;
   const row = (label: string, value: number, emoji: string) => `
@@ -52,6 +53,7 @@ export async function sendWeeklyDigestEmail(opts: {
     ctaUrl: `${appUrl()}/dashboard`,
     footerNote:
       "You're getting this because weekly project updates are on for your CorvusDP account. Turn them off any time from Dashboard → Settings → Notification preferences.",
+    unsubscribeUrl: opts.unsubscribeUrl,
   });
 
   await sendEmail({ to: opts.email, subject: "Your CorvusDP week", html });

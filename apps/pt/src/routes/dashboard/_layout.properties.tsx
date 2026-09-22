@@ -87,7 +87,8 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
   component: Properties,
 });
 
-const CURRENT_YEAR = new Date().getFullYear();
+// Pinned, not computed — see CURRENT_TAX_YEAR in lib/tax-calendar.ts.
+const CURRENT_YEAR = 2026;
 
 // --- List view / sort / filter toolbar -----------------------------------
 // All client-side over the already-loaded `properties` array — no refetch.
@@ -972,9 +973,9 @@ function Properties() {
             </button>
           </div>
         ) : view === "list" ? (
-          <div className="card-elev overflow-x-auto p-0">
+          <div className="card-elev max-h-[70vh] overflow-auto p-0">
             <table className="w-full min-w-[56rem] border-collapse text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <th className="w-9 px-3 py-2.5" />
                   <th className="min-w-[14rem] px-3 py-2.5">Address</th>
@@ -1057,7 +1058,12 @@ function Properties() {
             </table>
           </div>
         ) : (
-          <div className="grid gap-4">
+          // Scrolls internally instead of growing the whole page — with
+          // enough properties, the page itself used to get very long
+          // (search/sort toolbar above stays put; this is the only part
+          // that scrolls). pr-1 keeps the scrollbar from sitting flush
+          // against each card's own right edge.
+          <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1">
             {displayProperties.map((p, i) => {
               const { existingProtest, canReFile, cad, recordUrl, isPaid } = rowInfo(p);
               return (
@@ -1068,23 +1074,25 @@ function Properties() {
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
                             type="checkbox"
                             aria-label={`Select ${p.address} for bulk subscribe`}
                             checked={selectedIds.has(p.id)}
                             onChange={() => toggleSelected(p.id)}
-                            className="h-4 w-4 shrink-0"
+                            className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
+                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
                           {p.cad}
                         </span>
                         <ActionStatusBadge property={p} protests={protests} />
                         {!isBeta && <PaymentStatusBadge property={p} />}
                       </div>
-                      <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
                       <p className="text-sm text-muted-foreground inline-flex items-center flex-wrap gap-1">
                         {p.propertyType} • Acct {p.accountNumber}
                         {p.accountNumber && (

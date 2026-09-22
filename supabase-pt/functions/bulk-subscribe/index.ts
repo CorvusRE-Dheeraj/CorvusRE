@@ -21,6 +21,7 @@ import {
   type Bracket,
   type Tier,
 } from "../_shared/pricing.ts";
+import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -213,18 +214,21 @@ Deno.serve(async (req: Request) => {
       const name = subscriptionProductName(tier, bracket, address, isAdditional);
 
       try {
+        // subscriptions.create()'s items[].price_data does NOT accept inline
+        // product_data (only Checkout Sessions' does) — Stripe rejects it with
+        // "Received unknown parameter: items[0][price_data][product_data]", which
+        // made every bulk purchase fail before it started. prices.create() DOES
+        // accept product_data, so make the Price first (same workaround
+        // switch-property-plan already uses) and reference it by id.
+        const price = await stripe.prices.create({
+          currency: "usd",
+          unit_amount: unitAmount,
+          recurring: { interval: "month" },
+          product_data: { name, metadata: { tier, bracket } },
+        });
         const sub = await stripe.subscriptions.create({
           customer: customerId,
-          items: [
-            {
-              price_data: {
-                currency: "usd",
-                unit_amount: unitAmount,
-                recurring: { interval: "month" },
-                product_data: { name, metadata: { tier, bracket } },
-              },
-            },
-          ],
+          items: [{ price: price.id }],
           default_payment_method: paymentMethodId,
           off_session: true,
           payment_behavior: "allow_incomplete",
@@ -253,6 +257,22 @@ Deno.serve(async (req: Request) => {
 
         if (live) {
           results.push({ propertyId, status: "active" });
+          // One receipt per property, same email a single-property Checkout
+          // purchase gets (this API path skips checkout.session.completed,
+          // which is where that one is sent, so bulk buyers got nothing).
+          // Never throws — the subscription already succeeded. What was
+          // actually charged is the first invoice; falls back to the price.
+          const firstInvoice = sub.latest_invoice as Stripe.Invoice | null;
+          await sendPurchaseConfirmationEmail(stripe, adminClient, {
+            userId: user.id,
+            subjectLabel: address,
+            subjectLabelKind: "Property",
+            subscriptionId: sub.id,
+            tier,
+            bracket,
+            amountCents: firstInvoice?.amount_paid ?? unitAmount,
+            kind: "new_subscription",
+          });
         } else {
           const invoice = sub.latest_invoice as Stripe.Invoice | null;
           results.push({

@@ -338,3 +338,20 @@ export async function saveReminderFrequency(
   );
   if (error) throw error;
 }
+
+// The account-level control in Settings → Notification Preferences applies
+// immediately to every case, not just new ones — bulk-updates every existing
+// 'evidence' row this user owns in one statement (RLS's own "update their
+// own form submissions" policy already scopes this to their rows; the
+// explicit .eq is just belt-and-suspenders, not what makes it safe).
+export async function setAllEvidenceReminderFrequency(
+  userId: string,
+  frequency: ReminderFrequency,
+): Promise<void> {
+  const { error } = await supabase
+    .from("protest_form_submissions")
+    .update({ reminder_frequency: frequency, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("form_type", "evidence");
+  if (error) throw error;
+}

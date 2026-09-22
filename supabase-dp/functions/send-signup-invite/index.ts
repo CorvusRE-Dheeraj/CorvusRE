@@ -58,7 +58,14 @@ Deno.serve(async (req: Request) => {
       heading: "Join CorvusDP",
       bodyHtml,
       ctaLabel: "Create your account",
-      ctaUrl: `${appUrl()}/sign-in`,
+      // mode=signup is required, not cosmetic -- a plain /sign-in visit with
+      // no mode/ref now redirects to the shared cross-door identity sign-in
+      // (see apps/dp/src/routes/sign-in.tsx), which is a DIFFERENT Supabase
+      // project (CorvusPT's). Without this, an invitee lands there instead
+      // of CorvusDP's own signup form, and if that email already has an
+      // identity-side account, Supabase's real "already registered" error
+      // shows up looking like they can't create a CorvusDP account at all.
+      ctaUrl: `${appUrl()}/sign-in?mode=signup&email=${encodeURIComponent(normalized)}`,
     });
 
     await sendEmail({ to: normalized, subject: "You've been invited to CorvusDP", html });

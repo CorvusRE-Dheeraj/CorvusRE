@@ -7,6 +7,7 @@ export async function sendRenewalReminderEmail(opts: {
   projectAddress: string | null;
   expiryDate: string;
   daysLeft: number;
+  unsubscribeUrl?: string;
 }): Promise<void> {
   const urgency = opts.daysLeft <= 7 ? "expires very soon" : "is coming up for renewal";
   const bodyHtml = `
@@ -30,6 +31,7 @@ export async function sendRenewalReminderEmail(opts: {
     ctaUrl: `${appUrl()}/dashboard/approvals`,
     footerNote:
       "You're getting this because email notifications are on for your CorvusDP account. Turn them off any time from Dashboard → Settings → Notification preferences.",
+    unsubscribeUrl: opts.unsubscribeUrl,
   });
 
   await sendEmail({ to: opts.email, subject: `Renewal reminder: ${opts.permitName}`, html });

@@ -12,6 +12,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendNotificationEmail } from "../_shared/notification-email.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
 
 type NotificationPrefs = {
   email?: boolean;
@@ -64,7 +65,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: profile, error: pErr } = await adminClient
       .from("profiles")
-      .select("email, notification_prefs")
+      .select("email, notification_prefs, unsubscribe_token")
       .eq("id", ownerId)
       .maybeSingle();
     if (pErr) throw pErr;
@@ -87,11 +88,19 @@ Deno.serve(async (req: Request) => {
     if (claimErr) throw claimErr;
 
     if (claimed && eligible) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const token = await getOrCreateUnsubscribeToken(
+        adminClient,
+        ownerId,
+        profile.unsubscribe_token as string | null,
+      );
+      const kindKey = notification.kind === "permit_status" ? "permit_status" : "email";
       await sendNotificationEmail({
         email: profile.email as string,
         title: notification.title as string,
         body: (notification.body as string | null) ?? null,
         kind: notification.kind as string,
+        unsubscribeUrl: unsubscribeUrl(supabaseUrl, token, kindKey),
       });
     }
 

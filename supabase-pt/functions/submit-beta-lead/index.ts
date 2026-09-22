@@ -8,6 +8,7 @@
 // SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are auto-injected by the Edge
 // Runtime for every function — no manual secret configuration needed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,6 +59,48 @@ Deno.serve(async (req: Request) => {
       source_door: sourceDoor,
     });
     if (insertErr) throw insertErr;
+
+    // Staff alert via Resend, like every other transactional email here --
+    // replaces the hub's old third-party form call. Best-effort: the lead is
+    // already saved (and visible in the admin panel's Beta Signups), so a
+    // failed alert email is logged, never surfaced as a failed submission.
+    try {
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      if (!resendKey) throw new Error("RESEND_API_KEY is not configured");
+      const row = (label: string, value: string | null) =>
+        value
+          ? `<tr><td style="padding:7px 16px 7px 0; color:#67788f; vertical-align:top; white-space:nowrap;">${label}</td><td style="padding:7px 0; color:#16233a; font-weight:600;">${escapeHtml(value)}</td></tr>`
+          : "";
+      const html = emailShell({
+        brand: "RE",
+        eyebrow: "Staff notification",
+        heading: "New CorvusRE beta request",
+        intro: `<strong>${escapeHtml(fullName)}</strong> just asked for beta access. Reply to this email to reach them directly.`,
+        bodyRows:
+          row("Name", fullName) +
+          row("Email", workEmail) +
+          row("Company", company) +
+          row("Interested in", areaOfInterest) +
+          row("Use case", useCase) +
+          row("From door", sourceDoor),
+        ctaLabel: "View in Beta Signups",
+        ctaHref: "https://corvusre.com/corvuspt/admin",
+      });
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "CorvusRE <info@corvusre.com>",
+          to: ["properties@srclandbuilding.com"],
+          reply_to: workEmail,
+          subject: `New CorvusRE beta request — ${fullName}`,
+          html,
+        }),
+      });
+      if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
+    } catch (err) {
+      console.error("Beta lead staff email failed (lead itself was saved):", err);
+    }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {

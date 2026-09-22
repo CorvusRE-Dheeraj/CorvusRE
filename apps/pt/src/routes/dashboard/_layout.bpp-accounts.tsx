@@ -26,10 +26,17 @@ import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BppRenditionEditor } from "@/components/BppRenditionEditor";
 import { BppProtestFlow } from "@/components/BppProtestFlow";
+import { ComingSoonLock } from "@/components/ComingSoonLock";
 
 export const Route = createFileRoute("/dashboard/_layout/bpp-accounts")({
   component: BppAccounts,
 });
+
+// Still under active development — gray out (see AppShell.tsx's own
+// `locked: true` for this tab) and block direct access too, not just the
+// nav link, so there's no way to reach real BPP operations while this is
+// true. Flip back to false (and AppShell's matching flag) once it's ready.
+const LOCKED = true;
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -45,6 +52,14 @@ function money(n: number | null): string {
 }
 
 function BppAccounts() {
+  if (LOCKED) {
+    return (
+      <ComingSoonLock
+        title="BPP Accounts"
+        description="Track your Business Personal Property renditions, deadlines, and protests."
+      />
+    );
+  }
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<BppAccountRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);

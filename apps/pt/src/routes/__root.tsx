@@ -19,6 +19,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { LegalGate } from "../components/LegalGate";
+import { ProfileGate } from "../components/ProfileGate";
 import { AppShell, shouldShowShell } from "../components/AppShell";
 
 function NotFoundComponent() {
@@ -149,9 +150,13 @@ function RootComponent() {
           >
             Skip to main content
           </a>
-          <div className="print:hidden">
-            <SiteNav />
-          </div>
+          {/* No wrapping div around SiteNav — a div here would become the
+              header's own sticky containing block, and since it would be
+              exactly as tall as the header itself, the header would have
+              zero room to actually stick (it'd immediately hit that div's
+              bottom edge and scroll away with the page). print:hidden moved
+              onto the header element itself instead (see SiteChrome.tsx). */}
+          <SiteNav />
           <main id="main-content" className="min-h-[70vh]">
             <AppShell>
               <Outlet />
@@ -163,6 +168,7 @@ function RootComponent() {
           </div>
           <AskAiWidget />
           <LegalGate />
+          <ProfileGate />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>
@@ -170,20 +176,17 @@ function RootComponent() {
   );
 }
 
-// Shown at the bottom of every page, but only once auth has resolved to a real
-// signed-in user — guests (and the brief loading window before we know) see
-// nothing here rather than a flash of a tracker they can't act on.
+// Shown only on the Properties page (plus, separately, inside View Case's own
+// Prepare & File tab — see CaseDetailModal.tsx) now, not on every signed-in
+// page site-wide — per direct product direction, it was showing up on pages
+// (Documents, Deadlines, Settings, the AI report, etc.) where it wasn't
+// relevant. Only once auth has resolved to a real signed-in user — guests
+// (and the brief loading window before we know) see nothing here rather than
+// a flash of a tracker they can't act on.
 function SignedInJourney() {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  // Deliberately narrower than AppShell's own shouldShowShell (which also
-  // excludes "/" and "/sign-in", where a signed-in visitor's journey should
-  // still show) — an admin's own property journey, if they happen to have
-  // one, has no business showing up while they're working the admin panel,
-  // a different persona entirely from "my properties."
-  const isAdminRoute =
-    pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/admin-login";
-  if (loading || !user || isAdminRoute) return null;
+  if (loading || !user || pathname !== "/dashboard/properties") return null;
   // Matches AppShell's own width/padding scheme (not container-page's
   // centered max-w-80rem) wherever AppShell actually wraps the page above
   // this — otherwise, on a wide viewport, this card sits visibly narrower
