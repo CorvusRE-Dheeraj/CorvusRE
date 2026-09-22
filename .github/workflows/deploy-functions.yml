@@ -5,8 +5,11 @@
 # changes -- SQL is never applied from here; a bad migration is a much
 # higher-consequence mistake than a stale function and stays a manual step.
 #
-# One-time setup: add a repository secret SUPABASE_ACCESS_TOKEN (a personal
-# access token from https://supabase.com/dashboard/account/tokens). Tokens
+# One-time setup: create an Environment named `production` (Settings ->
+# Environments), restrict its deployment branches to `dev`, and store
+# SUPABASE_ACCESS_TOKEN there as an environment secret (a personal access token
+# from https://supabase.com/dashboard/account/tokens) -- NOT as a repository
+# secret, which any branch's workflow could read. Tokens
 # get revoked/rotated -- when this workflow starts failing on auth, that's
 # the first thing to check.
 #
@@ -36,6 +39,10 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Environment secrets are only released to runs on branches the environment
+    # allows (set to `dev` only) -- so anyone with write access can't run this
+    # workflow from their own branch and deploy their code to production.
+    environment: production
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
