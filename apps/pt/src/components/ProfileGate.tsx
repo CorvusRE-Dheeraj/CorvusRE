@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { getMyProfile, updateMyProfile } from "@/lib/profile";
 import { getErrorMessage } from "@/lib/error-message";
+import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
+import type { CadRecord } from "@/lib/cad-lookup";
+import { AddOwnershipsModal } from "@/components/AddOwnershipsModal";
 
 // Shown once to a signed-in user with no name on file — the case for anyone
 // who arrived via the shared cross-door identity sign-in (/auth/) rather than
@@ -11,6 +14,14 @@ import { getErrorMessage } from "@/lib/error-message";
 // name. Sits below LegalGate in the stacking order (z-[99] vs its z-[100]):
 // if both are needed, Terms comes first and this follows right after, rather
 // than showing two blocking dialogs on top of each other.
+//
+// Also where the old sign-up form's one-time owner lookup lives now: right after
+// the details are saved, search the supported county sources for properties
+// already on file under the company name (or the person's own full name when
+// no company was given, so individual owners get portfolio discovery too) and,
+// if there are any, open Add Ownerships pre-filled with the matches instead of
+// making the person type every address. Runs at most once per account — this
+// gate itself only ever shows while the profile still has no first name.
 export function ProfileGate() {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -19,6 +30,11 @@ export function ProfileGate() {
   const [lastName, setLastName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [ownerMatches, setOwnerMatches] = useState<{
+    userId: string;
+    name: string;
+    records: CadRecord[];
+  } | null>(null);
 
   const onExemptRoute =
     pathname === "/terms" ||
@@ -49,7 +65,17 @@ export function ProfileGate() {
     };
   }, [user, loading]);
 
-  if (!needed || onExemptRoute) return null;
+  const ownerModal =
+    ownerMatches && !onExemptRoute ? (
+      <AddOwnershipsModal
+        userId={ownerMatches.userId}
+        initialMatch={{ name: ownerMatches.name, role: "owner", records: ownerMatches.records }}
+        onImported={() => {}}
+        onClose={() => setOwnerMatches(null)}
+      />
+    ) : null;
+
+  if (!needed || onExemptRoute) return ownerModal;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,7 +88,17 @@ export function ProfileGate() {
         lastName: lastName.trim(),
         companyName: companyName.trim() || null,
       });
+      const ownerName = companyName.trim() || `${firstName.trim()} ${lastName.trim()}`;
       setNeeded(false);
+      // Best-effort and after the gate closes: a slow or failed county search
+      // must never keep someone stuck on the details form.
+      searchPropertiesByOwner(ownerName)
+        .then(({ matches }) => {
+          if (matches.length > 0) {
+            setOwnerMatches({ userId: user.id, name: ownerName, records: matches });
+          }
+        })
+        .catch((err) => console.error("Owner lookup after signup failed:", err));
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not save your details. Please try again."));
     } finally {
