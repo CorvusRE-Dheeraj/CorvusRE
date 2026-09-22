@@ -2362,6 +2362,61 @@ alter table public.reminder_sends enable row level security;
 -- Service-role only (the cron function) — nobody else reads or writes this,
 -- same "no policies at all" treatment as other internal bookkeeping tables.
 
+-- Beta tester feedback (2026-09-22) — the adaptive form at
+-- src/routes/dashboard/_layout.feedback.tsx. `answers` is one jsonb blob
+-- keyed by question id (q1, q2, ... plus the optional-info block's role/
+-- property_type/how_far) rather than a column per question — 57 questions
+-- plus follow-ups would mean 57+ columns, and the question set itself
+-- already lives in src/lib/beta-feedback-questions.ts, not the database.
+-- `sections_shown`/`usage_signals` snapshot which sections the adaptive
+-- gating actually displayed and why, at submit time — without this, a
+-- shorter response (because a tester hadn't done much yet) would be
+-- indistinguishable from one that just skipped questions.
+create table if not exists public.beta_feedback_responses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  answers jsonb not null default '{}'::jsonb,
+  sections_shown text[] not null default '{}',
+  usage_signals jsonb not null default '{}'::jsonb,
+  started_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz,
+  unique (user_id)
+);
+alter table public.beta_feedback_responses enable row level security;
+drop policy if exists "Users manage their own feedback response" on public.beta_feedback_responses;
+create policy "Users manage their own feedback response"
+  on public.beta_feedback_responses for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all feedback responses" on public.beta_feedback_responses;
+create policy "Admins can view all feedback responses"
+  on public.beta_feedback_responses for select
+  using (public.is_admin());
+drop policy if exists "Admins can delete feedback responses" on public.beta_feedback_responses;
+create policy "Admins can delete feedback responses"
+  on public.beta_feedback_responses for delete
+  using (public.is_admin());
+
+-- One row, replaced wholesale on each "Regenerate insights" click (see
+-- summarize-beta-feedback) — the AI-clustered open-text themes (top pain
+-- points, trust hesitations, requested features, what testers would miss)
+-- behind the admin Feedback tab's charts. Admin-only; never read by a
+-- tester's own client.
+create table if not exists public.beta_feedback_insights (
+  id int primary key default 1,
+  insights jsonb not null,
+  response_count int not null,
+  generated_at timestamptz not null default now(),
+  constraint beta_feedback_insights_singleton check (id = 1)
+);
+alter table public.beta_feedback_insights enable row level security;
+drop policy if exists "Admins can view feedback insights" on public.beta_feedback_insights;
+create policy "Admins can view feedback insights"
+  on public.beta_feedback_insights for select
+  using (public.is_admin());
+-- Written only by summarize-beta-feedback via the service-role key.
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:

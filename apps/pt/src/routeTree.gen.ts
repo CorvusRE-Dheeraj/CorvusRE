@@ -37,6 +37,7 @@ import { Route as DashboardLayoutCalendarRouteImport } from './routes/dashboard/
 import { Route as DashboardLayoutCaseRouteImport } from './routes/dashboard/_layout.case'
 import { Route as DashboardLayoutDeadlinesRouteImport } from './routes/dashboard/_layout.deadlines'
 import { Route as DashboardLayoutDocumentsRouteImport } from './routes/dashboard/_layout.documents'
+import { Route as DashboardLayoutFeedbackRouteImport } from './routes/dashboard/_layout.feedback'
 import { Route as DashboardLayoutPropertiesRouteImport } from './routes/dashboard/_layout.properties'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutSavingsRouteImport } from './routes/dashboard/_layout.savings'
@@ -187,6 +188,11 @@ const DashboardLayoutDocumentsRoute =
     path: '/documents',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutFeedbackRoute = DashboardLayoutFeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutPropertiesRoute =
   DashboardLayoutPropertiesRouteImport.update({
     id: '/properties',
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/case': typeof DashboardLayoutCaseRoute
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
+  '/dashboard/feedback': typeof DashboardLayoutFeedbackRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
@@ -277,6 +284,7 @@ export interface FileRoutesByTo {
   '/dashboard/case': typeof DashboardLayoutCaseRoute
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
+  '/dashboard/feedback': typeof DashboardLayoutFeedbackRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
@@ -313,6 +321,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/case': typeof DashboardLayoutCaseRoute
   '/dashboard/_layout/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/_layout/documents': typeof DashboardLayoutDocumentsRoute
+  '/dashboard/_layout/feedback': typeof DashboardLayoutFeedbackRoute
   '/dashboard/_layout/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/savings': typeof DashboardLayoutSavingsRoute
@@ -350,6 +359,7 @@ export interface FileRouteTypes {
     | '/dashboard/case'
     | '/dashboard/deadlines'
     | '/dashboard/documents'
+    | '/dashboard/feedback'
     | '/dashboard/properties'
     | '/dashboard/referrals'
     | '/dashboard/savings'
@@ -384,6 +394,7 @@ export interface FileRouteTypes {
     | '/dashboard/case'
     | '/dashboard/deadlines'
     | '/dashboard/documents'
+    | '/dashboard/feedback'
     | '/dashboard/properties'
     | '/dashboard/referrals'
     | '/dashboard/savings'
@@ -419,6 +430,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/case'
     | '/dashboard/_layout/deadlines'
     | '/dashboard/_layout/documents'
+    | '/dashboard/_layout/feedback'
     | '/dashboard/_layout/properties'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/savings'
@@ -648,6 +660,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutDocumentsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/feedback': {
+      id: '/dashboard/_layout/feedback'
+      path: '/feedback'
+      fullPath: '/dashboard/feedback'
+      preLoaderRoute: typeof DashboardLayoutFeedbackRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/properties': {
       id: '/dashboard/_layout/properties'
       path: '/properties'
@@ -694,6 +713,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutCaseRoute: typeof DashboardLayoutCaseRoute
   DashboardLayoutDeadlinesRoute: typeof DashboardLayoutDeadlinesRoute
   DashboardLayoutDocumentsRoute: typeof DashboardLayoutDocumentsRoute
+  DashboardLayoutFeedbackRoute: typeof DashboardLayoutFeedbackRoute
   DashboardLayoutPropertiesRoute: typeof DashboardLayoutPropertiesRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutSavingsRoute: typeof DashboardLayoutSavingsRoute
@@ -710,6 +730,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutCaseRoute: DashboardLayoutCaseRoute,
   DashboardLayoutDeadlinesRoute: DashboardLayoutDeadlinesRoute,
   DashboardLayoutDocumentsRoute: DashboardLayoutDocumentsRoute,
+  DashboardLayoutFeedbackRoute: DashboardLayoutFeedbackRoute,
   DashboardLayoutPropertiesRoute: DashboardLayoutPropertiesRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutSavingsRoute: DashboardLayoutSavingsRoute,
