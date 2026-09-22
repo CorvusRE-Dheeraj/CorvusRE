@@ -33,12 +33,23 @@ permissions:
   pages: write
   id-token: write
 
+# Workflow-level, not job-level: this makes the WHOLE RUN one participant in
+# the "pages" group, so a second push can't race a Pages deploy that's still
+# in flight — it does NOT serialize build-pt/build-dp/build-identity against
+# each other (sibling jobs in one run aren't affected by a group set at this
+# level; only concurrent RUNS are). Putting this on each site job instead
+# was tried and was a real bug: jobs sharing one concurrency group compete
+# for the same slot, so build-identity was getting cancelled outright while
+# build-dp/build-pt fought over the other. deploy-functions below
+# deliberately opts OUT of this group (its own job-level concurrency) so it
+# isn't gated by Pages activity at all.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build-pt:
     runs-on: ubuntu-latest
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     env:
       HAS_E2E_AUTH_SECRET: ${{ secrets.E2E_TEST_EMAIL != '' }}
     steps:
@@ -93,9 +104,6 @@ jobs:
 
   build-dp:
     runs-on: ubuntu-latest
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     env:
       HAS_DP_E2E_AUTH_SECRET: ${{ secrets.DP_E2E_TEST_EMAIL != '' }}
     steps:
@@ -146,9 +154,6 @@ jobs:
 
   build-identity:
     runs-on: ubuntu-latest
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -168,9 +173,6 @@ jobs:
   assemble-and-deploy:
     needs: [build-pt, build-dp, build-identity]
     runs-on: ubuntu-latest
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
