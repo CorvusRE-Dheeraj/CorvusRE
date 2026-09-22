@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { checkIsAdmin } from "@/lib/admin";
 import { shouldShowShell } from "@/components/AppShell";
 import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyBilling } from "@/lib/billing";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,12 @@ export function SiteNav() {
   // failed check just leaves it null and nothing fires — same "fail open"
   // treatment as isAdmin above.
   const [feedbackDone, setFeedbackDone] = useState<boolean | null>(null);
+  // The feedback form is for BETA TESTERS specifically (plan === "beta",
+  // the same free/full-access grant Billing.tsx's own isBeta check reads) —
+  // a real paying customer isn't part of that cohort and shouldn't get
+  // interrupted at sign-out/tab-close for a survey that isn't about them.
+  const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
+  const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
@@ -84,11 +91,15 @@ export function SiteNav() {
   useEffect(() => {
     if (!user) {
       setFeedbackDone(null);
+      setIsBetaUser(null);
       return;
     }
     getMyFeedbackResponse(user.id)
       .then((r) => setFeedbackDone(!!r?.completedAt))
       .catch(() => setFeedbackDone(null));
+    getMyBilling(user.id)
+      .then((b) => setIsBetaUser(b.plan === "beta"))
+      .catch(() => setIsBetaUser(null));
   }, [user]);
 
   // Native browser prompt only — every browser has shown its OWN fixed text
@@ -98,7 +109,7 @@ export function SiteNav() {
   // the page at all). Same "skip once declined" flag as the sign-out
   // prompt, so choosing "Just sign out" there quiets this too.
   useEffect(() => {
-    if (feedbackDone !== false) return;
+    if (!promptEligible) return;
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
       e.preventDefault();
@@ -106,10 +117,10 @@ export function SiteNav() {
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [feedbackDone]);
+  }, [promptEligible]);
 
   function handleSignOutClick() {
-    if (feedbackDone === false && localStorage.getItem(SKIP_PROMPT_KEY) !== "1") {
+    if (promptEligible && localStorage.getItem(SKIP_PROMPT_KEY) !== "1") {
       setProfileOpen(false);
       setShowSignOutPrompt(true);
       return;
@@ -118,9 +129,17 @@ export function SiteNav() {
   }
 
   async function doSignOut() {
-    await supabase.auth.signOut();
+    // Navigate away from /dashboard/* and WAIT for it to finish before
+    // signing out — otherwise the dashboard layout's own "no user ->
+    // /sign-in" guard, still mounted while this promise is in flight,
+    // reacts to the auth state change first and wins the race to
+    // /sign-in (which hands off to /auth/) instead of landing on "/".
+    // Same fix as handleDeleteAccount in _layout.settings.tsx; this button
+    // had the same pre-existing race (signOut-then-navigate), just newly
+    // visible once testing actually followed the sign-out through.
     setProfileOpen(false);
-    nav({ to: "/" });
+    await nav({ to: "/" });
+    await supabase.auth.signOut();
   }
 
   useEffect(() => {
@@ -293,13 +312,15 @@ export function SiteNav() {
                   >
                     Settings
                   </Link>
-                  <Link
-                    to="/dashboard/feedback"
-                    onClick={() => setProfileOpen(false)}
-                    className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
-                  >
-                    Beta Feedback
-                  </Link>
+                  {isBetaUser && (
+                    <Link
+                      to="/dashboard/feedback"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Beta Feedback
+                    </Link>
+                  )}
                   {isAdmin && (
                     <Link
                       to="/admin"
