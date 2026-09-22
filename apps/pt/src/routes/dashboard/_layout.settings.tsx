@@ -9,9 +9,13 @@ import {
   updateNotificationPrefs,
   deleteMyAccount,
   DEFAULT_NOTIFICATION_PREFS,
+  DEADLINE_REMINDER_OFFSETS,
   type NotificationPrefs,
 } from "@/lib/profile";
-import { setAllEvidenceReminderFrequency, type ReminderFrequency } from "@/lib/protest-form-submissions";
+import {
+  setAllEvidenceReminderFrequency,
+  type ReminderFrequency,
+} from "@/lib/protest-form-submissions";
 import {
   Dialog,
   DialogContent,
@@ -34,8 +38,9 @@ function Settings() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [notificationPrefs, setNotificationPrefs] =
-    useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(
+    DEFAULT_NOTIFICATION_PREFS,
+  );
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -88,11 +93,65 @@ function Settings() {
   async function handleReminderFrequencyChange(frequency: ReminderFrequency) {
     if (!user) return;
     const prev = notificationPrefs;
-    setNotificationPrefs({ evidenceReminders: frequency });
+    setNotificationPrefs({ ...prev, evidenceReminders: frequency });
     setSavingPrefs(true);
     try {
       await updateNotificationPrefs(user.id, { evidenceReminders: frequency });
       await setAllEvidenceReminderFrequency(user.id, frequency);
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  // Every protest deadline, ARB hearing, tax date, and personal reminder —
+  // see send-deadline-reminders. SMS can't actually be turned on without a
+  // phone number on file (checked here, not just disabled in the JSX, since
+  // the checkbox's own onChange is the only path that sets it true).
+  async function handleDeadlineReminderChange(channel: "email" | "sms", value: boolean) {
+    if (!user) return;
+    if (channel === "sms" && value && !phone.trim()) {
+      toast.error("Add a phone number above first, then turn on SMS reminders.");
+      return;
+    }
+    const prev = notificationPrefs;
+    const next =
+      channel === "email"
+        ? { ...prev, deadlineRemindersEmail: value }
+        : { ...prev, deadlineRemindersSms: value };
+    setNotificationPrefs(next);
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(
+        user.id,
+        channel === "email" ? { deadlineRemindersEmail: value } : { deadlineRemindersSms: value },
+      );
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  // Which of the 30/15/7/3/2/0-days-out points to actually fire at, across
+  // whichever channel(s) are on above — unrelated to email/sms themselves,
+  // so this can be toggled even with both channels off (it'll just have
+  // nothing to apply to until one's turned back on).
+  async function handleReminderOffsetToggle(offset: number, checked: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    const nextOffsets = checked
+      ? [...prev.deadlineReminderOffsets, offset].sort((a, b) => b - a)
+      : prev.deadlineReminderOffsets.filter((o) => o !== offset);
+    setNotificationPrefs({ ...prev, deadlineReminderOffsets: nextOffsets });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { deadlineReminderOffsets: nextOffsets });
       toast.success("Notification preferences updated.");
     } catch (err) {
       setNotificationPrefs(prev);
@@ -301,9 +360,7 @@ function Settings() {
             <select
               value={notificationPrefs.evidenceReminders}
               disabled={savingPrefs}
-              onChange={(e) =>
-                handleReminderFrequencyChange(e.target.value as ReminderFrequency)
-              }
+              onChange={(e) => handleReminderFrequencyChange(e.target.value as ReminderFrequency)}
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
             >
               <option value="daily">Daily</option>
@@ -311,6 +368,60 @@ function Settings() {
               <option value="off">Off</option>
             </select>
           </label>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-8 card-elev max-w-xl p-6">
+          <h2 className="font-semibold">Deadline &amp; Hearing Reminders</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every protest deadline, ARB hearing, informal review, tax date, and personal reminder on
+            your Calendar gets a reminder 30, 15, 7, 3, and 2 days before, and the day of, by
+            whichever channel(s) you turn on below — all six are on by default, but you can turn any
+            of them off.
+          </p>
+          <div className="mt-4 grid gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notificationPrefs.deadlineRemindersEmail}
+                disabled={savingPrefs}
+                onChange={(e) => handleDeadlineReminderChange("email", e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              Email reminders
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notificationPrefs.deadlineRemindersSms}
+                disabled={savingPrefs || !phone.trim()}
+                onChange={(e) => handleDeadlineReminderChange("sms", e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              SMS reminders
+              {!phone.trim() && (
+                <span className="text-xs text-muted-foreground">
+                  — add a phone number above first
+                </span>
+              )}
+            </label>
+          </div>
+          <p className="mt-5 text-xs font-medium text-muted-foreground">When to remind me</p>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+            {DEADLINE_REMINDER_OFFSETS.map((offset) => (
+              <label key={offset} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.deadlineReminderOffsets.includes(offset)}
+                  disabled={savingPrefs}
+                  onChange={(e) => handleReminderOffsetToggle(offset, e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                {offset === 0 ? "Day of" : `${offset} days before`}
+              </label>
+            ))}
+          </div>
         </div>
       )}
 
