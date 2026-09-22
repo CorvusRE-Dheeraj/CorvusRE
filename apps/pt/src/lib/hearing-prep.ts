@@ -60,6 +60,8 @@ async function loadComps(property: PropertyRecord): Promise<HearingPrepComps> {
     const result = await getComps({
       cad: property.cad ?? undefined,
       accountNumber: property.accountNumber ?? undefined,
+      address: property.address,
+      totalValue: property.totalValue ?? undefined,
     });
     const subject: CompProperty | null = result.subject;
     if (!subject)

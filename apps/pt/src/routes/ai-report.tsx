@@ -2104,7 +2104,12 @@ function Report() {
   function loadCompsMap() {
     if (compsMap.data || compsMap.loading) return;
     setCompsMap({ data: null, loading: true, attempted: true });
-    getComps({ cad: state.cad, accountNumber: state.accountNumber })
+    getComps({
+      cad: state.cad,
+      accountNumber: state.accountNumber,
+      address: state.address,
+      totalValue: state.totalValue ?? undefined,
+    })
       .then((data) => setCompsMap({ data, loading: false, attempted: true }))
       .catch(() => setCompsMap({ data: null, loading: false, attempted: true }));
   }
@@ -3922,7 +3927,7 @@ function ModuleVisual({
         <div className="grid gap-1 text-xs text-muted-foreground">
           {!compsMap.loading && !compsMap.data?.comps.length && (
             <p>
-              No comparable-property map yet — live comps are only available for Denton,
+              No comparable-property map yet — live comps are only available for Collin, Denton, Grayson,
               Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
               build the comp set yourself.
             </p>
