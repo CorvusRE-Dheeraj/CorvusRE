@@ -38,7 +38,7 @@ export function SiteNav() {
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
@@ -145,6 +145,32 @@ export function SiteNav() {
     document.addEventListener("mouseout", onMouseOut);
     return () => document.removeEventListener("mouseout", onMouseOut);
   }, [promptEligible]);
+
+  // Catches what neither prompt above can: a keyboard-triggered close
+  // (Ctrl+W and friends) — browsers reserve those shortcuts entirely, no
+  // page JS ever sees them in time to show its own UI, so there's no way to
+  // put a branded modal in front of that specific exit. `pagehide`, unlike
+  // `beforeunload`, fires reliably for every way of leaving a page
+  // (including a keyboard close) without needing any user interaction with
+  // a dialog — so instead of trying to interrupt in the moment, this fires
+  // a `sendBeacon` (the one API designed to survive the page tearing down
+  // mid-call) telling beacon-feedback-nudge to follow up by email shortly
+  // after — that function itself caps it at 3 sends, 2 days apart, so
+  // firing this beacon on every single close attempt is safe; it's a no-op
+  // most of the time. The access token travels in the beacon body because
+  // sendBeacon cannot set an Authorization header at all.
+  useEffect(() => {
+    if (!promptEligible || !session?.access_token) return;
+    const token = session.access_token;
+    function onPageHide() {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const url = `${supabaseUrl}/functions/v1/beacon-feedback-nudge`;
+      const body = new Blob([JSON.stringify({ accessToken: token })], { type: "application/json" });
+      navigator.sendBeacon(url, body);
+    }
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [promptEligible, session?.access_token]);
 
   function handleSignOutClick() {
     if (promptEligible) {
