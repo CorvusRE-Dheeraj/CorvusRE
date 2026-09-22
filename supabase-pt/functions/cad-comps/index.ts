@@ -51,7 +51,10 @@ const TRUEPRODIGY_OFFICE_BY_CAD: Record<string, string> = {
   "Travis CAD": "Travis",
 };
 
-type CompsInput = { cad?: string; accountNumber?: string };
+// address/totalValue are only used to find the subject when the saved account
+// number isn't the county's own id; totalValue picks between several parcels
+// that share one street address (condo units, split lots).
+type CompsInput = { cad?: string; accountNumber?: string; address?: string; totalValue?: number };
 
 type CompProperty = {
   pid: number;
@@ -159,6 +162,257 @@ function dedupeBestYear(rows: Array<Record<string, unknown>>): Array<Record<stri
   return [...byPid.values()];
 }
 
+// ── Spatial comps: counties whose public parcel layer can be queried by
+// location. TrueProdigy's "same subdivision" grouping (above) only exists for
+// four counties; for the rest, the county's own ArcGIS parcel layer already
+// carries value/category/acreage AND geometry, so "nearby comparable
+// properties" is a real spatial query: same property category, comparable
+// value, within a radius of the subject that widens 1 → 2.5 → 5 miles only as
+// far as it has to to find enough real parcels.
+type SpatialConfig = {
+  url: string;
+  idField: string;
+  idMode: "numeric" | "quoted";
+  addressField: string;
+  // null when the layer has no property-type field — comps are then nearby +
+  // value-band only, rather than guessing a type from something unrelated.
+  categoryField: string | null;
+  // SQL for the parcel's assessed value, tolerant of the current tax year
+  // still being mid-reappraisal (null) — same fallback cad-lookup uses.
+  valueSql: string;
+  outFields: string;
+  map: (a: Record<string, unknown>) => {
+    pid: unknown;
+    address: unknown;
+    owner: unknown;
+    value: number | null;
+    land: number | null;
+    improvement: number | null;
+    acres: number | null;
+    category: string | null;
+  };
+};
+
+const COLLIN_SPATIAL: SpatialConfig = {
+  url: "https://services2.arcgis.com/uXyoacYrZTPTKD3R/ArcGIS/rest/services/CCAD_Parcel_Feature_Set/FeatureServer/4/query",
+  idField: "PROP_ID",
+  idMode: "numeric",
+  addressField: "situsConcat",
+  categoryField: "propCategoryCode",
+  valueSql: "COALESCE(currValAppraised,prevValAppraised)",
+  outFields:
+    "PROP_ID,situsConcat,ownerName,propCategoryCode,landSizeAcres,currValAppraised,prevValAppraised,currValLand,prevValLand,currValImprv,prevValImprv",
+  map: (a) => ({
+    pid: a.PROP_ID,
+    address: a.situsConcat,
+    owner: a.ownerName,
+    value: parseNum(a.currValAppraised) ?? parseNum(a.prevValAppraised),
+    land: parseNum(a.currValLand) ?? parseNum(a.prevValLand),
+    improvement: parseNum(a.currValImprv) ?? parseNum(a.prevValImprv),
+    acres: parseNum(a.landSizeAcres),
+    category: str(a.propCategoryCode),
+  }),
+};
+
+const GRAYSON_SPATIAL: SpatialConfig = {
+  url: "https://services1.arcgis.com/EVxyUkKpll765a5X/arcgis/rest/services/Grayson_Appraisal_Parcel_Map_WFL1/FeatureServer/13/query",
+  idField: "PropertyNumber",
+  idMode: "quoted",
+  // Grayson has no single situs string (SitusDisplay is empty) — the saved
+  // account numbers are its own PropertyNumber, so the address fallback is
+  // just a best-effort street match.
+  addressField: "SitusStreet",
+  categoryField: null,
+  valueSql: "MarketValue",
+  outFields:
+    "PropertyNumber,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,OwnerName,LegalAcreage,LandValue,ImprovementValue,MarketValue",
+  map: (a) => ({
+    pid: a.PropertyNumber,
+    address:
+      [a.SitusNumber, a.SitusStreetPrefix, a.SitusStreet, a.SitusStreetSufix]
+        .map((p) => (typeof p === "string" ? p.trim() : p))
+        .filter(Boolean)
+        .join(" ") + (str(a.SitusCity) ? `, ${str(a.SitusCity)}` : ""),
+    owner: a.OwnerName,
+    value: parseNum(a.MarketValue),
+    land: parseNum(a.LandValue),
+    improvement: parseNum(a.ImprovementValue),
+    acres: parseNum(a.LegalAcreage),
+    category: null,
+  }),
+};
+
+const SPATIAL_BY_CAD: Record<string, SpatialConfig> = {
+  "Grayson Central Appraisal District": GRAYSON_SPATIAL,
+  "Collin Central Appraisal District": COLLIN_SPATIAL,
+  // Older saved rows use the short name — same county.
+  "Collin CAD": COLLIN_SPATIAL,
+};
+
+const RADII_MILES = [1, 2.5, COMPS_RADIUS_MILES];
+const ENOUGH_COMPS = 10;
+const SPATIAL_FETCH_LIMIT = 300;
+
+type ArcgisFeature = {
+  attributes: Record<string, unknown>;
+  geometry?: { rings?: number[][][] };
+};
+
+async function arcgisQuery(url: string, params: Record<string, string>): Promise<ArcgisFeature[]> {
+  const qs = new URLSearchParams({ f: "json", outSR: "4326", ...params });
+  const res = await fetch(`${url}?${qs.toString()}`, { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`parcel layer ${res.status}`);
+  const json = (await res.json()) as { features?: ArcgisFeature[]; error?: { message?: string } };
+  if (json.error) throw new Error(json.error.message ?? "parcel layer error");
+  return json.features ?? [];
+}
+
+// Vertex average of the largest ring — plenty accurate at parcel scale for a
+// map pin and a miles-level distance filter.
+function centroidOf(g: ArcgisFeature["geometry"]): { lat: number; lon: number } | null {
+  const rings = g?.rings;
+  if (!rings || rings.length === 0) return null;
+  const ring = rings.reduce((big, r) => (r.length > big.length ? r : big), rings[0]);
+  if (ring.length === 0) return null;
+  const lon = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+  const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+function escapeSql(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+function idClause(cfg: SpatialConfig, op: "=" | "<>", id: string): string {
+  return cfg.idMode === "numeric"
+    ? `${cfg.idField}${op}${id}`
+    : `${cfg.idField}${op}'${escapeSql(id)}'`;
+}
+
+async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<CompsResult> {
+  const empty: CompsResult = { subject: null, comps: [] };
+  const outFields = cfg.outFields;
+
+  // Subject: by account number when it's the county's own numeric id, else by
+  // street address (saved rows sometimes carry a geo-style account like
+  // "24-0158-GR-0001" instead).
+  let where: string | null = null;
+  const acct = input.accountNumber?.trim() ?? "";
+  if (/^\d+$/.test(acct)) {
+    where = idClause(cfg, "=", acct);
+  } else if (input.address) {
+    const street = input.address.split(",")[0].trim().toUpperCase();
+    if (/^\d+\s+\S+/.test(street)) where = `${cfg.addressField} LIKE '${escapeSql(street)}%'`;
+  }
+  if (!where) return empty;
+
+  const subjRows = await arcgisQuery(cfg.url, {
+    where,
+    outFields,
+    returnGeometry: "true",
+    resultRecordCount: "25",
+  });
+  const cityHint = input.address?.split(",")[1]?.trim().toUpperCase();
+  const inCity = cityHint
+    ? subjRows.filter((r) =>
+        String(r.attributes[cfg.addressField] ?? "")
+          .toUpperCase()
+          .includes(cityHint),
+      )
+    : [];
+  const candidates = inCity.length > 0 ? inCity : subjRows;
+  const target = typeof input.totalValue === "number" && input.totalValue > 0 ? input.totalValue : null;
+  const subjFeature = target
+    ? candidates.reduce<ArcgisFeature | undefined>((best, r) => {
+        const v = cfg.map(r.attributes).value;
+        const bv = best ? cfg.map(best.attributes).value : null;
+        const d = v == null ? Infinity : Math.abs(v - target);
+        const bd = bv == null ? Infinity : Math.abs(bv - target);
+        return !best || d < bd ? r : best;
+      }, undefined)
+    : candidates[0];
+  if (!subjFeature) return empty;
+  const at = centroidOf(subjFeature.geometry);
+  if (!at) return empty;
+
+  const sMap = cfg.map(subjFeature.attributes);
+  const toComp = (f: ArcgisFeature): CompProperty | null => {
+    const c = centroidOf(f.geometry);
+    const m = cfg.map(f.attributes);
+    const pid = parseNum(m.pid);
+    if (!c || pid == null) return null;
+    return {
+      pid,
+      address: str(m.address) ?? "",
+      latitude: c.lat,
+      longitude: c.lon,
+      marketValue: m.value,
+      ownerName: str(m.owner),
+      legalAcreage: m.acres,
+      landValue: m.land,
+      improvementValue: m.improvement,
+      appraisedValue: m.value,
+      lastTransferDt: null,
+      propType: m.category,
+      zoning: null,
+    };
+  };
+  const subjectProp = toComp(subjFeature);
+  if (!subjectProp) return empty;
+
+  const conds: string[] = [];
+  if (sMap.pid != null) conds.push(idClause(cfg, "<>", String(sMap.pid)));
+  if (cfg.categoryField && sMap.category) {
+    conds.push(`${cfg.categoryField}='${escapeSql(sMap.category)}'`);
+  }
+  if (sMap.value) {
+    conds.push(
+      `${cfg.valueSql} BETWEEN ${Math.round(sMap.value * 0.5)} AND ${Math.round(sMap.value * 2)}`,
+    );
+  } else {
+    conds.push(`${cfg.valueSql} > 0`);
+  }
+
+  let comps: CompProperty[] = [];
+  for (const radius of RADII_MILES) {
+    const rows = await arcgisQuery(cfg.url, {
+      where: conds.join(" AND "),
+      outFields,
+      returnGeometry: "true",
+      geometry: `${at.lon},${at.lat}`,
+      geometryType: "esriGeometryPoint",
+      inSR: "4326",
+      spatialRel: "esriSpatialRelIntersects",
+      distance: String(radius),
+      units: "esriSRUnit_StatuteMile",
+      resultRecordCount: String(SPATIAL_FETCH_LIMIT),
+    });
+    comps = rows
+      .map(toComp)
+      .filter((c): c is CompProperty => c !== null)
+      .filter((c) => milesBetween(at.lat, at.lon, c.latitude, c.longitude) <= COMPS_RADIUS_MILES)
+      // Same 0.5x-2x band as the server-side filter, re-applied here so a
+      // layer whose value isn't reliably filterable in SQL still can't hand
+      // back an unrelated parcel.
+      .filter(
+        (c) =>
+          !sMap.value ||
+          (c.marketValue != null &&
+            c.marketValue >= sMap.value * 0.5 &&
+            c.marketValue <= sMap.value * 2),
+      );
+    if (comps.length >= ENOUGH_COMPS) break;
+  }
+
+  const sv = subjectProp.marketValue ?? 0;
+  comps.sort((a, b) => {
+    const da = a.marketValue == null ? Infinity : Math.abs(a.marketValue - sv);
+    const db = b.marketValue == null ? Infinity : Math.abs(b.marketValue - sv);
+    return da - db;
+  });
+  return { subject: { ...subjectProp, asCode: "" }, comps: comps.slice(0, 10) };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -166,6 +420,12 @@ Deno.serve(async (req: Request) => {
     const input = (await req.json()) as CompsInput;
     const office = input.cad ? TRUEPRODIGY_OFFICE_BY_CAD[input.cad] : undefined;
     const emptyResult: CompsResult = { subject: null, comps: [] };
+
+    const spatialCfg = input.cad ? SPATIAL_BY_CAD[input.cad] : undefined;
+    if (!office && spatialCfg) {
+      const result = await spatialComps(spatialCfg, input);
+      return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+    }
 
     if (!office || !input.accountNumber) {
       return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
