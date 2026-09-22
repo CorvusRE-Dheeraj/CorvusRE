@@ -394,6 +394,39 @@
         event.preventDefault();
         errorEl.hidden = true;
 
+        // The form carries novalidate (see below) so the checkbox group's
+        // "at least one checked" can be enforced with a friendly inline
+        // message instead of the browser's native one -- but novalidate
+        // disables ALL native validation for the form, including the plain
+        // `required` text inputs above (full_name/work_email/company). With
+        // nothing replacing that, a user could submit those blank, past
+        // both the browser AND this handler, and only find out from the
+        // server's blunt "fullName, workEmail, company, and areaOfInterest
+        // are required" error after a real network round trip -- which
+        // doesn't even say which one was actually missing. These three
+        // checks are what should have been here from the start.
+        var fullNameVal = form.full_name.value.trim();
+        var workEmailVal = form.work_email.value.trim();
+        var companyVal = form.company.value.trim();
+        if (!fullNameVal) {
+          errorEl.textContent = "Please enter your full name.";
+          errorEl.hidden = false;
+          form.full_name.focus();
+          return;
+        }
+        if (!workEmailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(workEmailVal)) {
+          errorEl.textContent = "Please enter a valid work email.";
+          errorEl.hidden = false;
+          form.work_email.focus();
+          return;
+        }
+        if (!companyVal) {
+          errorEl.textContent = "Please enter your company or organization.";
+          errorEl.hidden = false;
+          form.company.focus();
+          return;
+        }
+
         // Checkboxes (not radios, now that multiple areas can be picked)
         // have no native "at least one checked" validation, so that's
         // enforced here instead.
