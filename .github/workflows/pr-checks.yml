@@ -1,0 +1,65 @@
+name: PR Checks
+
+# Runs on every pull request into main, dev, or qa. Mirrors the build/test
+# steps from deploy.yml (without the actual deploy or the e2e suite) so a
+# PR's required status checks reflect whether each app would build
+# successfully -- deploy.yml itself only runs after a push already lands
+# on dev, so it can't gate the merge that produces that push.
+
+on:
+  pull_request:
+    branches: [main, dev, qa]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-build-pt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/pt
+      - run: npm run build -w apps/pt
+        env:
+          SITE_BASE: /corvuspt/
+          VITE_SUPABASE_URL: https://iotzuhuajbsxxuccuihn.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3
+          VITE_STRIPE_PUBLISHABLE_KEY_TEST: pk_test_51TwDPUCrbRfnYZRW05z9Huz1UlghIXZZUrR9nMF82t1Ym89ID6ZXbnGcT1Lcqdb9fFbU6z1W8e11xezYbrPSNqbj00kOMSJnE2
+          VITE_STRIPE_PUBLISHABLE_KEY_LIVE: pk_live_51TwDPKE4IPC6TIHQWfh47929fIIkIIk2BrPSEWkJLAG93kCH021JNgmPHczcGxE1GG42Nmv1za7k2nTbp2fe9tqs00xTWIYCKX
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
+
+  pr-build-dp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/dp
+      - run: npm run build -w apps/dp
+        env:
+          SITE_BASE: /corvusdp/
+          VITE_SUPABASE_URL: https://xzhilwwlfajxhklkiteb.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF
+          VITE_GOOGLE_MAPS_API_KEY: AIzaSyCxz6Q6Wit9Sq_qR6cciWs1K8zPjdM0sAI
+
+  pr-build-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/identity
+      - run: npm run build -w apps/identity
+        env:
+          SITE_BASE: /auth/
