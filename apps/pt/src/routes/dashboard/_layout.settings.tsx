@@ -391,20 +391,16 @@ function Settings() {
               />
               Email reminders
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input
                 type="checkbox"
                 checked={notificationPrefs.deadlineRemindersSms}
-                disabled={savingPrefs || !phone.trim()}
+                disabled
                 onChange={(e) => handleDeadlineReminderChange("sms", e.target.checked)}
                 className="h-4 w-4 rounded border-input"
               />
               SMS reminders
-              {!phone.trim() && (
-                <span className="text-xs text-muted-foreground">
-                  — add a phone number above first
-                </span>
-              )}
+              <span className="text-xs">— coming soon</span>
             </label>
           </div>
           <p className="mt-5 text-xs font-medium text-muted-foreground">When to remind me</p>
