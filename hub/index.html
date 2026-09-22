@@ -254,8 +254,8 @@
   <!-- Invite-Only Beta lead form — every door opens this instead of
        navigating, since there's no live product to send anyone to yet.
        Each door's href stays in place only as a plain-link/no-JS
-       fallback. Submits via Web3Forms (same service the main app already
-       uses for staff notifications), so this needs no backend of its own. -->
+       fallback. Submits to the submit-beta-lead edge function (saves the lead
+       and emails staff via Resend). -->
   <dialog class="beta-dialog" id="betaDialog" aria-labelledby="betaDialogTitle">
     <button type="button" class="beta-dialog-close" id="betaDialogClose" aria-label="Close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -265,9 +265,6 @@
         <h2 id="betaDialogTitle">Request Beta Access</h2>
         <p class="beta-dialog-sub" id="betaDialogSub">CorvusRE is currently invite-only. Tell us a bit about you and we'll follow up.</p>
         <form id="betaForm" novalidate>
-          <input type="hidden" name="access_key" value="5a66f800-1264-49a2-9696-2839afd02485" />
-          <input type="hidden" name="subject" value="New CorvusRE beta request" />
-          <input type="hidden" name="from_name" value="CorvusRE hub" />
           <input type="hidden" name="source_door" id="betaSourceDoor" value="" />
           <label class="beta-field">
             <span>Full Name</span>
@@ -421,13 +418,11 @@
         formData.delete("area_of_interest");
         formData.set("area_of_interest", areaJoined);
 
-        // Best-effort — the submit-beta-lead edge function persists this
-        // to Supabase's beta_leads table (visible in the admin panel's
-        // "Beta Signups" section) so submissions are queryable in one
-        // place, not just scattered across inbox emails. Web3Forms (below)
-        // is the tested, already-relied-on path that actually gates the
-        // success/error UI, so a Supabase hiccup here never blocks or
-        // fails a real submission — it's only logged.
+        // One call: the submit-beta-lead edge function saves the lead to
+        // Supabase's beta_leads table (visible in the admin panel's "Beta
+        // Signups" section) and emails staff via Resend -- replaces the old
+        // separate third-party form request. The success/error UI is gated on the
+        // save; the staff email inside it is best-effort server-side.
         fetch("https://iotzuhuajbsxxuccuihn.supabase.co/functions/v1/submit-beta-lead", {
           method: "POST",
           headers: {
@@ -442,16 +437,13 @@
             useCase: formData.get("use_case"),
             sourceDoor: formData.get("source_door"),
           }),
-        }).catch(function (err) {
-          console.error("Beta lead Supabase storage failed (non-blocking):", err);
-        });
-
-        fetch("https://api.web3forms.com/submit", { method: "POST", body: formData })
-          .then(function (res) { return res.json(); })
-          .then(function (data) {
-            if (!data.success) throw new Error(data.message || "Submission failed.");
-            formView.hidden = true;
-            successView.hidden = false;
+        })
+          .then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+              if (!res.ok || !data.ok) throw new Error(data.error || "Submission failed.");
+              formView.hidden = true;
+              successView.hidden = false;
+            });
           })
           .catch(function (err) {
             errorEl.textContent = "Something went wrong sending your request — please try again." + (err && err.message ? " (" + err.message + ")" : "");

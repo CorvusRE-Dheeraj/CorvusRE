@@ -10,23 +10,26 @@ import {
   Receipt,
   Lock,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
 // Billing and Settings live in the profile dropdown (SiteChrome.tsx) instead
 // of here — they're account-level, not a property-tax workflow section, so
 // grouping them with Sign out reads more clearly than sitting in this row.
-// `locked` is purely a visual signal here (the link still navigates) — the
-// actual gate is the ComingSoonLock render a still-locked page shows itself.
-// Both BPP Accounts (2026-09-15) and Tax Bills (2026-09-15) have shipped for
-// real and no longer have a LOCKED flag to keep in sync with this one.
+// `locked` here actually disables the tab (grayed out, not a real link, just
+// a "Coming soon" toast on click) — the matching route file's own LOCKED
+// flag (ComingSoonLock) is the real gate against reaching it any other way
+// (a direct URL, a link from elsewhere in the app), so the two must be kept
+// in sync by hand. BPP Accounts and Tax Bills re-locked 2026-09-20 — both
+// still under active development.
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, locked: false },
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
-  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: false },
+  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
-  { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: false },
+  { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
 ] as const;
 
 // Pages that keep their own full-width marketing/tooling layout instead of the
@@ -88,9 +91,31 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="w-full px-6 py-10 sm:px-10 lg:px-16">
       <div className="grid grid-cols-1 gap-2">
-        <nav className="flex min-w-0 justify-center gap-1 overflow-x-auto pb-2">
+        {/* Sticks just under SiteNav's own sticky header (top-16 matches its
+            h-16) so this tab bar stays reachable on long pages (Properties,
+            Documents) instead of scrolling away — bg-background keeps page
+            content from showing through once it's actually stuck. */}
+        <nav className="sticky top-16 z-30 flex min-w-0 justify-center gap-1 overflow-x-auto bg-background pb-2 pt-2">
           {NAV.map((item) => {
             const Icon = item.icon;
+            if (item.locked) {
+              return (
+                <button
+                  key={item.to}
+                  type="button"
+                  onClick={() =>
+                    toast(`${item.label} is coming soon`, {
+                      description: "This section is still under development — check back soon.",
+                    })
+                  }
+                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                  <Lock className="h-3 w-3" />
+                </button>
+              );
+            }
             return (
               <Link
                 key={item.to}
@@ -101,7 +126,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
-                {item.locked && <Lock className="h-3 w-3 text-muted-foreground" />}
               </Link>
             );
           })}

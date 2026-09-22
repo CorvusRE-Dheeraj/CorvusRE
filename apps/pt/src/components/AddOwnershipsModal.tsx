@@ -271,7 +271,9 @@ export function AddOwnershipsModal({
           landValue: row.record.landValue ?? undefined,
           improvementValue: row.record.improvementValue ?? undefined,
           totalValue: row.record.totalValue ?? undefined,
-          taxYear: row.record.taxYear ?? undefined,
+          // Pinned to 2026 regardless of the county feed — see
+          // CURRENT_TAX_YEAR in lib/tax-calendar.ts.
+          taxYear: 2026,
         });
         added.push(property);
       } catch (err) {
@@ -352,6 +354,17 @@ export function AddOwnershipsModal({
               {searching ? "Searching…" : "Search"}
             </button>
           </div>
+          {/* Real county ArcGIS endpoints, queried in parallel — one slow
+              county (Tarrant's has taken 5s+) plus a second, broader sweep
+              when the exact name comes up empty (to find "did you mean"
+              suggestions) can genuinely take up to ~15s. Without this note,
+              that reads as stuck rather than working — confirmed live. */}
+          {searching && (
+            <p className="text-xs text-muted-foreground">
+              Checking real county records across Texas — this can take up to 15 seconds,
+              especially if we need to look for close spelling matches.
+            </p>
+          )}
         </div>
       )}
 

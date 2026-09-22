@@ -23,6 +23,13 @@
 // schedule and records a clear per-user failure — it never marks
 // last_reminder_sent_at or claims success for a message it didn't actually
 // send.
+//
+// Weekly is the default cadence (see schema.sql) — daily was the original
+// default and read as spam. Every email also carries a one-click, no-login
+// unsubscribe link (unsubscribe-evidence-reminders, keyed by a per-user
+// profiles.unsubscribe_token generated on first use) — the same real
+// account-level control exposed under Settings → Notification Preferences,
+// so "manage in the email" and "manage in the app" are the same switch.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
@@ -118,6 +125,24 @@ Deno.serve(async (req: Request) => {
       const to = userData?.user?.email;
       if (userErr || !to) throw new Error(userErr?.message ?? "No email on file for this user");
 
+      // Created on first send, not at signup — most accounts never trigger a
+      // reminder at all, so there's no reason every profile carries one (same
+      // reasoning as calendar_feed_token). Reused on every later reminder.
+      const { data: profileRow } = await admin
+        .from("profiles")
+        .select("unsubscribe_token")
+        .eq("id", userId)
+        .maybeSingle();
+      let unsubscribeToken = profileRow?.unsubscribe_token as string | null;
+      if (!unsubscribeToken) {
+        unsubscribeToken = crypto.randomUUID().replace(/-/g, "");
+        await admin
+          .from("profiles")
+          .update({ unsubscribe_token: unsubscribeToken })
+          .eq("id", userId);
+      }
+      const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe-evidence-reminders?token=${unsubscribeToken}`;
+
       const subject =
         items.length === 1
           ? `Reminder: submit your evidence for ${items[0].label}`
@@ -130,7 +155,8 @@ Deno.serve(async (req: Request) => {
           ? `Your evidence for ${items[0].label} hasn't been marked submitted yet.`
           : `Evidence hasn't been marked submitted yet for ${items.length} of your cases:`) +
         `\n\n${lines}\n\n` +
-        `Open CorvusPT, go to View Case, and use Generate Evidence Package to finish each one.`;
+        `Open CorvusPT, go to View Case, and use Generate Evidence Package to finish each one.` +
+        `\n\nManage email preferences (or unsubscribe from these reminders): ${unsubscribeUrl}`;
 
       const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
       const intro =
@@ -151,6 +177,7 @@ Deno.serve(async (req: Request) => {
         ctaLabel: "Go to View Case",
         ctaHref: `${appUrl}/dashboard/properties`,
         footnote: "Use Generate Evidence Package on each case to finish it.",
+        unsubscribeUrl,
       });
 
       const res = await fetch("https://api.resend.com/emails", {

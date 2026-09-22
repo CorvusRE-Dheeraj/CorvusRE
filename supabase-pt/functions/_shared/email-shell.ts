@@ -20,10 +20,17 @@ export function emailShell(opts: {
   intro: string;
   /** Inner HTML for a <table> of <tr> rows shown in a light card below the intro. Optional. */
   bodyRows?: string;
-  ctaLabel: string;
-  ctaHref: string;
+  ctaLabel?: string;
+  ctaHref?: string;
   footnote?: string;
+  /** A one-click, no-login link to turn this specific reminder off — shown in the footer. */
+  unsubscribeUrl?: string;
+  /** Wordmark suffix + footer tagline. Defaults to CorvusPT; "RE" is for hub-level (door-agnostic) emails. */
+  brand?: "PT" | "RE";
 }): string {
+  const brandSuffix = opts.brand ?? "PT";
+  const brandTagline =
+    brandSuffix === "RE" ? "CorvusRE — Corvus Real Estate." : "CorvusPT — AI-Powered Texas Property Tax.";
   return `<!doctype html>
 <html>
   <body style="margin:0; padding:0; background-color:#eef2f4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
@@ -33,7 +40,7 @@ export function emailShell(opts: {
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 2px 12px rgba(22,35,58,0.08);">
             <tr>
               <td style="background-color:#16233a; background-image:linear-gradient(135deg,#16233a 0%,#1d3b5c 55%,#0f9e6e 100%); padding:32px;">
-                <span style="font-size:20px; font-weight:700; color:#ffffff; letter-spacing:-0.3px;">Corvus<span style="color:#5eead4;">PT</span></span>
+                <span style="font-size:20px; font-weight:700; color:#ffffff; letter-spacing:-0.3px;">Corvus<span style="color:#5eead4;">${brandSuffix}</span></span>
               </td>
             </tr>
             <tr>
@@ -58,11 +65,15 @@ export function emailShell(opts: {
             </tr>`
                 : ""
             }
-            <tr>
+            ${
+              opts.ctaLabel && opts.ctaHref
+                ? `<tr>
               <td style="padding:24px 32px 8px 32px;" align="center">
                 <a href="${opts.ctaHref}" style="display:inline-block; background-color:#0f9e6e; color:#ffffff; font-size:14px; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:8px;">${escapeHtml(opts.ctaLabel)}</a>
               </td>
-            </tr>
+            </tr>`
+                : ""
+            }
             ${
               opts.footnote
                 ? `<tr>
@@ -75,7 +86,12 @@ export function emailShell(opts: {
             <tr>
               <td style="padding:20px 32px; background-color:#f6f8fa; border-top:1px solid #e7ecf1;">
                 <p style="margin:0; font-size:12px; line-height:1.6; color:#8592a6;">
-                  CorvusPT — AI-Powered Texas Property Tax.
+                  ${brandTagline}
+                  ${
+                    opts.unsubscribeUrl
+                      ? ` <a href="${opts.unsubscribeUrl}" style="color:#8592a6; text-decoration:underline;">Manage email preferences</a>`
+                      : ""
+                  }
                 </p>
               </td>
             </tr>

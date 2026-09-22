@@ -56,10 +56,17 @@ export async function checkIsAdmin(userId: string): Promise<boolean> {
   return data?.is_admin ?? false;
 }
 
+// The dedicated, permanent CI e2e test account (see e2e/authenticated/
+// helpers.ts) is a real row like any other, so it stays fully functional for
+// CI — it just shouldn't show up mixed in with real customers in the admin
+// panel's own Users list.
+const CI_TEST_ACCOUNT_EMAIL = "crf-ci-e2e-test@example.com";
+
 export async function listAllUsers(): Promise<AdminUserRecord[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, first_name, last_name, phone, plan, is_admin, created_at")
+    .neq("email", CI_TEST_ACCOUNT_EMAIL)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as ProfileRow[]).map(fromRow);

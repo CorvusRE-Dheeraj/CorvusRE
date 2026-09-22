@@ -23,33 +23,33 @@ export const Route = createFileRoute("/how-it-works")({
 const STEPS = [
   {
     n: 1,
-    t: "Start with your property",
-    d: "Enter an address or upload a Texas appraisal notice. No account needed.",
+    t: "Add Your Property",
+    d: "Enter the property address or upload your Texas appraisal notice. We'll use it to create your property record and start the review.",
   },
   {
     n: 2,
-    t: "AI validates & matches the CAD record",
-    d: "AI identifies your county appraisal district and pulls the official record.",
+    t: "Verify the Official CAD Record",
+    d: "Corvus AI identifies the correct appraisal district, matches your property, and verifies the official assessment and property details.",
   },
   {
     n: 3,
-    t: "Background AI analysis",
-    d: "Ten AI modules run in the background — health score, comps, site, income, evidence, savings, and more.",
+    t: "Corvus AI Analyzes Your Property",
+    d: "AI reviews comparable properties, land and improvement values, income, site factors, prior assessments, and other available evidence to identify potential protest opportunities.",
   },
   {
     n: 4,
-    t: "Review the AI report",
-    d: "See a plain-English protest recommendation, savings estimate, and next steps.",
+    t: "Review Your Protest Strategy",
+    d: "See whether a protest is recommended, why, the estimated savings, supporting evidence, and the next steps — all explained in plain English.",
   },
   {
     n: 5,
-    t: "CorvusPT staff files & communicates",
-    d: "Our team handles the filing, county communication, hearing support, and settlement approval.",
+    t: "Corvus AI or Our Team Handles the Protest",
+    d: "Depending on your subscription, Corvus AI or our team handles the filing, county communication, hearing support, and settlement coordination.",
   },
   {
     n: 6,
-    t: "Track payments, refunds, and savings",
-    d: "One dashboard covers tax bills, payments, refunds, and annual savings across every year.",
+    t: "Track Results, Payments & Savings",
+    d: "Follow your protest status, final value, tax bills, payments, refunds, and annual savings from one property dashboard.",
   },
 ];
 

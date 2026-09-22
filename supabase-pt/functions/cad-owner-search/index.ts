@@ -31,15 +31,34 @@ function parseMoneyField(v: string | number | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Each searchAllCounties() sweep runs all 10 free county ArcGIS endpoints in
+// parallel, but Promise.allSettled still waits for the single slowest one —
+// confirmed live, Tarrant's endpoint alone can take 5s+, and findSuggestions()
+// below runs a SECOND full sweep after the first, so with no cap the whole
+// "did you mean" round trip could take 15s+ end to end (reproduced: a real
+// typo search took ~15s). A per-request timeout means one slow/hanging county
+// degrades gracefully to "contributed nothing this time" — same as an actual
+// network error already does — instead of holding up every other county's
+// real results.
+const FETCH_TIMEOUT_MS = 6_000;
+
 async function fetchFeatures(
   url: string,
 ): Promise<Array<{ attributes: Record<string, string | number | null> }>> {
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const json = (await res.json()) as {
-    features?: Array<{ attributes: Record<string, string | number | null> }>;
-  };
-  return json.features ?? [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      features?: Array<{ attributes: Record<string, string | number | null> }>;
+    };
+    return json.features ?? [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function searchCollin(owner: string): Promise<CadRecord[]> {
@@ -455,11 +474,15 @@ const MAX_SUGGESTIONS = 5;
 // close to a real one on file, not just sharing a single common word.
 const MIN_SUGGESTION_SIMILARITY = 0.45;
 
-async function findSuggestions(typedName: string): Promise<string[]> {
-  const anchor = longestSignificantWord(typedName);
-  if (!anchor) return [];
-  const broaderMatches = await searchAllCounties(anchor);
-
+// Fetch and rank are split so the caller can kick the broader-anchor sweep
+// off in PARALLEL with the direct-name sweep (see the handler below) instead
+// of waiting for the direct search to finish empty before even starting the
+// second one — the two full 10-county sweeps run one after another used to
+// double the worst-case wait (confirmed live: ~15s for a real typo, each
+// sweep bottlenecked by whichever single county is slowest that moment).
+// Ranking itself is cheap/synchronous and still only useful once we know the
+// direct search actually came up empty.
+function rankSuggestions(typedName: string, broaderMatches: CadRecord[]): string[] {
   const scoredByName = new Map<string, number>();
   for (const record of broaderMatches) {
     const name = record.ownerName?.trim();
@@ -489,11 +512,23 @@ Deno.serve(async (req: Request) => {
     }
 
     const trimmed = ownerName.trim();
-    const matches = await searchAllCounties(trimmed);
+    // The anchor word is known upfront from the typed text alone — no need
+    // to wait and see whether the direct search fails before starting the
+    // broader sweep too. Only actually a second sweep when the anchor is a
+    // genuinely different query than the full typed name (a single
+    // significant word typed alone would just repeat the same search).
+    const anchor = longestSignificantWord(trimmed);
+    const needsBroaderSweep = anchor !== null && normalizeForCompare(anchor) !== normalizeForCompare(trimmed);
 
-    // Only worth the extra round-trip when the direct search actually came
-    // up empty — a real match never needs a "did you mean" alongside it.
-    const suggestions = matches.length === 0 ? await findSuggestions(trimmed) : [];
+    const [matches, broaderMatches] = await Promise.all([
+      searchAllCounties(trimmed),
+      needsBroaderSweep ? searchAllCounties(anchor!) : Promise.resolve<CadRecord[]>([]),
+    ]);
+
+    // Only worth surfacing when the direct search actually came up empty —
+    // a real match never needs a "did you mean" alongside it.
+    const suggestions =
+      matches.length === 0 ? rankSuggestions(trimmed, needsBroaderSweep ? broaderMatches : matches) : [];
 
     return new Response(JSON.stringify({ matches, suggestions }), {
       status: 200,

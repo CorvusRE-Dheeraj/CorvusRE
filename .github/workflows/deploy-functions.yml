@@ -1,0 +1,55 @@
+# Deploys Supabase edge functions when their source changes on `dev`, so a
+# merged function change can't silently stay un-deployed (this already
+# happened: submit-beta-lead sat on an old version after its code merged).
+# Deliberately separate from deploy.yml (the static site) and from schema
+# changes -- SQL is never applied from here; a bad migration is a much
+# higher-consequence mistake than a stale function and stays a manual step.
+#
+# One-time setup: add a repository secret SUPABASE_ACCESS_TOKEN (a personal
+# access token from https://supabase.com/dashboard/account/tokens). Tokens
+# get revoked/rotated -- when this workflow starts failing on auth, that's
+# the first thing to check.
+#
+# Manual run: Actions -> "Deploy edge functions" -> Run workflow (redeploys
+# every function in the chosen project(s)).
+name: Deploy edge functions
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "supabase-pt/functions/**"
+      - "supabase-dp/functions/**"
+      - "scripts/deploy-functions.sh"
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Which project to redeploy in full"
+        type: choice
+        options: [both, supabase-pt, supabase-dp]
+        default: both
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy CorvusPT (identity) functions
+        if: github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-pt'
+        run: scripts/deploy-functions.sh supabase-pt iotzuhuajbsxxuccuihn "$BASE_SHA"
+      - name: Deploy CorvusDP functions
+        # !cancelled() so a failed CorvusPT deploy doesn't also skip this one
+        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-dp') }}
+        run: scripts/deploy-functions.sh supabase-dp xzhilwwlfajxhklkiteb "$BASE_SHA"

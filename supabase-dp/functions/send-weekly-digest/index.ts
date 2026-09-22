@@ -14,6 +14,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWeeklyDigestEmail, type DigestStats } from "../_shared/digest-email.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
 
 const MS_PER_DAY = 86_400_000;
 const DUE_AFTER_MS = 6.5 * MS_PER_DAY;
@@ -29,9 +30,10 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const { data: profiles, error } = await admin
       .from("profiles")
-      .select("id, email, first_name, notification_prefs, last_digest_sent_at");
+      .select("id, email, first_name, notification_prefs, last_digest_sent_at, unsubscribe_token");
     if (error) throw error;
 
     const now = Date.now();
@@ -106,10 +108,16 @@ Deno.serve(async (req: Request) => {
           stats.unreadNotifications > 0;
 
         if (hasContent && profile.email) {
+          const token = await getOrCreateUnsubscribeToken(
+            admin,
+            profile.id as string,
+            profile.unsubscribe_token as string | null,
+          );
           await sendWeeklyDigestEmail({
             email: profile.email as string,
             firstName: (profile.first_name as string | null) ?? null,
             stats,
+            unsubscribeUrl: unsubscribeUrl(supabaseUrl, token, "weekly"),
           });
           sent++;
         } else {

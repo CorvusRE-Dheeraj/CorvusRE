@@ -17,6 +17,7 @@ import { Toaster } from "../components/ui/sonner";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { AppShell } from "../components/AppShell";
 import { AskAiWidget } from "../components/AskAiWidget";
+import { ProfileGate } from "../components/ProfileGate";
 
 function NotFoundComponent() {
   return (
@@ -156,6 +157,7 @@ function RootComponent() {
           <div className="print:hidden">
             <AskAiWidget />
           </div>
+          <ProfileGate />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

@@ -2,24 +2,99 @@ import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "./lib/supabase";
 import { safeRedirectTarget } from "./redirect";
 
-type Mode = "sign-in" | "sign-up";
-type Status = "idle" | "checking-session" | "busy" | "check-email" | "choose-door" | "error";
+type Mode = "sign-in" | "sign-up" | "forgot-password";
+type Status =
+  | "idle"
+  | "checking-session"
+  | "busy"
+  | "check-email"
+  | "choose-door"
+  | "error"
+  | "forgot-sent"
+  | "reset-password"
+  | "reset-done";
 
 const DOORS = [
-  { label: "CorvusPT — Property Tax Management", path: "/corvuspt/dashboard" },
-  { label: "CorvusDP — Design, Plan, Permit", path: "/corvusdp/dashboard" },
+  { label: "CorvusPT — Property Tax Management", path: "/corvuspt/" },
+  { label: "CorvusDP — Design, Plan, Permit", path: "/corvusdp/" },
 ];
 
 // One shared sign-in screen for every CorvusRE door. On success, this is a
 // full page navigation (window.location) to the door that sent the visitor
 // here, not a client-side route change -- /auth/ and each door are
 // separate built apps, not one router.
+// Signup context a door forwards from its own /sign-in landing (referral links,
+// admin invite links) -- read once, same as redirect/reason. Names and the
+// referral code ride in signUp()'s options.data, which the identity project's
+// handle_new_user() trigger already reads server-side (a referral code is
+// only ever resolved there, never trusted client-side). A CorvusDP-bound
+// signup is deliberately NOT given the code: DP has its own separate
+// referral namespace, resolved when DP's own account is created (see
+// mint-door-session), not against this project's profiles.
+const PENDING_REF_KEY = "corvusre.pendingRef";
+
+// A referral code has to survive a Google OAuth round trip (the query string
+// doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
+// so it"s parked in localStorage and applied server-side (apply-referral,
+// brand-new accounts only) the moment a session exists. Best-effort: never
+// blocks getting the person where they were headed.
+async function applyPendingReferral() {
+  try {
+    const code = localStorage.getItem(PENDING_REF_KEY);
+    if (!code) return;
+    localStorage.removeItem(PENDING_REF_KEY);
+    await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
+  } catch {
+    // ignore -- a lost referral must not break sign-in
+  }
+}
+
+function readSignupContext() {
+  const q = new URLSearchParams(window.location.search);
+  const target = q.get("redirect") ?? "";
+  return {
+    startOnSignUp: q.get("mode") === "signup",
+    email: q.get("email") ?? "",
+    firstName: q.get("firstName") ?? "",
+    lastName: q.get("lastName") ?? "",
+    ref: target.startsWith("/corvusdp/") ? "" : (q.get("ref") ?? ""),
+  };
+}
+
 export function App() {
-  const [mode, setMode] = useState<Mode>("sign-in");
-  const [email, setEmail] = useState("");
+  const [signupCtx] = useState(readSignupContext);
+  useEffect(() => {
+    if (!signupCtx.ref) return;
+    try {
+      localStorage.setItem(PENDING_REF_KEY, signupCtx.ref);
+    } catch {
+      // storage blocked -- referral just won't attach for a Google signup
+    }
+  }, [signupCtx.ref]);
+  // A door redirecting a forgot-password landing here (?screen=forgot) opens
+  // straight on that screen instead of plain sign-in -- see each door's own
+  // forgot-password.tsx, which now just forwards here.
+  const [mode, setMode] = useState<Mode>(
+    new URLSearchParams(window.location.search).get("screen") === "forgot"
+      ? "forgot-password"
+      : signupCtx.startOnSignUp
+        ? "sign-up"
+        : "sign-in",
+  );
+  const [email, setEmail] = useState(signupCtx.email);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
+  // A short, plain-text explanation a door sets when it sends a signed-out
+  // visitor here (e.g. an idle-timeout sign-out) -- shown once on the plain
+  // sign-in screen so the redirect doesn't feel unexplained. Read once on
+  // mount, same as `redirect` -- this page never mutates its own URL.
+  const [reason] = useState(() => new URLSearchParams(window.location.search).get("reason"));
+  // Separate from `status` -- the forgot/reset screens are picked by status
+  // (reached via a link click or a recovery-email URL, not the sign-in/up
+  // toggle), so a failed submit on either must NOT fall back to "error"
+  // (that's the generic sign-in/up form's own status) and lose the screen.
+  const [submitting, setSubmitting] = useState(false);
 
   // Where to go once a real session exists (fresh sign-in, or one already
   // found on mount): a specific door if one was requested (a door sent the
@@ -29,7 +104,8 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  function proceed() {
+  async function proceed() {
+    await applyPendingReferral();
     const target = safeRedirectTarget();
     if (target) {
       window.location.assign(target);
@@ -49,6 +125,22 @@ export function App() {
   // trip to whatever door originally sent the visitor here (or offer a
   // choice, per proceed() above).
   useEffect(() => {
+    // A password-reset email link lands here with a recovery token in the
+    // URL hash (#...&type=recovery) -- supabase-js parses it and fires
+    // PASSWORD_RECOVERY once the session is established from it. Checked
+    // before the plain getSession()-based proceed() below, since that
+    // recovery token DOES create a real session, and this page (unlike a
+    // door's own dedicated /reset-password route) is also where an already
+    // signed-in visitor normally lands and gets bounced straight through --
+    // without this, a password-reset click would skip the "choose a new
+    // password" screen entirely.
+    if (window.location.hash.includes("type=recovery")) {
+      setStatus("reset-password");
+      return;
+    }
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setStatus("reset-password");
+    });
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         proceed();
@@ -56,8 +148,40 @@ export function App() {
       }
       setStatus("idle");
     });
+    return () => listener.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function submitForgotPassword(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    setSubmitting(false);
+    if (resetErr) {
+      setError(resetErr.message);
+      return;
+    }
+    setStatus("forgot-sent");
+  }
+
+  async function submitNewPassword(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    setSubmitting(true);
+    const { error: updateErr } = await supabase.auth.updateUser({ password });
+    setSubmitting(false);
+    if (updateErr) {
+      setError(updateErr.message);
+      return;
+    }
+    setStatus("reset-done");
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -75,7 +199,17 @@ export function App() {
       return;
     }
 
-    const { data, error: signUpErr } = await supabase.auth.signUp({ email, password });
+    const { data, error: signUpErr } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          ...(signupCtx.firstName ? { first_name: signupCtx.firstName } : {}),
+          ...(signupCtx.lastName ? { last_name: signupCtx.lastName } : {}),
+          ...(signupCtx.ref ? { referral_code_used: signupCtx.ref } : {}),
+        },
+      },
+    });
     if (signUpErr) {
       setError(signUpErr.message);
       setStatus("error");
@@ -163,12 +297,117 @@ export function App() {
     );
   }
 
+  if (status === "forgot-sent") {
+    return (
+      <div className="wrap">
+        <div className="card">
+          <Logo />
+          <h1>Check your email</h1>
+          <p className="notice">
+            If an account exists for <strong>{email}</strong>, we've sent a link to reset your
+            password. Click it to choose a new one.
+          </p>
+          <div className="toggle">
+            <button
+              type="button"
+              onClick={() => {
+                setStatus("idle");
+                setMode("sign-in");
+              }}
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "reset-password" || status === "reset-done") {
+    return (
+      <div className="wrap">
+        <div className="card">
+          <Logo />
+          {status === "reset-done" ? (
+            <>
+              <h1>Password updated</h1>
+              <p className="notice">You're all set -- your password has been changed.</p>
+              <div className="toggle">
+                <button type="button" onClick={proceed}>
+                  Continue
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1>Choose a new password</h1>
+              <p className="sub">One account works across every CorvusRE door.</p>
+              <form onSubmit={submitNewPassword}>
+                <label>
+                  New password
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </label>
+                {error && <p className="error">{error}</p>}
+                <button type="submit" disabled={submitting}>
+                  {submitting ? "Saving…" : "Set new password"}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "forgot-password") {
+    return (
+      <div className="wrap">
+        <div className="card">
+          <Logo />
+          <h1>Reset your password</h1>
+          <p className="sub">
+            Enter the email on your account and we'll send you a link to reset your password.
+          </p>
+          <form onSubmit={submitForgotPassword}>
+            <label>
+              Email
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            {error && <p className="error">{error}</p>}
+            <button type="submit" disabled={submitting}>
+              {submitting ? "Sending…" : "Send reset link"}
+            </button>
+          </form>
+          <div className="toggle">
+            <button type="button" onClick={() => setMode("sign-in")}>
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="wrap">
       <div className="card">
         <Logo />
         <h1>{mode === "sign-in" ? "Sign in" : "Create your account"}</h1>
         <p className="sub">One account works across every CorvusRE door.</p>
+        {reason && <p className="notice">{reason}</p>}
 
         <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={status === "busy"}>
           <GoogleIcon />
@@ -206,6 +445,20 @@ export function App() {
             {status === "busy" ? "Please wait…" : mode === "sign-in" ? "Sign in" : "Sign up"}
           </button>
         </form>
+
+        {mode === "sign-in" && (
+          <div className="toggle">
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setMode("forgot-password");
+              }}
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
 
         <div className="toggle">
           {mode === "sign-in" ? (
