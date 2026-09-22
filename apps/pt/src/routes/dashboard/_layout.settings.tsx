@@ -214,14 +214,19 @@ function Settings() {
   }
 
   return (
-    <div>
+    // Centered, not left-stuck — every card below used to carry its own
+    // independent max-w-xl with no mx-auto, which left a form-width column
+    // pinned to the left edge and a large dead zone of empty space on wider
+    // screens. One shared max-w here, centered once, makes every card line
+    // up to the same width and the whole page read as one balanced column.
+    <div className="mx-auto max-w-2xl">
       <h1 className="font-serif text-2xl font-semibold">Settings</h1>
       <p className="text-muted-foreground text-sm">Your account details.</p>
 
       {loading ? (
         <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <form onSubmit={handleSave} className="mt-6 card-elev p-6 max-w-xl grid gap-4">
+        <form onSubmit={handleSave} className="mt-6 card-elev p-6 grid gap-4">
           <label className="grid gap-1">
             <span className="text-xs font-medium text-muted-foreground">Email</span>
             <input
@@ -290,7 +295,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <form onSubmit={handleChangePassword} className="mt-8 card-elev p-6 max-w-xl grid gap-4">
+        <form onSubmit={handleChangePassword} className="mt-8 card-elev p-6 grid gap-4">
           <div>
             <h2 className="font-semibold">Change Password</h2>
             <p className="text-sm text-muted-foreground">Update the password you sign in with.</p>
@@ -349,7 +354,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl p-6">
+        <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Notification Preferences</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             How often you get reminded when a case still needs evidence submitted. Applies across
@@ -372,7 +377,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl p-6">
+        <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Deadline &amp; Hearing Reminders</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Every protest deadline, ARB hearing, informal review, tax date, and personal reminder on
@@ -422,7 +427,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl p-6">
+        <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Legal</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             The documents you accepted when creating your account.
@@ -449,7 +454,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl border-destructive/30 p-6">
+        <div className="mt-8 card-elev border-destructive/30 p-6">
           <h2 className="font-semibold text-destructive">Danger Zone</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Permanently delete your account and everything under it — properties, BPP accounts,
