@@ -15,12 +15,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-// Never nag someone who already told us "just sign out" once — set on that
-// choice, checked before showing the sign-out prompt again. Feedback itself
-// still stays reachable any time from the profile menu; this only stops the
-// interrupt from repeating every single sign-out.
-const SKIP_PROMPT_KEY = "corvusre.feedbackSignOutPromptSkipped";
-
 const NAV = [
   { to: "/", label: "Home" },
   { to: "/how-it-works", label: "How It Works" },
@@ -115,14 +109,14 @@ export function SiteNav() {
 
   // Native browser prompt only — every browser has shown its OWN fixed text
   // here (never a custom message) since ~2016, as an anti-abuse measure.
-  // Best-effort nudge on an actual tab close/refresh/external navigation;
-  // does nothing on in-app client-side route changes (those don't unload
-  // the page at all). Same "skip once declined" flag as the sign-out
-  // prompt, so choosing "Just sign out" there quiets this too.
+  // Fires on every real tab close/refresh/external navigation attempt while
+  // feedback is incomplete — deliberately NOT a one-time nudge: declining it
+  // once (there's nothing to "decline," the browser's own dialog has no
+  // custom buttons) doesn't suppress it later. Does nothing on in-app
+  // client-side route changes (those don't unload the page at all).
   useEffect(() => {
     if (!promptEligible) return;
     function onBeforeUnload(e: BeforeUnloadEvent) {
-      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
       e.preventDefault();
       e.returnValue = "";
     }
@@ -133,15 +127,18 @@ export function SiteNav() {
   // Exit intent: the pointer leaving toward the top of the viewport (the
   // tab bar, the back/close buttons) — the one moment left to show real,
   // branded copy before they're gone, since beforeunload's own dialog can't.
-  // Fires at most once per page load (exitIntentShownRef), and never at all
-  // if they've already declined once (same SKIP_PROMPT_KEY the sign-out
-  // prompt uses) or already have the sign-out prompt open (don't stack two).
+  // Fires at most once per page load (exitIntentShownRef just avoids
+  // re-firing on every stray mouse twitch near the top within ONE visit) —
+  // but never permanently suppressed: a fresh page load re-arms it, and
+  // "No thanks" only dismisses that one instance. Repeats every visit,
+  // every sign-out, every close attempt, for as long as feedback stays
+  // incomplete — that's deliberate, not a bug: keep asking until they
+  // actually give feedback, not until they've said no once.
   useEffect(() => {
     if (!promptEligible) return;
     function onMouseOut(e: MouseEvent) {
       if (exitIntentShownRef.current) return;
       if (e.clientY > 0 || e.relatedTarget) return; // only a genuine top-edge exit
-      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
       exitIntentShownRef.current = true;
       setShowExitIntentPrompt(true);
     }
@@ -150,7 +147,7 @@ export function SiteNav() {
   }, [promptEligible]);
 
   function handleSignOutClick() {
-    if (promptEligible && localStorage.getItem(SKIP_PROMPT_KEY) !== "1") {
+    if (promptEligible) {
       setProfileOpen(false);
       setShowSignOutPrompt(true);
       return;
@@ -427,7 +424,6 @@ export function SiteNav() {
           <DialogFooter className="gap-2 sm:gap-2">
             <button
               onClick={() => {
-                localStorage.setItem(SKIP_PROMPT_KEY, "1");
                 setShowSignOutPrompt(false);
                 void doSignOut();
               }}
@@ -457,13 +453,7 @@ export function SiteNav() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
-            <button
-              onClick={() => {
-                localStorage.setItem(SKIP_PROMPT_KEY, "1");
-                setShowExitIntentPrompt(false);
-              }}
-              className="btn-outline"
-            >
+            <button onClick={() => setShowExitIntentPrompt(false)} className="btn-outline">
               No thanks
             </button>
             <button
