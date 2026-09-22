@@ -9,9 +9,13 @@ import {
   updateNotificationPrefs,
   deleteMyAccount,
   DEFAULT_NOTIFICATION_PREFS,
+  DEADLINE_REMINDER_OFFSETS,
   type NotificationPrefs,
 } from "@/lib/profile";
-import { setAllEvidenceReminderFrequency, type ReminderFrequency } from "@/lib/protest-form-submissions";
+import {
+  setAllEvidenceReminderFrequency,
+  type ReminderFrequency,
+} from "@/lib/protest-form-submissions";
 import {
   Dialog,
   DialogContent,
@@ -34,8 +38,9 @@ function Settings() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [notificationPrefs, setNotificationPrefs] =
-    useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(
+    DEFAULT_NOTIFICATION_PREFS,
+  );
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -88,11 +93,65 @@ function Settings() {
   async function handleReminderFrequencyChange(frequency: ReminderFrequency) {
     if (!user) return;
     const prev = notificationPrefs;
-    setNotificationPrefs({ evidenceReminders: frequency });
+    setNotificationPrefs({ ...prev, evidenceReminders: frequency });
     setSavingPrefs(true);
     try {
       await updateNotificationPrefs(user.id, { evidenceReminders: frequency });
       await setAllEvidenceReminderFrequency(user.id, frequency);
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  // Every protest deadline, ARB hearing, tax date, and personal reminder —
+  // see send-deadline-reminders. SMS can't actually be turned on without a
+  // phone number on file (checked here, not just disabled in the JSX, since
+  // the checkbox's own onChange is the only path that sets it true).
+  async function handleDeadlineReminderChange(channel: "email" | "sms", value: boolean) {
+    if (!user) return;
+    if (channel === "sms" && value && !phone.trim()) {
+      toast.error("Add a phone number above first, then turn on SMS reminders.");
+      return;
+    }
+    const prev = notificationPrefs;
+    const next =
+      channel === "email"
+        ? { ...prev, deadlineRemindersEmail: value }
+        : { ...prev, deadlineRemindersSms: value };
+    setNotificationPrefs(next);
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(
+        user.id,
+        channel === "email" ? { deadlineRemindersEmail: value } : { deadlineRemindersSms: value },
+      );
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  // Which of the 30/15/7/3/2/0-days-out points to actually fire at, across
+  // whichever channel(s) are on above — unrelated to email/sms themselves,
+  // so this can be toggled even with both channels off (it'll just have
+  // nothing to apply to until one's turned back on).
+  async function handleReminderOffsetToggle(offset: number, checked: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    const nextOffsets = checked
+      ? [...prev.deadlineReminderOffsets, offset].sort((a, b) => b - a)
+      : prev.deadlineReminderOffsets.filter((o) => o !== offset);
+    setNotificationPrefs({ ...prev, deadlineReminderOffsets: nextOffsets });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { deadlineReminderOffsets: nextOffsets });
       toast.success("Notification preferences updated.");
     } catch (err) {
       setNotificationPrefs(prev);
@@ -155,14 +214,19 @@ function Settings() {
   }
 
   return (
-    <div>
+    // Centered, not left-stuck — every card below used to carry its own
+    // independent max-w-xl with no mx-auto, which left a form-width column
+    // pinned to the left edge and a large dead zone of empty space on wider
+    // screens. One shared max-w here, centered once, makes every card line
+    // up to the same width and the whole page read as one balanced column.
+    <div className="mx-auto max-w-2xl">
       <h1 className="font-serif text-2xl font-semibold">Settings</h1>
       <p className="text-muted-foreground text-sm">Your account details.</p>
 
       {loading ? (
         <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <form onSubmit={handleSave} className="mt-6 card-elev p-6 max-w-xl grid gap-4">
+        <form onSubmit={handleSave} className="mt-6 card-elev p-6 grid gap-4">
           <label className="grid gap-1">
             <span className="text-xs font-medium text-muted-foreground">Email</span>
             <input
@@ -231,7 +295,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <form onSubmit={handleChangePassword} className="mt-8 card-elev p-6 max-w-xl grid gap-4">
+        <form onSubmit={handleChangePassword} className="mt-8 card-elev p-6 grid gap-4">
           <div>
             <h2 className="font-semibold">Change Password</h2>
             <p className="text-sm text-muted-foreground">Update the password you sign in with.</p>
@@ -290,7 +354,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl p-6">
+        <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Notification Preferences</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             How often you get reminded when a case still needs evidence submitted. Applies across
@@ -301,9 +365,7 @@ function Settings() {
             <select
               value={notificationPrefs.evidenceReminders}
               disabled={savingPrefs}
-              onChange={(e) =>
-                handleReminderFrequencyChange(e.target.value as ReminderFrequency)
-              }
+              onChange={(e) => handleReminderFrequencyChange(e.target.value as ReminderFrequency)}
               className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
             >
               <option value="daily">Daily</option>
@@ -315,7 +377,57 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl p-6">
+        <div className="mt-8 card-elev p-6">
+          <h2 className="font-semibold">Deadline &amp; Hearing Reminders</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every protest deadline, ARB hearing, informal review, tax date, and personal reminder on
+            your Calendar gets a reminder 30, 15, 7, 3, and 2 days before, and the day of, by
+            whichever channel(s) you turn on below — all six are on by default, but you can turn any
+            of them off.
+          </p>
+          <div className="mt-4 grid gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={notificationPrefs.deadlineRemindersEmail}
+                disabled={savingPrefs}
+                onChange={(e) => handleDeadlineReminderChange("email", e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              Email reminders
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={notificationPrefs.deadlineRemindersSms}
+                disabled
+                onChange={(e) => handleDeadlineReminderChange("sms", e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              SMS reminders
+              <span className="text-xs">— coming soon</span>
+            </label>
+          </div>
+          <p className="mt-5 text-xs font-medium text-muted-foreground">When to remind me</p>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+            {DEADLINE_REMINDER_OFFSETS.map((offset) => (
+              <label key={offset} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={notificationPrefs.deadlineReminderOffsets.includes(offset)}
+                  disabled={savingPrefs}
+                  onChange={(e) => handleReminderOffsetToggle(offset, e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                {offset === 0 ? "Day of" : `${offset} days before`}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Legal</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             The documents you accepted when creating your account.
@@ -342,7 +454,7 @@ function Settings() {
       )}
 
       {!loading && (
-        <div className="mt-8 card-elev max-w-xl border-destructive/30 p-6">
+        <div className="mt-8 card-elev border-destructive/30 p-6">
           <h2 className="font-semibold text-destructive">Danger Zone</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Permanently delete your account and everything under it — properties, BPP accounts,
