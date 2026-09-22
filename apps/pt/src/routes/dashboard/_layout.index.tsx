@@ -17,6 +17,8 @@ import {
   Mic,
   Volume2,
   VolumeX,
+  MessageSquareHeart,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -63,10 +65,16 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
+import { getMyFeedbackResponse } from "@/lib/beta-feedback";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
 });
+
+// Per-viewer convenience, not a durable record of anything — a fresh
+// browser (or cleared storage) just sees the banner again, which is fine
+// since it's also gone for good the moment they actually complete the form.
+const FEEDBACK_BANNER_DISMISSED_KEY = "corvusre.feedbackBannerDismissed";
 
 const STATUS_LABEL: Record<ProtestStatus, string> = {
   requested: "Requested",
@@ -115,6 +123,35 @@ function Overview() {
   const nudgedPropertyId = useRef<string | null>(null);
   const [hearingNudge, setHearingNudge] = useState<string | null>(null);
   const nudgedHearingProtestId = useRef<string | null>(null);
+  const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(FEEDBACK_BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      // storage blocked — just show the banner, same as any dismissible UI
+      // that can't remember a prior dismissal.
+    }
+    if (dismissed) return;
+    getMyFeedbackResponse(user.id)
+      .then((r) => setShowFeedbackBanner(!r?.completedAt))
+      .catch(() => {
+        // Fail closed here (unlike SiteChrome's sign-out prompt): an
+        // unprompted banner on a page every user sees is worth skipping on
+        // a network hiccup, not worth risking on incomplete data.
+      });
+  }, [user]);
+
+  function dismissFeedbackBanner() {
+    setShowFeedbackBanner(false);
+    try {
+      localStorage.setItem(FEEDBACK_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      // best-effort only
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -378,6 +415,29 @@ function Overview() {
               View Case
             </Link>
           </div>
+        </div>
+      )}
+
+      {showFeedbackBanner && (
+        <div className="card-elev p-4 flex items-start gap-3">
+          <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Help us make Corvus better</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              You're one of our beta testers — 7-10 minutes, and it directly shapes what we build
+              next.
+            </p>
+            <Link to="/dashboard/feedback" className="btn-outline text-sm mt-3 inline-flex">
+              Give Feedback
+            </Link>
+          </div>
+          <button
+            onClick={dismissFeedbackBanner}
+            aria-label="Dismiss"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 

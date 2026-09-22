@@ -2417,6 +2417,12 @@ create policy "Admins can view feedback insights"
   using (public.is_admin());
 -- Written only by summarize-beta-feedback via the service-role key.
 
+-- Dedup flag for the one-time "give us feedback" email nudge sent ~1 hour
+-- after signup (see send-beta-feedback-invite) — deliberately not a client-
+-- writable column, same "only the cron function ever sets this" treatment
+-- as protest_form_submissions.last_reminder_sent_at.
+alter table public.profiles add column if not exists beta_feedback_invite_sent_at timestamptz;
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:

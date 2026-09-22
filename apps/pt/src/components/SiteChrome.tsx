@@ -4,6 +4,21 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { checkIsAdmin } from "@/lib/admin";
 import { shouldShowShell } from "@/components/AppShell";
+import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+// Never nag someone who already told us "just sign out" once — set on that
+// choice, checked before showing the sign-out prompt again. Feedback itself
+// still stays reachable any time from the profile menu; this only stops the
+// interrupt from repeating every single sign-out.
+const SKIP_PROMPT_KEY = "corvusre.feedbackSignOutPromptSkipped";
 
 const NAV = [
   { to: "/", label: "Home" },
@@ -31,6 +46,12 @@ export function SiteNav() {
   const { user } = useAuth();
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
+  // null = not checked yet (never prompts). Only ever gates a soft nudge
+  // (sign-out prompt, tab-close prompt), never blocks anything itself, so a
+  // failed check just leaves it null and nothing fires — same "fail open"
+  // treatment as isAdmin above.
+  const [feedbackDone, setFeedbackDone] = useState<boolean | null>(null);
+  const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
@@ -59,6 +80,48 @@ export function SiteNav() {
         setIsAdmin(false);
       });
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setFeedbackDone(null);
+      return;
+    }
+    getMyFeedbackResponse(user.id)
+      .then((r) => setFeedbackDone(!!r?.completedAt))
+      .catch(() => setFeedbackDone(null));
+  }, [user]);
+
+  // Native browser prompt only — every browser has shown its OWN fixed text
+  // here (never a custom message) since ~2016, as an anti-abuse measure.
+  // Best-effort nudge on an actual tab close/refresh/external navigation;
+  // does nothing on in-app client-side route changes (those don't unload
+  // the page at all). Same "skip once declined" flag as the sign-out
+  // prompt, so choosing "Just sign out" there quiets this too.
+  useEffect(() => {
+    if (feedbackDone !== false) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [feedbackDone]);
+
+  function handleSignOutClick() {
+    if (feedbackDone === false && localStorage.getItem(SKIP_PROMPT_KEY) !== "1") {
+      setProfileOpen(false);
+      setShowSignOutPrompt(true);
+      return;
+    }
+    void doSignOut();
+  }
+
+  async function doSignOut() {
+    await supabase.auth.signOut();
+    setProfileOpen(false);
+    nav({ to: "/" });
+  }
 
   useEffect(() => {
     if (!profileOpen) return;
@@ -230,6 +293,13 @@ export function SiteNav() {
                   >
                     Settings
                   </Link>
+                  <Link
+                    to="/dashboard/feedback"
+                    onClick={() => setProfileOpen(false)}
+                    className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                  >
+                    Beta Feedback
+                  </Link>
                   {isAdmin && (
                     <Link
                       to="/admin"
@@ -240,11 +310,7 @@ export function SiteNav() {
                     </Link>
                   )}
                   <button
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      setProfileOpen(false);
-                      nav({ to: "/" });
-                    }}
+                    onClick={handleSignOutClick}
                     className="block w-full rounded-md px-3 py-2 text-left transition-colors hover:bg-secondary"
                   >
                     Sign out
@@ -298,6 +364,38 @@ export function SiteNav() {
           </div>
         </div>
       )}
+      <Dialog open={showSignOutPrompt} onOpenChange={setShowSignOutPrompt}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Got a couple minutes before you go?</DialogTitle>
+            <DialogDescription>
+              You're one of our beta testers, and we haven't heard from you yet. Help us make Corvus
+              better — it's 7-10 minutes, and it really helps.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              onClick={() => {
+                localStorage.setItem(SKIP_PROMPT_KEY, "1");
+                setShowSignOutPrompt(false);
+                void doSignOut();
+              }}
+              className="btn-outline"
+            >
+              Just sign out
+            </button>
+            <button
+              onClick={() => {
+                setShowSignOutPrompt(false);
+                nav({ to: "/dashboard/feedback" });
+              }}
+              className="btn-primary btn-primary-hover"
+            >
+              Give feedback
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
