@@ -17,8 +17,25 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // push-triggered deploy and for local `npm run dev`/`npm run build`.
 const base = process.env.SITE_BASE || "/";
 
+// Opt-in only, dev-server-only (never touches `vite build`/production):
+// proxies /auth/* to apps/identity's own dev server so `npm run dev -w
+// apps/pt` can reach the real shared sign-in screen the way production's
+// single-domain deploy does, instead of the 404 you'd otherwise get hitting
+// /auth/ against a lone pt dev server. To use it:
+//   1. In another terminal: SITE_BASE=/auth/ npm run dev -w apps/identity -- --port 8081
+//   2. LOCAL_AUTH_PROXY=1 npm run dev -w apps/pt
+// Off by default so a plain `npm run dev` doesn't fail/hang for anyone who
+// hasn't started the identity server. When you just need to BE signed in
+// (not to exercise the /auth/ screen itself), it's usually less setup to
+// skip this entirely: sign in directly against Supabase from the browser
+// console and seed the session into localStorage — the same trick
+// e2e/authenticated/helpers.ts's signIn() uses for Playwright.
+const authProxy = process.env.LOCAL_AUTH_PROXY
+  ? { proxy: { "/auth": "http://localhost:8081" } }
+  : {};
+
 export default defineConfig({
-  vite: { base },
+  vite: { base, server: authProxy },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
