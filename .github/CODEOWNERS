@@ -1,0 +1,4 @@
+# Every file needs the owner's approval to merge into a protected branch
+# (enforced by the "Protect shared branches" ruleset). Interns can open
+# PRs and review each other's, but only a code owner's approval counts.
+* @dheeraj-corvusrf
