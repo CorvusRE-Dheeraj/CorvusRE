@@ -2417,11 +2417,18 @@ create policy "Admins can view feedback insights"
   using (public.is_admin());
 -- Written only by summarize-beta-feedback via the service-role key.
 
--- Dedup flag for the one-time "give us feedback" email nudge sent ~1 hour
--- after signup (see send-beta-feedback-invite) — deliberately not a client-
--- writable column, same "only the cron function ever sets this" treatment
--- as protest_form_submissions.last_reminder_sent_at.
+-- Cadence tracking for the "give us feedback" email nudge (see
+-- beacon-feedback-nudge, called from a `pagehide` listener in
+-- SiteChrome.tsx whenever a beta tester with incomplete feedback leaves the
+-- app any way at all, keyboard shortcuts included). Capped at 3 emails per
+-- account, at least 2 days apart, stopping immediately once they complete
+-- the form: beta_feedback_invite_sent_at is now "last sent at" (not
+-- one-time-ever), checked against a 2-day gap; beta_feedback_invite_count
+-- stops it after the 3rd. Deliberately not client-writable columns, same
+-- "only the server-side function ever sets this" treatment as
+-- protest_form_submissions.last_reminder_sent_at.
 alter table public.profiles add column if not exists beta_feedback_invite_sent_at timestamptz;
+alter table public.profiles add column if not exists beta_feedback_invite_count int not null default 0;
 
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,

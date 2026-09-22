@@ -1,11 +1,11 @@
 // Guard for the cron-only entry points.
 //
-// Six functions here are background jobs, scheduled by pg_cron, which POST
+// Five functions here are background jobs, scheduled by pg_cron, which POST
 // to them with the project's service-role key as Bearer auth (see the
 // cron.job rows for google-calendar-sync, refresh-property-base-data,
-// send-evidence-reminders, send-deadline-reminders,
-// send-beta-feedback-invite and auto-refile-cases). They are deployed
-// JWT-verified, and the original comments treated that as sufficient —
+// send-evidence-reminders, send-deadline-reminders and auto-refile-cases).
+// They are deployed JWT-verified, and the original comments treated that as
+// sufficient —
 // but Supabase's verify_jwt only proves the caller presented SOME valid
 // JWT for this project. Any ordinary signed-in user's access token passes
 // it, and these jobs then run across EVERY user's data with service-role
