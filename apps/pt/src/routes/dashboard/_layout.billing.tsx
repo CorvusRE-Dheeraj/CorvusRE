@@ -194,7 +194,11 @@ function Billing() {
       .sort()[0] ?? null;
 
   return (
-    <div>
+    // Centered, not left-stuck — same fix as Settings (_layout.settings.tsx):
+    // each branch below used to carry its own independent max-w-2xl with no
+    // mx-auto, which pinned a form-width column to the left edge and left a
+    // large dead zone of empty space on wider screens.
+    <div className="mx-auto max-w-2xl">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="font-serif text-2xl font-semibold">Billing</h1>
         <PaymentsModeChip />
@@ -206,7 +210,7 @@ function Billing() {
       {loading ? (
         <p className="text-muted-foreground mt-6 text-sm">Loading…</p>
       ) : isBeta ? (
-        <div className="card-elev mt-6 max-w-2xl p-6">
+        <div className="card-elev mt-6 p-6">
           <div className="text-muted-foreground text-xs uppercase tracking-wide">Current plan</div>
           <div className="mt-1 font-serif text-2xl font-semibold">Beta</div>
           <p className="text-muted-foreground mt-2 text-sm">
@@ -215,7 +219,7 @@ function Billing() {
           </p>
         </div>
       ) : subs.length === 0 ? (
-        <div className="card-elev mt-6 max-w-2xl p-6">
+        <div className="card-elev mt-6 p-6">
           <p className="text-muted-foreground text-sm">
             {subsError
               ? "Couldn't load your subscriptions just now. Try again shortly, or open the billing portal."
@@ -241,7 +245,7 @@ function Billing() {
           </div>
         </div>
       ) : (
-        <div className="mt-6 grid max-w-2xl gap-6">
+        <div className="mt-6 grid gap-6">
           {/* Portfolio summary */}
           <div className="card-elev p-6">
             <div className="grid gap-4 sm:grid-cols-3">
