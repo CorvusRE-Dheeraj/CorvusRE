@@ -3927,7 +3927,7 @@ function ModuleVisual({
         <div className="grid gap-1 text-xs text-muted-foreground">
           {!compsMap.loading && !compsMap.data?.comps.length && (
             <p>
-              No comparable-property map yet — live comps are only available for Collin, Denton,
+              No comparable-property map yet — live comps are only available for Collin, Denton, Grayson,
               Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
               build the comp set yourself.
             </p>

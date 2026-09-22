@@ -174,7 +174,9 @@ type SpatialConfig = {
   idField: string;
   idMode: "numeric" | "quoted";
   addressField: string;
-  categoryField: string;
+  // null when the layer has no property-type field — comps are then nearby +
+  // value-band only, rather than guessing a type from something unrelated.
+  categoryField: string | null;
   // SQL for the parcel's assessed value, tolerant of the current tax year
   // still being mid-reappraisal (null) — same fallback cad-lookup uses.
   valueSql: string;
@@ -212,7 +214,36 @@ const COLLIN_SPATIAL: SpatialConfig = {
   }),
 };
 
+const GRAYSON_SPATIAL: SpatialConfig = {
+  url: "https://services1.arcgis.com/EVxyUkKpll765a5X/arcgis/rest/services/Grayson_Appraisal_Parcel_Map_WFL1/FeatureServer/13/query",
+  idField: "PropertyNumber",
+  idMode: "quoted",
+  // Grayson has no single situs string (SitusDisplay is empty) — the saved
+  // account numbers are its own PropertyNumber, so the address fallback is
+  // just a best-effort street match.
+  addressField: "SitusStreet",
+  categoryField: null,
+  valueSql: "MarketValue",
+  outFields:
+    "PropertyNumber,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,OwnerName,LegalAcreage,LandValue,ImprovementValue,MarketValue",
+  map: (a) => ({
+    pid: a.PropertyNumber,
+    address:
+      [a.SitusNumber, a.SitusStreetPrefix, a.SitusStreet, a.SitusStreetSufix]
+        .map((p) => (typeof p === "string" ? p.trim() : p))
+        .filter(Boolean)
+        .join(" ") + (str(a.SitusCity) ? `, ${str(a.SitusCity)}` : ""),
+    owner: a.OwnerName,
+    value: parseNum(a.MarketValue),
+    land: parseNum(a.LandValue),
+    improvement: parseNum(a.ImprovementValue),
+    acres: parseNum(a.LegalAcreage),
+    category: null,
+  }),
+};
+
 const SPATIAL_BY_CAD: Record<string, SpatialConfig> = {
+  "Grayson Central Appraisal District": GRAYSON_SPATIAL,
   "Collin Central Appraisal District": COLLIN_SPATIAL,
   // Older saved rows use the short name — same county.
   "Collin CAD": COLLIN_SPATIAL,
@@ -331,7 +362,9 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
 
   const conds: string[] = [];
   if (sMap.pid != null) conds.push(idClause(cfg, "<>", String(sMap.pid)));
-  if (sMap.category) conds.push(`${cfg.categoryField}='${escapeSql(sMap.category)}'`);
+  if (cfg.categoryField && sMap.category) {
+    conds.push(`${cfg.categoryField}='${escapeSql(sMap.category)}'`);
+  }
   if (sMap.value) {
     conds.push(
       `${cfg.valueSql} BETWEEN ${Math.round(sMap.value * 0.5)} AND ${Math.round(sMap.value * 2)}`,
@@ -357,7 +390,17 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
     comps = rows
       .map(toComp)
       .filter((c): c is CompProperty => c !== null)
-      .filter((c) => milesBetween(at.lat, at.lon, c.latitude, c.longitude) <= COMPS_RADIUS_MILES);
+      .filter((c) => milesBetween(at.lat, at.lon, c.latitude, c.longitude) <= COMPS_RADIUS_MILES)
+      // Same 0.5x-2x band as the server-side filter, re-applied here so a
+      // layer whose value isn't reliably filterable in SQL still can't hand
+      // back an unrelated parcel.
+      .filter(
+        (c) =>
+          !sMap.value ||
+          (c.marketValue != null &&
+            c.marketValue >= sMap.value * 0.5 &&
+            c.marketValue <= sMap.value * 2),
+      );
     if (comps.length >= ENOUGH_COMPS) break;
   }
 

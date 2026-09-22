@@ -33,7 +33,7 @@ export type CompsResult = {
 };
 
 // Real data for the 4 TrueProdigy counties (Denton, Montgomery, Tarrant, Travis —
-// same-subdivision comps) and Collin (nearest same-category parcels within 5
+// same-subdivision comps) and Collin + Grayson (nearest comparable parcels within 5
 // miles, from the county's own parcel layer) — every other county gets
 // { subject: null, comps: [] } rather than a fabricated map.
 export async function getComps(input: {
