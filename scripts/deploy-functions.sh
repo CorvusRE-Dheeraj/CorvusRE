@@ -29,7 +29,9 @@ fi
 if [ "$changed" = "ALL" ] || echo "$changed" | grep -q "^$src/_shared/"; then
   names="$(ls -1 "$src" | grep -v '^_shared$')"
 else
-  names="$(echo "$changed" | sed -n "s|^$src/\([^/]*\)/.*|\1|p" | grep -v '^_shared$' | sort -u)"
+  # `|| true`: grep -v exits 1 when nothing is left (no function changed), which
+  # pipefail would turn into a silent script failure instead of "nothing to do".
+  names="$(echo "$changed" | sed -n "s|^$src/\([^/]*\)/.*|\1|p" | { grep -v '^_shared$' || true; } | sort -u)"
 fi
 
 if [ -z "$names" ]; then

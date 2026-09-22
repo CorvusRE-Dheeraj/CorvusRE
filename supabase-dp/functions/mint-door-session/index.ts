@@ -1,6 +1,7 @@
 // Deploy via the CLI (`supabase functions deploy mint-door-session`).
 // Requires public.corvusre_email_has_account(text) to already exist
 // (see supabase-dp/schema.sql).
+// (Redeployed automatically by .github/workflows/deploy-functions.yml on merge to dev.)
 //
 // CorvusRE login bridge (Phase 4): CorvusPT is the shared identity source
 // (see the migration plan — no new/paid Supabase project was created for
