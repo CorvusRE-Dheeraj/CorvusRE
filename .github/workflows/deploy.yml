@@ -1,10 +1,14 @@
 name: Deploy CorvusRE
 
-# One push, one deploy — replaces CorvusDP's old ci.yml-dispatches-CorvusPT's-
-# deploy.yml setup, which rebuilt CorvusDP twice per push. Each door now
-# builds in its own parallel job (no cross-repo checkout needed, everything
-# lives in this one repo), and a single assemble-and-deploy job waits on all
-# of them before publishing exactly one artifact.
+# One push, one WORKFLOW RUN — this used to be two separate workflow files
+# (this one for the static site, deploy-functions.yml for Supabase edge
+# functions), which both triggered on every push to dev and showed up as two
+# unrelated-looking entries in the Actions list. Folded into one file so a
+# push to dev is one run with several jobs, not two runs — deploy-functions'
+# original reasoning for being separate (a bad function deploy shouldn't
+# block the site, and vice versa) is preserved by keeping it a job with no
+# `needs:` on the site jobs (and its own concurrency group), not by keeping
+# it a separate workflow.
 #
 # Phases 1/2 landed the real CorvusPT/CorvusDP apps in apps/pt, apps/dp —
 # build-pt/build-dp below run their real test/e2e/build steps with each
@@ -17,12 +21,28 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      project:
+        description: "Edge functions: which project to redeploy in full (site jobs ignore this)"
+        type: choice
+        options: [both, supabase-pt, supabase-dp]
+        default: both
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# Workflow-level, not job-level: this makes the WHOLE RUN one participant in
+# the "pages" group, so a second push can't race a Pages deploy that's still
+# in flight — it does NOT serialize build-pt/build-dp/build-identity against
+# each other (sibling jobs in one run aren't affected by a group set at this
+# level; only concurrent RUNS are). Putting this on each site job instead
+# was tried and was a real bug: jobs sharing one concurrency group compete
+# for the same slot, so build-identity was getting cancelled outright while
+# build-dp/build-pt fought over the other. deploy-functions below
+# deliberately opts OUT of this group (its own job-level concurrency) so it
+# isn't gated by Pages activity at all.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -187,3 +207,50 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # Supabase edge functions — independent of the site jobs above on purpose
+  # (no `needs:`, own concurrency group): a bad function deploy shouldn't
+  # block the site from shipping, and vice versa. Only actually redeploys
+  # whatever changed (scripts/deploy-functions.sh diffs against the base
+  # commit and no-ops cleanly when nothing under functions/ changed), so
+  # running this job on every push to dev — not just ones that touched
+  # functions — is cheap.
+  #
+  # One-time setup: create an Environment named `production` (Settings ->
+  # Environments), restrict its deployment branches to `dev`, and store
+  # SUPABASE_ACCESS_TOKEN there as an environment secret (a personal access
+  # token from https://supabase.com/dashboard/account/tokens) -- NOT as a
+  # repository secret, which any branch's workflow could read. Tokens get
+  # revoked/rotated -- when this job starts failing on auth, that's the
+  # first thing to check.
+  #
+  # Manual run: Actions -> "Deploy CorvusRE" -> Run workflow -> pick a
+  # `project` input (redeploys every function in the chosen project(s)).
+  deploy-functions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-functions
+      cancel-in-progress: false
+    # Environment secrets are only released to runs on branches the environment
+    # allows (set to `dev` only) -- so anyone with write access can't run this
+    # job from their own branch and deploy their code to production.
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy CorvusPT (identity) functions
+        if: github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-pt'
+        run: bash scripts/deploy-functions.sh supabase-pt iotzuhuajbsxxuccuihn "$BASE_SHA"
+      - name: Deploy CorvusDP functions
+        # !cancelled() so a failed CorvusPT deploy doesn't also skip this one
+        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-dp') }}
+        run: bash scripts/deploy-functions.sh supabase-dp xzhilwwlfajxhklkiteb "$BASE_SHA"

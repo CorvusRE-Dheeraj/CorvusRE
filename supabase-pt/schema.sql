@@ -2329,6 +2329,39 @@ update public.protest_form_submissions
   set reminder_frequency = 'weekly'
   where form_type = 'evidence' and reminder_frequency = 'daily';
 
+-- Deadline & hearing-date reminders (2026-09-22) — every protest deadline,
+-- ARB hearing, informal review, tax due/penalty/refund date, BPP protest
+-- deadline, and personal reminder already shown on the Calendar page (see
+-- getCalendarEvents in src/lib/tax-calendar.ts) now also gets a real
+-- email/SMS reminder at 30/15/7/3/2/0 days out — all six on by default — see
+-- supabase/functions/send-deadline-reminders. Reuses notification_prefs
+-- (deadline_reminders_email/deadline_reminders_sms; missing key = email ON,
+-- sms OFF, same "missing key defaults sensibly" treatment evidence_reminders
+-- already gets) rather than a new column, same reasoning as that column's
+-- own comment: one more jsonb key, not a schema change. A third key,
+-- deadline_reminder_offsets (a subset of [30,15,7,3,2,0]; missing key = all
+-- six), lets an account turn off individual offsets across both channels —
+-- e.g. someone who only wants the 7-day and day-of nudges, not all six.
+--
+-- reminder_sends is a pure dedup log, never read by the client: keyed on the
+-- event's OWN date, so a rescheduled hearing naturally gets its full
+-- 30/15/7/3/2/0 run again (the old date's rows just stop matching anything),
+-- with no code needed to detect "this date changed" — see
+-- send-deadline-reminders' header comment.
+create table if not exists public.reminder_sends (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  event_key text not null,
+  event_date date not null,
+  offset_days int not null,
+  channel text not null check (channel in ('email', 'sms')),
+  sent_at timestamptz not null default now(),
+  unique (user_id, event_key, event_date, offset_days, channel)
+);
+alter table public.reminder_sends enable row level security;
+-- Service-role only (the cron function) — nobody else reads or writes this,
+-- same "no policies at all" treatment as other internal bookkeeping tables.
+
 -- ── ONE-TIME MANUAL STEP — do NOT run this as part of the routine schema paste ──
 -- After you have an account (sign up normally through the app first), run this once,
 -- by itself, substituting your real email, to make that account an admin:
