@@ -23,6 +23,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
+import { runReferralRewards } from "../_shared/referral-reward.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -76,97 +77,10 @@ async function syncProfilePlan(
     .eq("id", userId);
 }
 
-// One month free for whoever referred this NEW paying customer — real
-// business rule ("each referral gives one month free"), so the credit
-// amount is the REFERRER's own real current monthly total, never a guessed
-// flat dollar figure. Granted via Stripe's customer balance (a negative
-// balance transaction), which Stripe applies to the referrer's own next
-// invoice(s) automatically — not a coupon/promo code, which would need
-// per-price setup this ad hoc per-property pricing doesn't have a fixed
-// Price id for (see create-checkout-session's own comment).
-//
-// A customer can now have MANY active property subscriptions at once (one
-// per property) rather than a single shared one — there's no longer one
-// canonical "their subscription" to read. Uses the referrer's most
-// recently created active property subscription's own real monthly total
-// as the credit amount, a reasonable real-money proxy for "their current
-// spend" without summing every subscription they have.
-//
-// referral_reward_granted_at (on the REFERRED user's own row, set here)
-// is the one-time guard — if this specific referred user's checkout ever
-// fires checkout.session.completed again (e.g. they cancel and
-// re-subscribe), the referrer is never paid out twice for the same
-// referral. Never throws: a failure here must not roll back or fail the
-// primary subscription sync above, which already succeeded.
-async function grantReferralRewardIfDue(
-  stripe: Stripe,
-  adminClient: ReturnType<typeof createClient>,
-  referredUserId: string,
-): Promise<void> {
-  try {
-    const { data: referred } = await adminClient
-      .from("profiles")
-      .select("referred_by, referral_reward_granted_at")
-      .eq("id", referredUserId)
-      .maybeSingle();
-    const referrerId = referred?.referred_by as string | null | undefined;
-    if (!referrerId || referred?.referral_reward_granted_at) return;
-
-    const { data: referrer } = await adminClient
-      .from("profiles")
-      .select("stripe_customer_id")
-      .eq("id", referrerId)
-      .maybeSingle();
-    const customerId = referrer?.stripe_customer_id as string | null | undefined;
-    if (!customerId) return; // referrer isn't a paying customer themselves yet
-
-    const [{ data: activeProps }, { data: activeBpp }] = await Promise.all([
-      adminClient
-        .from("properties")
-        .select("stripe_subscription_id, created_at")
-        .eq("user_id", referrerId)
-        .eq("subscription_status", "active")
-        .not("stripe_subscription_id", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1),
-      adminClient
-        .from("bpp_accounts")
-        .select("stripe_subscription_id, created_at")
-        .eq("user_id", referrerId)
-        .eq("subscription_status", "active")
-        .not("stripe_subscription_id", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1),
-    ]);
-    const candidates = [...(activeProps ?? []), ...(activeBpp ?? [])].sort((a, b) =>
-      String(b.created_at).localeCompare(String(a.created_at)),
-    );
-    const subscriptionId = candidates[0]?.stripe_subscription_id as string | undefined;
-    if (!subscriptionId) return; // referrer has no active subscription of their own
-
-    const referrerSub = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ["items.data.price"],
-    });
-    const creditCents = referrerSub.items.data.reduce(
-      (sum, item) => sum + (item.price.unit_amount ?? 0) * (item.quantity ?? 1),
-      0,
-    );
-    if (creditCents <= 0) return;
-
-    await stripe.customers.createBalanceTransaction(customerId, {
-      amount: -creditCents,
-      currency: "usd",
-      description: "CorvusPT referral reward — one month free for referring a new customer",
-    });
-
-    await adminClient
-      .from("profiles")
-      .update({ referral_reward_granted_at: new Date().toISOString() })
-      .eq("id", referredUserId);
-  } catch (err) {
-    console.error("Referral reward grant failed (subscription sync above still succeeded):", err);
-  }
-}
+// Referral rewards (one month free for the referrer) live in
+// ../_shared/referral-reward.ts — atomic claim + idempotency key so a retried or
+// concurrent webhook can't credit twice, and a reward whose referrer wasn't paying
+// yet is paid once they are. Covered by apps/pt/src/lib/referral-reward.test.ts.
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -174,7 +88,7 @@ Deno.serve(async (req: Request) => {
   // The webhook is mode-agnostic: with the endpoint registered in BOTH test
   // and live mode in Stripe, either can deliver here regardless of the admin
   // test/live toggle. Verify the signature against whichever signing secret
-  // matches, then key the OUTBOUND Stripe client (grantReferralRewardIfDue's
+  // matches, then key the OUTBOUND Stripe client (runReferralRewards'
   // retrieve/createBalanceTransaction) off the event's own livemode flag.
   const testSecretKey = Deno.env.get("STRIPE_SECRET_KEY_TEST") ?? Deno.env.get("STRIPE_SECRET_KEY");
   const liveSecretKey = Deno.env.get("STRIPE_SECRET_KEY_LIVE");
@@ -277,7 +191,7 @@ Deno.serve(async (req: Request) => {
           : ((subjectRow?.address as string | null) ?? "");
 
         await syncProfilePlan(adminClient, userId);
-        await grantReferralRewardIfDue(stripe, adminClient, userId);
+        await runReferralRewards(stripe, adminClient, userId);
         await sendPurchaseConfirmationEmail(stripe, adminClient, {
           userId,
           subjectLabel,
@@ -327,7 +241,7 @@ Deno.serve(async (req: Request) => {
         // later becomes active, the 'updated' handler below grants it then
         // (the referral_reward_granted_at guard keeps it one-time).
         if (subscription.status === "active" || subscription.status === "trialing") {
-          await grantReferralRewardIfDue(stripe, adminClient, property.user_id as string);
+          await runReferralRewards(stripe, adminClient, property.user_id as string);
         }
       }
     } else if (event.type === "customer.subscription.updated") {
@@ -378,9 +292,9 @@ Deno.serve(async (req: Request) => {
         // Catches an API-created (bulk-subscribe) subscription that was
         // created 'incomplete' and has now cleared to active — the 'created'
         // handler skipped the referral grant then. One-time via the guard in
-        // grantReferralRewardIfDue.
+        // runReferralRewards.
         if (subscription.status === "active" || subscription.status === "trialing") {
-          await grantReferralRewardIfDue(stripe, adminClient, subject.userId);
+          await runReferralRewards(stripe, adminClient, subject.userId);
         }
       }
     } else if (event.type === "customer.subscription.deleted") {
