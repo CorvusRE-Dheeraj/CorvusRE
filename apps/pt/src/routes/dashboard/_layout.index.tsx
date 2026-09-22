@@ -66,6 +66,7 @@ import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyBilling } from "@/lib/billing";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
@@ -135,8 +136,11 @@ function Overview() {
       // that can't remember a prior dismissal.
     }
     if (dismissed) return;
-    getMyFeedbackResponse(user.id)
-      .then((r) => setShowFeedbackBanner(!r?.completedAt))
+    // Beta testers only (plan === "beta") — a real paying customer isn't
+    // part of that cohort, same reasoning as SiteChrome's sign-out/tab-close
+    // prompts.
+    Promise.all([getMyBilling(user.id), getMyFeedbackResponse(user.id)])
+      .then(([billing, r]) => setShowFeedbackBanner(billing.plan === "beta" && !r?.completedAt))
       .catch(() => {
         // Fail closed here (unlike SiteChrome's sign-out prompt): an
         // unprompted banner on a page every user sees is worth skipping on

@@ -3,12 +3,14 @@
 // auth, is meant to trigger this; same pattern as send-evidence-reminders /
 // send-deadline-reminders — see ../_shared/service-role-only.ts).
 //
-// Run every ~20-30 minutes: emails any account that signed up 50-70 minutes
-// ago (a window, not an exact minute, since a periodic cron can't land on
-// the exact 60-minute mark) — "roughly an hour after they started using
-// Corvus" — inviting them to the beta feedback form, once, ever. Skips
-// anyone who already completed it (no reason to nudge someone who already
-// gave feedback) and anyone already sent this exact email
+// Run every ~20-30 minutes: emails any BETA-PLAN account (plan = 'beta' —
+// see PlanValue's own comment in src/lib/billing.ts; a real paying customer
+// was never a beta tester and shouldn't get this) that signed up 50-70
+// minutes ago (a window, not an exact minute, since a periodic cron can't
+// land on the exact 60-minute mark) — "roughly an hour after they started
+// using Corvus" — inviting them to the beta feedback form, once, ever.
+// Skips anyone who already completed it (no reason to nudge someone who
+// already gave feedback) and anyone already sent this exact email
 // (beta_feedback_invite_sent_at, set right after a successful send — never
 // claimed before the email actually goes out).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -41,6 +43,10 @@ Deno.serve(async (req: Request) => {
   const { data: candidates, error } = await admin
     .from("profiles")
     .select("id, email, first_name")
+    // Beta testers only — the free/full-access grant (see PlanValue's own
+    // comment in src/lib/billing.ts). A real paying customer was never a
+    // beta tester and shouldn't get invited to a beta-tester survey.
+    .eq("plan", "beta")
     .is("beta_feedback_invite_sent_at", null)
     .gte("created_at", windowStart)
     .lte("created_at", windowEnd);
