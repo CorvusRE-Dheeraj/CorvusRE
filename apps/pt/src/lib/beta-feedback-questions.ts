@@ -1,14 +1,12 @@
-// The full Corvus Beta Tester Feedback Form — see beta-feedback.ts for the
-// real-usage signals each section's showIf gates on, and
-// routes/dashboard/_layout.feedback.tsx for the form itself.
+// The Corvus Beta Tester Feedback Form — see beta-feedback.ts for the
+// real-usage signals, and routes/dashboard/_layout.feedback.tsx for the form.
 //
-// Every section below is gated on what the tester actually DID in the app
-// (properties added, AI Review generated, comps viewed, documents uploaded,
-// a protest started), not on what they say they did — someone who only
-// entered an address never sees the hearing/filing/evidence sections, which
-// is what keeps this ~7-10 minutes instead of 57 questions for everyone.
-// Sections with no real signal to gate on (first impressions, trust,
-// investor-validation background, the closing open questions) always show.
+// SECTIONS below is the full question bank (57 questions), NOT what a tester
+// sees. Each tester gets at most MAX_QUESTIONS of them, chosen
+// deterministically from what they actually DID in the app (see
+// selectQuestionIds) — a short always-asked core, then the questions most
+// relevant to how far they got, most-relevant first. No randomness: the same
+// activity always yields the same questions.
 export type UsageSignals = {
   propertyCount: number;
   hasNoticeUpload: boolean;
@@ -986,6 +984,106 @@ export const OPTIONAL_INFO: Section = {
 
 export const ALL_SECTIONS: Section[] = [...SECTIONS, OPTIONAL_INFO];
 
-export function visibleSections(signals: UsageSignals): Section[] {
-  return ALL_SECTIONS.filter((s) => s.showIf(signals));
+// --- Activity-driven selection ----------------------------------------------
+
+export const MAX_QUESTIONS = 15;
+const PAGE_SIZE = 5;
+
+// Asked of everyone regardless of activity: what almost made them leave, the
+// one wish, NPS + why, and the closing sentence.
+const CORE_IDS = ["q44", "q46", "q54", "q55", "q56"];
+
+// weight(signals) > 0 means "relevant to this tester"; higher = asked first.
+// Ties keep the order below. Deeper activity (a protest, documents, comps)
+// outranks generic questions, so people see what they actually used.
+const CANDIDATES: { id: string; weight: (s: UsageSignals) => number }[] = [
+  { id: "q1", weight: (s) => (s.propertyCount === 0 ? 10 : 0) },
+  { id: "q2", weight: (s) => (s.propertyCount === 0 ? 9 : 0) },
+  { id: "q3", weight: (s) => (s.propertyCount === 0 ? 8 : 0) },
+  { id: "q25", weight: (s) => (s.hasProtest ? 9 + (s.protestAdvanced ? 1 : 0) : 0) },
+  { id: "q23", weight: (s) => (s.hasProtest ? 9 : 0) },
+  { id: "q19", weight: (s) => (s.hasProtest ? 8 : s.propertyCount > 0 ? 5 : 0) },
+  { id: "q20", weight: (s) => (s.protestAdvanced ? 6 : 0) },
+  { id: "q45", weight: (s) => (s.hasAiReview ? 9 : 0) },
+  { id: "q8", weight: (s) => (s.hasAiReview ? 8 : 0) },
+  { id: "q39", weight: (s) => (s.hasAiReview ? 8 : 0) },
+  { id: "q17", weight: (s) => (s.hasComps ? 8 : 0) },
+  { id: "q31", weight: (s) => (s.multiProperty ? 8 : 0) },
+  { id: "q7", weight: (s) => (s.hasAiReview ? 7 : 0) },
+  { id: "q10", weight: (s) => (s.hasAiReview ? 7 : 0) },
+  { id: "q11", weight: (s) => (s.hasAiReview ? 7 : 0) },
+  { id: "q26", weight: (s) => (s.hasAnyDocuments ? 7 : 0) },
+  { id: "q32", weight: (s) => (s.multiProperty ? 7 : 0) },
+  { id: "q52", weight: (s) => (s.multiProperty ? 7 : 0) },
+  { id: "q42", weight: (s) => (s.propertyCount > 0 ? 7 : 0) },
+  { id: "q4", weight: (s) => (s.propertyCount > 0 ? 6 + (s.hasNoticeUpload ? 2 : 0) : 0) },
+  { id: "q27", weight: (s) => (s.hasAnyDocuments ? 6 + (s.hasEvidenceModule ? 2 : 0) : 0) },
+  { id: "q48", weight: (s) => (s.propertyCount > 0 ? 6 : 0) },
+  { id: "q30", weight: (s) => (s.multiProperty ? 6 : 0) },
+  { id: "q40", weight: (s) => (s.hasAiReview ? 5 : 0) },
+  { id: "q16", weight: (s) => (s.hasComps ? 5 : 0) },
+  { id: "q38", weight: (s) => (s.propertyCount > 0 ? 4 : 0) },
+  { id: "q33", weight: (s) => (s.propertyCount > 0 ? 4 : 0) },
+];
+
+const QUESTION_BY_ID = new Map<string, Question>();
+for (const section of SECTIONS) {
+  for (const q of section.questions) QUESTION_BY_ID.set(q.id, q);
+}
+
+// A question with an inline follow-up can show two prompts, so it costs two
+// against the cap — the tester never sees more than MAX_QUESTIONS.
+const cost = (id: string) => (QUESTION_BY_ID.get(id)?.followUp ? 2 : 1);
+
+export function selectQuestionIds(signals: UsageSignals): string[] {
+  const picked = new Set(CORE_IDS);
+  let used = CORE_IDS.reduce((n, id) => n + cost(id), 0);
+  const ranked = CANDIDATES.map((c, order) => ({ id: c.id, order, w: c.weight(signals) }))
+    .filter((c) => c.w > 0 && QUESTION_BY_ID.has(c.id))
+    .sort((a, b) => b.w - a.w || a.order - b.order);
+  for (const c of ranked) {
+    if (used + cost(c.id) > MAX_QUESTIONS) continue;
+    picked.add(c.id);
+    used += cost(c.id);
+  }
+  return [...picked];
+}
+
+// Keeps only ids that still exist in the bank; empty means "no usable saved
+// selection".
+export function validQuestionIds(ids: unknown): string[] {
+  return Array.isArray(ids)
+    ? ids.filter((id): id is string => typeof id === "string" && QUESTION_BY_ID.has(id))
+    : [];
+}
+
+// The pages the tester actually pages through: the chosen questions in
+// question-bank order (so the flow still reads first-impression → closing),
+// grouped PAGE_SIZE at a time. lockedIds is the selection saved on their
+// first visit, so a resumed form never reshuffles under them.
+export function visibleSections(signals: UsageSignals, lockedIds?: string[]): Section[] {
+  const locked = validQuestionIds(lockedIds);
+  const ids = new Set(locked.length > 0 ? locked : selectQuestionIds(signals));
+  const ordered = SECTIONS.flatMap((s) => s.questions).filter((q) => ids.has(q.id));
+  const pages: Section[] = [];
+  for (let i = 0; i < ordered.length; i += PAGE_SIZE) {
+    pages.push({
+      key: `page_${pages.length + 1}`,
+      title: "",
+      showIf: () => true,
+      questions: ordered.slice(i, i + PAGE_SIZE),
+    });
+  }
+  const last = pages.length - 1;
+  pages.forEach((p, i) => {
+    p.title =
+      pages.length === 1
+        ? "Your Corvus experience"
+        : i === 0
+          ? "Your experience so far"
+          : i === last
+            ? "Wrapping up"
+            : "Going a little deeper";
+  });
+  return pages;
 }
