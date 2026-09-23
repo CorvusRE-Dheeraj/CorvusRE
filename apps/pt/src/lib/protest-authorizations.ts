@@ -12,7 +12,6 @@ export type AuthorizationInput = {
   entityName?: string;
   entityRelationship?: string;
   entityType?: string;
-  purchasedRecently: boolean;
   signature: SignatureValue;
 };
 
@@ -29,7 +28,6 @@ export async function createAuthorization(userId: string, input: AuthorizationIn
     entity_name: input.isEntity ? (input.entityName ?? null) : null,
     entity_relationship: input.isEntity ? (input.entityRelationship ?? null) : null,
     entity_type: input.isEntity ? (input.entityType ?? null) : null,
-    purchased_recently: input.purchasedRecently,
     signature_type: input.signature.type,
     signature_data: input.signature.data,
   });
@@ -61,7 +59,7 @@ type AuthorizationRow = {
 };
 
 // Only the fields the 50-162 filler (src/lib/protest-documents.ts) actually needs —
-// email/signature/purchasedRecently aren't read back here. Most recent authorization
+// email/signature aren't read back here. Most recent authorization
 // per protest, in case a customer ever re-signs (createAuthorization has no update path).
 export async function getAuthorization(protestId: string): Promise<AuthorizationRecord | null> {
   const { data, error } = await supabase
