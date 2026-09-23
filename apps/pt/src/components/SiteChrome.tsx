@@ -68,11 +68,17 @@ export function SiteNav() {
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
   // pages so the two rows don't repeat the same entry right on top of each other.
-  const navItems = signedIn
+  const baseNavItems = signedIn
     ? shouldShowShell(pathname)
       ? NAV
       : [NAV[0], { to: "/dashboard", label: "Dashboard" } as const, ...NAV.slice(1)]
     : NAV;
+  // Beta testers only — same "beta" plan gate as the profile dropdown's
+  // "Beta Feedback" link, just surfaced in the main nav too, right next to
+  // Contact Us, since NAV's last entry is Contact Us.
+  const navItems = isBetaUser
+    ? [...baseNavItems, { to: "/dashboard/feedback", label: "Feedback" } as const]
+    : baseNavItems;
 
   useEffect(() => {
     if (!user) {
