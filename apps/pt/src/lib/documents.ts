@@ -2,6 +2,51 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { FormType } from "./protest-form-submissions";
 
+// Any change to the documents table (upload, delete, restore, rename, retag,
+// evidence flag) broadcasts this so every view that holds its own copy of the
+// document list refreshes without a manual page reload. The window event covers
+// the current tab; the BroadcastChannel covers other open tabs of this app
+// (View Case opens in its own tab, so an upload made on the AI Report page
+// would otherwise never reach it). See useDocumentsVersion().
+export const DOCUMENTS_CHANGED_EVENT = "corvuspt:documents-changed";
+const DOCUMENTS_CHANNEL = "corvuspt:documents";
+
+export function notifyDocumentsChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(DOCUMENTS_CHANGED_EVENT));
+  try {
+    const channel = new BroadcastChannel(DOCUMENTS_CHANNEL);
+    channel.postMessage("changed");
+    channel.close();
+  } catch {
+    // BroadcastChannel unavailable — the current tab still refreshes.
+  }
+}
+
+// Subscribes to both signals; a burst (a bulk upload, or the same change
+// arriving via window event AND channel) collapses into one callback.
+export function onDocumentsChanged(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const fire = () => {
+    clearTimeout(timer);
+    timer = setTimeout(callback, 250);
+  };
+  window.addEventListener(DOCUMENTS_CHANGED_EVENT, fire);
+  let channel: BroadcastChannel | null = null;
+  try {
+    channel = new BroadcastChannel(DOCUMENTS_CHANNEL);
+    channel.onmessage = fire;
+  } catch {
+    channel = null;
+  }
+  return () => {
+    clearTimeout(timer);
+    window.removeEventListener(DOCUMENTS_CHANGED_EVENT, fire);
+    channel?.close();
+  };
+}
+
 // document_type is free-text (no schema enum), so this is just a convention shared
 // between the upload call and the filter query that reads it back — see
 // src/routes/ai-report.tsx's Improvement Condition module.
@@ -158,6 +203,7 @@ export async function uploadDocument(
     .select()
     .single();
   if (error) throw error;
+  notifyDocumentsChanged();
   return fromRow(data as DocumentRow);
 }
 
@@ -287,11 +333,13 @@ export async function deleteDocument(doc: DocumentRecord): Promise<void> {
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", doc.id);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 export async function restoreDocument(id: string): Promise<void> {
   const { error } = await supabase.from("documents").update({ deleted_at: null }).eq("id", id);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 // Permanent delete — row delete (governed by the RLS "Users can delete their
@@ -304,6 +352,7 @@ export async function purgeDocument(doc: DocumentRecord): Promise<void> {
     .from("documents")
     .remove([doc.storagePath])
     .catch(() => {});
+  notifyDocumentsChanged();
 }
 
 export async function setUseAsEvidence(id: string, value: boolean | null): Promise<void> {
@@ -312,6 +361,7 @@ export async function setUseAsEvidence(id: string, value: boolean | null): Promi
     .update({ use_as_evidence: value })
     .eq("id", id);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 // Records that the user has resolved the "possible duplicate" prompt for a
@@ -325,6 +375,7 @@ export async function markDuplicateReviewed(
     .update({ dup_reviewed: true, duplicate_of: duplicateOf })
     .eq("id", id);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 // A small, honest display taxonomy over the free-text document_type — for the
@@ -471,7 +522,9 @@ export type DocAnalysis = {
 // it, checks it against the property on file and the other documents, writes
 // the verdict/notes/suggested name back to the row, and returns the analysis.
 export async function analyzeDocument(documentId: string): Promise<DocAnalysis> {
-  return invokeEdgeFunction<DocAnalysis>("analyze-document", { documentId });
+  const analysis = await invokeEdgeFunction<DocAnalysis>("analyze-document", { documentId });
+  notifyDocumentsChanged();
+  return analysis;
 }
 
 // Apply a suggested rename — file_name is the one field a user may now change
@@ -480,6 +533,7 @@ export async function analyzeDocument(documentId: string): Promise<DocAnalysis> 
 export async function renameDocument(id: string, fileName: string): Promise<void> {
   const { error } = await supabase.from("documents").update({ file_name: fileName }).eq("id", id);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 const VERDICT_META: Record<

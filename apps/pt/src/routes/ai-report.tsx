@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
@@ -692,6 +693,8 @@ function Report() {
   // Case Report (case-report.ts) for the Key Documents section. evidenceDocs
   // above is the evidence-only subset the cache hash folds in.
   const [caseDocuments, setCaseDocuments] = useState<DocumentRecord[]>([]);
+  // Refetch when a document changes elsewhere (View Case / Documents / another tab).
+  const docsVersion = useDocumentsVersion();
   useEffect(() => {
     if (!user || !resolvedProperty) {
       setEvidenceDocsLoaded(!resolvedProperty); // no property => nothing to wait for
@@ -722,7 +725,7 @@ function Report() {
       .catch((err) => console.error("Could not load uploaded evidence for this property:", err))
       .finally(() => setEvidenceDocsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, resolvedProperty]);
+  }, [user?.id, resolvedProperty, docsVersion]);
 
   // Address → AI-fetched property base data. Loads the stored copy so the
   // "Property Base Data" strip renders immediately; auto-fetches once per

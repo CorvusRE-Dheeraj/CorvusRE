@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -102,6 +103,10 @@ function Documents() {
   // not the address, since two properties could share an address string.
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
+  // Refetches when a document is added/changed anywhere (this tab or another),
+  // so an upload made on the AI Report page shows up here without a reload.
+  const docsVersion = useDocumentsVersion();
+
   useEffect(() => {
     if (!user) return;
     Promise.all([listProperties(user.id), listDocuments(user.id), listTrashedDocuments(user.id)])
@@ -112,7 +117,7 @@ function Documents() {
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, docsVersion]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
