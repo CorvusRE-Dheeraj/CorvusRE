@@ -110,8 +110,16 @@ function formatAnswer(a: Answer): string {
   return Array.isArray(a) ? a.join(", ") : a;
 }
 
+function answeredCount(row: AdminFeedbackRow): number {
+  return Object.keys(row.answers).filter((k) => QUESTION_BY_ID.has(k)).length;
+}
+
 function ResponseDetail({ row, onClose }: { row: AdminFeedbackRow; onClose: () => void }) {
-  const shownSections = ALL_SECTIONS.filter((s) => row.sectionsShown.includes(s.key));
+  // Testers now get a per-person selection of questions, so what was "shown"
+  // is whatever they actually answered, grouped by its original section.
+  const shownSections = ALL_SECTIONS.filter((s) =>
+    s.questions.some((q) => row.answers[q.id] !== undefined),
+  );
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
@@ -120,8 +128,8 @@ function ResponseDetail({ row, onClose }: { row: AdminFeedbackRow; onClose: () =
             {row.firstName ?? ""} {row.lastName ?? ""} — {row.email}
           </DialogTitle>
           <DialogDescription>
-            {row.completedAt ? "Completed" : "In progress"} · {shownSections.length} of{" "}
-            {ALL_SECTIONS.length} sections shown · updated{" "}
+            {row.completedAt ? "Completed" : "In progress"} ·{" "}
+            {answeredCount(row)} answered · updated{" "}
             {new Date(row.updatedAt).toLocaleDateString()}
           </DialogDescription>
         </DialogHeader>
@@ -370,7 +378,7 @@ export function AdminBetaFeedback() {
                   <tr>
                     <th className="px-4 py-2 text-left">Tester</th>
                     <th className="px-4 py-2 text-left">Status</th>
-                    <th className="px-4 py-2 text-left">Sections shown</th>
+                    <th className="px-4 py-2 text-left">Answered</th>
                     <th className="px-4 py-2 text-left">Updated</th>
                     <th className="px-4 py-2" />
                   </tr>
@@ -394,7 +402,7 @@ export function AdminBetaFeedback() {
                         </span>
                       </td>
                       <td className="px-4 py-2">
-                        {r.sectionsShown.length} / {ALL_SECTIONS.length}
+                        {answeredCount(r)}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground">
                         {new Date(r.updatedAt).toLocaleDateString()}

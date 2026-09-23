@@ -9,6 +9,8 @@ import {
   submitFeedback,
 } from "@/lib/beta-feedback";
 import {
+  selectQuestionIds,
+  validQuestionIds,
   visibleSections,
   ZERO_SIGNALS,
   type Answer,
@@ -217,6 +219,10 @@ function BetaFeedbackForm() {
   const [loading, setLoading] = useState(true);
   const [signals, setSignals] = useState<UsageSignals>(ZERO_SIGNALS);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  // The questions picked for THIS tester from their activity, saved with
+  // their answers (as "__selected") on first visit so coming back later
+  // shows the same questions even if they've done more in the app since.
+  const [lockedIds, setLockedIds] = useState<string[]>([]);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [alreadyDone, setAlreadyDone] = useState(false);
@@ -227,12 +233,15 @@ function BetaFeedbackForm() {
     Promise.all([computeUsageSignals(user.id), getMyFeedbackResponse(user.id)])
       .then(([sig, existing]) => {
         setSignals(sig);
+        const saved = validQuestionIds(existing?.answers.__selected);
+        const ids = saved.length > 0 ? saved : selectQuestionIds(sig);
+        setLockedIds(ids);
         if (existing) {
           setAnswers(existing.answers);
           if (existing.completedAt) {
             setAlreadyDone(true);
           } else {
-            setSectionIndex(firstUnfinishedIndex(visibleSections(sig), existing.answers));
+            setSectionIndex(firstUnfinishedIndex(visibleSections(sig, ids), existing.answers));
           }
         }
       })
@@ -242,7 +251,7 @@ function BetaFeedbackForm() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  const sections = useMemo(() => visibleSections(signals), [signals]);
+  const sections = useMemo(() => visibleSections(signals, lockedIds), [signals, lockedIds]);
   const currentSection = sections[sectionIndex];
   const isLast = sectionIndex === sections.length - 1;
 
@@ -254,10 +263,11 @@ function BetaFeedbackForm() {
     if (!user) return;
     setSaving(true);
     try {
+      const toSave = { ...answers, __selected: lockedIds };
       if (completed) {
-        await submitFeedback(user.id, answers, sectionsShownSoFar, signals);
+        await submitFeedback(user.id, toSave, sectionsShownSoFar, signals);
       } else {
-        await saveFeedbackProgress(user.id, answers, sectionsShownSoFar, signals);
+        await saveFeedbackProgress(user.id, toSave, sectionsShownSoFar, signals);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save your progress.");
