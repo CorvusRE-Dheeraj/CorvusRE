@@ -88,6 +88,37 @@ input {
   font-size: 14px;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 38px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: var(--fg);
+  background: rgba(10, 43, 82, 0.06);
+}
+
 .google-btn {
   display: flex;
   align-items: center;
