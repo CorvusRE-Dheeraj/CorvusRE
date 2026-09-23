@@ -61,6 +61,7 @@ import {
 } from "@/lib/case-audit";
 import { saveCaseRecordFields } from "@/lib/protest-case";
 import { listDocuments } from "@/lib/documents";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
 import {
   getCountyProtestInfo,
   COUNTY_PROTEST_INFO,
@@ -359,6 +360,17 @@ export function CaseDetailView({
   }
 
   useEffect(load, [protest.id]);
+
+  // An upload made elsewhere (the AI Report page, the Documents page, or another
+  // tab) must reach the evidence counts/checks here without a manual reload.
+  const docsVersion = useDocumentsVersion();
+  useEffect(() => {
+    if (docsVersion === 0) return;
+    getProtestEvidenceDocuments(userId, property.id)
+      .then(setEvidenceDocuments)
+      .catch((err) => console.error("Could not refresh this case's evidence documents:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docsVersion]);
 
   // If a fresher protest prop arrives with the filing notice already
   // accepted (e.g. this view stayed mounted while the parent refetched),
@@ -1641,6 +1653,7 @@ function FilingSubmissionFlow({
   const [trackingInput, setTrackingInput] = useState("");
   const [emailRecipientInput, setEmailRecipientInput] = useState("");
   const [emailSubjectInput, setEmailSubjectInput] = useState("");
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -1667,7 +1680,7 @@ function FilingSubmissionFlow({
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [protest.id, formType, userId, property.id, refreshToken]);
+  }, [protest.id, formType, userId, property.id, refreshToken, docsVersion]);
 
   async function chooseMethod(method: FilingMethod) {
     setSavingField("method");
@@ -2480,6 +2493,7 @@ function EvidenceStatusCard({
   const [score, setScore] = useState<number | null>(null);
   const [proofCount, setProofCount] = useState(0);
   const [requesting, setRequesting] = useState(false);
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -2511,7 +2525,7 @@ function EvidenceStatusCard({
     return () => {
       live = false;
     };
-  }, [protest.id, property.id, userId]);
+  }, [protest.id, property.id, userId, docsVersion]);
 
   async function handleRequestAdditional() {
     setRequesting(true);
@@ -5753,6 +5767,7 @@ function CaseRecordSection({
   const [channel, setChannel] = useState(protest.filingChannel ?? "");
   const [tracking, setTracking] = useState(protest.certifiedMailTracking ?? "");
   const [reloadKey, setReloadKey] = useState(0);
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -5766,7 +5781,7 @@ function CaseRecordSection({
     return () => {
       live = false;
     };
-  }, [userId, property.id, protest.id, reloadKey]);
+  }, [userId, property.id, protest.id, reloadKey, docsVersion]);
 
   const stage = caseRecordStage(protest);
   const items = getCaseRecord(protest, {
