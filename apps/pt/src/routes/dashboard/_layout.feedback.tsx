@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -213,6 +213,7 @@ function QuestionBlock({
 
 function BetaFeedbackForm() {
   const { user } = useAuth();
+  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [signals, setSignals] = useState<UsageSignals>(ZERO_SIGNALS);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
@@ -284,6 +285,18 @@ function BetaFeedbackForm() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // Saves whatever's been answered so far — including the CURRENT section,
+  // even if it's only partially filled in — then leaves. Distinct from
+  // Next/persist's own saves, which only ever commit a section once it's
+  // done; this is the only path that captures in-progress answers on the
+  // section the tester is still on when they bail mid-way.
+  async function handleSaveAndExit() {
+    const shown = sections.slice(0, sectionIndex + 1).map((s) => s.key);
+    await persist(shown, false);
+    toast.success("Progress saved — come back anytime to finish.");
+    nav({ to: "/dashboard" });
+  }
+
   if (loading) {
     return <p className="mt-6 text-sm text-muted-foreground">Loading…</p>;
   }
@@ -343,14 +356,24 @@ function BetaFeedbackForm() {
         >
           Back
         </button>
-        <button
-          type="button"
-          onClick={handleNext}
-          disabled={saving}
-          className="btn-primary btn-primary-hover disabled:opacity-60"
-        >
-          {saving ? "Saving…" : isLast ? "Submit" : "Next"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSaveAndExit}
+            disabled={saving}
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline disabled:opacity-60"
+          >
+            Save &amp; exit
+          </button>
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={saving}
+            className="btn-primary btn-primary-hover disabled:opacity-60"
+          >
+            {saving ? "Saving…" : isLast ? "Submit" : "Next"}
+          </button>
+        </div>
       </div>
     </div>
   );
