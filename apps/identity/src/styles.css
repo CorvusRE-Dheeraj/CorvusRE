@@ -238,3 +238,7 @@ button:disabled {
   border-color: var(--accent);
   background: #f7f7f5;
 }
+
+.google-btn + .google-btn {
+  margin-top: 8px;
+}

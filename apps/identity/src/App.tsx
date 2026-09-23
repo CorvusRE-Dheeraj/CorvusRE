@@ -145,7 +145,7 @@ export function App() {
     }
   }
 
-  // Completes the Google OAuth round trip: signInWithGoogle() below sends
+  // Completes the Google OAuth round trip: signInWithProvider() below sends
   // the browser to Google and back to THIS page (never straight to a door)
   // with the session tokens in the URL hash, specifically so this app's own
   // Supabase client (pointed at the real identity project) is what
@@ -264,7 +264,8 @@ export function App() {
     proceed();
   }
 
-  async function signInWithGoogle() {
+  // One OAuth path for every social provider -- Supabase calls Microsoft "azure".
+  async function signInWithProvider(provider: "google" | "azure") {
     setStatus("busy");
     setError(null);
     // Only meaningful on the sign-up screen -- the same button also handles
@@ -273,7 +274,7 @@ export function App() {
       try {
         localStorage.setItem(PENDING_BETA_KEY, "1");
       } catch {
-        // storage blocked -- beta just won't attach for a Google signup
+        // storage blocked -- beta just won't attach for a social signup
       }
     }
     // Carries the same redirect target forward as a query param (blank if
@@ -285,8 +286,9 @@ export function App() {
       target ? `?redirect=${encodeURIComponent(target)}` : ""
     }`;
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
+      provider,
+      // Azure only returns an email address when asked for the scope.
+      options: { redirectTo, ...(provider === "azure" ? { scopes: "email" } : {}) },
     });
     if (oauthErr) {
       setError(oauthErr.message);
@@ -465,9 +467,23 @@ export function App() {
         <p className="sub">One account works across every CorvusRE door.</p>
         {reason && <p className="notice">{reason}</p>}
 
-        <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={status === "busy"}>
+        <button
+          type="button"
+          className="google-btn"
+          onClick={() => signInWithProvider("google")}
+          disabled={status === "busy"}
+        >
           <GoogleIcon />
           Continue with Google
+        </button>
+        <button
+          type="button"
+          className="google-btn"
+          onClick={() => signInWithProvider("azure")}
+          disabled={status === "busy"}
+        >
+          <MicrosoftIcon />
+          Continue with Microsoft
         </button>
 
         <div className="divider">
@@ -655,6 +671,17 @@ function Logo() {
       </span>
       <span className="word">CorvusRE</span>
     </div>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden>
+      <path fill="#F25022" d="M1 1h10v10H1z" />
+      <path fill="#7FBA00" d="M12 1h10v10H12z" />
+      <path fill="#00A4EF" d="M1 12h10v10H1z" />
+      <path fill="#FFB900" d="M12 12h10v10H12z" />
+    </svg>
   );
 }
 
