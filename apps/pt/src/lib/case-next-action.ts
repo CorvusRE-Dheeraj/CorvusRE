@@ -26,7 +26,7 @@ import {
   type FilingStepStatusInput,
 } from "./filing-workflow";
 
-export type CaseActionStageId = FilingStepId | "informal" | "hearing" | "decision";
+export type CaseActionStageId = FilingStepId | "informal" | "hearing" | "decision" | "appeal";
 export type CaseActionStatus = "done" | "current" | "upcoming";
 
 export type CaseTimelineEntry = {
@@ -57,17 +57,19 @@ export type CaseNextAction = {
 const VIEW_CASE_HREF = "/dashboard/case";
 
 // The post-filing phases, in order, with the real View Case tab/label they
-// correspond to — "escalation" folds into "Decision & Appeal" because that's
-// the one tab View Case itself shows for both (see CaseDetailModal.tsx's
-// caseTabUnlocked "decision" case), not a separate phase of its own.
+// correspond to — Decision and Appeal / Arbitration are View Case's own two
+// separate tabs (see CASE_TABS in CaseDetailModal.tsx), so "escalation" gets
+// its own "Appeal / Arbitration" phase here too, matching exactly rather
+// than folding the two together under one combined label.
 const POST_FILE_PHASES: {
-  id: "informal" | "hearing" | "decision";
+  id: "informal" | "hearing" | "decision" | "appeal";
   label: string;
   stages: CaseStage[];
 }[] = [
   { id: "informal", label: "Informal Review", stages: ["informal_review"] },
   { id: "hearing", label: "Formal Hearing", stages: ["hearing"] },
-  { id: "decision", label: "Decision & Appeal", stages: ["decision", "escalation"] },
+  { id: "decision", label: "Decision", stages: ["decision"] },
+  { id: "appeal", label: "Appeal / Arbitration", stages: ["escalation"] },
 ];
 
 const STAGE_RANK: Record<CaseStage, number> = {
@@ -76,8 +78,8 @@ const STAGE_RANK: Record<CaseStage, number> = {
   informal_review: 2,
   hearing: 3,
   decision: 4,
-  escalation: 4,
-  resolved: 5,
+  escalation: 5,
+  resolved: 6,
 };
 
 function isExternalAnchor(anchor: string): boolean {
