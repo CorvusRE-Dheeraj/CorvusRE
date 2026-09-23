@@ -702,6 +702,28 @@ function Properties() {
     });
   }
 
+  // Selects/deselects every checkbox-eligible row currently on screen (not
+  // just the fully-subscribed ones, same as an individual row's own
+  // checkbox) — ADDS to/REMOVES from the existing selection rather than
+  // replacing it outright, so a selection made under one search/filter isn't
+  // silently dropped by toggling "select all" under a different one.
+  const eligibleDisplayed = displayProperties.filter(bulkEligible);
+  const allDisplayedSelected =
+    eligibleDisplayed.length > 0 && eligibleDisplayed.every((p) => selectedIds.has(p.id));
+  const someDisplayedSelected =
+    !allDisplayedSelected && eligibleDisplayed.some((p) => selectedIds.has(p.id));
+
+  function toggleSelectAllDisplayed() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const p of eligibleDisplayed) {
+        if (allDisplayedSelected) next.delete(p.id);
+        else next.add(p.id);
+      }
+      return next;
+    });
+  }
+
   function handleBulkDone(results: BulkSubResult[]) {
     const active = results.filter((r) => r.status === "active").length;
     const needs = results.filter((r) => r.status === "needs_action");
@@ -977,7 +999,20 @@ function Properties() {
             <table className="w-full min-w-[56rem] border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="w-9 px-3 py-2.5" />
+                  <th className="w-9 px-3 py-2.5">
+                    {eligibleDisplayed.length > 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select all properties"
+                        checked={allDisplayedSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someDisplayedSelected;
+                        }}
+                        onChange={toggleSelectAllDisplayed}
+                        className="h-4 w-4"
+                      />
+                    )}
+                  </th>
                   <th className="min-w-[14rem] px-3 py-2.5">Address</th>
                   {visibleColumnOptions.map((c) => (
                     <th key={c.key} className="whitespace-nowrap px-3 py-2.5">
