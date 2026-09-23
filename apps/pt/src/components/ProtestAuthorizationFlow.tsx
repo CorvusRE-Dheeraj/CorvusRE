@@ -109,6 +109,14 @@ export function ProtestAuthorizationFlow({
   const [email, setEmail] = useState(initialOwnerInfo?.email ?? userEmail ?? "");
   const [phone, setPhone] = useState(initialOwnerInfo?.phone ?? "");
   const [isEntity, setIsEntity] = useState(initialOwnerInfo?.isEntity ?? false);
+  // Only name the county's owner in the question when it's plainly a business/
+  // trust — "Yes" here means entity ownership, so an individual's name would
+  // mislead.
+  const ownerNamedAsEntity =
+    !!property.ownerName &&
+    /\b(LLC|L\.L\.C|INC|CORP|CORPORATION|LP|LLP|LTD|TRUST|PARTNERS|PARTNERSHIP|COMPANY|CO|HOLDINGS|PROPERTIES|ASSOCIATES|ASSN|ASSOCIATION|FOUNDATION|CHURCH)\b/i.test(
+      property.ownerName,
+    );
   const [entityName, setEntityName] = useState(initialOwnerInfo?.entityName ?? "");
   const [entityRelationship, setEntityRelationship] = useState(
     initialOwnerInfo?.entityRelationship ?? "",
@@ -407,7 +415,7 @@ export function ProtestAuthorizationFlow({
 
         {step === "owner" && (
           <div className="grid gap-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm font-semibold text-foreground">
               Provide your full legal name, including any suffix (Jr., Sr., II), to ensure it
               matches the county's records.
             </p>
@@ -461,7 +469,14 @@ export function ProtestAuthorizationFlow({
             <div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm">
-                  Is this property owned by a trust, LLC, or other entity?
+                  {ownerNamedAsEntity ? (
+                    <>
+                      Is this property owned by{" "}
+                      <span className="font-medium">{property.ownerName}</span>?
+                    </>
+                  ) : (
+                    "Is this property owned by a trust, LLC, or other entity?"
+                  )}
                 </span>
                 <div className="flex gap-3 text-sm">
                   <label className="flex items-center gap-1.5">
@@ -485,7 +500,7 @@ export function ProtestAuthorizationFlow({
                   </label>
                 </div>
               </div>
-              {property.ownerName && (
+              {property.ownerName && !ownerNamedAsEntity && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   County record shows owner:{" "}
                   <span className="font-medium">{property.ownerName}</span>
