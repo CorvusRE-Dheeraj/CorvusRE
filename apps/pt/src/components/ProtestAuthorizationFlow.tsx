@@ -109,14 +109,9 @@ export function ProtestAuthorizationFlow({
   const [email, setEmail] = useState(initialOwnerInfo?.email ?? userEmail ?? "");
   const [phone, setPhone] = useState(initialOwnerInfo?.phone ?? "");
   const [isEntity, setIsEntity] = useState(initialOwnerInfo?.isEntity ?? false);
-  // Only name the county's owner in the question when it's plainly a business/
-  // trust — "Yes" here means entity ownership, so an individual's name would
-  // mislead.
-  const ownerNamedAsEntity =
-    !!property.ownerName &&
-    /\b(LLC|L\.L\.C|INC|CORP|CORPORATION|LP|LLP|LTD|TRUST|PARTNERS|PARTNERSHIP|COMPANY|CO|HOLDINGS|PROPERTIES|ASSOCIATES|ASSN|ASSOCIATION|FOUNDATION|CHURCH)\b/i.test(
-      property.ownerName,
-    );
+  // The question names the county's owner of record whenever there is one;
+  // the generic wording is only the fallback when the county has none.
+  const ownerNamedAsEntity = !!property.ownerName;
   const [entityName, setEntityName] = useState(initialOwnerInfo?.entityName ?? "");
   const [entityRelationship, setEntityRelationship] = useState(
     initialOwnerInfo?.entityRelationship ?? "",
