@@ -53,15 +53,11 @@ export function SiteNav() {
   const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
   const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
-  // The one thing a beforeunload listener genuinely cannot do (in any
-  // browser, since ~2016) is say anything of its own — every browser shows
-  // only its own fixed "Leave site?" text, never custom copy. This modal is
-  // the actual "give feedback" ask before they go: triggered on exit intent
-  // (the pointer leaving toward the tab bar/back button, the same heuristic
+  // The "give feedback" ask before they go: triggered on exit intent (the
+  // pointer leaving toward the tab bar/back button, the same heuristic
   // exit-intent popups have always used), not tab-close itself — it can't
-  // catch every way of leaving (Ctrl+W, the OS close button), but it's the
-  // only path that can show real copy, so it runs alongside the native
-  // warning rather than replacing it.
+  // catch every way of leaving (Ctrl+W, the OS close button). Deliberately
+  // no native beforeunload "Leave/Reload site?" dialog alongside it.
   const [showExitIntentPrompt, setShowExitIntentPrompt] = useState(false);
   const exitIntentShownRef = useRef(false);
   // AppShell renders its own "Dashboard"-first tab bar directly under this
@@ -112,23 +108,6 @@ export function SiteNav() {
       .then((b) => setIsBetaUser(b.plan === "beta"))
       .catch(() => setIsBetaUser(null));
   }, [user]);
-
-  // Native browser prompt only — every browser has shown its OWN fixed text
-  // here (never a custom message) since ~2016, as an anti-abuse measure.
-  // Fires on every real tab close/refresh/external navigation attempt while
-  // feedback is incomplete — deliberately NOT a one-time nudge: declining it
-  // once (there's nothing to "decline," the browser's own dialog has no
-  // custom buttons) doesn't suppress it later. Does nothing on in-app
-  // client-side route changes (those don't unload the page at all).
-  useEffect(() => {
-    if (!promptEligible) return;
-    function onBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault();
-      e.returnValue = "";
-    }
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [promptEligible]);
 
   // Exit intent: the pointer leaving toward the top of the viewport (the
   // tab bar, the back/close buttons) — the one moment left to show real,
