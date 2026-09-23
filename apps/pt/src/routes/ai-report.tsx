@@ -11591,7 +11591,7 @@ function ModuleDataSheetButton({
         }}
         className="btn-outline mt-2 text-sm disabled:opacity-50"
       >
-        {busy ? "Drafting…" : "Generate a starter data sheet"}
+        {busy ? "Drafting…" : "Generate Property summary"}
       </button>
       {madeFile && (
         <p className="mt-1.5 text-xs text-success">Added “{madeFile}” to your documents.</p>
