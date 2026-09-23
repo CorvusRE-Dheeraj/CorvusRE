@@ -724,7 +724,7 @@ function DocumentViewerModal({
 
   return (
     <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] w-[92vw] sm:max-w-3xl">
+      <DialogContent className="max-h-[92vh] w-[92vw] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="truncate">{doc?.fileName}</DialogTitle>
           {doc && (
