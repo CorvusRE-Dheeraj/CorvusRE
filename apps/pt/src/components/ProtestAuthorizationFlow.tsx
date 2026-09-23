@@ -36,13 +36,13 @@ export const AGREEMENT = {
   venue: "Dallas County, Texas",
 };
 
-type Step = "agreement" | "owner" | "purchase" | "aiack" | "review";
+type Step = "agreement" | "owner" | "aiack" | "review";
 const ENTITY_TYPES = ["LLC", "Corporation", "Partnership", "Estate", "Trust", "Other"] as const;
 
 // The owner-identity fields carried from one property to the next when this
 // flow is driven in sequence by BulkProtestAuthorizationFlow, so someone
 // authorizing several properties in one sitting only has to type their own
-// name/contact/entity details once — everything else (purchase timing,
+// name/contact/entity details once — everything else (the
 // signature) still happens fresh per property below, since those are
 // genuinely property-specific and each is its own real, independently
 // executed "Appointment of Agent," not one document covering many
@@ -124,7 +124,6 @@ export function ProtestAuthorizationFlow({
   const [entityType, setEntityType] = useState<(typeof ENTITY_TYPES)[number] | "">(
     initialOwnerInfo?.entityType ?? "",
   );
-  const [purchasedRecently, setPurchasedRecently] = useState<boolean | null>(null);
   const [aiAcked, setAiAcked] = useState(false);
   const [recordingAiAck, setRecordingAiAck] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -187,7 +186,6 @@ export function ProtestAuthorizationFlow({
     setEntityName(initialOwnerInfo?.entityName ?? "");
     setEntityRelationship(initialOwnerInfo?.entityRelationship ?? "");
     setEntityType(initialOwnerInfo?.entityType ?? "");
-    setPurchasedRecently(null);
     setAiAcked(false);
     setRecordingAiAck(false);
     setAgreed(false);
@@ -283,7 +281,6 @@ export function ProtestAuthorizationFlow({
         entityName: entityName.trim(),
         entityRelationship: entityRelationship.trim(),
         entityType,
-        purchasedRecently: purchasedRecently ?? false,
         signature,
       });
       toast.success("Authorization signed. CorvusPT staff will follow up.");
@@ -315,7 +312,6 @@ export function ProtestAuthorizationFlow({
           <DialogTitle>
             {step === "agreement" && "CorvusPT Service Agreement"}
             {step === "owner" && "Property Owner Details"}
-            {step === "purchase" && "One More Question"}
             {step === "aiack" && "Review Before Proceeding"}
             {step === "review" && "Review & Sign"}
           </DialogTitle>
@@ -555,51 +551,11 @@ export function ProtestAuthorizationFlow({
             )}
             <button
               disabled={!ownerValid}
-              onClick={() => setStep("purchase")}
+              onClick={() => setStep("aiack")}
               className="btn-primary btn-primary-hover w-fit disabled:opacity-50"
             >
               Next
             </button>
-          </div>
-        )}
-
-        {step === "purchase" && (
-          <div className="grid gap-4">
-            <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary/40 p-4">
-              <span className="text-sm">
-                Did you purchase this property within the last 18 months?
-              </span>
-              <div className="flex gap-3 text-sm shrink-0">
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    checked={purchasedRecently === true}
-                    onChange={() => setPurchasedRecently(true)}
-                  />
-                  Yes
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    checked={purchasedRecently === false}
-                    onChange={() => setPurchasedRecently(false)}
-                  />
-                  No
-                </label>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setStep("owner")} className="btn-outline">
-                Back
-              </button>
-              <button
-                disabled={purchasedRecently === null}
-                onClick={() => setStep("aiack")}
-                className="btn-primary btn-primary-hover disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
           </div>
         )}
 
@@ -624,7 +580,7 @@ export function ProtestAuthorizationFlow({
             </label>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={() => setStep("purchase")} className="btn-outline">
+              <button onClick={() => setStep("owner")} className="btn-outline">
                 Go Back
               </button>
               <button
