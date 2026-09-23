@@ -32,6 +32,13 @@ const DOORS = [
 // referral namespace, resolved when DP's own account is created (see
 // mint-door-session), not against this project's profiles.
 const PENDING_REF_KEY = "corvusre.pendingRef";
+// Same problem as PENDING_REF_KEY above: the beta checkbox is a sign-up-time
+// choice, but a Google signup can't carry it through the OAuth round trip
+// via signUp()'s metadata the way a password signup can (see submit()'s
+// wants_beta below) -- so it's parked here right before redirecting to
+// Google, and applied server-side (apply-beta-signup) once a real session
+// exists, same pattern as applyPendingReferral.
+const PENDING_BETA_KEY = "corvusre.pendingBeta";
 
 // A referral code has to survive a Google OAuth round trip (the query string
 // doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
@@ -46,6 +53,16 @@ async function applyPendingReferral() {
     await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
   } catch {
     // ignore -- a lost referral must not break sign-in
+  }
+}
+
+async function applyPendingBeta() {
+  try {
+    if (!localStorage.getItem(PENDING_BETA_KEY)) return;
+    localStorage.removeItem(PENDING_BETA_KEY);
+    await supabase.functions.invoke("apply-beta-signup", { body: {} });
+  } catch {
+    // ignore -- a lost beta grant must not break sign-in
   }
 }
 
@@ -90,6 +107,12 @@ export function App() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  // Sign-up-only, self-service beta opt-in -- free, full-access grant, same
+  // as an admin invite's "Grant beta access" checkbox, just chosen by the
+  // signing-up person instead of staff. See wants_beta below and
+  // PENDING_BETA_KEY above for how each signup path (password vs Google)
+  // gets it through to handle_new_user().
+  const [wantsBeta, setWantsBeta] = useState(false);
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
   // A short, plain-text explanation a door sets when it sends a signed-out
@@ -113,6 +136,7 @@ export function App() {
   // nothing had happened at all).
   async function proceed() {
     await applyPendingReferral();
+    await applyPendingBeta();
     const target = safeRedirectTarget();
     if (target) {
       window.location.assign(target);
@@ -223,6 +247,7 @@ export function App() {
           ...(signupCtx.firstName ? { first_name: signupCtx.firstName } : {}),
           ...(signupCtx.lastName ? { last_name: signupCtx.lastName } : {}),
           ...(signupCtx.ref ? { referral_code_used: signupCtx.ref } : {}),
+          ...(wantsBeta ? { wants_beta: "true" } : {}),
         },
       },
     });
@@ -242,6 +267,15 @@ export function App() {
   async function signInWithGoogle() {
     setStatus("busy");
     setError(null);
+    // Only meaningful on the sign-up screen -- the same button also handles
+    // plain sign-in, which must never flip an existing account's plan.
+    if (mode === "sign-up" && wantsBeta) {
+      try {
+        localStorage.setItem(PENDING_BETA_KEY, "1");
+      } catch {
+        // storage blocked -- beta just won't attach for a Google signup
+      }
+    }
     // Carries the same redirect target forward as a query param (blank if
     // there wasn't one) -- Supabase appends #access_token=... to whatever
     // URL this is, query params survive intact. Lands back on THIS page
@@ -469,6 +503,16 @@ export function App() {
               onToggleShow={() => setShowConfirmPassword((v) => !v)}
               minLength={1} // just needs SOMETHING typed; the real check is "matches password" below, not its own length
             />
+          )}
+          {mode === "sign-up" && (
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={wantsBeta}
+                onChange={(e) => setWantsBeta(e.target.checked)}
+              />
+              <span>I'd like to join as a beta tester (free, full access)</span>
+            </label>
           )}
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={status === "busy"}>

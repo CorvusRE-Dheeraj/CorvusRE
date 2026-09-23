@@ -88,6 +88,23 @@ input {
   font-size: 14px;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -4px 0 14px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.checkbox-field input {
+  width: auto;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
 .password-field {
   position: relative;
 }
