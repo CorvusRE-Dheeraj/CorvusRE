@@ -83,3 +83,27 @@ insert into public.tax_update_sources (name, url, kind, county, enabled, note) v
   ('Williamson Central Appraisal District', 'https://www.wcad.org/', 'county', 'Williamson County', true, null),
   ('Collin Central Appraisal District', 'https://www.collincad.org/', 'county', 'Collin County', false, 'Blocks automated requests (HTTP 403).')
 on conflict (url) do nothing;
+
+-- Reports a person generates from the tab ("Generate update report"): a snapshot
+-- of that week's report, kept per user, newest 10 (pruned by the client).
+create table if not exists public.tax_update_user_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  -- { taxYear, report: TaxReport } — see SavedTaxReport in src/lib/tax-updates.ts.
+  payload jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists tax_update_user_reports_user_idx
+  on public.tax_update_user_reports (user_id, created_at desc);
+alter table public.tax_update_user_reports enable row level security;
+
+drop policy if exists "Users manage their own tax update reports" on public.tax_update_user_reports;
+create policy "Users manage their own tax update reports"
+  on public.tax_update_user_reports for all
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+grant select, insert, update, delete on public.tax_update_user_reports to authenticated;
+grant select, insert, update, delete on public.tax_update_user_reports to service_role;

@@ -1,9 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import { checkIsAdmin } from "@/lib/admin";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { askAboutDocument } from "@/lib/document-ai";
@@ -22,10 +21,15 @@ import {
   buildReportPdf,
   countiesIn,
   filterUpdates,
-  generateTaxReportNow,
+  criticalLines,
+  deleteSavedReport,
+  listSavedReports,
   listTaxReports,
+  MAX_SAVED_REPORTS,
+  saveGeneratedReport,
   propertiesAffected,
   type PropertyContext,
+  type SavedTaxReport,
   type TaxReport,
   type TaxUpdateTag,
   type UpdateFilter,
@@ -46,13 +50,12 @@ const chip = (active: boolean) =>
 function TaxUpdates() {
   const { user } = useAuth();
   const [reports, setReports] = useState<TaxReport[]>([]);
-  const [reportId, setReportId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedTaxReport[]>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [contexts, setContexts] = useState<PropertyContext[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [filter, setFilter] = useState<UpdateFilter>(NO_FILTER);
   const [generating, setGenerating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -62,7 +65,6 @@ function TaxUpdates() {
     return listTaxReports()
       .then((r) => {
         setReports(r);
-        setReportId((cur) => cur ?? r[0]?.id ?? null);
       })
       .catch((err) => toast.error(getErrorMessage(err, "Could not load the updates.")));
   }
@@ -70,8 +72,8 @@ function TaxUpdates() {
   useEffect(() => {
     if (!user) return;
     void load().finally(() => setLoading(false));
-    checkIsAdmin(user.id)
-      .then(setIsAdmin)
+    listSavedReports()
+      .then(setSaved)
       .catch(() => {});
     Promise.all([listProperties(user.id), listProtests(user.id)])
       .then(([props, prots]) =>
@@ -85,7 +87,7 @@ function TaxUpdates() {
       .catch(() => {});
   }, [user]);
 
-  const report = reports.find((r) => r.id === reportId) ?? reports[0] ?? null;
+  const report = reports[0] ?? null;
   const visible = useMemo(
     () => (report ? filterUpdates(report.updates, filter) : []),
     [report, filter],
@@ -130,24 +132,13 @@ function TaxUpdates() {
     }
   }
 
-  async function download() {
-    if (!report) return;
-    setDownloading(true);
-    try {
-      downloadPdf(await buildReportPdf(report), `Texas-Tax-Updates-${report.weekStart}.pdf`);
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Could not build the PDF."));
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  async function generateNow() {
+  async function generate() {
+    if (!report || !user) return;
     setGenerating(true);
     try {
-      const r = await generateTaxReportNow();
-      toast.success(`Report generated — ${r.updates} update(s) from ${r.sourcesRead} sources.`);
-      await load();
+      await saveGeneratedReport(user.id, report);
+      setSaved(await listSavedReports());
+      toast.success("Report generated and saved below.");
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not generate the report."));
     } finally {
@@ -155,11 +146,28 @@ function TaxUpdates() {
     }
   }
 
-  const exploreButton = (
-    <Link to="/dashboard/properties" className="btn-primary btn-primary-hover text-sm">
-      Explore Your Property
-    </Link>
-  );
+  async function downloadSaved(r: SavedTaxReport) {
+    setDownloadingId(r.id);
+    try {
+      downloadPdf(
+        await buildReportPdf(r.report, r.taxYear),
+        `Texas-Tax-Updates-${r.report.weekStart}.pdf`,
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not build the PDF."));
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  async function removeSaved(id: string) {
+    try {
+      await deleteSavedReport(id);
+      setSaved((cur) => cur.filter((r) => r.id !== id));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not delete that report."));
+    }
+  }
 
   return (
     <div>
@@ -172,28 +180,14 @@ function TaxUpdates() {
             legal or tax advice — verify each item at its source.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {exploreButton}
-          <button
-            type="button"
-            onClick={() => void download()}
-            disabled={!report || downloading}
-            className="btn-outline inline-flex items-center gap-1.5 text-sm disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            {downloading ? "Building…" : "Download PDF"}
-          </button>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => void generateNow()}
-              disabled={generating}
-              className="btn-outline text-sm disabled:opacity-60"
-            >
-              {generating ? "Generating (about a minute)…" : "Generate now"}
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={!report || generating}
+          className="btn-primary btn-primary-hover text-sm disabled:opacity-60"
+        >
+          {generating ? "Generating…" : "Generate update report"}
+        </button>
       </div>
 
       {loading ? (
@@ -204,31 +198,13 @@ function TaxUpdates() {
       ) : !report ? (
         <div className="card-elev mt-6 p-6 text-sm text-muted-foreground">
           No report has been generated yet. The first one is created automatically on the next
-          Monday run{isAdmin ? " — or use Generate now." : "."}
+          Monday run.
         </div>
       ) : (
         <>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Report</span>
-              <select
-                value={report.id}
-                onChange={(e) => setReportId(e.target.value)}
-                className="rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
-              >
-                {reports.map((r, i) => (
-                  <option key={r.id} value={r.id}>
-                    Week of {new Date(`${r.weekStart}T00:00:00`).toLocaleDateString()}
-                    {i === 0 ? " (latest)" : ""} — {r.updates.length} update
-                    {r.updates.length === 1 ? "" : "s"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="text-xs text-muted-foreground">
-              Generated {new Date(report.generatedAt).toLocaleString()}
-            </span>
-          </div>
+          <p className="mt-5 text-xs text-muted-foreground">
+            {report.title} · updated {new Date(report.generatedAt).toLocaleString()}
+          </p>
           <p className="mt-2 text-sm">{report.summary}</p>
           <button
             type="button"
@@ -357,9 +333,7 @@ function TaxUpdates() {
               if (items.length === 0 && !showStanding && filtering) return null;
               return (
                 <section key={ch.n}>
-                  <h2 className="font-serif text-lg font-semibold">
-                    Chapter {ch.n}: {ch.title}
-                  </h2>
+                  <h2 className="font-serif text-lg font-semibold">{ch.title}</h2>
                   <div className="mt-3 grid gap-3 lg:grid-cols-2">
                     {items.map((u) => (
                       <TaxUpdateCard
@@ -406,9 +380,68 @@ function TaxUpdates() {
             )}
           </div>
 
-          <div className="mt-8 flex justify-center">{exploreButton}</div>
+          <section className="mt-8 rounded-md border border-border bg-card p-4">
+            <h2 className="font-serif text-lg font-semibold">
+              Critical updates for tax year {new Date().getFullYear()}
+            </h2>
+            <ul className="mt-2 grid gap-1 text-sm">
+              {criticalLines(report.updates).map((l) => (
+                <li key={l} className="text-muted-foreground">
+                  {l.replace(/^- /, "")}
+                </li>
+              ))}
+            </ul>
+          </section>
         </>
       )}
+
+      <section className="mt-10">
+        <h2 className="font-serif text-lg font-semibold">Your generated reports</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The latest {MAX_SAVED_REPORTS} are kept. Each includes that week&rsquo;s updates and a
+          short summary of critical updates for the tax year.
+        </p>
+        {saved.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Nothing yet — use Generate update report above.
+          </p>
+        ) : (
+          <ul className="mt-3 grid gap-2">
+            {saved.map((r) => (
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+              >
+                <div className="text-sm">
+                  <div className="font-medium">{r.title}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Generated {new Date(r.createdAt).toLocaleString()} · {r.report.updates.length}{" "}
+                    update{r.report.updates.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void downloadSaved(r)}
+                    disabled={downloadingId === r.id}
+                    className="btn-outline inline-flex items-center gap-1.5 text-xs disabled:opacity-60"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {downloadingId === r.id ? "Building…" : "Download PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void removeSaved(r.id)}
+                    className="text-xs text-muted-foreground hover:underline"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
