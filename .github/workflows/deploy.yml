@@ -17,14 +17,9 @@ name: Deploy CorvusRE
 # with the real shared /auth/ sign-in app (CorvusPT is the identity source —
 # see supabase-dp/functions/mint-door-session for the login-bridge mechanics).
 
-# TEMPORARY: production (corvusre.com) deploys from feature-dev-dheeraj instead of
-# dev. To go back, set branches to [dev] below (the deploy-functions
-# `if:` guard can stay). That job is dev-only on purpose -- its
-# `production` environment (which holds the Supabase token) only releases
-# secrets to dev, so a feature-branch run must never reach it.
 on:
   push:
-    branches: [feature-dev-dheeraj]
+    branches: [dev]
   workflow_dispatch:
     inputs:
       project:
@@ -235,7 +230,6 @@ jobs:
   # Manual run: Actions -> "Deploy CorvusRE" -> Run workflow -> pick a
   # `project` input (redeploys every function in the chosen project(s)).
   deploy-functions:
-    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     permissions:
       contents: read
