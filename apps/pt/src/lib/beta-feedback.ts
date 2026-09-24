@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { UsageSignals } from "./beta-feedback-questions";
 import { ZERO_SIGNALS } from "./beta-feedback-questions";
+import { FORM_MARKER_KEY, FORM_VERSION } from "./feedback-form";
 
 export type { UsageSignals } from "./beta-feedback-questions";
 
@@ -132,6 +133,39 @@ export async function submitFeedback(
       usage_signals: signals,
       updated_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) throw error;
+}
+
+// The chat-style form (feedback-form.ts) replaced the 57-question one. A
+// response counts as "done" for it only if it was completed under v2 — someone
+// who finished the older form is asked the new one, and their old answers stay
+// on file.
+export function isFormV2Complete(r: FeedbackResponse | null): boolean {
+  return !!r?.completedAt && r.answers[FORM_MARKER_KEY] === FORM_VERSION;
+}
+
+// Saves v2 progress (or the final submission). completed_at is written
+// explicitly — cleared while in progress — so a person who completed the
+// earlier form doesn't look "completed" while partway through this one.
+export async function saveFormV2(
+  userId: string,
+  answers: Record<string, string | string[]>,
+  sectionsShown: string[],
+  signals: UsageSignals,
+  completed: boolean,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("beta_feedback_responses").upsert(
+    {
+      user_id: userId,
+      answers: { ...answers, [FORM_MARKER_KEY]: FORM_VERSION },
+      sections_shown: sectionsShown,
+      usage_signals: signals,
+      updated_at: now,
+      completed_at: completed ? now : null,
     },
     { onConflict: "user_id" },
   );

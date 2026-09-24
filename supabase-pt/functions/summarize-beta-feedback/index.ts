@@ -7,11 +7,11 @@
 // automatic on every submission — clusters three free-text answer sets
 // across every COMPLETED beta_feedback_responses row into themed, ranked
 // insights via Gemini:
-//   q48 — "What was the most frustrating part of [their old] process?"    -> painPoints
-//   q46 — "If you could make Corvus do ONE thing..."                     -> featureRequests
-//   q45 — "...tomorrow it disappeared. What would you miss?"             -> wouldMiss
-// (q40, "biggest reason you'd hesitate to trust Corvus," is a closed-form
-// select — the admin UI tallies that directly, no AI needed for it.)
+//   f14_where — "Where did you feel unsure about what to do next?"          -> painPoints
+//   f19       — "If you could add one feature to Corvus tomorrow..."       -> featureRequests
+//   f20       — "I would use Corvus every year if ..."                     -> wouldMiss
+// (The other questions are closed-form choices — the admin UI tallies those
+// directly, no AI needed.)
 //
 // Writes the one-row singleton public.beta_feedback_insights (replaced
 // wholesale each run) and returns the same shape the client reads back.
@@ -137,16 +137,16 @@ Deno.serve(async (req: Request) => {
     const responses = (rows ?? []) as { answers: Record<string, unknown> }[];
 
     const [painPoints, featureRequests, wouldMiss] = await Promise.all([
-      clusterTheme(apiKey, "What was the most frustrating part of that process?", collectAnswers(responses, "q48")),
+      clusterTheme(apiKey, "Where did you feel unsure about what you were supposed to do next?", collectAnswers(responses, "f14_where")),
       clusterTheme(
         apiKey,
-        "If you could make Corvus do ONE thing it doesn't do today, what would it be?",
-        collectAnswers(responses, "q46"),
+        "If you could add one feature to Corvus tomorrow, what would it be?",
+        collectAnswers(responses, "f19"),
       ),
       clusterTheme(
         apiKey,
-        "If Corvus disappeared tomorrow, what would you miss?",
-        collectAnswers(responses, "q45"),
+        "Complete this sentence: I would use Corvus every year if ...",
+        collectAnswers(responses, "f20"),
       ),
     ]);
 

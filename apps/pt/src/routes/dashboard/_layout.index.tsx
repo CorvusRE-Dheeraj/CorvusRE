@@ -65,7 +65,8 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
-import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
+import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
@@ -140,7 +141,9 @@ function Overview() {
     // part of that cohort, same reasoning as SiteChrome's sign-out/tab-close
     // prompts.
     Promise.all([getMyBilling(user.id), getMyFeedbackResponse(user.id)])
-      .then(([billing, r]) => setShowFeedbackBanner(billing.plan === "beta" && !r?.completedAt))
+      .then(([billing, r]) =>
+        setShowFeedbackBanner(billing.plan === "beta" && !isFormV2Complete(r)),
+      )
       .catch(() => {
         // Fail closed here (unlike SiteChrome's sign-out prompt): an
         // unprompted banner on a page every user sees is worth skipping on
@@ -428,12 +431,16 @@ function Overview() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">Help us make Corvus better</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              You're one of our beta testers — 7-10 minutes, and it directly shapes what we build
+              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
               next.
             </p>
-            <Link to="/dashboard/feedback" className="btn-outline text-sm mt-3 inline-flex">
+            <button
+              type="button"
+              onClick={openFeedbackWidget}
+              className="btn-outline text-sm mt-3 inline-flex"
+            >
               Give Feedback
-            </Link>
+            </button>
           </div>
           <button
             onClick={dismissFeedbackBanner}

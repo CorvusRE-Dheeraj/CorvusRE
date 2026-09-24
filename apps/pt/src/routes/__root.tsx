@@ -18,6 +18,7 @@ import { Toaster } from "../components/ui/sonner";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
+import { FeedbackWidget } from "../components/FeedbackWidget";
 import { LegalGate } from "../components/LegalGate";
 import { ProfileGate } from "../components/ProfileGate";
 import { AppShell, shouldShowShell } from "../components/AppShell";
@@ -167,6 +168,7 @@ function RootComponent() {
             <SiteFooter />
           </div>
           <AskAiWidget />
+          <FeedbackWidget />
           <LegalGate />
           <ProfileGate />
           <Toaster />

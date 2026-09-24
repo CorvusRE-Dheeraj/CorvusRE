@@ -830,3 +830,36 @@ header .container-page {
     animation: savings-sheen-sweep 6s ease-in-out infinite;
   }
 }
+
+/* Feedback widget: the bot bobs gently and each panel/question pops in. */
+@keyframes fb-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fb-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.fb-pop {
+  animation: fb-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.fb-bob {
+  animation: fb-bob 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-pop,
+  .fb-bob {
+    animation: none;
+  }
+}
