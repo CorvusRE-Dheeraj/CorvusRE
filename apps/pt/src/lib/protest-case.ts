@@ -558,6 +558,17 @@ export async function saveCaseRecordFields(
 // Closes out an appeal or arbitration once *that* resolves — doesn't model the
 // appeal/arbitration's own sub-process, just captures that it happened and what
 // the case ultimately settled at.
+export async function markHearingCompleted(protestId: string): Promise<string> {
+  const at = new Date().toISOString();
+  const { error } = await supabase
+    .from("protests")
+    .update({ hearing_completed_at: at })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(protestId, "status_change", "Formal hearing marked completed.", {});
+  return at;
+}
+
 export async function closeCase(protestId: string, finalValue: number): Promise<void> {
   const { error } = await supabase
     .from("protests")

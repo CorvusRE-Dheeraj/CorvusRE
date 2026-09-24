@@ -6,6 +6,7 @@ import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
 import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
+import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -632,6 +633,13 @@ export function CaseDetailView({
           {/* --- Formal Hearing --- */}
           {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
+              <FormalHearingActions
+                userId={userId}
+                protest={current}
+                property={property}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onOpenAppeal={() => setActiveTab("appeal")}
+              />
               <HearingNoticeSection
                 userId={userId}
                 protest={current}
