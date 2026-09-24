@@ -576,6 +576,9 @@ alter table public.protests add column if not exists hearing_date date;
 -- Set when the owner marks the formal (ARB) hearing as held ("Formal hearing
 completed" on the Formal Hearing tab) — distinct from recording the decision.
 alter table public.protests add column if not exists hearing_completed_at timestamptz;
+-- Set only when the owner confirms they filed the Request for Binding Arbitration
+-- (the app never files it itself, so this is always the owner's own confirmation).
+alter table public.protests add column if not exists arbitration_filed_at timestamptz;
 -- Real detail extracted from the actual hearing notice the county mailed
 -- (see hearing_notices below and extract-hearing-notice edge function) —
 -- kept as their own columns on protests, not just in hearing_notices, since

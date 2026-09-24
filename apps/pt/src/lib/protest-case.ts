@@ -569,6 +569,22 @@ export async function markHearingCompleted(protestId: string): Promise<string> {
   return at;
 }
 
+export async function markArbitrationFiled(protestId: string): Promise<string> {
+  const at = new Date().toISOString();
+  const { error } = await supabase
+    .from("protests")
+    .update({ arbitration_filed_at: at })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(
+    protestId,
+    "status_change",
+    "Request for binding arbitration filed (owner confirmed).",
+    {},
+  );
+  return at;
+}
+
 export async function closeCase(protestId: string, finalValue: number): Promise<void> {
   const { error } = await supabase
     .from("protests")

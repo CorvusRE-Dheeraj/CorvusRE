@@ -7,6 +7,7 @@ import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
 import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
+import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -681,12 +682,24 @@ export function CaseDetailView({
           {/* --- Appeal / Arbitration --- */}
           {activeTab === "appeal" && (
             <div>
-              <EscalationEvaluationSection
-                protest={current}
-                property={property}
-                evidenceDocumentCount={evidenceDocuments.length}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
+              {current.escalationPath === "arbitration" && (
+                <ArbitrationWorkflow
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  evidenceDocuments={evidenceDocuments}
+                  caseData={caseData}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
+              {current.escalationPath !== "arbitration" && (
+                <EscalationEvaluationSection
+                  protest={current}
+                  property={property}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
             </div>
           )}
         </>
