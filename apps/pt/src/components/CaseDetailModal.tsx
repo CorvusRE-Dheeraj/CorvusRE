@@ -60,7 +60,7 @@ import {
   type CaseAuditEvent,
 } from "@/lib/case-audit";
 import { saveCaseRecordFields } from "@/lib/protest-case";
-import { listDocuments } from "@/lib/documents";
+import { listDocuments, previewKind } from "@/lib/documents";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
 import {
   getCountyProtestInfo,
@@ -165,7 +165,11 @@ import {
   EVIDENCE_STATUS_LABEL,
   type EvidenceStatusStage,
 } from "@/lib/evidence-status";
-import { selectRelevantEvidence, buildEvidencePackagePdf } from "@/lib/evidence-package";
+import {
+  selectRelevantEvidence,
+  buildEvidencePackagePdf,
+  countPdfPages,
+} from "@/lib/evidence-package";
 import { getCachedModuleResult } from "@/lib/module-results-cache";
 import type { ModuleResultMap } from "@/lib/ai-report-modules";
 import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
@@ -3179,7 +3183,11 @@ export function DocumentsSection({
             {noticeSignedAt && (
               <>
                 <span className="text-xs text-success">✓ Signed</span>
-                <Link to="/dashboard/documents" className="text-xs text-accent hover:underline">
+                <Link
+                  to="/dashboard/documents"
+                  search={{ propertyId: property.id }}
+                  className="text-xs text-accent hover:underline"
+                >
                   View in Documents tab →
                 </Link>
               </>
@@ -3553,7 +3561,39 @@ function EvidencePackageBuilder({
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
+  const [previewPages, setPreviewPages] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // Every OTHER document already uploaded for this property (survey, permit,
+  // photos...) that Module 8 didn't tag as evidence — offered below so the
+  // package can include them without re-uploading anything.
+  const [otherDocs, setOtherDocs] = useState<DocumentRecord[]>([]);
+  const [showOthers, setShowOthers] = useState(false);
+  const docsVersion = useDocumentsVersion();
+
+  useEffect(() => {
+    let live = true;
+    listDocuments(userId)
+      .then((docs) => {
+        if (!live) return;
+        const inEvidence = new Set(evidenceDocuments.map((d) => d.id));
+        setOtherDocs(
+          docs.filter(
+            (d) =>
+              d.propertyId === property.id &&
+              !inEvidence.has(d.id) &&
+              // Only what can actually be merged into the PDF, and never the
+              // filing-proof copies (a previous package or signed forms).
+              previewKind(d.fileName) !== "none" &&
+              !d.documentType?.startsWith("Filing Proof"),
+          ),
+        );
+      })
+      .catch((err) => console.error("Could not load this property's other documents:", err));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, property.id, docsVersion, evidenceDocuments.length]);
 
   useEffect(() => {
     let live = true;
@@ -3595,6 +3635,11 @@ function EvidencePackageBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id, protest.id]);
 
+  const allDocs = [...evidenceDocuments, ...otherDocs];
+  // The main list: the evidence documents, plus any extra the user has ticked.
+  const listedDocs = [...evidenceDocuments, ...otherDocs.filter((d) => selectedIds.includes(d.id))];
+  const addableDocs = otherDocs.filter((d) => !selectedIds.includes(d.id));
+
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
@@ -3621,7 +3666,7 @@ function EvidencePackageBuilder({
     setGenerating(true);
     try {
       const selectedDocs = selectedIds
-        .map((id) => evidenceDocuments.find((d) => d.id === id))
+        .map((id) => allDocs.find((d) => d.id === id))
         .filter((d): d is DocumentRecord => !!d);
       const files = [];
       for (const d of selectedDocs) {
@@ -3631,6 +3676,7 @@ function EvidencePackageBuilder({
       }
       const pdfBytes = await buildEvidencePackagePdf(files);
       setPreviewBytes(pdfBytes);
+      setPreviewPages(await countPdfPages(pdfBytes).catch(() => null));
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(new Blob([pdfBytes as BlobPart], { type: "application/pdf" }));
@@ -3693,7 +3739,7 @@ function EvidencePackageBuilder({
       </p>
 
       <ul className="mt-2 grid gap-1">
-        {evidenceDocuments.map((d) => {
+        {listedDocs.map((d) => {
           const idx = selectedIds.indexOf(d.id);
           const checked = idx !== -1;
           return (
@@ -3730,6 +3776,46 @@ function EvidencePackageBuilder({
         })}
       </ul>
 
+      {addableDocs.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowOthers((v) => !v)}
+            aria-expanded={showOthers}
+            className="text-xs text-accent hover:underline"
+          >
+            {showOthers
+              ? "Hide other documents"
+              : `+ Add from your other documents (${addableDocs.length})`}
+          </button>
+          {showOthers && (
+            <ul className="mt-1.5 grid gap-1">
+              {addableDocs.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 flex-1 truncate">{d.fileName}</span>
+                  {d.documentType && (
+                    <span className="hidden shrink-0 text-muted-foreground sm:inline">
+                      {d.documentType.replace(/^Evidence Category: /, "")}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggle(d.id)}
+                    className="shrink-0 font-medium text-accent hover:underline"
+                    aria-label={`Add ${d.fileName} to the package`}
+                  >
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         Remind me:
         <select
@@ -3756,12 +3842,27 @@ function EvidencePackageBuilder({
 
       {previewUrl && (
         <div className="mt-3">
+          {previewPages != null && previewBytes && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              Package ready — {previewPages} page{previewPages === 1 ? "" : "s"},{" "}
+              {(previewBytes.byteLength / (1024 * 1024)).toFixed(1)} MB. If the preview below is
+              blank, your browser is blocking its built-in PDF viewer — use Open in new tab or
+              Download.
+            </p>
+          )}
           <iframe
             title="Evidence package preview"
             src={previewUrl}
             className="h-64 w-full rounded-md border border-border"
           />
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+              className="btn-outline text-xs py-1.5"
+            >
+              Open in new tab
+            </button>
             <button
               type="button"
               onClick={handleSaveToDocuments}

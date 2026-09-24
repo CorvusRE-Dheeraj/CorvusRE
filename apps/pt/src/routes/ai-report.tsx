@@ -166,6 +166,7 @@ import {
 import { analyzeEvidence, type EvidenceAnalysis, type DocumentStatus } from "@/lib/protest-reason";
 import { buildEvidencePacket } from "@/lib/evidence-packet";
 import { categorizeEvidenceUploads, evidenceItemSlug } from "@/lib/evidence-categorize";
+import { EvidenceFileRow, type EvidenceCategoryOption } from "@/components/EvidenceFileRow";
 import { downloadPdf } from "@/lib/protest-documents";
 import {
   listModuleOverrides,
@@ -3032,7 +3033,11 @@ function Report() {
             </div>
             <div className="flex shrink-0 items-center gap-3">
               {baseData?.documentId && (
-                <Link to="/dashboard/documents" className="text-accent hover:underline">
+                <Link
+                  to="/dashboard/documents"
+                  search={{ propertyId: resolvedProperty?.id }}
+                  className="text-accent hover:underline"
+                >
                   View in Documents
                 </Link>
               )}
@@ -10676,6 +10681,7 @@ function ModulePreviewContent({
             key={it.item}
             it={it}
             uploadedDocs={uploadedForItem}
+            categories={d.items.map((x) => ({ label: x.item, slug: evidenceItemSlug(x.item) }))}
             expanded={expandedEvidenceItem === it.item}
             onToggleExpand={() =>
               setExpandedEvidenceItem((prev) => (prev === it.item ? null : it.item))
@@ -10875,22 +10881,17 @@ function ModulePreviewContent({
                 above automatically. Anything that doesn't clearly match stays here, uncategorized.
               </p>
               {protestEvidenceDocs.length > 0 && (
-                <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                  {protestEvidenceDocs.map((doc) => {
-                    const categorySlug = doc.documentType?.startsWith("Evidence Category: ")
-                      ? doc.documentType.slice("Evidence Category: ".length)
-                      : null;
-                    const category = categorySlug
-                      ? (d.items.find((it) => evidenceItemSlug(it.item) === categorySlug)?.item ??
-                        null)
-                      : null;
-                    return (
-                      <li key={doc.id}>
-                        {doc.fileName}
-                        {category && <span className="text-foreground/70"> — {category}</span>}
-                      </li>
-                    );
-                  })}
+                <ul className="mt-2 grid gap-1.5 text-xs text-muted-foreground">
+                  {protestEvidenceDocs.map((doc) => (
+                    <EvidenceFileRow
+                      key={doc.id}
+                      doc={doc}
+                      categories={d.items.map((it) => ({
+                        label: it.item,
+                        slug: evidenceItemSlug(it.item),
+                      }))}
+                    />
+                  ))}
                 </ul>
               )}
               <label
@@ -11840,6 +11841,7 @@ function ChecklistSteps({ items, color }: { items: string[]; color: IconColor })
 function EvidenceCategoryRow({
   it,
   uploadedDocs,
+  categories,
   expanded,
   onToggleExpand,
   uploadingEvidence,
@@ -11847,6 +11849,7 @@ function EvidenceCategoryRow({
 }: {
   it: ModuleResultMap["evidence"]["items"][number];
   uploadedDocs: DocumentRecord[];
+  categories: EvidenceCategoryOption[];
   expanded: boolean;
   onToggleExpand: () => void;
   uploadingEvidence: boolean;
@@ -11932,12 +11935,9 @@ function EvidenceCategoryRow({
             </p>
           )}
           {uploadedDocs.length > 0 && (
-            <ul className="grid gap-1 text-xs text-muted-foreground">
+            <ul className="grid gap-1.5 text-xs text-muted-foreground">
               {uploadedDocs.map((doc) => (
-                <li key={doc.id} className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3 shrink-0 text-success" />
-                  <span className="min-w-0 truncate">{doc.fileName}</span>
-                </li>
+                <EvidenceFileRow key={doc.id} doc={doc} categories={categories} />
               ))}
             </ul>
           )}

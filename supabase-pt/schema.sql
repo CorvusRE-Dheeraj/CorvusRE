@@ -973,6 +973,12 @@ create index if not exists documents_modules_gin on public.documents using gin (
 grant update (file_name, deleted_at, use_as_evidence, dup_reviewed, duplicate_of, modules)
   on public.documents to authenticated;
 
+-- Lets Module 8 (and the Documents tab) re-file a document under a different
+-- evidence category in place — the category is documents.document_type
+-- ("Evidence Category: <slug>"). Additive to the grant above; owners can only
+-- touch their own rows (RLS), and this is just a label on their own file.
+grant update (document_type) on public.documents to authenticated;
+
 -- Backfill: earlier uploads used protest_evidence_items.document_id (now legacy —
 -- superseded by evidence_item_id above) to link a single file. Idempotent, so it's
 -- safe to re-run: only touches documents not already linked.

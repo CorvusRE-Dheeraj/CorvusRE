@@ -62,6 +62,11 @@ import { DocumentReviewModal } from "@/components/DocumentReviewModal";
 import { DocumentEditorModal, isEditableDoc } from "@/components/DocumentEditorModal";
 
 export const Route = createFileRoute("/dashboard/_layout/documents")({
+  // Lets a screen that just worked on one property (Module 8, View Case) open
+  // this tab already on that property's documents.
+  validateSearch: (search: Record<string, unknown>): { propertyId?: string } => ({
+    propertyId: typeof search.propertyId === "string" ? search.propertyId : undefined,
+  }),
   component: Documents,
 });
 
@@ -446,12 +451,21 @@ function Documents() {
   if (orphanedDocs.length > 0) {
     groups.push({ key: "orphaned", label: "Property removed", docs: orphanedDocs, property: null });
   }
-  // Falls back to the first group whenever nothing is picked yet, or the
-  // previously-picked property no longer exists in `groups` (deleted, or
-  // this is the first render before properties have loaded) — never an
-  // empty picker once there's at least one group to show.
+  // Picked property first; else the one the caller asked for (?propertyId=);
+  // else the property of the most recently uploaded document (`documents` is
+  // newest-first) — so files you just added are on screen, not hidden behind
+  // whichever property happens to be first in the list. Falls back to the
+  // first group when none of those resolve (deleted property, or the first
+  // render before properties have loaded).
+  const requestedKey = Route.useSearch().propertyId ?? null;
+  const newestKey = documents[0]
+    ? groups.find((g) => g.docs.some((d) => d.id === documents[0].id))?.key
+    : undefined;
   const activeGroup =
-    groups.find((g) => g.key === selectedGroupKey) ?? (groups.length > 0 ? groups[0] : null);
+    groups.find((g) => g.key === selectedGroupKey) ??
+    groups.find((g) => g.key === requestedKey) ??
+    groups.find((g) => g.key === newestKey) ??
+    (groups.length > 0 ? groups[0] : null);
 
   return (
     <div>
