@@ -167,6 +167,7 @@ import { analyzeEvidence, type EvidenceAnalysis, type DocumentStatus } from "@/l
 import { buildEvidencePacket } from "@/lib/evidence-packet";
 import { categorizeEvidenceUploads, evidenceItemSlug } from "@/lib/evidence-categorize";
 import { EvidenceFileRow, type EvidenceCategoryOption } from "@/components/EvidenceFileRow";
+import { JourneyTracker } from "@/components/JourneyTracker";
 import { downloadPdf } from "@/lib/protest-documents";
 import {
   listModuleOverrides,
@@ -2997,6 +2998,13 @@ function Report() {
         )}
       </section>
 
+      {/* The selected property's own journey — follows the property picked at the top. */}
+      {resolvedProperty && (
+        <div className="mt-8 print:hidden">
+          <JourneyTracker propertyId={resolvedProperty.id} />
+        </div>
+      )}
+
       {/* Modules */}
       <section className="mt-8 print:hidden">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3935,9 +3943,9 @@ function ModuleVisual({
         <div className="grid gap-1 text-xs text-muted-foreground">
           {!compsMap.loading && !compsMap.data?.comps.length && (
             <p>
-              No comparable-property map yet — live comps are only available for Collin, Denton, Grayson,
-              Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
-              build the comp set yourself.
+              No comparable-property map yet — live comps are only available for Collin, Denton,
+              Grayson, Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal
+              below to build the comp set yourself.
             </p>
           )}
           <p>
@@ -8786,7 +8794,11 @@ function SourcesList({
 // collapsed Detailed Analysis section, since that's real data worth keeping
 // available, just not surfaced as a whole extra workflow up front.
 function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
-  return status === "Verified" ? "Reviewed" : status === "Found" ? "More Information Helpful" : "Data Not Available";
+  return status === "Verified"
+    ? "Reviewed"
+    : status === "Found"
+      ? "More Information Helpful"
+      : "Data Not Available";
 }
 
 function Module1Content({
@@ -8887,14 +8899,15 @@ function Module1Content({
           </ul>
           <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence: {data.confidencePct}%
-            {!data.dataSufficient && " — More information needed"}
+            Confidence: {data.confidencePct}%{!data.dataSufficient && " — More information needed"}
           </div>
         </div>
       )}
 
       {/* 3. Recommended Next Step — large and unambiguous, one action only. */}
-      <div className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}>
+      <div
+        className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}
+      >
         {readyToProtest ? (
           <>
             <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
@@ -9013,15 +9026,7 @@ function Module1Content({
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "success";
-}) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "success" }) {
   return (
     <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
       <div
@@ -9029,7 +9034,9 @@ function Stat({
       >
         {label}
       </div>
-      <div className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}>
+      <div
+        className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}
+      >
         {value}
       </div>
     </div>
@@ -9104,7 +9111,9 @@ function Module2Content({
       </div>
 
       {/* 2. Recommended Next Step — one action only. */}
-      <div className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}>
+      <div
+        className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}
+      >
         {needsMoreInfo ? (
           <>
             <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
@@ -9329,8 +9338,7 @@ function Module5Content({
             Recommended Next Step
           </div>
           <p className="mt-1 text-sm font-semibold">
-            Complete the missing property information so Corvus AI can finish your protest
-            analysis.
+            Complete the missing property information so Corvus AI can finish your protest analysis.
           </p>
           <div className="mt-3">
             <button
@@ -9356,7 +9364,9 @@ function Module5Content({
         <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
           <ExecutiveStat
             label="Effective Age"
-            value={d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"}
+            value={
+              d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"
+            }
           />
           <ExecutiveStat
             label="Economic Life"
@@ -9630,8 +9640,8 @@ function ModulePreviewContent({
           <p className="font-serif text-xl font-bold">No assessed value on file yet.</p>
           <p className="mx-auto max-w-sm text-sm text-muted-foreground">
             The county record for this property doesn't carry an assessed value for this tax year,
-            so there's nothing to estimate savings from. Upload your appraisal notice, or check
-            back once the county publishes this year's value.
+            so there's nothing to estimate savings from. Upload your appraisal notice, or check back
+            once the county publishes this year's value.
           </p>
         </div>
       );

@@ -205,7 +205,10 @@ function shortAddress(address: string): string {
     .trim();
 }
 
-export function JourneyTracker() {
+// propertyId pins the tracker to one property (View Case, the AI Report's
+// modules) — it then shows THAT property's journey with no picker, instead of
+// defaulting to the first property in the list like the Properties page does.
+export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [state, setState] = useState<IntakeState>({ previewsUsed: [] });
@@ -315,6 +318,10 @@ export function JourneyTracker() {
     statusFilter === "all" ? properties : properties.filter((p) => statusOf(p) === statusFilter);
   const visibleProperties = matches.length > 0 ? matches : properties;
 
+  // Pinned to a property that isn't loaded (yet, or not this user's) — show
+  // nothing rather than a different property's journey.
+  if (propertyId && !properties.some((p) => p.id === propertyId)) return null;
+
   // Nobody has a saved property yet — one generic tracker driven purely by
   // whatever the current browser session's in-progress intake flow has done so
   // far, since there's no per-property case to show progress for.
@@ -342,7 +349,10 @@ export function JourneyTracker() {
   // "Choose Service". Switch properties via the address dropdown below.
   // `visibleProperties[0]` is always defined here (hasSavedProperty guard
   // above), and covers the active property being filtered out or deleted.
-  const activeProperty = visibleProperties.find((p) => p.id === activeId) ?? visibleProperties[0];
+  const activeProperty =
+    (propertyId ? properties.find((p) => p.id === propertyId) : undefined) ??
+    visibleProperties.find((p) => p.id === activeId) ??
+    visibleProperties[0];
   const activeProtest = protests.find((pr) => pr.propertyId === activeProperty.id);
   const activeRank = activeProtest ? STATUS_RANK[activeProtest.status] : 0;
   // Only trust this session's real intake signals (no document uploaded, no
@@ -383,7 +393,7 @@ export function JourneyTracker() {
           }}
         />
       )}
-      {properties.length > 1 && (
+      {properties.length > 1 && !propertyId && (
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <label htmlFor="journey-property" className="sr-only">
             Property
