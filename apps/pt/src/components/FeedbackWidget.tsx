@@ -27,6 +27,8 @@ type Stage = "closed" | "bubble" | "invite" | "form" | "done";
 const DISMISSED_KEY = "corvuspt.feedbackBubbleDismissed";
 const BUBBLE_DELAY_MS = 6000;
 const BUBBLE_VISIBLE_MS = 14000;
+// The "Got 2 minutes?" line beside the launcher shows for a minute, then shrinks to a wave.
+const HINT_VISIBLE_MS = 60000;
 
 function readDismissed(): boolean {
   try {
@@ -69,6 +71,8 @@ export function FeedbackWidget() {
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const signalsRef = useRef<UsageSignals | null>(null);
+  const [hintExpired, setHintExpired] = useState(false);
+  const [hintHover, setHintHover] = useState(false);
 
   const complete = isFormV2Complete(response);
   const indexKey = user ? `corvuspt.feedbackIndex.${user.id}` : null;
@@ -118,6 +122,12 @@ export function FeedbackWidget() {
     );
     return () => clearTimeout(hide);
   }, [stage]);
+
+  useEffect(() => {
+    if (!loaded || !isBeta || complete || hintExpired) return;
+    const t = setTimeout(() => setHintExpired(true), HINT_VISIBLE_MS);
+    return () => clearTimeout(t);
+  }, [loaded, isBeta, complete, hintExpired]);
 
   const openWidget = useCallback(() => {
     if (isFormV2Complete(response)) {
@@ -263,14 +273,31 @@ export function FeedbackWidget() {
   return createPortal(
     <>
       {stage === "closed" && !complete && (
-        <div className="print:hidden fixed bottom-24 right-5 z-40 flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={openWidget}
-            className="rounded-2xl rounded-br-sm border border-border bg-card px-3 py-2 text-left text-xs font-medium shadow-lg"
-          >
-            👋 Hey! Got 2 minutes? Tell us what you think!
-          </button>
+        <div
+          className="print:hidden fixed bottom-24 right-5 z-40 flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2"
+          onMouseEnter={() => setHintHover(true)}
+          onMouseLeave={() => setHintHover(false)}
+          onFocus={() => setHintHover(true)}
+          onBlur={() => setHintHover(false)}
+        >
+          {hintExpired && !hintHover ? (
+            <button
+              type="button"
+              onClick={openWidget}
+              aria-label="Give feedback"
+              className="mr-4 grid h-8 w-8 place-items-center rounded-full border border-border bg-card text-base shadow-md"
+            >
+              👋
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openWidget}
+              className="rounded-2xl rounded-br-sm border border-border bg-card px-3 py-2 text-left text-xs font-medium shadow-lg fb-pop"
+            >
+              👋 Hey! Got 2 minutes? Tell us what you think!
+            </button>
+          )}
           <button
             type="button"
             onClick={openWidget}
