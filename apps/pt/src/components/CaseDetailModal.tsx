@@ -616,6 +616,7 @@ export function CaseDetailView({
                 evidenceDocuments={evidenceDocuments}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 onAgreementChange={setSettlementAgreement}
+                onOpenHearing={() => setActiveTab("hearing")}
               />
               <SettlementSignatureSection
                 userId={userId}
@@ -4026,6 +4027,7 @@ function InformalReviewSection({
   evidenceDocuments,
   onUpdate,
   onAgreementChange,
+  onOpenHearing,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -4034,6 +4036,7 @@ function InformalReviewSection({
   evidenceDocuments: DocumentRecord[];
   onUpdate: (patch: Partial<ProtestRecord>) => void;
   onAgreementChange: (a: SettlementAgreementRecord | null) => void;
+  onOpenHearing: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
@@ -4098,6 +4101,14 @@ function InformalReviewSection({
     toast.success(
       "Informal review marked completed. If you reached a settlement, submit the settlement document — otherwise continue to the Formal Hearing tab.",
     );
+  }
+
+  // The owner is not satisfied with what the informal review produced — same
+  // "rejected" informal status the settlement flow uses, which is what moves the
+  // case to the formal hearing.
+  async function handleUnsatisfied() {
+    await handleStatusChange("rejected");
+    toast.success("Recorded — the case moved to a formal hearing.");
   }
 
   async function closeWithSettlement(
@@ -4295,6 +4306,16 @@ function InformalReviewSection({
               Informal review completed
             </button>
           )}
+          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={() => void handleUnsatisfied()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
+            >
+              Unsatisfied
+            </button>
+          )}
           <label
             className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
           >
@@ -4314,6 +4335,20 @@ function InformalReviewSection({
           <span className="text-[11px] text-muted-foreground">
             Uploading the signed settlement closes this protest.
           </span>
+        </div>
+      )}
+      {protest.status !== "resolved" && protest.informalStatus === "rejected" && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+          <p className="font-medium">
+            Informal review result was unsatisfactory, so the case moved to a formal hearing.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenHearing}
+            className="mt-1.5 text-xs text-accent hover:underline"
+          >
+            Go to Formal Hearing →
+          </button>
         </div>
       )}
       {settleNeedsValue && settleFile && (
