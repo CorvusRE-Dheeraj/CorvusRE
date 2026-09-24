@@ -579,6 +579,10 @@ alter table public.protests add column if not exists hearing_completed_at timest
 -- Set only when the owner confirms they filed the Request for Binding Arbitration
 -- (the app never files it itself, so this is always the owner's own confirmation).
 alter table public.protests add column if not exists arbitration_filed_at timestamptz;
+-- Court-appeal tracking (attorney contact, the owner's confirmed petition-filed date,
+-- dated court updates with summaries). One jsonb blob — see CourtAppealData in
+-- src/lib/court-appeal.ts. Corvus only organizes this; the owner/attorney files the petition.
+alter table public.protests add column if not exists court_appeal jsonb;
 -- Real detail extracted from the actual hearing notice the county mailed
 -- (see hearing_notices below and extract-hearing-notice edge function) —
 -- kept as their own columns on protests, not just in hearing_notices, since

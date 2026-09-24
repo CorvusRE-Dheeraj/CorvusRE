@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
@@ -10,15 +10,11 @@ import { closeCase, markArbitrationFiled } from "@/lib/protest-case";
 import { DECISION_DOCUMENT_TYPE, uploadDocument, type DocumentRecord } from "@/lib/documents";
 import {
   extractDecisionDocument,
-  getLatestDecisionNotice,
   saveDecisionNotice,
-  type DecisionNoticeRecord,
   type DecisionExtraction,
 } from "@/lib/decision-notice";
-import { getLatestHearingNotice, type HearingNoticeRecord } from "@/lib/hearing-notice";
-import { getSubmission } from "@/lib/protest-form-submissions";
-import { getCachedModuleResult } from "@/lib/module-results-cache";
-import { MODULES } from "@/lib/modules";
+import { useCaseFacts } from "@/hooks/use-case-facts";
+import { buildCaseContext } from "@/lib/case-context";
 import { askAboutDocument } from "@/lib/document-ai";
 import { getCountyProtestInfo } from "@/lib/county-protest-info";
 import { currency, updateIntake } from "@/lib/intake-store";
@@ -74,10 +70,10 @@ export function ArbitrationWorkflow({
   caseData: ProtestCase | null;
   onUpdate: (patch: Partial<ProtestRecord>) => void;
 }) {
-  const [requestedInput, setRequestedInput] = useState("");
-  const [moduleFindings, setModuleFindings] = useState<{ title: string; finding: string }[]>([]);
-  const [hearingNotice, setHearingNotice] = useState<HearingNoticeRecord | null>(null);
-  const [decisionNotice, setDecisionNotice] = useState<DecisionNoticeRecord | null>(null);
+  const facts = useCaseFacts(protest, property);
+  const { hearingNotice, moduleFindings } = facts;
+  // The owner can enter a value here only when their Notice didn't carry one.
+  const [enteredValue, setEnteredValue] = useState("");
   const [review, setReview] = useState<Review | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [practice, setPractice] = useState<Practice[]>([]);
@@ -90,36 +86,7 @@ export function ArbitrationWorkflow({
   const [resultExtraction, setResultExtraction] = useState<DecisionExtraction | null>(null);
   const [needsResultValue, setNeedsResultValue] = useState(false);
 
-  // Everything already on the case — loaded once; nothing here is re-asked.
-  useEffect(() => {
-    let live = true;
-    getSubmission(protest.id, "notice_of_protest")
-      .then((s) => {
-        const v = s?.fieldValues?.["Opinion of property value"];
-        if (live && typeof v === "string" && parseMoney(v)) setRequestedInput(v);
-      })
-      .catch(() => {});
-    getLatestHearingNotice(protest.id)
-      .then((n) => live && setHearingNotice(n))
-      .catch(() => {});
-    getLatestDecisionNotice(protest.id)
-      .then((n) => live && setDecisionNotice(n))
-      .catch(() => {});
-    Promise.all(
-      MODULES.map(async (m) => {
-        const cached = await getCachedModuleResult(property.id, m.id).catch(() => null);
-        const finding = (cached?.result as { keyFinding?: string } | undefined)?.keyFinding;
-        return finding ? { title: m.shortName, finding } : null;
-      }),
-    ).then((rows) => {
-      if (live) setModuleFindings(rows.filter((r): r is { title: string; finding: string } => !!r));
-    });
-    return () => {
-      live = false;
-    };
-  }, [protest.id, property.id]);
-
-  const requestedValue = parseMoney(requestedInput);
+  const requestedValue = facts.requestedValue ?? parseMoney(enteredValue);
   const eligibility = useMemo(
     () => evaluateArbitrationEligibility(property, protest, evidenceDocuments.length),
     [property, protest, evidenceDocuments.length],
@@ -150,33 +117,16 @@ export function ArbitrationWorkflow({
   }
 
   // The whole case as text, for the AI — assembled from data already on file.
-  function caseContext(): string {
-    const history = (property.valueHistory ?? [])
-      .map(
-        (h) =>
-          `${h.year}: market ${h.marketValue ?? "n/a"}, appraised ${h.appraisedValue ?? "n/a"}`,
-      )
-      .join("; ");
-    return [
-      `Property: ${property.address}${property.cad ? `, ${property.cad}` : ""}; type ${property.propertyType ?? "n/a"}; account ${property.accountNumber ?? "n/a"}; owner ${property.ownerName ?? "n/a"}; tax year ${property.taxYear ?? "n/a"}.`,
-      `Values: original ${numbers.originalValue ?? "n/a"}; ARB result ${numbers.arbValue ?? "n/a"} (${protest.arbDecision ?? "no decision recorded"}${protest.arbDecisionDate ? ` on ${protest.arbDecisionDate}` : ""}); owner's requested value ${numbers.requestedValue ?? "not stated"}; gap ${numbers.difference ?? "n/a"}.`,
-      caseData?.strategyRecommendation
-        ? `Protest strategy: ${caseData.strategyRecommendation}. ${caseData.strategyRationale ?? ""}`
-        : "No protest strategy on file.",
-      `Evidence already submitted (${evidenceDocuments.length}): ${evidenceDocuments.map((d) => d.fileName).join("; ") || "none"}.`,
-      hearingNotice
-        ? `Hearing: ${hearingNotice.hearingType ?? "hearing"} on ${hearingNotice.hearingDate ?? "n/a"}.`
-        : "No hearing notice on file.",
-      decisionNotice?.settlementTerms ? `ARB order terms: ${decisionNotice.settlementTerms}` : "",
-      history ? `Historical assessments: ${history}.` : "",
-      moduleFindings.length
-        ? `AI module findings: ${moduleFindings.map((f) => `${f.title} — ${f.finding}`).join(" | ")}`
-        : "",
-      `Arbitration deadline: ${eligibility.deadline ?? "unknown"} (${eligibility.daysRemaining ?? "?"} days remaining).`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
+  const caseContext = () =>
+    buildCaseContext({
+      property,
+      protest,
+      caseData,
+      evidenceDocuments,
+      facts: { ...facts, requestedValue },
+      deadline: eligibility.deadline,
+      daysRemaining: eligibility.daysRemaining,
+    });
 
   async function runReview() {
     setReviewing(true);
@@ -304,11 +254,7 @@ export function ArbitrationWorkflow({
 
   const impact =
     closed && protest.finalValue != null
-      ? arbitrationImpact(
-          property,
-          { ...protest, finalValue: numbers.arbValue },
-          protest.finalValue,
-        )
+      ? arbitrationImpact(property, protest, protest.finalValue)
       : null;
 
   const chip =
@@ -470,8 +416,8 @@ export function ArbitrationWorkflow({
               <label className="mt-3 block text-xs font-medium text-muted-foreground">
                 Your opinion of value (needed to size the gap — it wasn&apos;t on your Notice)
                 <input
-                  value={requestedInput}
-                  onChange={(e) => setRequestedInput(e.target.value)}
+                  value={enteredValue}
+                  onChange={(e) => setEnteredValue(e.target.value)}
                   inputMode="numeric"
                   placeholder="e.g. 2,500,000"
                   className="mt-1 w-full max-w-xs rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground"
@@ -817,7 +763,9 @@ export function ArbitrationWorkflow({
                 Final value
               </div>
               <strong>{currency(protest.finalValue)}</strong>
-              <div className="text-xs text-muted-foreground">was {currency(impact.before)}</div>
+              <div className="text-xs text-muted-foreground">
+                from {currency(impact.before)} originally
+              </div>
             </div>
             <div className="rounded-md border border-border p-3 text-sm">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">

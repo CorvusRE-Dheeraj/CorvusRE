@@ -202,7 +202,9 @@ export function arbitrationImpact(
   protest: ProtestRecord,
   finalValue: number,
 ) {
-  const before = protest.finalValue ?? protest.originalValue ?? property.totalValue ?? null;
+  // Measured from the value BEFORE the protest: once a result is recorded,
+  // protest.finalValue is the new value, so it can no longer serve as the baseline.
+  const before = protest.originalValue ?? property.totalValue ?? protest.finalValue ?? null;
   const reduction = before != null ? Math.max(0, before - finalValue) : null;
   const rate = getEffectiveTaxRate(property.cad);
   return {

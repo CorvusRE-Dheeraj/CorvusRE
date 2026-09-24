@@ -8,6 +8,7 @@ import { JourneyTracker } from "@/components/JourneyTracker";
 import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
+import { CourtAppealWorkflow } from "@/components/CourtAppealWorkflow";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -692,7 +693,17 @@ export function CaseDetailView({
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 />
               )}
-              {current.escalationPath !== "arbitration" && (
+              {current.escalationPath === "appeal" && (
+                <CourtAppealWorkflow
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  evidenceDocuments={evidenceDocuments}
+                  caseData={caseData}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
+              {current.escalationPath !== "arbitration" && current.escalationPath !== "appeal" && (
                 <EscalationEvaluationSection
                   protest={current}
                   property={property}
