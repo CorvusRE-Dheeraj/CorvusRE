@@ -22,6 +22,7 @@ const NAV = [
   { to: "/property-protest", label: "Protest" },
   { to: "/bpp-rendition", label: "Personal Property" },
   { to: "/tax-payment", label: "Pay Taxes" },
+  { to: "/dashboard/tax-updates", label: "Texas Tax Updates" },
   { to: "/pricing", label: "Pricing" },
   { to: "/contact", label: "Contact Us" },
 ] as const;
