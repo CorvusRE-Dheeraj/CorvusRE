@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
 import { resetIntake } from "@/lib/intake-store";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
+import { stableUser } from "@/lib/auth-user";
 
 type AuthState = {
   user: User | null;
@@ -104,7 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("Could not send welcome email:", err),
         );
       }
-      setState({ user: session?.user ?? null, session, loading: false });
+      // Same account re-announced (e.g. the tab regaining focus): keep the
+      // existing user object so effects keyed on it don't re-run and reset
+      // forms — only the session (fresh token) is replaced.
+      setState((prev) => ({
+        user: stableUser(prev.user, session?.user ?? null),
+        session,
+        loading: false,
+      }));
     });
 
     return () => listener.subscription.unsubscribe();
