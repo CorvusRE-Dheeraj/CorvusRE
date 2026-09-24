@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
+import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -614,6 +615,8 @@ export function CaseDetailView({
                 strategyRecommendation={caseData?.strategyRecommendation ?? null}
                 evidenceDocuments={evidenceDocuments}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onAgreementChange={setSettlementAgreement}
+                onOpenHearing={() => setActiveTab("hearing")}
               />
               <SettlementSignatureSection
                 userId={userId}
@@ -649,6 +652,14 @@ export function CaseDetailView({
           {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
+              <CaseOutcomeSection
+                userId={userId}
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab("appeal")}
+              />
               <DecisionNoticeSection
                 userId={userId}
                 protest={current}
@@ -4015,6 +4026,8 @@ function InformalReviewSection({
   strategyRecommendation,
   evidenceDocuments,
   onUpdate,
+  onAgreementChange,
+  onOpenHearing,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -4022,6 +4035,8 @@ function InformalReviewSection({
   strategyRecommendation: string | null;
   evidenceDocuments: DocumentRecord[];
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onAgreementChange: (a: SettlementAgreementRecord | null) => void;
+  onOpenHearing: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
@@ -4088,6 +4103,14 @@ function InformalReviewSection({
     );
   }
 
+  // The owner is not satisfied with what the informal review produced — same
+  // "rejected" informal status the settlement flow uses, which is what moves the
+  // case to the formal hearing.
+  async function handleUnsatisfied() {
+    await handleStatusChange("rejected");
+    toast.success("Recorded — the case moved to a formal hearing.");
+  }
+
   async function closeWithSettlement(
     file: File,
     extraction: DecisionExtraction | null,
@@ -4096,7 +4119,9 @@ function InformalReviewSection({
     setSettling(true);
     try {
       const doc = await uploadDocument(userId, property.id, file, SETTLEMENT_DOCUMENT_TYPE);
-      if (extraction) await saveSettlementAgreement(userId, protest.id, doc.id, extraction);
+      if (extraction) {
+        onAgreementChange(await saveSettlementAgreement(userId, protest.id, doc.id, extraction));
+      }
       await resolveInformalSettlement(protest.id, settledValue);
       onUpdate({
         status: "resolved",
@@ -4281,6 +4306,16 @@ function InformalReviewSection({
               Informal review completed
             </button>
           )}
+          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={() => void handleUnsatisfied()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
+            >
+              Unsatisfied
+            </button>
+          )}
           <label
             className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
           >
@@ -4300,6 +4335,20 @@ function InformalReviewSection({
           <span className="text-[11px] text-muted-foreground">
             Uploading the signed settlement closes this protest.
           </span>
+        </div>
+      )}
+      {protest.status !== "resolved" && protest.informalStatus === "rejected" && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+          <p className="font-medium">
+            Informal review result was unsatisfactory, so the case moved to a formal hearing.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenHearing}
+            className="mt-1.5 text-xs text-accent hover:underline"
+          >
+            Go to Formal Hearing →
+          </button>
         </div>
       )}
       {settleNeedsValue && settleFile && (
