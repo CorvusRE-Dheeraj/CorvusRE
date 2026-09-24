@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { currency, resetIntake, updateIntake } from "@/lib/intake-store";
@@ -808,6 +809,13 @@ function Properties() {
           </Link>
         </div>
       </div>
+
+      <TaxUpdatesBanner
+        contexts={properties.map((property) => ({
+          property,
+          protest: protests.find((x) => x.propertyId === property.id) ?? null,
+        }))}
+      />
 
       {importOpen && user && (
         <ImportPropertiesModal

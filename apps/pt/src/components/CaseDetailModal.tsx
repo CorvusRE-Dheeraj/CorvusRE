@@ -9,6 +9,7 @@ import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
 import { CourtAppealWorkflow } from "@/components/CourtAppealWorkflow";
+import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -498,6 +499,16 @@ export function CaseDetailView({
             onSelect={handleTabClick}
           />
           <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+
+          {activeTab === "overview" && (
+            <div className="mt-3">
+              <RelevantTaxUpdates
+                property={property}
+                protest={current}
+                topics={["protest", "arb", "deadlines", "valuation", "tax_rate"]}
+              />
+            </div>
+          )}
 
           {/* --- Overview --- */}
           {activeTab === "overview" &&

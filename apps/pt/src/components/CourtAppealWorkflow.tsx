@@ -12,6 +12,7 @@ import { askAboutDocument } from "@/lib/document-ai";
 import { downloadPdf } from "@/lib/protest-documents";
 import { currency } from "@/lib/intake-store";
 import { getErrorMessage } from "@/lib/error-message";
+import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { useCaseFacts } from "@/hooks/use-case-facts";
 import { buildCaseContext } from "@/lib/case-context";
 import {
@@ -421,6 +422,12 @@ export function CourtAppealWorkflow({
           </li>
         ))}
       </ol>
+
+      <RelevantTaxUpdates
+        property={property}
+        protest={protest}
+        topics={["court", "deadlines", "valuation"]}
+      />
 
       <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-snug text-warning-foreground">
         {COURT_DISCLAIMER}

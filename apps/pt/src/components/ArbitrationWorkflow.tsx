@@ -13,6 +13,7 @@ import {
   saveDecisionNotice,
   type DecisionExtraction,
 } from "@/lib/decision-notice";
+import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { useCaseFacts } from "@/hooks/use-case-facts";
 import { buildCaseContext } from "@/lib/case-context";
 import { askAboutDocument } from "@/lib/document-ai";
@@ -291,6 +292,12 @@ export function ArbitrationWorkflow({
           </li>
         ))}
       </ol>
+
+      <RelevantTaxUpdates
+        property={property}
+        protest={protest}
+        topics={["arbitration", "deadlines", "arb", "valuation"]}
+      />
 
       {/* 1. Eligibility */}
       <section className="rounded-md border border-border p-4">
