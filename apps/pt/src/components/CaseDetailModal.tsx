@@ -2651,27 +2651,42 @@ function EvidenceStatusCard({
               status === "evidence_required" ||
               status === "being_prepared") && (
               <button onClick={goToModule8} className="btn-accent text-xs py-1.5">
-                Continue to Evidence
+                {evidenceDocuments.length > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
               </button>
             )}
             {status === "ready_to_submit" && (
-              <button onClick={onOpen} className="btn-accent text-xs py-1.5">
-                Submit Evidence
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Evidence
+                </button>
+                <button onClick={goToModule8} className="btn-outline text-xs py-1.5">
+                  Upload Additional Evidence
+                </button>
+              </>
             )}
             {status === "awaiting_confirmation" && (
-              <button onClick={onOpen} className="btn-outline text-xs py-1.5">
-                View Submission
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-outline text-xs py-1.5">
+                  View Submission
+                </button>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Additional Evidence
+                </button>
+              </>
             )}
             {(status === "confirmed" || status === "complete") && (
-              <button
-                onClick={handleRequestAdditional}
-                disabled={requesting}
-                className="text-xs text-accent hover:underline disabled:opacity-60"
-              >
-                {requesting ? "Saving…" : "County asked for more?"}
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Additional Evidence
+                </button>
+                <button
+                  onClick={handleRequestAdditional}
+                  disabled={requesting}
+                  className="text-xs text-accent hover:underline disabled:opacity-60"
+                >
+                  {requesting ? "Saving…" : "County asked for more?"}
+                </button>
+              </>
             )}
             {(status === "additional_requested" || status === "rejected") && (
               <>
