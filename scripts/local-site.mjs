@@ -23,6 +23,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 8080;
 const PT_DIST = path.join(root, "apps/pt/dist/client");
 const AUTH_DIST = path.join(root, "apps/identity/dist/local");
+// The not-yet-live door pages live at their own public URLs (apps/<dir> ->
+// /<url>/), and share hub.css / door-page.* from the landing app -- serve
+// them locally too so those links don't 404.
+const HOME = path.join(root, "apps/home");
+const STATIC_DOORS = {
+  "/corvusbsl": path.join(root, "apps/sbl"),
+  "/corvusco": path.join(root, "apps/co"),
+  "/corvusrf": path.join(root, "apps/rf"),
+};
+const HOME_ASSETS = new Set(["/hub.css", "/door-page.css", "/door-page.js", "/favicon.svg", "/favicon.ico"]);
 
 if (!existsSync(path.join(root, "apps/pt/.env"))) {
   console.warn("! apps/pt/.env is missing -- copy apps/pt/.env.example to apps/pt/.env first.");
@@ -88,6 +98,28 @@ createServer((req, res) => {
   if (urlPath === "/auth") {
     res.writeHead(302, { Location: "/auth/" + (query ? `?${query}` : "") });
     return res.end();
+  }
+
+  const doorPrefix = Object.keys(STATIC_DOORS).find(
+    (p) => urlPath === p || urlPath.startsWith(p + "/"),
+  );
+  if (doorPrefix) {
+    if (urlPath === doorPrefix) {
+      res.writeHead(302, { Location: doorPrefix + "/" });
+      return res.end();
+    }
+    const f = fileIn(STATIC_DOORS[doorPrefix], urlPath.slice(doorPrefix.length));
+    if (f) {
+      res.writeHead(200, { "Content-Type": TYPES[path.extname(f)] ?? "application/octet-stream" });
+      return createReadStream(f).pipe(res);
+    }
+  }
+  if (HOME_ASSETS.has(urlPath)) {
+    const f = fileIn(HOME, urlPath);
+    if (f) {
+      res.writeHead(200, { "Content-Type": TYPES[path.extname(f)] ?? "application/octet-stream" });
+      return createReadStream(f).pipe(res);
+    }
   }
 
   const isAuth = urlPath.startsWith("/auth/");

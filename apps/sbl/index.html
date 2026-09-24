@@ -3,15 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CorvusBSL — Coming Soon | CorvusRE</title>
-  <meta name="description" content="CorvusBSL — Buy, Sell, Lease. Coming soon from CorvusRE." />
+  <title>CorvusBSL — Early Access | CorvusRE</title>
+  <meta name="description" content="CorvusBSL is coming soon from CorvusRE. Join the early-access list." />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/hub.css" />
+  <link rel="stylesheet" href="/door-page.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" />
+  <script>document.documentElement.classList.add("js");</script>
 </head>
-<body>
+<body data-door="CorvusBSL" data-area="Buying, Selling &amp; Leasing" style="--door-hue:60">
   <header>
     <div class="container-page bar">
       <a href="/" class="brand">
@@ -26,13 +28,92 @@
     </div>
   </header>
 
-  <main class="placeholder">
-    <div class="container-page">
-      <span class="badge-soft-muted">Coming Soon</span>
-      <h1>CorvusBSL</h1>
-      <p>Buy, Sell, Lease. This section isn't live yet — check back soon.</p>
-      <a href="/" class="btn-outline">&larr; Back to CorvusRE</a>
-    </div>
+  <main>
+    <section class="door-hero">
+      <div class="container-page">
+        <span class="door-pill">Early access</span>
+        <h1>Buy, sell and lease commercial property with <span class="accent">the numbers already run</span>.</h1>
+        <p class="door-lede">CorvusBSL is on its way to CorvusRE. Tell us what you're looking to do and we'll bring you in as it opens up.</p>
+        <ul class="door-words" aria-label="CorvusBSL">
+          <li style="--i:0"><b>B</b>uy</li>
+          <li style="--i:1"><b>S</b>ell</li>
+          <li style="--i:2"><b>L</b>ease</li>
+        </ul>
+        <div class="door-cta-row">
+          <a href="#early-access" class="door-btn door-btn-primary">Request early access</a>
+          <a href="/" class="door-btn">&larr; Back to CorvusRE</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="door-section">
+      <div class="container-page">
+        <h2 class="reveal">Three ways to move property</h2>
+        <p class="door-sub reveal" style="--i:1">What we're building first — your answers below shape the order.</p>
+        <div class="door-cards">
+          <article class="door-card reveal" style="--i:0">
+            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>
+            <h3>Buy</h3>
+            <p>Screen properties and understand real value and tax exposure before you make an offer.</p>
+          </article>
+          <article class="door-card reveal" style="--i:1">
+            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg></span>
+            <h3>Sell</h3>
+            <p>Position a property with the data, comps and documents buyers will ask for.</p>
+          </article>
+          <article class="door-card reveal" style="--i:2">
+            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></svg></span>
+            <h3>Lease</h3>
+            <p>Compare terms and comparables so every lease starts from facts, not guesses.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="door-section" id="early-access">
+      <div class="container-page">
+        <h2 class="reveal">Get early access</h2>
+        <p class="door-sub reveal" style="--i:1">CorvusRE is invite-only right now. Tell us a bit about you and we'll follow up.</p>
+        <div class="door-form-wrap reveal" style="--i:2">
+          <div id="betaFormView">
+            <form id="betaForm" novalidate>
+              <label class="beta-field">
+                <span>Full Name</span>
+                <input type="text" name="full_name" required autocomplete="name" />
+              </label>
+              <label class="beta-field">
+                <span>Work Email</span>
+                <input type="email" name="work_email" required autocomplete="email" />
+              </label>
+              <label class="beta-field">
+                <span>Company / Organization</span>
+                <input type="text" name="company" required autocomplete="organization" />
+              </label>
+              <fieldset class="beta-field beta-radio-group">
+                <legend>What area are you most interested in?</legend>
+                <label><input type="checkbox" name="area_of_interest" value="Property Tax Management" /><span>Property Tax Management</span></label>
+                <label><input type="checkbox" name="area_of_interest" value="Permitting, Design" /><span>Permitting, Design</span></label>
+                <label><input type="checkbox" name="area_of_interest" value="Buying, Selling &amp; Leasing" /><span>Buying, Selling &amp; Leasing</span></label>
+                <label><input type="checkbox" name="area_of_interest" value="Construction" /><span>Construction</span></label>
+                <label><input type="checkbox" name="area_of_interest" value="Real Estate Finance" /><span>Real Estate Finance</span></label>
+              </fieldset>
+              <label class="beta-field">
+                <span>What would you most like to use CorvusBSL for? <em>(short answer)</em></span>
+                <textarea name="use_case" rows="3"></textarea>
+              </label>
+              <p class="beta-form-error" id="betaFormError" role="alert" hidden></p>
+              <button type="submit" class="beta-submit" id="betaSubmit">Request Early Access</button>
+            </form>
+            <p class="door-signin">Already have an account? <a href="/auth/">Sign in</a></p>
+          </div>
+          <div id="betaSuccessView" class="door-success" hidden>
+            <svg class="door-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24" /><path d="M15 27l8 8 15-17" /></svg>
+            <h2>Thanks — request received.</h2>
+            <p>We'll follow up at the email you provided as CorvusBSL opens up.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer>
@@ -40,6 +121,6 @@
       &copy; <span id="year"></span> CorvusRE.
     </div>
   </footer>
-  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+  <script src="/door-page.js"></script>
 </body>
 </html>
