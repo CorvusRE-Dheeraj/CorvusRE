@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
+import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
@@ -614,6 +615,7 @@ export function CaseDetailView({
                 strategyRecommendation={caseData?.strategyRecommendation ?? null}
                 evidenceDocuments={evidenceDocuments}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onAgreementChange={setSettlementAgreement}
               />
               <SettlementSignatureSection
                 userId={userId}
@@ -649,6 +651,14 @@ export function CaseDetailView({
           {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
+              <CaseOutcomeSection
+                userId={userId}
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab("appeal")}
+              />
               <DecisionNoticeSection
                 userId={userId}
                 protest={current}
@@ -4015,6 +4025,7 @@ function InformalReviewSection({
   strategyRecommendation,
   evidenceDocuments,
   onUpdate,
+  onAgreementChange,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -4022,6 +4033,7 @@ function InformalReviewSection({
   strategyRecommendation: string | null;
   evidenceDocuments: DocumentRecord[];
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onAgreementChange: (a: SettlementAgreementRecord | null) => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
@@ -4096,7 +4108,9 @@ function InformalReviewSection({
     setSettling(true);
     try {
       const doc = await uploadDocument(userId, property.id, file, SETTLEMENT_DOCUMENT_TYPE);
-      if (extraction) await saveSettlementAgreement(userId, protest.id, doc.id, extraction);
+      if (extraction) {
+        onAgreementChange(await saveSettlementAgreement(userId, protest.id, doc.id, extraction));
+      }
       await resolveInformalSettlement(protest.id, settledValue);
       onUpdate({
         status: "resolved",
