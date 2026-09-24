@@ -192,10 +192,13 @@ jobs:
           name: identity-dist
           path: identity-dist
 
-      - name: Assemble hub + all doors into one site
+      - name: Assemble landing page + all doors into one site
         run: |
           mkdir -p site
-          cp -r hub/. site/
+          cp -r apps/home/. site/
+          mkdir -p site/corvusbsl && cp -r apps/sbl/. site/corvusbsl/
+          mkdir -p site/corvusco && cp -r apps/co/. site/corvusco/
+          mkdir -p site/corvusrf && cp -r apps/rf/. site/corvusrf/
           mkdir -p site/corvuspt && cp -r pt-dist/. site/corvuspt/
           mkdir -p site/corvusdp && cp -r dp-dist/. site/corvusdp/
           mkdir -p site/auth && cp -r identity-dist/. site/auth/
