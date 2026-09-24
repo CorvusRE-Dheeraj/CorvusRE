@@ -13,7 +13,10 @@ import {
   markHearingCompleted,
   recordArbDecision,
   recordEscalation,
+  undoFormalOutcome,
+  undoHearingCompleted,
 } from "@/lib/protest-case";
+import { UndoButton } from "@/components/UndoButton";
 import { currency } from "@/lib/intake-store";
 import { getErrorMessage } from "@/lib/error-message";
 
@@ -60,10 +63,32 @@ export function FormalHearingActions({
         >
           Open Appeal / Arbitration →
         </button>
+        <UndoButton
+          className="mt-2 block"
+          label="Undo — choose again"
+          confirm="This takes the case back to the formal hearing so you can choose arbitration or a court appeal again, or submit a decision document."
+          successMessage="Undone — you are back at the formal hearing."
+          onUndo={async () => onUpdate(await undoFormalOutcome(protest))}
+        />
       </div>
     );
   }
-  if (resolved) return null;
+  if (resolved) {
+    return protest.arbDecision ? (
+      <div className="mt-2 rounded-md border border-border p-3 text-sm">
+        <p className="font-medium">
+          The formal hearing decision is on file and the protest is closed.
+        </p>
+        <UndoButton
+          className="mt-2 block"
+          label="Undo this decision"
+          confirm="This removes the recorded decision and reopens the case at the formal hearing, so you can submit the right document or choose arbitration / a court appeal. The uploaded file stays in your Documents tab."
+          successMessage="Undone — the case is back at the formal hearing."
+          onUndo={async () => onUpdate(await undoFormalOutcome(protest))}
+        />
+      </div>
+    ) : null;
+  }
 
   async function handleCompleted() {
     setBusy(true);
@@ -195,6 +220,18 @@ export function FormalHearingActions({
           Unsatisfied
         </button>
       </div>
+      {protest.hearingCompletedAt && (
+        <UndoButton
+          className="mt-1.5 block"
+          label="Undo “Formal hearing completed”"
+          confirm="This clears the completed mark on your formal hearing."
+          successMessage="Undone."
+          onUndo={async () => {
+            await undoHearingCompleted(protest.id);
+            onUpdate({ hearingCompletedAt: null });
+          }}
+        />
+      )}
       <p className="mt-1.5 text-[11px] text-muted-foreground">
         {protest.hearingCompletedAt
           ? `Hearing marked completed ${new Date(protest.hearingCompletedAt).toLocaleDateString()}. `

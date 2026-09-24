@@ -8,7 +8,8 @@ import {
   type SettlementAgreementRecord,
 } from "@/lib/settlement-agreement";
 import { logCaseEvent } from "@/lib/case-audit";
-import { recordEscalation } from "@/lib/protest-case";
+import { recordEscalation, undoFormalOutcome, undoInformalSettlement } from "@/lib/protest-case";
+import { UndoButton } from "@/components/UndoButton";
 import { getDocumentUrl, getDocumentById } from "@/lib/documents";
 import { currency } from "@/lib/intake-store";
 import { getErrorMessage } from "@/lib/error-message";
@@ -343,6 +344,34 @@ export function CaseOutcomeSection({
           </>
         )}
       </div>
+
+      {(outcome.stage !== "formal" || outcome.closed || escalated) && (
+        <div className="mt-3 border-t border-border pt-3">
+          {outcome.stage === "formal" ? (
+            <UndoButton
+              label={outcome.closed ? "Undo this decision" : "Undo my arbitration / appeal choice"}
+              confirm={
+                outcome.closed
+                  ? "This removes the recorded decision and reopens the case at the formal hearing, so you can submit the right document. The uploaded file stays in your Documents tab."
+                  : "This takes the case back to the formal hearing so you can choose again."
+              }
+              successMessage="Undone — the case is back at the formal hearing."
+              onUndo={async () => onUpdate(await undoFormalOutcome(protest))}
+            />
+          ) : (
+            <UndoButton
+              label="Undo this settlement"
+              confirm="This removes the settlement record and reopens the case at the informal review. You can then upload the correct document, or mark Unsatisfied to go to a formal hearing (and then arbitration or a court appeal). The uploaded file stays in your Documents tab."
+              successMessage="Undone — the case is back at the informal review."
+              onUndo={async () => {
+                const patch = await undoInformalSettlement(protest);
+                onAgreementChange(null);
+                onUpdate(patch);
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
