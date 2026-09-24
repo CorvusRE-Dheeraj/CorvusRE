@@ -138,7 +138,6 @@ import {
 } from "@/lib/protest-documents";
 import {
   getSubmission,
-  FILING_CHANGED_EVENT,
   saveDraft,
   signAndSubmit,
   saveFilingMethod,
@@ -212,12 +211,12 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
   {
     id: "informal",
     label: "Informal Review",
-    lockedHint: "Unlocks once your Notice of Protest and evidence are submitted.",
+    lockedHint: "Unlocks once you have signed your Notice of Protest.",
   },
   {
     id: "hearing",
     label: "Formal Hearing",
-    lockedHint: "Unlocks once your Notice of Protest and evidence are submitted.",
+    lockedHint: "Unlocks once you have signed your Notice of Protest.",
   },
   {
     id: "decision",
@@ -260,16 +259,15 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-escalation": "appeal",
 };
 
-// filingSubmitted: the Notice of Protest AND the evidence have both been
-// delivered to the county (marked submitted, or confirmed) — the county's own
-// acknowledgement can take days, and preparing the informal review / hearing
-// shouldn't wait on it, so that unlocks those two phases even before
-// protest.status flips to "filed" (which still needs the county's confirmation).
+// noticeSigned: the Notice of Protest has been signed. That opens Informal
+// Review and Formal Hearing without waiting for delivery or the county's
+// acknowledgement (which can take days) — protest.status still only flips to
+// "filed" once the county confirms.
 function caseTabUnlocked(
   id: CaseTabId,
   protest: ProtestRecord,
   needsGuidanceAck: boolean,
-  filingSubmitted = false,
+  noticeSigned = false,
 ): boolean {
   const s = protest.status;
   const filed = s !== "requested";
@@ -280,7 +278,7 @@ function caseTabUnlocked(
       return filed || !needsGuidanceAck;
     case "informal":
     case "hearing":
-      return filed || filingSubmitted;
+      return filed || noticeSigned;
     case "decision":
     case "appeal":
       return (
@@ -354,9 +352,10 @@ export function CaseDetailView({
   // evidence-aware feature here (Corvus's guidance, Pre-Filing Check,
   // Generate Suggested Reason) reads from.
   const [evidenceDocuments, setEvidenceDocuments] = useState<DocumentRecord[]>([]);
-  // Notice of Protest AND evidence both delivered to the county — see
-  // caseTabUnlocked. Re-read whenever a submission is marked submitted/confirmed.
-  const [filingSubmitted, setFilingSubmitted] = useState(false);
+  // Signing the Notice of Protest is what opens Informal Review / Formal
+  // Hearing (see caseTabUnlocked) — noticeSignedAt already updates the moment
+  // it is signed, so this needs no extra loading.
+  const noticeSigned = !!noticeSignedAt;
   // Lifted (not local to SettlementSignatureSection) so the top-of-case
   // "informal outcome unconfirmed" banner and HearingPrepSection's inline
   // warning read the same record the settlement section writes.
@@ -382,32 +381,6 @@ export function CaseDetailView({
   }
 
   useEffect(load, [protest.id]);
-
-  useEffect(() => {
-    let live = true;
-    const delivered = (s: Parameters<typeof filingSubmissionStatus>[0]) =>
-      ["awaiting_confirmation", "confirmed", "additional_requested"].includes(
-        filingSubmissionStatus(s),
-      );
-    const read = () =>
-      Promise.all([
-        getSubmission(protest.id, "notice_of_protest"),
-        getSubmission(protest.id, "evidence"),
-      ])
-        .then(([notice, evidence]) => {
-          if (!live) return;
-          setFilingSubmitted(
-            delivered(notice) && (delivered(evidence) || !!protest.evidenceSubmittedConfirmedAt),
-          );
-        })
-        .catch((err) => console.error("Could not read the filing submissions:", err));
-    void read();
-    window.addEventListener(FILING_CHANGED_EVENT, read);
-    return () => {
-      live = false;
-      window.removeEventListener(FILING_CHANGED_EVENT, read);
-    };
-  }, [protest.id, protest.evidenceSubmittedConfirmedAt]);
 
   // An upload made elsewhere (the AI Report page, the Documents page, or another
   // tab) must reach the evidence counts/checks here without a manual reload.
@@ -487,7 +460,7 @@ export function CaseDetailView({
   }
 
   function handleTabClick(id: CaseTabId) {
-    if (caseTabUnlocked(id, current, needsGuidanceAck, filingSubmitted)) {
+    if (caseTabUnlocked(id, current, needsGuidanceAck, noticeSigned)) {
       setActiveTab(id);
     } else {
       toast.info(
@@ -517,7 +490,7 @@ export function CaseDetailView({
             activeTab={activeTab}
             protest={current}
             needsGuidanceAck={needsGuidanceAck}
-            filingSubmitted={filingSubmitted}
+            noticeSigned={noticeSigned}
             onSelect={handleTabClick}
           />
           <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
@@ -540,7 +513,7 @@ export function CaseDetailView({
                   evidenceDocumentCount={evidenceDocuments.length}
                   noticeSignedAt={noticeSignedAt}
                   needsGuidanceAck={needsGuidanceAck}
-                  filingSubmitted={filingSubmitted}
+                  noticeSigned={noticeSigned}
                   onSelect={handleTabClick}
                   onNavigate={navigateTo}
                 />
@@ -632,7 +605,7 @@ export function CaseDetailView({
           )}
 
           {/* --- Informal Review --- */}
-          {activeTab === "informal" && (current.status !== "requested" || filingSubmitted) && (
+          {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
             <div>
               <InformalReviewSection
                 protest={current}
@@ -653,7 +626,7 @@ export function CaseDetailView({
           )}
 
           {/* --- Formal Hearing --- */}
-          {activeTab === "hearing" && (current.status !== "requested" || filingSubmitted) && (
+          {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
               <HearingNoticeSection
                 userId={userId}
@@ -711,13 +684,13 @@ function CaseTabBar({
   activeTab,
   protest,
   needsGuidanceAck,
-  filingSubmitted,
+  noticeSigned,
   onSelect,
 }: {
   activeTab: CaseTabId;
   protest: ProtestRecord;
   needsGuidanceAck: boolean;
-  filingSubmitted: boolean;
+  noticeSigned: boolean;
   onSelect: (id: CaseTabId) => void;
 }) {
   const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
@@ -731,7 +704,7 @@ function CaseTabBar({
       {CASE_TABS.map((t, i) => {
         const isOpen = t.id === activeTab;
         const isHub = t.id === "overview";
-        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, filingSubmitted);
+        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
         const done = !isHub && !locked && i < currentIdx;
         const isCurrent = !isHub && i === currentIdx;
         const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(i);
@@ -792,7 +765,7 @@ function CaseRoadmap({
   evidenceDocumentCount,
   noticeSignedAt,
   needsGuidanceAck,
-  filingSubmitted,
+  noticeSigned,
   onSelect,
   onNavigate,
 }: {
@@ -801,7 +774,7 @@ function CaseRoadmap({
   evidenceDocumentCount: number;
   noticeSignedAt: string | null;
   needsGuidanceAck: boolean;
-  filingSubmitted: boolean;
+  noticeSigned: boolean;
   onSelect: (id: CaseTabId) => void;
   onNavigate: (anchor: string) => void;
 }) {
@@ -824,7 +797,7 @@ function CaseRoadmap({
       <ol className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
         {CASE_TABS.map((t, i) => {
           const isHub = t.id === "overview";
-          const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck, filingSubmitted);
+          const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
           const done = !isHub && unlocked && i < currentIdx;
           const here = i === currentIdx;
           const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(i);
