@@ -5,6 +5,7 @@ import type { ProtestRecord } from "./protests";
 import {
   buildReportPdf,
   countiesIn,
+  criticalUpdates,
   filterUpdates,
   NO_FILTER,
   propertiesAffected,
@@ -168,5 +169,19 @@ describe("buildReportPdf", () => {
     const bytes = await buildReportPdf(report);
     const doc = await PDFDocument.load(bytes);
     expect(doc.getPageCount()).toBeGreaterThan(0);
+  });
+});
+
+describe("criticalUpdates", () => {
+  it("keeps enacted law, adopted rules and deadline items; drops proposals and failed bills", () => {
+    const list = [
+      u({ id: "prop", status: "proposed_rule" }),
+      u({ id: "fail", status: "failed_legislation", tags: ["deadlines"] }),
+      u({ id: "rule", status: "adopted_rule" }),
+      u({ id: "law", status: "enacted_law" }),
+      u({ id: "dl", status: "notice_guidance", tags: ["deadlines"] }),
+    ];
+    expect(criticalUpdates(list).map((x) => x.id)).toEqual(["dl", "law", "rule"]);
+    expect(criticalUpdates(list, 1)).toHaveLength(1);
   });
 });

@@ -4,7 +4,6 @@
 // Tax Updates tab and the panels embedded in Property / Arbitration / Court /
 // Case views. See the edge function for how each update is verified.
 import { supabase } from "./supabase";
-import { invokeEdgeFunction } from "./edge-functions";
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
 import { countyNameFromCad } from "./court-appeal";
@@ -131,9 +130,6 @@ export const STANDING_SOURCE = {
   url: "https://comptroller.texas.gov/taxes/property-tax/protests/",
 };
 
-export const CORVUSPT_URL = "https://corvusre.com/corvuspt/";
-export const EXPLORE_PROPERTY_URL = `${CORVUSPT_URL}dashboard/properties`;
-
 // ── Data ─────────────────────────────────────────────────────────────────
 type ReportRow = {
   id: string;
@@ -166,9 +162,91 @@ export async function listTaxReports(): Promise<TaxReport[]> {
   return (data as ReportRow[]).map(fromRow);
 }
 
-// Admin "Generate now".
-export async function generateTaxReportNow(): Promise<{ updates: number; sourcesRead: number }> {
-  return invokeEdgeFunction("generate-tax-updates", {});
+// ── Generated reports (per person) ───────────────────────────────────────
+export const MAX_SAVED_REPORTS = 10;
+
+export type SavedTaxReport = {
+  id: string;
+  title: string;
+  createdAt: string;
+  taxYear: number;
+  report: TaxReport;
+};
+
+type SavedRow = {
+  id: string;
+  title: string;
+  created_at: string;
+  payload: { taxYear: number; report: TaxReport };
+};
+
+export async function listSavedReports(): Promise<SavedTaxReport[]> {
+  const { data, error } = await supabase
+    .from("tax_update_user_reports")
+    .select("id, title, created_at, payload")
+    .order("created_at", { ascending: false })
+    .limit(MAX_SAVED_REPORTS);
+  if (error) throw error;
+  return (data as SavedRow[]).map((r) => ({
+    id: r.id,
+    title: r.title,
+    createdAt: r.created_at,
+    taxYear: r.payload.taxYear,
+    report: r.payload.report,
+  }));
+}
+
+// Snapshots the given weekly report for this person, then drops anything past
+// the newest 10.
+export async function saveGeneratedReport(userId: string, report: TaxReport): Promise<void> {
+  const taxYear = new Date().getFullYear();
+  const { error } = await supabase.from("tax_update_user_reports").insert({
+    user_id: userId,
+    title: report.title,
+    payload: { taxYear, report },
+  });
+  if (error) throw error;
+  const { data: old } = await supabase
+    .from("tax_update_user_reports")
+    .select("id")
+    .order("created_at", { ascending: false })
+    .range(MAX_SAVED_REPORTS, MAX_SAVED_REPORTS + 50);
+  const ids = (old ?? []).map((r: { id: string }) => r.id);
+  if (ids.length) await supabase.from("tax_update_user_reports").delete().in("id", ids);
+}
+
+export async function deleteSavedReport(id: string): Promise<void> {
+  const { error } = await supabase.from("tax_update_user_reports").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// A short list of what matters most this tax year: enacted laws and adopted
+// rules, plus anything about deadlines. Proposals and failed bills are left out.
+export function criticalUpdates(updates: TaxUpdate[], max = 5): TaxUpdate[] {
+  const rank = (u: TaxUpdate) =>
+    (u.tags.includes("deadlines") ? 0 : 2) + (u.status === "enacted_law" ? 0 : 1);
+  return updates
+    .filter(
+      (u) =>
+        u.status !== "failed_legislation" &&
+        (u.status === "enacted_law" || u.status === "adopted_rule" || u.tags.includes("deadlines")),
+    )
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, max);
+}
+
+const oneLine = (s: string, n = 150) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+
+export function criticalLines(updates: TaxUpdate[]): string[] {
+  const items = criticalUpdates(updates);
+  return [
+    ...(items.length
+      ? items.map((u) => `- ${u.title} (${STATUS_LABEL[u.status]}): ${oneLine(u.actionNeeded)}`)
+      : ["- No enacted laws or adopted rules in this week's report."]),
+    ...STANDING_DEADLINES.filter((d) =>
+      ["Protest deadline", "Taxes delinquent"].includes(d.label),
+    ).map((d) => `- ${d.label}: ${d.detail}`),
+  ];
 }
 
 // ── Filtering ────────────────────────────────────────────────────────────
@@ -256,7 +334,10 @@ export function updatesForProperty(
 }
 
 // ── Download ─────────────────────────────────────────────────────────────
-export async function buildReportPdf(report: TaxReport): Promise<Uint8Array> {
+export async function buildReportPdf(
+  report: TaxReport,
+  taxYear = new Date().getFullYear(),
+): Promise<Uint8Array> {
   const sections: PackageSection[] = [{ heading: "Summary", lines: [report.summary] }];
   for (const ch of CHAPTERS) {
     const items = report.updates.filter((u) => u.chapter === ch.n);
@@ -287,9 +368,10 @@ export async function buildReportPdf(report: TaxReport): Promise<Uint8Array> {
     lines: report.sources.map((s) => `${s.ok ? "Read" : "Could not read"}: ${s.name} - ${s.url}`),
   });
   sections.push({
-    heading: "Explore your property",
+    heading: `Critical updates for tax year ${taxYear}`,
     lines: [
-      `See how these updates may affect your property: ${EXPLORE_PROPERTY_URL}`,
+      ...criticalLines(report.updates),
+      "",
       "Generated from official sources and summarized by AI. Verify every item against its official source. Not legal or tax advice.",
     ],
   });
