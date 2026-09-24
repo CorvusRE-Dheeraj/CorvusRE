@@ -536,6 +536,18 @@ export async function renameDocument(id: string, fileName: string): Promise<void
   notifyDocumentsChanged();
 }
 
+// Re-files a document under a different type/category in place (Module 8's
+// "Move to"). documents.document_type is owner-updatable (see schema.sql) —
+// it is just a label on their own file.
+export async function setDocumentType(id: string, documentType: string): Promise<void> {
+  const { error } = await supabase
+    .from("documents")
+    .update({ document_type: documentType })
+    .eq("id", id);
+  if (error) throw error;
+  notifyDocumentsChanged();
+}
+
 const VERDICT_META: Record<
   AiVerdict,
   { label: string; tone: "success" | "warning" | "destructive" }

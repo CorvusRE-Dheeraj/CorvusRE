@@ -3179,7 +3179,11 @@ export function DocumentsSection({
             {noticeSignedAt && (
               <>
                 <span className="text-xs text-success">✓ Signed</span>
-                <Link to="/dashboard/documents" className="text-xs text-accent hover:underline">
+                <Link
+                  to="/dashboard/documents"
+                  search={{ propertyId: property.id }}
+                  className="text-xs text-accent hover:underline"
+                >
                   View in Documents tab →
                 </Link>
               </>
