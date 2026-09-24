@@ -42,24 +42,17 @@ export function SiteNav() {
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
-  // (sign-out prompt, tab-close prompt), never blocks anything itself, so a
+  // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
   // treatment as isAdmin above.
   const [feedbackDone, setFeedbackDone] = useState<boolean | null>(null);
   // The feedback form is for BETA TESTERS specifically (plan === "beta",
   // the same free/full-access grant Billing.tsx's own isBeta check reads) —
   // a real paying customer isn't part of that cohort and shouldn't get
-  // interrupted at sign-out/tab-close for a survey that isn't about them.
+  // interrupted at sign-out for a survey that isn't about them.
   const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
   const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
-  // The "give feedback" ask before they go: triggered on exit intent (the
-  // pointer leaving toward the tab bar/back button, the same heuristic
-  // exit-intent popups have always used), not tab-close itself — it can't
-  // catch every way of leaving (Ctrl+W, the OS close button). Deliberately
-  // no native beforeunload "Leave/Reload site?" dialog alongside it.
-  const [showExitIntentPrompt, setShowExitIntentPrompt] = useState(false);
-  const exitIntentShownRef = useRef(false);
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
@@ -109,29 +102,7 @@ export function SiteNav() {
       .catch(() => setIsBetaUser(null));
   }, [user]);
 
-  // Exit intent: the pointer leaving toward the top of the viewport (the
-  // tab bar, the back/close buttons) — the one moment left to show real,
-  // branded copy before they're gone, since beforeunload's own dialog can't.
-  // Fires at most once per page load (exitIntentShownRef just avoids
-  // re-firing on every stray mouse twitch near the top within ONE visit) —
-  // but never permanently suppressed: a fresh page load re-arms it, and
-  // "No thanks" only dismisses that one instance. Repeats every visit,
-  // every sign-out, every close attempt, for as long as feedback stays
-  // incomplete — that's deliberate, not a bug: keep asking until they
-  // actually give feedback, not until they've said no once.
-  useEffect(() => {
-    if (!promptEligible) return;
-    function onMouseOut(e: MouseEvent) {
-      if (exitIntentShownRef.current) return;
-      if (e.clientY > 0 || e.relatedTarget) return; // only a genuine top-edge exit
-      exitIntentShownRef.current = true;
-      setShowExitIntentPrompt(true);
-    }
-    document.addEventListener("mouseout", onMouseOut);
-    return () => document.removeEventListener("mouseout", onMouseOut);
-  }, [promptEligible]);
-
-  // Catches what neither prompt above can: a keyboard-triggered close
+  // Catches a tab close of any kind, including a keyboard-triggered one
   // (Ctrl+W and friends) — browsers reserve those shortcuts entirely, no
   // page JS ever sees them in time to show its own UI, so there's no way to
   // put a branded modal in front of that specific exit. `pagehide`, unlike
@@ -445,31 +416,6 @@ export function SiteNav() {
             <button
               onClick={() => {
                 setShowSignOutPrompt(false);
-                nav({ to: "/dashboard/feedback" });
-              }}
-              className="btn-primary btn-primary-hover"
-            >
-              Give feedback
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showExitIntentPrompt} onOpenChange={setShowExitIntentPrompt}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Before you go — got 7-10 minutes for us?</DialogTitle>
-            <DialogDescription>
-              You're one of our beta testers, and we haven't heard from you yet. Help us make Corvus
-              better — it directly shapes what we build next.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <button onClick={() => setShowExitIntentPrompt(false)} className="btn-outline">
-              No thanks
-            </button>
-            <button
-              onClick={() => {
-                setShowExitIntentPrompt(false);
                 nav({ to: "/dashboard/feedback" });
               }}
               className="btn-primary btn-primary-hover"
