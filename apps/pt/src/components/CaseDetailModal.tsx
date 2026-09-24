@@ -557,6 +557,7 @@ export function CaseDetailView({
                 protestId={protest.id}
                 caseData={caseData}
                 onReload={load}
+                evidenceCount={evidenceDocuments.length}
               />
               {/* Journey tracker is otherwise root-level, Properties-page-only
                   (see SignedInJourney in routes/__root.tsx) — kept here too
@@ -1423,6 +1424,9 @@ export function CasePlanSection({
   // resolve/create this property under the ADMIN's account instead.
   // Customer view leaves this at its default (true); admin passes false.
   allowEvidenceUpload = true,
+  // How many evidence files are already on the case — only changes the
+  // button wording (Upload Evidence vs Upload Additional Evidence).
+  evidenceCount = 0,
 }: {
   userId: string;
   property: PropertyRecord;
@@ -1430,6 +1434,7 @@ export function CasePlanSection({
   caseData: ProtestCase | null;
   onReload: () => void;
   allowEvidenceUpload?: boolean;
+  evidenceCount?: number;
 }) {
   const [generating, setGenerating] = useState(false);
 
@@ -1512,7 +1517,7 @@ export function CasePlanSection({
       {allowEvidenceUpload && (
         <section id="case-upload-evidence">
           <button onClick={goToModule8} className="btn-outline w-fit text-sm">
-            Upload Evidence — Go to Module 8
+            {evidenceCount > 0 ? "Upload Additional Evidence" : "Upload Evidence"} — Go to Module 8
           </button>
         </section>
       )}
