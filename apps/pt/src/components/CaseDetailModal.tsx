@@ -165,7 +165,11 @@ import {
   EVIDENCE_STATUS_LABEL,
   type EvidenceStatusStage,
 } from "@/lib/evidence-status";
-import { selectRelevantEvidence, buildEvidencePackagePdf } from "@/lib/evidence-package";
+import {
+  selectRelevantEvidence,
+  buildEvidencePackagePdf,
+  countPdfPages,
+} from "@/lib/evidence-package";
 import { getCachedModuleResult } from "@/lib/module-results-cache";
 import type { ModuleResultMap } from "@/lib/ai-report-modules";
 import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
@@ -3557,6 +3561,7 @@ function EvidencePackageBuilder({
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
+  const [previewPages, setPreviewPages] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   // Every OTHER document already uploaded for this property (survey, permit,
   // photos...) that Module 8 didn't tag as evidence — offered below so the
@@ -3671,6 +3676,7 @@ function EvidencePackageBuilder({
       }
       const pdfBytes = await buildEvidencePackagePdf(files);
       setPreviewBytes(pdfBytes);
+      setPreviewPages(await countPdfPages(pdfBytes).catch(() => null));
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(new Blob([pdfBytes as BlobPart], { type: "application/pdf" }));
@@ -3836,12 +3842,27 @@ function EvidencePackageBuilder({
 
       {previewUrl && (
         <div className="mt-3">
+          {previewPages != null && previewBytes && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              Package ready — {previewPages} page{previewPages === 1 ? "" : "s"},{" "}
+              {(previewBytes.byteLength / (1024 * 1024)).toFixed(1)} MB. If the preview below is
+              blank, your browser is blocking its built-in PDF viewer — use Open in new tab or
+              Download.
+            </p>
+          )}
           <iframe
             title="Evidence package preview"
             src={previewUrl}
             className="h-64 w-full rounded-md border border-border"
           />
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+              className="btn-outline text-xs py-1.5"
+            >
+              Open in new tab
+            </button>
             <button
               type="button"
               onClick={handleSaveToDocuments}
