@@ -60,7 +60,7 @@ import {
   type CaseAuditEvent,
 } from "@/lib/case-audit";
 import { saveCaseRecordFields } from "@/lib/protest-case";
-import { listDocuments } from "@/lib/documents";
+import { listDocuments, previewKind } from "@/lib/documents";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
 import {
   getCountyProtestInfo,
@@ -3558,6 +3558,37 @@ function EvidencePackageBuilder({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
   const [saving, setSaving] = useState(false);
+  // Every OTHER document already uploaded for this property (survey, permit,
+  // photos...) that Module 8 didn't tag as evidence — offered below so the
+  // package can include them without re-uploading anything.
+  const [otherDocs, setOtherDocs] = useState<DocumentRecord[]>([]);
+  const [showOthers, setShowOthers] = useState(false);
+  const docsVersion = useDocumentsVersion();
+
+  useEffect(() => {
+    let live = true;
+    listDocuments(userId)
+      .then((docs) => {
+        if (!live) return;
+        const inEvidence = new Set(evidenceDocuments.map((d) => d.id));
+        setOtherDocs(
+          docs.filter(
+            (d) =>
+              d.propertyId === property.id &&
+              !inEvidence.has(d.id) &&
+              // Only what can actually be merged into the PDF, and never the
+              // filing-proof copies (a previous package or signed forms).
+              previewKind(d.fileName) !== "none" &&
+              !d.documentType?.startsWith("Filing Proof"),
+          ),
+        );
+      })
+      .catch((err) => console.error("Could not load this property's other documents:", err));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, property.id, docsVersion, evidenceDocuments.length]);
 
   useEffect(() => {
     let live = true;
@@ -3599,6 +3630,11 @@ function EvidencePackageBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id, protest.id]);
 
+  const allDocs = [...evidenceDocuments, ...otherDocs];
+  // The main list: the evidence documents, plus any extra the user has ticked.
+  const listedDocs = [...evidenceDocuments, ...otherDocs.filter((d) => selectedIds.includes(d.id))];
+  const addableDocs = otherDocs.filter((d) => !selectedIds.includes(d.id));
+
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
@@ -3625,7 +3661,7 @@ function EvidencePackageBuilder({
     setGenerating(true);
     try {
       const selectedDocs = selectedIds
-        .map((id) => evidenceDocuments.find((d) => d.id === id))
+        .map((id) => allDocs.find((d) => d.id === id))
         .filter((d): d is DocumentRecord => !!d);
       const files = [];
       for (const d of selectedDocs) {
@@ -3697,7 +3733,7 @@ function EvidencePackageBuilder({
       </p>
 
       <ul className="mt-2 grid gap-1">
-        {evidenceDocuments.map((d) => {
+        {listedDocs.map((d) => {
           const idx = selectedIds.indexOf(d.id);
           const checked = idx !== -1;
           return (
@@ -3733,6 +3769,46 @@ function EvidencePackageBuilder({
           );
         })}
       </ul>
+
+      {addableDocs.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowOthers((v) => !v)}
+            aria-expanded={showOthers}
+            className="text-xs text-accent hover:underline"
+          >
+            {showOthers
+              ? "Hide other documents"
+              : `+ Add from your other documents (${addableDocs.length})`}
+          </button>
+          {showOthers && (
+            <ul className="mt-1.5 grid gap-1">
+              {addableDocs.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 flex-1 truncate">{d.fileName}</span>
+                  {d.documentType && (
+                    <span className="hidden shrink-0 text-muted-foreground sm:inline">
+                      {d.documentType.replace(/^Evidence Category: /, "")}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggle(d.id)}
+                    className="shrink-0 font-medium text-accent hover:underline"
+                    aria-label={`Add ${d.fileName} to the package`}
+                  >
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         Remind me:
