@@ -278,7 +278,7 @@ export async function buildReportPdf(report: TaxReport): Promise<Uint8Array> {
       lines.push(`Source: ${STANDING_SOURCE.name} - ${STANDING_SOURCE.url}`, "");
     }
     sections.push({
-      heading: `Chapter ${ch.n}: ${ch.title}`,
+      heading: ch.title,
       lines: lines.length ? lines : ["No verified updates this week."],
     });
   }

@@ -358,7 +358,7 @@ function TaxUpdates() {
               return (
                 <section key={ch.n}>
                   <h2 className="font-serif text-lg font-semibold">
-                    Chapter {ch.n}: {ch.title}
+                    {ch.title}
                   </h2>
                   <div className="mt-3 grid gap-3 lg:grid-cols-2">
                     {items.map((u) => (
