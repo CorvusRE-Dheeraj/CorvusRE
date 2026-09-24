@@ -26,7 +26,8 @@ export type InformalStatus =
   | "proposed_value_received"
   | "accepted"
   | "rejected"
-  | "no_informal_available";
+  | "no_informal_available"
+  | "completed";
 
 // The real, shorter label set the user actually sees — several internal
 // InformalStatus values collapse to the same honest user-facing phrase
@@ -40,6 +41,7 @@ export const INFORMAL_STATUS_LABEL: Record<InformalStatus, string> = {
   accepted: "Offer Accepted",
   rejected: "Formal Hearing Needed",
   no_informal_available: "Formal Hearing Needed",
+  completed: "Informal Review Completed",
 };
 
 export type AppraiserCategory =
