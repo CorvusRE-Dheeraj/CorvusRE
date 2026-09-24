@@ -231,6 +231,13 @@ export async function saveFilingProofFields(
 // (Submitted/Awaiting Confirmation reads off this one; Confirmed/Rejected/
 // Additional Requested are their own, later events). Same for every method,
 // not just Email.
+// Fired whenever a submission is marked submitted/confirmed, so anything that
+// derives from those rows (View Case's phase tabs) can re-read without a reload.
+export const FILING_CHANGED_EVENT = "corvuspt:filing-changed";
+function notifyFilingChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(FILING_CHANGED_EVENT));
+}
+
 export async function markSubmitted(
   userId: string,
   protestId: string,
@@ -248,6 +255,7 @@ export async function markSubmitted(
     { onConflict: "protest_id,form_type" },
   );
   if (error) throw error;
+  notifyFilingChanged();
   return at;
 }
 
@@ -271,6 +279,7 @@ export async function confirmFiling(
     { onConflict: "protest_id,form_type" },
   );
   if (error) throw error;
+  notifyFilingChanged();
   return at;
 }
 
