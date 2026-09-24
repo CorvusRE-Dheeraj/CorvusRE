@@ -608,6 +608,7 @@ export function CaseDetailView({
           {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
             <div>
               <InformalReviewSection
+                userId={userId}
                 protest={current}
                 property={property}
                 strategyRecommendation={caseData?.strategyRecommendation ?? null}
@@ -3955,6 +3956,7 @@ const INFORMAL_STATUS_OPTIONS: { value: InformalStatus; label: string }[] = [
   { value: "accepted", label: "Accepted" },
   { value: "rejected", label: "Rejected" },
   { value: "no_informal_available", label: "No Informal Available" },
+  { value: "completed", label: "Informal Review Completed" },
 ];
 
 // "14:30" (the value an <input type="time"> yields) → "2:30 PM", the same
@@ -4007,12 +4009,14 @@ const INFORMAL_REVIEW_MODES: HearingMode[] = [
 ];
 
 function InformalReviewSection({
+  userId,
   protest,
   property,
   strategyRecommendation,
   evidenceDocuments,
   onUpdate,
 }: {
+  userId: string;
   protest: ProtestRecord;
   property: PropertyRecord;
   strategyRecommendation: string | null;
@@ -4031,6 +4035,14 @@ function InformalReviewSection({
   const [loadingGuidance, setLoadingGuidance] = useState(false);
   const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [notice, setNotice] = useState<HearingNoticeRecord | null>(null);
+  // "Submit Settlement Document": the file is read, uploaded, and the protest
+  // closed at the settled value. If the value can't be read off the document,
+  // the user types it (settleNeedsValue) before the case is closed.
+  const [settling, setSettling] = useState(false);
+  const [settleFile, setSettleFile] = useState<File | null>(null);
+  const [settleExtraction, setSettleExtraction] = useState<DecisionExtraction | null>(null);
+  const [settleNeedsValue, setSettleNeedsValue] = useState(false);
+  const [settleValueInput, setSettleValueInput] = useState("");
 
   // Inline Q&A — stateless, same engine as the site-wide Ask AI widget
   // (ask-about-document). Only the latest question/answer is kept on screen.
@@ -4067,6 +4079,70 @@ function InformalReviewSection({
     } finally {
       setUpdatingStatus(false);
     }
+  }
+
+  async function handleInformalCompleted() {
+    await handleStatusChange("completed");
+    toast.success(
+      "Informal review marked completed. If you reached a settlement, submit the settlement document — otherwise continue to the Formal Hearing tab.",
+    );
+  }
+
+  async function closeWithSettlement(
+    file: File,
+    extraction: DecisionExtraction | null,
+    settledValue: number,
+  ) {
+    setSettling(true);
+    try {
+      const doc = await uploadDocument(userId, property.id, file, SETTLEMENT_DOCUMENT_TYPE);
+      if (extraction) await saveSettlementAgreement(userId, protest.id, doc.id, extraction);
+      await resolveInformalSettlement(protest.id, settledValue);
+      onUpdate({
+        status: "resolved",
+        finalValue: settledValue,
+        escalationPath: "accept",
+        closedAt: new Date().toISOString(),
+        informalStatus: "accepted",
+      });
+      setSettleFile(null);
+      setSettleExtraction(null);
+      setSettleNeedsValue(false);
+      toast.success(`Settlement document submitted — protest closed at ${currency(settledValue)}.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not submit the settlement document."));
+    } finally {
+      setSettling(false);
+    }
+  }
+
+  async function handleSettlementFile(file: File) {
+    setSettling(true);
+    let extraction: DecisionExtraction | null = null;
+    try {
+      extraction = await extractSettlementDocument(property, protest, file);
+    } catch {
+      // Unreadable by AI — fall through to asking for the settled value.
+    }
+    setSettling(false);
+    const value = extraction?.finalValue ?? null;
+    if (value != null && value > 0) {
+      await closeWithSettlement(file, extraction, value);
+      return;
+    }
+    setSettleFile(file);
+    setSettleExtraction(extraction);
+    setSettleValueInput("");
+    setSettleNeedsValue(true);
+  }
+
+  async function handleConfirmSettleValue() {
+    const value = Number(settleValueInput.replace(/[^0-9.]/g, ""));
+    if (!settleFile || !Number.isFinite(value) || value <= 0) {
+      toast.error("Enter the settled value from the document.");
+      return;
+    }
+    await closeWithSettlement(settleFile, settleExtraction, value);
   }
 
   async function handleSaveSchedule(e: FormEvent) {
@@ -4190,6 +4266,78 @@ function InformalReviewSection({
           ))}
         </select>
       </div>
+
+      {protest.status !== "resolved" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+            protest.informalStatus,
+          ) && (
+            <button
+              type="button"
+              onClick={() => void handleInformalCompleted()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 disabled:opacity-60"
+            >
+              Informal review completed
+            </button>
+          )}
+          <label
+            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {settling ? "Submitting…" : "Submit Settlement document"}
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              disabled={settling}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleSettlementFile(file);
+              }}
+            />
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            Uploading the signed settlement closes this protest.
+          </span>
+        </div>
+      )}
+      {settleNeedsValue && settleFile && (
+        <div className="mt-2 rounded-md border border-border p-3 text-xs">
+          <p className="text-muted-foreground">
+            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
+            close the protest.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={settleValueInput}
+              onChange={(e) => setSettleValueInput(e.target.value)}
+              inputMode="decimal"
+              placeholder="Settled value, e.g. 480000"
+              aria-label="Settled value"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void handleConfirmSettleValue()}
+              disabled={settling}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {settling ? "Closing…" : "Close protest"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSettleNeedsValue(false);
+                setSettleFile(null);
+              }}
+              className="text-muted-foreground hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Schedule — always available, not gated behind the status dropdown.
           Saving it sets the status to "scheduled" and feeds the in-platform

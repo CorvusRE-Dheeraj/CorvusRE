@@ -608,7 +608,7 @@ alter table public.protests add column if not exists informal_status text not nu
 alter table public.protests drop constraint if exists protests_informal_status_check;
 alter table public.protests add constraint protests_informal_status_check
   check (informal_status in ('not_requested', 'requested', 'pending_response', 'scheduled',
-    'proposed_value_received', 'accepted', 'rejected', 'no_informal_available'));
+    'proposed_value_received', 'accepted', 'rejected', 'no_informal_available', 'completed'));
 
 -- The real, self-reported date once the county and owner have agreed on
 -- one (this app has no live scheduling API for any county) — feeds the
