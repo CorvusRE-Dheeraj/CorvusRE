@@ -71,6 +71,7 @@ export function FeedbackWidget() {
   const signalsRef = useRef<UsageSignals | null>(null);
 
   const complete = isFormV2Complete(response);
+  const indexKey = user ? `corvuspt.feedbackIndex.${user.id}` : null;
 
   // Who sees this at all: signed-in beta testers.
   useEffect(() => {
@@ -125,12 +126,19 @@ export function FeedbackWidget() {
     }
     const started = FORM_QUESTIONS.some((q) => isAnswered(q, answers));
     if (started) {
-      setIndex(firstUnansweredIndex(answers));
+      let resume = firstUnansweredIndex(answers);
+      try {
+        const saved = indexKey ? Number(localStorage.getItem(indexKey)) : NaN;
+        if (Number.isInteger(saved) && saved >= 0 && saved < FORM_TOTAL) resume = saved;
+      } catch {
+        // storage blocked — use the first unanswered question
+      }
+      setIndex(resume);
       setStage("form");
     } else {
       setStage("invite");
     }
-  }, [response, answers]);
+  }, [response, answers, indexKey]);
 
   // Nav tab, profile menu, dashboard banner and sign-out prompt all open it.
   useEffect(() => {
@@ -138,24 +146,65 @@ export function FeedbackWidget() {
     return () => window.removeEventListener(OPEN_FEEDBACK_EVENT, openWidget);
   }, [openWidget]);
 
-  async function persist(next: Record<string, Answer>, upToIndex: number, completed: boolean) {
-    if (!user) return;
-    if (!signalsRef.current) {
-      signalsRef.current = await computeUsageSignals(user.id).catch(() => ZERO_SIGNALS);
-    }
-    const sections = Array.from(
-      new Set(FORM_QUESTIONS.slice(0, upToIndex + 1).map((q) => sectionKeyOf(q.id))),
-    );
-    await saveFormV2(
-      user.id,
-      next as Record<string, string | string[]>,
-      sections,
-      signalsRef.current,
-      completed,
-    );
-    const fresh = await getMyFeedbackResponse(user.id).catch(() => null);
-    if (fresh) setResponse(fresh);
+  // Saves run one at a time, in order, and never block the screen: answers
+  // autosave a moment after they change, and Next moves on immediately.
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const lastSavedRef = useRef<string>("");
+  const latestRef = useRef({ answers, index });
+  latestRef.current = { answers, index };
+
+  function persist(
+    next: Record<string, Answer>,
+    upToIndex: number,
+    completed: boolean,
+  ): Promise<void> {
+    const snapshot = JSON.stringify(next);
+    if (!completed && snapshot === lastSavedRef.current) return Promise.resolve();
+    const run = async () => {
+      if (!user) return;
+      if (!signalsRef.current) {
+        signalsRef.current = await computeUsageSignals(user.id).catch(() => ZERO_SIGNALS);
+      }
+      const sections = Array.from(
+        new Set(FORM_QUESTIONS.slice(0, upToIndex + 1).map((q) => sectionKeyOf(q.id))),
+      );
+      await saveFormV2(
+        user.id,
+        next as Record<string, string | string[]>,
+        sections,
+        signalsRef.current,
+        completed,
+      );
+      lastSavedRef.current = snapshot;
+      if (completed) {
+        const fresh = await getMyFeedbackResponse(user.id).catch(() => null);
+        if (fresh) setResponse(fresh);
+      }
+    };
+    const result = queueRef.current.then(run, run);
+    queueRef.current = result.catch(() => {});
+    return result;
   }
+
+  // Autosave shortly after any answer changes while the form is open.
+  useEffect(() => {
+    if (stage !== "form" || !Object.keys(answers).length) return;
+    const t = setTimeout(() => {
+      void persist(latestRef.current.answers, latestRef.current.index, false).catch(() => {});
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, stage]);
+
+  // Remember which question they were on, so reopening resumes there.
+  useEffect(() => {
+    if (stage !== "form" || !indexKey) return;
+    try {
+      localStorage.setItem(indexKey, String(index));
+    } catch {
+      // storage blocked — reopening falls back to the first unanswered question
+    }
+  }, [stage, index, indexKey]);
 
   function setAnswer(id: string, value: string) {
     setAnswers((prev) => ({ ...prev, [id]: value }));
@@ -165,15 +214,18 @@ export function FeedbackWidget() {
     const q = FORM_QUESTIONS[index];
     if (!skip && !isAnswered(q, answers)) return;
     const last = index === FORM_TOTAL - 1;
+    if (!last) {
+      setIndex(index + 1);
+      void persist(answers, index, false).catch(() =>
+        toast.error("Could not save your answer — it will retry as you continue."),
+      );
+      return;
+    }
     setSaving(true);
     try {
-      await persist(answers, index, last);
-      if (last) {
-        setStage("done");
-        toast.success("Thank you — your feedback is in.");
-      } else {
-        setIndex(index + 1);
-      }
+      await persist(answers, index, true);
+      setStage("done");
+      toast.success("Thank you — your feedback is in.");
     } catch {
       toast.error("Could not save your answer. Please try again.");
     } finally {
@@ -182,8 +234,6 @@ export function FeedbackWidget() {
   }
 
   function closeWidget() {
-    // Progress is saved after every answer; also keep whatever is typed on the
-    // current question.
     if (stage === "form" && Object.keys(answers).length > 0) {
       void persist(answers, index, false).catch(() => {});
     }
