@@ -180,7 +180,7 @@ function fromRow(row: ProtestRow): ProtestRecord {
     settlementOfferValue: row.settlement_offer_value,
     settlementOfferReceivedAt: row.settlement_offer_received_at,
     hearingDate: row.hearing_date,
-    hearingCompletedAt: row.hearing_completed_at ?? null,
+    hearingCompletedAt: row.hearing_completed_at,
     hearingTime: row.hearing_time,
     hearingLocation: row.hearing_location,
     hearingMode: row.hearing_mode,
