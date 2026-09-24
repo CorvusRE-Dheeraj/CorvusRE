@@ -2451,3 +2451,17 @@ alter table public.profiles add column if not exists beta_feedback_invite_count 
 -- by itself, substituting your real email, to make that account an admin:
 --
 -- update public.profiles set is_admin = true where email = 'you@example.com';
+
+-- Undo support: an owner can remove the settlement / decision record they
+-- uploaded (wrong document, or changed their mind) and reopen the case.
+drop policy if exists "Users can delete their own settlement agreements" on public.settlement_agreements;
+create policy "Users can delete their own settlement agreements"
+  on public.settlement_agreements for delete
+  using (auth.uid() = user_id);
+grant delete on public.settlement_agreements to authenticated;
+
+drop policy if exists "Users can delete their own decision notices" on public.decision_notices;
+create policy "Users can delete their own decision notices"
+  on public.decision_notices for delete
+  using (auth.uid() = user_id);
+grant delete on public.decision_notices to authenticated;

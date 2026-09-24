@@ -625,3 +625,131 @@ export function getCaseResults(
     actualSavings: Math.round(valueReduction * rate),
   };
 }
+
+// ── Undo ─────────────────────────────────────────────────────────────────
+// Each returns the patch to apply to the in-memory record. They never touch the
+// uploaded files themselves — those stay in the Documents tab to delete there.
+
+// Where the informal tracker should land when a step is undone: back to what the
+// owner had actually recorded (an offer, a schedule) rather than a blank slate.
+export function informalReopenStatus(
+  p: Pick<ProtestRecord, "settlementOfferValue" | "informalReviewDate">,
+): InformalStatus {
+  if (p.settlementOfferValue != null) return "proposed_value_received";
+  return p.informalReviewDate ? "scheduled" : "requested";
+}
+
+const preHearingStatus = (p: Pick<ProtestRecord, "hearingDate">): ProtestRecord["status"] =>
+  p.hearingDate ? "hearing_scheduled" : "filed";
+
+// Informal step done by mistake ("completed" / "unsatisfied" / accepted): reopen it.
+export async function undoInformalStep(protest: ProtestRecord): Promise<Partial<ProtestRecord>> {
+  const informalStatus = informalReopenStatus(protest);
+  const { error } = await supabase
+    .from("protests")
+    .update({ informal_status: informalStatus })
+    .eq("id", protest.id);
+  if (error) throw error;
+  void logCaseEvent(protest.id, "status_change", "Informal review step undone by the owner.", {
+    informalStatus,
+  });
+  return { informalStatus };
+}
+
+// Informal settlement closed the case (wrong document, or changed their mind):
+// remove the settlement record, reopen the case, and put the informal review back
+// where it was so they can re-upload, or choose Unsatisfied to go to a formal hearing.
+export async function undoInformalSettlement(
+  protest: ProtestRecord,
+): Promise<Partial<ProtestRecord>> {
+  const { error: delErr } = await supabase
+    .from("settlement_agreements")
+    .delete()
+    .eq("protest_id", protest.id);
+  if (delErr) throw delErr;
+  const patch: Partial<ProtestRecord> = {
+    status: protest.settlementOfferValue != null ? "offer_received" : "filed",
+    finalValue: null,
+    closedAt: null,
+    escalationPath: null,
+    informalStatus: informalReopenStatus(protest),
+  };
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      status: patch.status,
+      final_value: null,
+      closed_at: null,
+      escalation_path: null,
+      informal_status: patch.informalStatus,
+    })
+    .eq("id", protest.id);
+  if (error) throw error;
+  void logCaseEvent(
+    protest.id,
+    "status_change",
+    "Informal settlement undone by the owner — case reopened.",
+    {},
+  );
+  return patch;
+}
+
+// Formal outcome undone: a decision recorded/closed by mistake, and/or the
+// arbitration / court-appeal choice. Reopens the case at the formal hearing.
+export async function undoFormalOutcome(protest: ProtestRecord): Promise<Partial<ProtestRecord>> {
+  const closed = protest.status === "resolved" && protest.arbDecision != null;
+  const patch: Partial<ProtestRecord> = closed
+    ? {
+        status: preHearingStatus(protest),
+        arbDecision: null,
+        arbDecisionDate: null,
+        finalValue: null,
+        closedAt: null,
+        escalationPath: null,
+      }
+    : {
+        status: protest.arbDecision ? "decision_received" : preHearingStatus(protest),
+        escalationPath: null,
+      };
+  if (closed) {
+    const { error: delErr } = await supabase
+      .from("decision_notices")
+      .delete()
+      .eq("protest_id", protest.id);
+    if (delErr) throw delErr;
+  }
+  const { error } = await supabase
+    .from("protests")
+    .update(
+      closed
+        ? {
+            status: patch.status,
+            arb_decision: null,
+            arb_decision_date: null,
+            final_value: null,
+            closed_at: null,
+            escalation_path: null,
+          }
+        : { status: patch.status, escalation_path: null },
+    )
+    .eq("id", protest.id);
+  if (error) throw error;
+  void logCaseEvent(
+    protest.id,
+    "status_change",
+    closed
+      ? "Formal decision undone by the owner — case reopened."
+      : "Arbitration / court-appeal choice undone by the owner.",
+    {},
+  );
+  return patch;
+}
+
+export async function undoHearingCompleted(protestIdArg: string): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({ hearing_completed_at: null })
+    .eq("id", protestIdArg);
+  if (error) throw error;
+  void logCaseEvent(protestIdArg, "status_change", "Formal hearing completed mark undone.", {});
+}

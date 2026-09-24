@@ -39,6 +39,8 @@ import {
   closeCase,
   getCaseResults,
   updateInformalStatus,
+  undoInformalSettlement,
+  undoInformalStep,
   scheduleInformalReview,
   resolveInformalSettlement,
   saveInformalAppraiserCategory,
@@ -193,6 +195,7 @@ import { verdictMeta } from "@/lib/documents";
 import { PdfFormEditor } from "@/components/PdfFormEditor";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { Modal } from "@/components/Modal";
+import { UndoButton } from "@/components/UndoButton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -4336,6 +4339,32 @@ function InformalReviewSection({
         </select>
       </div>
 
+      {protest.status === "resolved" && protest.arbDecision == null && (
+        <div className="mt-3 rounded-md border border-border p-3 text-sm">
+          <p className="font-medium">This protest was closed by an informal settlement.</p>
+          <UndoButton
+            className="mt-2 block"
+            label="Undo this settlement"
+            confirm="This removes the settlement record and reopens the case at the informal review. You can then upload the correct document, or mark Unsatisfied to go to a formal hearing (and then arbitration or a court appeal). The uploaded file stays in your Documents tab."
+            successMessage="Undone — the informal review is open again."
+            onUndo={async () => {
+              const patch = await undoInformalSettlement(protest);
+              onAgreementChange(null);
+              onUpdate(patch);
+            }}
+          />
+        </div>
+      )}
+      {protest.status !== "resolved" &&
+        ["completed", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+          <UndoButton
+            className="mt-3 block"
+            label="Undo my last informal step"
+            confirm="This puts the informal review back to where it was, so you can mark it completed, upload the settlement, or choose Unsatisfied again."
+            successMessage="Undone — the informal review is open again."
+            onUndo={async () => onUpdate(await undoInformalStep(protest))}
+          />
+        )}
       {protest.status !== "resolved" && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {!["completed", "accepted", "rejected", "no_informal_available"].includes(
