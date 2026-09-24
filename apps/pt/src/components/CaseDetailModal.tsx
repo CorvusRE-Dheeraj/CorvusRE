@@ -659,6 +659,7 @@ export function CaseDetailView({
                 agreement={settlementAgreement}
                 onAgreementChange={setSettlementAgreement}
                 onOpenAppeal={() => setActiveTab("appeal")}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
               <DecisionNoticeSection
                 userId={userId}

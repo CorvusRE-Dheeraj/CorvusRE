@@ -8,6 +8,7 @@ import {
   type SettlementAgreementRecord,
 } from "@/lib/settlement-agreement";
 import { logCaseEvent } from "@/lib/case-audit";
+import { recordEscalation } from "@/lib/protest-case";
 import { getDocumentUrl, getDocumentById } from "@/lib/documents";
 import { currency } from "@/lib/intake-store";
 import { getErrorMessage } from "@/lib/error-message";
@@ -39,6 +40,7 @@ export function CaseOutcomeSection({
   agreement,
   onAgreementChange,
   onOpenAppeal,
+  onUpdate,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -46,10 +48,12 @@ export function CaseOutcomeSection({
   agreement: SettlementAgreementRecord | null;
   onAgreementChange: (a: SettlementAgreementRecord | null) => void;
   onOpenAppeal: () => void;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [localAnswer, setLocalAnswer] = useState<Answer | null>(() => readLocalAnswer(protest.id));
   const [openingDoc, setOpeningDoc] = useState(false);
+  const [choosing, setChoosing] = useState(false);
 
   const outcome = buildCaseOutcome(property, protest, agreement?.settledValue ?? null);
   if (!outcome) return null;
@@ -104,6 +108,28 @@ export function CaseOutcomeSection({
       toast.error(getErrorMessage(err, "Could not open the settlement document."));
     } finally {
       setOpeningDoc(false);
+    }
+  }
+
+  // Unsatisfied with a formal (ARB) result: pick arbitration or a court appeal.
+  const escalated = protest.escalationPath === "appeal" || protest.escalationPath === "arbitration";
+  const canEscalate = outcome.stage === "formal" && !outcome.closed && !escalated;
+
+  async function escalate(path: "appeal" | "arbitration") {
+    setSaving(true);
+    try {
+      await recordEscalation(protest.id, path);
+      onUpdate({ escalationPath: path, status: path === "appeal" ? "appealing" : "arbitrating" });
+      setChoosing(false);
+      toast.success(
+        path === "appeal"
+          ? "Recorded — the case moved to a court appeal."
+          : "Recorded — the case moved to arbitration.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not record this next step."));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -214,53 +240,107 @@ export function CaseOutcomeSection({
       </p>
 
       <div className="mt-3 border-t border-border pt-3">
-        <div className="text-sm font-medium">Are you happy with this {what}?</div>
-        {answer ? (
-          <div className="mt-1.5 text-xs">
-            <span className="badge-soft">
-              {answer === "satisfied" ? "Happy with it" : "Not happy with it"}
-            </span>
-            {answer === "not_satisfied" && (
-              <p className="mt-1.5 text-muted-foreground">
-                If you think the value is still too high, you may have options — see Appeal /
-                Arbitration.{" "}
-                <button
-                  type="button"
-                  onClick={onOpenAppeal}
-                  className="text-accent hover:underline"
-                >
-                  Review my options →
-                </button>
-              </p>
-            )}
+        {outcome.stage === "formal" && escalated ? (
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+            <p className="font-medium">
+              Formal hearing result was unsatisfactory, so the case moved to{" "}
+              {protest.escalationPath === "appeal" ? "a court appeal" : "arbitration"}.
+            </p>
             <button
               type="button"
-              onClick={() => void record(answer === "satisfied" ? "not_satisfied" : "satisfied")}
-              disabled={saving}
-              className="mt-1.5 block text-muted-foreground hover:underline disabled:opacity-60"
+              onClick={onOpenAppeal}
+              className="mt-1.5 text-xs text-accent hover:underline"
             >
-              Change my answer
+              Open Appeal / Arbitration →
             </button>
           </div>
         ) : (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void record("satisfied")}
-              disabled={saving}
-              className="btn-accent text-xs py-1.5 disabled:opacity-60"
-            >
-              Yes, I&apos;m happy
-            </button>
-            <button
-              type="button"
-              onClick={() => void record("not_satisfied")}
-              disabled={saving}
-              className="btn-outline text-xs py-1.5 disabled:opacity-60"
-            >
-              No, I&apos;m not
-            </button>
-          </div>
+          <>
+            <div className="text-sm font-medium">Are you happy with this {what}?</div>
+            {choosing && canEscalate ? (
+              <div className="mt-2 rounded-md border border-border p-3">
+                <p className="text-sm">
+                  Do you want to proceed with arbitration or a court appeal?
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void escalate("arbitration")}
+                    disabled={saving}
+                    className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                  >
+                    Arbitration
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void escalate("appeal")}
+                    disabled={saving}
+                    className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                  >
+                    Court appeal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChoosing(false)}
+                    disabled={saving}
+                    className="text-xs text-muted-foreground hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : answer ? (
+              <div className="mt-1.5 text-xs">
+                <span className="badge-soft">
+                  {answer === "satisfied" ? "Happy with it" : "Not happy with it"}
+                </span>
+                {answer === "not_satisfied" && (
+                  <p className="mt-1.5 text-muted-foreground">
+                    If you think the value is still too high, you may have options — see Appeal /
+                    Arbitration.{" "}
+                    <button
+                      type="button"
+                      onClick={onOpenAppeal}
+                      className="text-accent hover:underline"
+                    >
+                      Review my options →
+                    </button>
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    canEscalate && answer === "satisfied"
+                      ? setChoosing(true)
+                      : void record(answer === "satisfied" ? "not_satisfied" : "satisfied")
+                  }
+                  disabled={saving}
+                  className="mt-1.5 block text-muted-foreground hover:underline disabled:opacity-60"
+                >
+                  Change my answer
+                </button>
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void record("satisfied")}
+                  disabled={saving}
+                  className="btn-accent text-xs py-1.5 disabled:opacity-60"
+                >
+                  Yes, I&apos;m happy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (canEscalate ? setChoosing(true) : void record("not_satisfied"))}
+                  disabled={saving}
+                  className="btn-outline text-xs py-1.5 disabled:opacity-60"
+                >
+                  {canEscalate ? "Unsatisfied" : "No, I'm not"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
