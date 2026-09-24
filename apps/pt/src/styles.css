@@ -863,3 +863,63 @@ header .container-page {
     animation: none;
   }
 }
+
+/* Texas Tax Updates: cards rise in one after another; icons float; the hero glows. */
+@keyframes tu-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tu-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(3deg);
+  }
+}
+@keyframes tu-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.12);
+  }
+}
+.tu-rise {
+  animation: tu-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.tu-float {
+  animation: tu-float 4s ease-in-out infinite;
+}
+.tu-glow {
+  animation: tu-glow 5s ease-in-out infinite;
+}
+.tu-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.tu-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px -14px rgb(0 0 0 / 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tu-rise,
+  .tu-float,
+  .tu-glow {
+    animation: none;
+  }
+  .tu-card:hover {
+    transform: none;
+  }
+}

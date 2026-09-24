@@ -382,3 +382,20 @@ export async function buildReportPdf(
     evidence: [],
   });
 }
+
+// Splits a sentence-style field into short bullet points (at most `max`), so a
+// card can be scanned instead of read. Keeps each bullet to one sentence, and
+// shortens any that run long.
+export function toBullets(text: string, max = 3, maxLen = 170): string[] {
+  const parts = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9“"(])/)
+    .map((s) => s.trim().replace(/[.!?]+$/, ""))
+    .filter(Boolean);
+  return parts.slice(0, max).map((s) => {
+    if (s.length <= maxLen) return s;
+    const cut = s.slice(0, maxLen - 1);
+    const at = cut.lastIndexOf(" ");
+    return `${(at > maxLen * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
+  });
+}
