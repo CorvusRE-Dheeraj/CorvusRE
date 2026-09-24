@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CalendarDays,
   Receipt,
+  Scale,
   Lock,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ const NAV = [
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
+  { to: "/dashboard/tax-updates", label: "Texas Tax Updates", icon: Scale, locked: false },
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
 ] as const;
 

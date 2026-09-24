@@ -43,6 +43,7 @@ import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard
 import { Route as DashboardLayoutSavingsRouteImport } from './routes/dashboard/_layout.savings'
 import { Route as DashboardLayoutSettingsRouteImport } from './routes/dashboard/_layout.settings'
 import { Route as DashboardLayoutTaxBillsRouteImport } from './routes/dashboard/_layout.tax-bills'
+import { Route as DashboardLayoutTaxUpdatesRouteImport } from './routes/dashboard/_layout.tax-updates'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -220,6 +221,12 @@ const DashboardLayoutTaxBillsRoute = DashboardLayoutTaxBillsRouteImport.update({
   path: '/tax-bills',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutTaxUpdatesRoute =
+  DashboardLayoutTaxUpdatesRouteImport.update({
+    id: '/tax-updates',
+    path: '/tax-updates',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -255,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -290,6 +298,7 @@ export interface FileRoutesByTo {
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -327,6 +336,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/_layout/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/_layout/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/_layout/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard/_layout/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -365,6 +375,7 @@ export interface FileRouteTypes {
     | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
+    | '/dashboard/tax-updates'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -400,6 +411,7 @@ export interface FileRouteTypes {
     | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
+    | '/dashboard/tax-updates'
     | '/dashboard'
   id:
     | '__root__'
@@ -436,6 +448,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/savings'
     | '/dashboard/_layout/settings'
     | '/dashboard/_layout/tax-bills'
+    | '/dashboard/_layout/tax-updates'
     | '/dashboard/_layout/'
   fileRoutesById: FileRoutesById
 }
@@ -702,6 +715,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutTaxBillsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/tax-updates': {
+      id: '/dashboard/_layout/tax-updates'
+      path: '/tax-updates'
+      fullPath: '/dashboard/tax-updates'
+      preLoaderRoute: typeof DashboardLayoutTaxUpdatesRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
   }
 }
 
@@ -719,6 +739,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutSavingsRoute: typeof DashboardLayoutSavingsRoute
   DashboardLayoutSettingsRoute: typeof DashboardLayoutSettingsRoute
   DashboardLayoutTaxBillsRoute: typeof DashboardLayoutTaxBillsRoute
+  DashboardLayoutTaxUpdatesRoute: typeof DashboardLayoutTaxUpdatesRoute
   DashboardLayoutIndexRoute: typeof DashboardLayoutIndexRoute
 }
 
@@ -736,6 +757,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutSavingsRoute: DashboardLayoutSavingsRoute,
   DashboardLayoutSettingsRoute: DashboardLayoutSettingsRoute,
   DashboardLayoutTaxBillsRoute: DashboardLayoutTaxBillsRoute,
+  DashboardLayoutTaxUpdatesRoute: DashboardLayoutTaxUpdatesRoute,
   DashboardLayoutIndexRoute: DashboardLayoutIndexRoute,
 }
 

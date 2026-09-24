@@ -4,7 +4,8 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { checkIsAdmin } from "@/lib/admin";
 import { shouldShowShell } from "@/components/AppShell";
-import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
+import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import {
   Dialog,
@@ -53,6 +54,13 @@ export function SiteNav() {
   const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
   const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
+  // The Feedback nav tab opens the floating feedback widget in place instead of
+  // navigating anywhere.
+  const feedbackItemClick = (to: string) => (e: { preventDefault: () => void }) => {
+    if (to !== "/dashboard/feedback") return;
+    e.preventDefault();
+    openFeedbackWidget();
+  };
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
@@ -95,7 +103,7 @@ export function SiteNav() {
       return;
     }
     getMyFeedbackResponse(user.id)
-      .then((r) => setFeedbackDone(!!r?.completedAt))
+      .then((r) => setFeedbackDone(isFormV2Complete(r)))
       .catch(() => setFeedbackDone(null));
     getMyBilling(user.id)
       .then((b) => setIsBetaUser(b.plan === "beta"))
@@ -262,6 +270,7 @@ export function SiteNav() {
                 linkRefs.current[item.to] = el;
               }}
               to={item.to}
+              onClick={feedbackItemClick(item.to)}
               className="relative rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}
               activeOptions={{ exact: item.to === "/" }}
@@ -324,7 +333,11 @@ export function SiteNav() {
                   {isBetaUser && (
                     <Link
                       to="/dashboard/feedback"
-                      onClick={() => setProfileOpen(false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setProfileOpen(false);
+                        openFeedbackWidget();
+                      }}
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
                       Beta Feedback
@@ -375,7 +388,10 @@ export function SiteNav() {
               <Link
                 key={item.to}
                 to={item.to}
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  setOpen(false);
+                  feedbackItemClick(item.to)(e);
+                }}
                 className="rounded-md px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary"
               >
                 {item.label}
@@ -416,7 +432,7 @@ export function SiteNav() {
             <button
               onClick={() => {
                 setShowSignOutPrompt(false);
-                nav({ to: "/dashboard/feedback" });
+                openFeedbackWidget();
               }}
               className="btn-primary btn-primary-hover"
             >

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { CourtAppealData } from "./court-appeal";
 import { getModuleAnalysis, type ModuleAnalysisInput } from "./ai-report-modules";
 import type { PropertyRecord } from "./properties";
 import type {
@@ -567,6 +568,31 @@ export async function markHearingCompleted(protestId: string): Promise<string> {
   if (error) throw error;
   void logCaseEvent(protestId, "status_change", "Formal hearing marked completed.", {});
   return at;
+}
+
+export async function markArbitrationFiled(protestId: string): Promise<string> {
+  const at = new Date().toISOString();
+  const { error } = await supabase
+    .from("protests")
+    .update({ arbitration_filed_at: at })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(
+    protestId,
+    "status_change",
+    "Request for binding arbitration filed (owner confirmed).",
+    {},
+  );
+  return at;
+}
+
+// Replaces the whole court_appeal blob — callers pass the merged object.
+export async function saveCourtAppeal(protestId: string, data: CourtAppealData): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({ court_appeal: data })
+    .eq("id", protestId);
+  if (error) throw error;
 }
 
 export async function closeCase(protestId: string, finalValue: number): Promise<void> {
