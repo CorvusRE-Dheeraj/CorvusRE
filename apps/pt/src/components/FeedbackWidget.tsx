@@ -72,6 +72,7 @@ export function FeedbackWidget() {
   const [saving, setSaving] = useState(false);
   const signalsRef = useRef<UsageSignals | null>(null);
   const [hintExpired, setHintExpired] = useState(false);
+  const [hintHover, setHintHover] = useState(false);
 
   const complete = isFormV2Complete(response);
   const indexKey = user ? `corvuspt.feedbackIndex.${user.id}` : null;
@@ -272,8 +273,14 @@ export function FeedbackWidget() {
   return createPortal(
     <>
       {stage === "closed" && !complete && (
-        <div className="print:hidden fixed bottom-24 right-5 z-40 flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2">
-          {hintExpired ? (
+        <div
+          className="print:hidden fixed bottom-24 right-5 z-40 flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2"
+          onMouseEnter={() => setHintHover(true)}
+          onMouseLeave={() => setHintHover(false)}
+          onFocus={() => setHintHover(true)}
+          onBlur={() => setHintHover(false)}
+        >
+          {hintExpired && !hintHover ? (
             <button
               type="button"
               onClick={openWidget}
