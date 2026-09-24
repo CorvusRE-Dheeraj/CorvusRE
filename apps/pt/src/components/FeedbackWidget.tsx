@@ -213,14 +213,23 @@ export function FeedbackWidget() {
   return createPortal(
     <>
       {stage === "closed" && !complete && (
-        <button
-          type="button"
-          onClick={openWidget}
-          aria-label="Give feedback"
-          className="print:hidden fixed bottom-24 right-5 z-40 grid h-14 w-14 place-items-center rounded-full bg-card shadow-lg ring-1 ring-border transition-transform hover:scale-105 fb-bob"
-        >
-          <FeedbackBot className="h-10 w-10" />
-        </button>
+        <div className="print:hidden fixed bottom-24 right-5 z-40 flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={openWidget}
+            className="rounded-2xl rounded-br-sm border border-border bg-card px-3 py-2 text-left text-xs font-medium shadow-lg"
+          >
+            👋 Hey! Got 2 minutes? Tell us what you think!
+          </button>
+          <button
+            type="button"
+            onClick={openWidget}
+            aria-label="Give feedback"
+            className="grid h-14 w-14 place-items-center rounded-full bg-card shadow-lg ring-1 ring-border transition-transform hover:scale-105 fb-bob"
+          >
+            <FeedbackBot className="h-10 w-10" />
+          </button>
+        </div>
       )}
 
       {stage === "bubble" && (
