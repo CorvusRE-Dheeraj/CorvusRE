@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import {
+  Building2,
+  CalendarClock,
+  Download,
+  Gavel,
+  Landmark,
+  Lightbulb,
+  MapPin,
+  Scale,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
@@ -39,6 +49,26 @@ export const Route = createFileRoute("/dashboard/_layout/tax-updates")({
   head: () => ({ meta: [{ title: "Texas Tax Law & Updates — CorvusPT" }] }),
   component: TaxUpdates,
 });
+
+const CHAPTER_ICON = [Landmark, MapPin, Scale, Building2, Gavel, CalendarClock, Lightbulb];
+
+// Counts up to `to` once, so the hero numbers feel alive.
+function CountUp({ to }: { to: number }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (to === 0) return setN(0);
+    let frame = 0;
+    const start = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 900);
+      setN(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [to]);
+  return <>{n}</>;
+}
 
 const chip = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
@@ -171,23 +201,51 @@ function TaxUpdates() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">Texas Tax Law &amp; Updates</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            A short weekly brief of new or changed Texas property-tax information, built only from
-            official sources (Comptroller, Legislature, Texas Register, appraisal districts). Not
-            legal or tax advice — verify each item at its source.
-          </p>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-sky-700 p-5 text-white sm:p-7">
+        <div className="tu-glow pointer-events-none absolute -right-10 -top-10 h-56 w-56 rounded-full bg-white/25 blur-3xl" />
+        <div className="tu-glow pointer-events-none absolute -bottom-16 left-1/3 h-48 w-48 rounded-full bg-sky-300/30 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="tu-float grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur">
+              <Scale className="h-7 w-7" />
+            </div>
+            <div>
+              <h1 className="font-serif text-2xl font-semibold sm:text-3xl">
+                Texas Tax Law &amp; Updates
+              </h1>
+              <p className="mt-1 max-w-xl text-sm text-white/85">
+                What changed this week in Texas property tax — from official sources only. Not legal
+                or tax advice.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void generate()}
+            disabled={!report || generating}
+            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03] disabled:opacity-60"
+          >
+            {generating ? "Generating…" : "Generate update report"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void generate()}
-          disabled={!report || generating}
-          className="btn-primary btn-primary-hover text-sm disabled:opacity-60"
-        >
-          {generating ? "Generating…" : "Generate update report"}
-        </button>
+        {report && (
+          <div className="relative mt-5 grid grid-cols-3 gap-2 sm:max-w-md">
+            {(
+              [
+                ["Updates", report.updates.length],
+                ["New this week", report.updates.filter((u) => u.isNew).length],
+                ["Counties", countiesIn(report.updates).length],
+              ] as const
+            ).map(([label, n]) => (
+              <div key={label} className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20">
+                <div className="text-2xl font-semibold tabular-nums">
+                  <CountUp to={n} />
+                </div>
+                <div className="text-[11px] uppercase tracking-wide text-white/80">{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -205,7 +263,6 @@ function TaxUpdates() {
           <p className="mt-5 text-xs text-muted-foreground">
             {report.title} · updated {new Date(report.generatedAt).toLocaleString()}
           </p>
-          <p className="mt-2 text-sm">{report.summary}</p>
           <button
             type="button"
             onClick={() => setShowSources((v) => !v)}
@@ -333,11 +390,25 @@ function TaxUpdates() {
               if (items.length === 0 && !showStanding && filtering) return null;
               return (
                 <section key={ch.n}>
-                  <h2 className="font-serif text-lg font-semibold">{ch.title}</h2>
-                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                    {items.map((u) => (
+                  <h2 className="flex items-center gap-2 font-serif text-lg font-semibold">
+                    {(() => {
+                      const ChIcon = CHAPTER_ICON[ch.n - 1] ?? Scale;
+                      return (
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent">
+                          <ChIcon className="h-4 w-4" />
+                        </span>
+                      );
+                    })()}
+                    {ch.title}
+                    <span className="rounded-full bg-secondary px-2 py-0.5 font-sans text-[11px] font-medium text-muted-foreground">
+                      {items.length}
+                    </span>
+                  </h2>
+                  <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                    {items.map((u, i) => (
                       <TaxUpdateCard
                         key={u.id}
+                        index={i}
                         update={u}
                         affected={propertiesAffected(u, contexts)}
                         myContext={myContext}
@@ -345,8 +416,8 @@ function TaxUpdates() {
                     ))}
                   </div>
                   {items.length === 0 && !showStanding && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      No verified updates this week.
+                    <p className="mt-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                      Nothing verified here this week.
                     </p>
                   )}
                   {showStanding && (

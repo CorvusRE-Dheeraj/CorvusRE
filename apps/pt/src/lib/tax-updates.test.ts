@@ -9,6 +9,7 @@ import {
   filterUpdates,
   NO_FILTER,
   propertiesAffected,
+  toBullets,
   updatesForProperty,
   type TaxReport,
   type TaxUpdate,
@@ -183,5 +184,17 @@ describe("criticalUpdates", () => {
     ];
     expect(criticalUpdates(list).map((x) => x.id)).toEqual(["dl", "law", "rule"]);
     expect(criticalUpdates(list, 1)).toHaveLength(1);
+  });
+});
+
+describe("toBullets", () => {
+  it("splits sentences into short bullets and caps the count and length", () => {
+    expect(toBullets("First thing. Second thing! Third? Fourth one.")).toEqual([
+      "First thing",
+      "Second thing",
+      "Third",
+    ]);
+    expect(toBullets("x".repeat(300), 3, 20)[0]).toHaveLength(20);
+    expect(toBullets("")).toEqual([]);
   });
 });
