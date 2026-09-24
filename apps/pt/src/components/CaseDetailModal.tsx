@@ -564,7 +564,7 @@ export function CaseDetailView({
                   since Prepare & File is where the filing steps it tracks
                   (Submit/Track/Decision/Savings) actually get worked. */}
               <div className="mt-6">
-                <JourneyTracker />
+                <JourneyTracker propertyId={property.id} />
               </div>
             </div>
           )}
