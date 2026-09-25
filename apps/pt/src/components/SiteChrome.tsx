@@ -1,3 +1,4 @@
+import { ConfirmHost } from "@/components/ConfirmHost";
 import { WelcomeTour } from "@/components/WelcomeTour";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -287,6 +288,7 @@ export function SiteNav() {
         <div className="flex items-center gap-2">
           <HelpMenu />
           <WelcomeTour />
+          <ConfirmHost />
           <ThemeToggle />
           {signedIn ? (
             <div className="relative" ref={profileRef}>

@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { useEffect, useState } from "react";
@@ -191,7 +192,8 @@ function Documents() {
   }
 
   async function handlePurge(doc: DocumentRecord) {
-    if (!window.confirm(`Permanently delete "${doc.fileName}"? This can't be undone.`)) return;
+    if (!(await confirmDialog(`Permanently delete "${doc.fileName}"? This can't be undone.`)))
+      return;
     try {
       await purgeDocument(doc);
       setTrashed((prev) => prev.filter((d) => d.id !== doc.id));

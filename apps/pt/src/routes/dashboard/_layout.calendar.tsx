@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -209,7 +210,9 @@ function GoogleConnectSection({ userId }: { userId: string }) {
 
   async function handleDisconnect() {
     if (
-      !window.confirm("Stop syncing to Google Calendar? Events already there won't be removed.")
+      !(await confirmDialog(
+        "Stop syncing to Google Calendar? Events already there won't be removed.",
+      ))
     ) {
       return;
     }
@@ -287,9 +290,9 @@ function LinkSyncSection({ userId }: { userId: string }) {
 
   async function handleRegenerate() {
     if (
-      !window.confirm(
+      !(await confirmDialog(
         "Get a new sync link? Any calendar already subscribed with the old one will stop updating.",
-      )
+      ))
     ) {
       return;
     }

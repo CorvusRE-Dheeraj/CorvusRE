@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -374,7 +375,7 @@ function Properties() {
   // Cancels exactly this property's own subscription — unambiguous now that
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property.`,
     );
     if (!confirmed) return;
@@ -438,7 +439,7 @@ function Properties() {
         : currentPrice != null && newPrice < currentPrice
           ? "This is a downgrade — Stripe will credit your account today for the prorated difference (applied to your next invoice, not refunded directly to your card)."
           : "Stripe will settle the prorated difference today.";
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Switch ${p.address} from ${TIER_LABEL[p.planTier as Tier] ?? "its current plan"} to ${TIER_LABEL[tier]}? ${settlementNote}`,
     );
     if (!confirmed) return;
@@ -472,7 +473,7 @@ function Properties() {
       toast.error("Cancel this property's subscription before deleting it.");
       return;
     }
-    if (!window.confirm(`Remove ${p.address} from your dashboard?`)) return;
+    if (!(await confirmDialog(`Remove ${p.address} from your dashboard?`))) return;
     setDeletingId(p.id);
     try {
       await deleteProperty(p.id);
@@ -500,12 +501,12 @@ function Properties() {
     }
     const n = deletable.length;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Remove ${n} propert${n === 1 ? "y" : "ies"} from your dashboard?` +
           (blocked.length
             ? `\n\n${blocked.length} with an active subscription will be skipped.`
             : ""),
-      )
+      ))
     ) {
       return;
     }

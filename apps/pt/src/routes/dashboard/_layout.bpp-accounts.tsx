@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -131,7 +132,7 @@ function BppAccounts() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Remove this BPP account?")) return;
+    if (!(await confirmDialog("Remove this BPP account?"))) return;
     setDeletingId(id);
     try {
       await deleteBppAccount(id);
@@ -156,7 +157,7 @@ function BppAccounts() {
   }
 
   async function handleCancel(account: BppAccountRecord) {
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `Cancel the subscription for ${account.businessName}? It ends immediately.`,
     );
     if (!ok) return;
