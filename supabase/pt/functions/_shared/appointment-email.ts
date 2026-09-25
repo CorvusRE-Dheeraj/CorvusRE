@@ -150,7 +150,7 @@ export function inviteAttachment(opts: {
 Reschedule or cancel: ${manageUrl(opts.token)}`,
     location: virtual ? "Google Meet (link to follow)" : "Phone call",
     url: manageUrl(opts.token),
-    organizerEmail: "info@corvusre.com",
+    organizerEmail: STAFF_EMAIL,
     organizerName: "CorvusPT",
     attendees: [
       { email: opts.visitor.email, name: opts.visitor.name },

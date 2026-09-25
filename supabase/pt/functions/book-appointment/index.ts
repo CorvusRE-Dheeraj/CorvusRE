@@ -12,6 +12,7 @@ import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotProblem } from "../_shared/appointment-rules.ts";
 import { createMeetEvent, hostAccessToken } from "../_shared/google-meet.ts";
 import {
+  STAFF_EMAIL,
   TEAM_EMAILS,
   confirmationEmail,
   inviteAttachment,
@@ -155,7 +156,7 @@ Deno.serve(async (req: Request) => {
       });
       try {
         const m = confirmationEmail({ name, when, meetingType, phone, token, startIso, meetLink });
-        await sendEmail(resendKey, [email], m.subject, m.html, m.text, undefined, googleEventId ? undefined : [invite]);
+        await sendEmail(resendKey, [email], m.subject, m.html, m.text, STAFF_EMAIL, googleEventId ? undefined : [invite]);
         emailed = true;
       } catch (err) {
         console.error("Appointment confirmation email failed:", err);

@@ -11,6 +11,7 @@ import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotKey, slotProblem } from "../_shared/appointment-rules.ts";
 import { deleteMeetEvent, hostAccessToken, moveMeetEvent } from "../_shared/google-meet.ts";
 import {
+  STAFF_EMAIL,
   TEAM_EMAILS,
   cancellationEmail,
   confirmationEmail,
@@ -109,7 +110,7 @@ Deno.serve(async (req: Request) => {
       if (resendKey) {
         try {
           const m = cancellationEmail({ name: appt.name as string, when: oldWhen, meetingType: appt.meeting_type as string });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, googleHandled ? undefined : [cancelInvite]);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, STAFF_EMAIL, googleHandled ? undefined : [cancelInvite]);
         } catch (e) {
           console.error("Cancellation email failed:", e);
         }
@@ -186,7 +187,7 @@ Deno.serve(async (req: Request) => {
             meetLink: googleMoved ? (appt.meet_link as string | null) : null,
             rescheduled: true,
           });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, googleMoved ? undefined : [moveInvite]);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, STAFF_EMAIL, googleMoved ? undefined : [moveInvite]);
         } catch (e) {
           console.error("Reschedule confirmation email failed:", e);
         }

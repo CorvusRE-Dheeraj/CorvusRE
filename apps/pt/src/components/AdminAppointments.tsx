@@ -278,7 +278,7 @@ export function AdminAppointments() {
                   onClick={() => void startGoogleCalendarConnect()}
                   className="btn-primary text-xs"
                 >
-                  Connect Google (sign in as info@corvusre.com)
+                  Connect Google (sign in as properties@srclandbuilding.com)
                 </button>
               )}
               {!iConnected && (
