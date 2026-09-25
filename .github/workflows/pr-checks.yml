@@ -1,0 +1,69 @@
+name: PR Checks
+
+# Runs on every pull request into main, dev, or qa. Mirrors the build/test
+# steps from deploy.yml (without the actual deploy or the e2e suite) so a
+# PR's required status checks reflect whether each app would build
+# successfully -- deploy.yml itself only runs after a push already lands
+# on dev, so it can't gate the merge that produces that push.
+#
+# These builds use placeholder values for client-side env vars (they only
+# need to be well-formed strings for the bundler, not the real project
+# keys) -- keeps this PR-only check independent of production secrets.
+
+on:
+  pull_request:
+    branches: [main, dev, qa]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-build-pt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/pt
+      - run: npm run build -w apps/pt
+        env:
+          SITE_BASE: /corvuspt/
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+          VITE_STRIPE_PUBLISHABLE_KEY_TEST: placeholder-stripe-test-key
+          VITE_STRIPE_PUBLISHABLE_KEY_LIVE: placeholder-stripe-live-key
+          VITE_GOOGLE_MAPS_API_KEY: placeholder-maps-key
+
+  pr-build-dp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/dp
+      - run: npm run build -w apps/dp
+        env:
+          SITE_BASE: /corvusdp/
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+          VITE_GOOGLE_MAPS_API_KEY: placeholder-maps-key
+
+  pr-build-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test -w apps/identity
+      - run: npm run build -w apps/identity
+        env:
+          SITE_BASE: /auth/
