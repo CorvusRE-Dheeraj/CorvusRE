@@ -380,7 +380,11 @@ export function FeedbackWidget() {
                 {index === 0 ? "Great! Let's start." : "Thanks — keep going."}
               </p>
               <div className="mt-1 flex items-center gap-2">
-                <Progress value={((index + 1) / FORM_TOTAL) * 100} className="h-1.5 flex-1" />
+                <Progress
+                  aria-label="Feedback form progress"
+                  value={((index + 1) / FORM_TOTAL) * 100}
+                  className="h-1.5 flex-1"
+                />
                 <span className="whitespace-nowrap text-[11px] text-muted-foreground">
                   {index + 1} / {FORM_TOTAL}
                 </span>

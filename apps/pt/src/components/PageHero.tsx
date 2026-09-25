@@ -19,7 +19,7 @@ const TONE: Record<HeroTone, { bg: string; blob1: string; blob2: string }> = {
     blob2: "bg-sky-300/15",
   },
   violet: {
-    bg: "from-violet-800 via-purple-800 to-indigo-900",
+    bg: "from-violet-900 via-purple-900 to-indigo-950",
     blob1: "bg-white/10",
     blob2: "bg-fuchsia-300/12",
   },
@@ -102,13 +102,20 @@ export function PageHero({
         {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
       </div>
       {stats && stats.length > 0 && (
-        <div className="relative mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <div
+          className={`relative mt-4 grid gap-2 sm:flex sm:flex-wrap ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+        >
           {stats.map((st) => (
-            <div key={st.label} className="rounded-xl bg-white/15 px-4 py-2 ring-1 ring-white/20">
-              <div className="text-2xl font-semibold tabular-nums">
+            <div
+              key={st.label}
+              className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20 sm:px-4"
+            >
+              <div className="text-xl font-semibold tabular-nums sm:text-2xl">
                 <CountUp to={st.value} format={st.format} />
               </div>
-              <div className="text-[11px] uppercase tracking-wide text-white/80">{st.label}</div>
+              <div className="text-[10px] uppercase tracking-wide text-white/80 sm:text-[11px]">
+                {st.label}
+              </div>
             </div>
           ))}
         </div>

@@ -5465,7 +5465,7 @@ function FormulaChain({
         Icon={Home}
         value={compactCurrency(reduction)}
         label="value reduction"
-        tone="bg-sky-500/15 text-sky-600"
+        tone="bg-sky-500/15 text-sky-700"
       />
       <span className="text-sm text-muted-foreground">×</span>
       <FormulaIcon
@@ -8046,7 +8046,7 @@ function CostBenefitRow({ savings }: { savings: number }) {
         Icon={DollarSign}
         value={compactCurrency(cost)}
         label="protest cost (25%)"
-        tone="bg-violet-500/15 text-violet-600"
+        tone="bg-violet-500/15 text-violet-700"
       />
       <span className="text-sm text-muted-foreground">−</span>
       <FormulaIcon
@@ -8101,7 +8101,7 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
               : compactCurrency(a.indicatedValue)
           }
           label="indicated"
-          tone="bg-sky-500/15 text-sky-600"
+          tone="bg-sky-500/15 text-sky-700"
         />
         <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
         <FormulaIcon
@@ -8154,7 +8154,7 @@ function SavingsFlowStrip({ a }: { a: SavingsAnalysis }) {
     {
       label: a.indicatedRange ? "AI-Indicated Value Range" : "AI-Indicated Value",
       value: indicated,
-      tone: "border-sky-500/40 bg-sky-500/5 text-sky-600",
+      tone: "border-sky-500/40 bg-sky-500/5 text-sky-700",
       Icon: Home,
     },
     {
@@ -8308,7 +8308,7 @@ function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
           Icon={DollarSign}
           value={a.protestCostSource === "none" ? "$0" : currency(a.protestCost)}
           label="protest cost"
-          tone="bg-violet-500/15 text-violet-600"
+          tone="bg-violet-500/15 text-violet-700"
         />
         <span className="text-sm text-muted-foreground">=</span>
         <FormulaIcon

@@ -528,7 +528,7 @@ function CalendarPage() {
         <div className="flex items-center justify-between">
           <button
             onClick={() => setMonth((m) => subMonths(m, 1))}
-            className="rounded-md p-1.5 hover:bg-secondary"
+            className="rounded-md p-2.5 hover:bg-secondary"
             aria-label="Previous month"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -536,7 +536,7 @@ function CalendarPage() {
           <h2 className="font-semibold">{format(month, "MMMM yyyy")}</h2>
           <button
             onClick={() => setMonth((m) => addMonths(m, 1))}
-            className="rounded-md p-1.5 hover:bg-secondary"
+            className="rounded-md p-2.5 hover:bg-secondary"
             aria-label="Next month"
           >
             <ChevronRight className="h-4 w-4" />
@@ -572,7 +572,7 @@ function CalendarPage() {
                     : dayEvents.length > 0
                       ? "hover:bg-secondary/60"
                       : "hover:bg-secondary/30"
-                } ${!inMonth ? "text-muted-foreground/40" : ""}`}
+                } ${!inMonth ? "text-muted-foreground/60" : ""}`}
               >
                 <span
                   className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${

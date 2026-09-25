@@ -255,11 +255,15 @@ export function SiteNav() {
         <Link to="/" className="flex items-center gap-2">
           <LogoMark />
           <span className="font-serif text-lg font-semibold tracking-tight">
-            Corvus<span className="text-emerald-600 dark:text-emerald-400">PT</span>
+            Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
           </span>
         </Link>
 
-        <nav ref={navContainerRef} className="relative hidden lg:flex items-center gap-1">
+        <nav
+          aria-label="Main"
+          ref={navContainerRef}
+          className="relative hidden lg:flex items-center gap-1"
+        >
           <span
             aria-hidden
             className="absolute inset-y-1 rounded-md bg-nav-highlight transition-[left,width] duration-300 ease-out"
@@ -286,9 +290,11 @@ export function SiteNav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <NotificationsBell />
-          <HelpMenu />
+          <div className="hidden sm:block">
+            <HelpMenu />
+          </div>
           <WelcomeTour />
           <ConfirmHost />
           <ThemeToggle />
@@ -408,6 +414,9 @@ export function SiteNav() {
                 {item.label}
               </Link>
             ))}
+            <div className="sm:hidden">
+              <HelpMenu inline />
+            </div>
             {!signedIn && (
               <Link
                 to="/sign-in"

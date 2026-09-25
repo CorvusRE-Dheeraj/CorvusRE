@@ -83,12 +83,16 @@ export function GettingStarted({
             }
           }}
           aria-label="Hide getting started"
-          className="rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <Progress value={(doneCount / steps.length) * 100} className="mt-3 h-2" />
+      <Progress
+        aria-label="Getting started progress"
+        value={(doneCount / steps.length) * 100}
+        className="mt-3 h-2"
+      />
       <ul className="mt-4 grid gap-2">
         {steps.map((s) => (
           <li key={s.label} className="flex items-start gap-3 text-sm">

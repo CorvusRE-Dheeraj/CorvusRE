@@ -146,7 +146,7 @@ function Home() {
             <h1 className="font-serif text-3xl sm:text-4xl md:text-6xl font-semibold leading-[1.15] md:leading-[1.1]">
               AI Property Tax Management
               <br className="hidden md:block" />{" "}
-              <span className="text-emerald-600 dark:text-emerald-400">Protest and Save</span>
+              <span className="text-emerald-700 dark:text-emerald-400">Protest and Save</span>
             </h1>
             <p className="mt-3 text-lg sm:text-xl font-medium text-foreground/80">
               From Notice to Savings.
