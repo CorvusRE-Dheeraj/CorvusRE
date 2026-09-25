@@ -204,7 +204,7 @@ function TaxUpdates() {
 
   return (
     <div>
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-sky-700 p-5 text-white sm:p-7">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 p-5 text-white sm:p-7">
         <div className="tu-glow pointer-events-none absolute -right-10 -top-10 h-56 w-56 rounded-full bg-white/25 blur-3xl" />
         <div className="tu-glow pointer-events-none absolute -bottom-16 left-1/3 h-48 w-48 rounded-full bg-sky-300/30 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -476,7 +476,7 @@ function TaxUpdates() {
         </>
       )}
 
-      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white sm:p-7">
+      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white sm:p-7">
         {(() => {
           const lead = report ? leadUpdate(report.updates) : null;
           return (

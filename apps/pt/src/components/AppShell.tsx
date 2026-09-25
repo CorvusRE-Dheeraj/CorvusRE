@@ -38,31 +38,31 @@ const NAV = [
 const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard": {
     icon: "text-emerald-600",
-    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-teal-600",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-teal-700",
   },
   "/dashboard/properties": {
     icon: "text-emerald-600",
-    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-sky-600",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-sky-700",
   },
   "/dashboard/bpp-accounts": {
     icon: "text-sky-600",
-    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
   },
   "/dashboard/documents": {
     icon: "text-sky-600",
-    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
   },
   "/dashboard/deadlines": {
     icon: "text-amber-600",
-    active: "data-[status=active]:from-amber-500 data-[status=active]:to-rose-500",
+    active: "data-[status=active]:from-amber-600 data-[status=active]:to-rose-700",
   },
   "/dashboard/calendar": {
     icon: "text-violet-600",
-    active: "data-[status=active]:from-violet-500 data-[status=active]:to-fuchsia-600",
+    active: "data-[status=active]:from-violet-600 data-[status=active]:to-fuchsia-700",
   },
   "/dashboard/tax-bills": {
     icon: "text-teal-600",
-    active: "data-[status=active]:from-teal-500 data-[status=active]:to-blue-600",
+    active: "data-[status=active]:from-teal-600 data-[status=active]:to-blue-700",
   },
 };
 

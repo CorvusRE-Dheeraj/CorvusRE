@@ -136,7 +136,7 @@ export function FinalOutcomeSection({
 
   return (
     <div className="mt-2 grid gap-4">
-      <div className="tu-rise relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-sky-700 p-6 text-white">
+      <div className="tu-rise relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 p-6 text-white">
         {celebrate && <Confetti />}
         <div className="tu-glow pointer-events-none absolute -right-8 -top-8 h-44 w-44 rounded-full bg-white/25 blur-3xl" />
         <div className="relative flex flex-wrap items-center gap-4">

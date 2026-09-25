@@ -9,44 +9,44 @@ export type HeroTone =
 // One gradient per tone — full class strings so Tailwind can see them.
 const TONE: Record<HeroTone, { bg: string; blob1: string; blob2: string }> = {
   emerald: {
-    bg: "from-emerald-600 via-teal-600 to-sky-700",
-    blob1: "bg-white/25",
-    blob2: "bg-lime-300/30",
+    bg: "from-emerald-700 via-teal-700 to-cyan-800",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/15",
   },
   sky: {
-    bg: "from-sky-600 via-blue-600 to-indigo-700",
-    blob1: "bg-white/25",
-    blob2: "bg-cyan-300/30",
+    bg: "from-sky-800 via-blue-800 to-indigo-900",
+    blob1: "bg-white/10",
+    blob2: "bg-sky-300/15",
   },
   violet: {
-    bg: "from-violet-600 via-purple-600 to-fuchsia-700",
-    blob1: "bg-white/25",
-    blob2: "bg-pink-300/30",
+    bg: "from-violet-800 via-purple-800 to-indigo-900",
+    blob1: "bg-white/10",
+    blob2: "bg-fuchsia-300/12",
   },
   amber: {
-    bg: "from-amber-500 via-orange-500 to-rose-600",
-    blob1: "bg-white/30",
-    blob2: "bg-yellow-200/30",
+    bg: "from-amber-700 via-orange-700 to-rose-800",
+    blob1: "bg-white/10",
+    blob2: "bg-amber-200/12",
   },
   teal: {
-    bg: "from-teal-600 via-cyan-600 to-blue-700",
-    blob1: "bg-white/25",
-    blob2: "bg-emerald-300/30",
+    bg: "from-teal-700 via-cyan-800 to-blue-900",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/15",
   },
   rose: {
-    bg: "from-rose-500 via-pink-600 to-purple-700",
-    blob1: "bg-white/25",
-    blob2: "bg-orange-300/30",
+    bg: "from-rose-700 via-pink-800 to-purple-900",
+    blob1: "bg-white/10",
+    blob2: "bg-rose-200/12",
   },
   indigo: {
-    bg: "from-indigo-600 via-blue-700 to-slate-800",
-    blob1: "bg-white/20",
-    blob2: "bg-sky-300/30",
+    bg: "from-indigo-700 via-blue-800 to-slate-900",
+    blob1: "bg-white/10",
+    blob2: "bg-sky-300/15",
   },
   slate: {
-    bg: "from-slate-700 via-slate-800 to-emerald-900",
-    blob1: "bg-white/15",
-    blob2: "bg-emerald-300/25",
+    bg: "from-slate-700 via-slate-800 to-emerald-950",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/12",
   },
 };
 
