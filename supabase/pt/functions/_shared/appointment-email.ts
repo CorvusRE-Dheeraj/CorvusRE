@@ -75,7 +75,7 @@ export function confirmationEmail(opts: {
   const how = opts.meetLink
     ? "Join with Google Meet at the time above:"
     : opts.meetingType === "virtual"
-      ? "We'll email you the Google Meet link before your appointment."
+      ? "The calendar invite is attached. We'll email you the meeting link before your appointment."
       : `We'll call you at ${opts.phone}.`;
   const gcal = opts.startIso && !opts.googleInvite ? googleCalendarUrl(opts.startIso, kind, opts.name, opts.meetingType, url, opts.meetLink) : null;
   const html = emailShell({

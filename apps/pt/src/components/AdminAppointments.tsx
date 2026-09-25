@@ -162,7 +162,7 @@ export function AdminAppointments() {
           ) : (
             a.status === "booked" && (
               <div className="mt-1 text-xs text-warning-foreground">
-                No Meet link was created — create one and email it to the visitor.
+                To do: send the meeting link to this visitor.
               </div>
             )
           )}

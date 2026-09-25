@@ -171,7 +171,7 @@ Deno.serve(async (req: Request) => {
       try {
         const text = `New appointment: ${when}
 ${name} <${email}>${phone ? ` · ${phone}` : ""}
-Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: create the Google Meet and email the link to ${email} (no meeting link is set up yet).`}
+Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: send the meeting link to ${email}.`}
 ${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,
