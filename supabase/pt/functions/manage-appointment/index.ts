@@ -13,6 +13,7 @@ import {
   STAFF_EMAIL,
   cancellationEmail,
   confirmationEmail,
+  inviteAttachment,
   kindLabel,
   sendEmail,
   whenText,
@@ -83,16 +84,24 @@ Deno.serve(async (req: Request) => {
         .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
         .eq("id", appt.id);
       if (upErr) throw new Error(upErr.message);
+      const cancelInvite = inviteAttachment({
+        appointmentId: appt.id as string,
+        startIso: appt.start_at as string,
+        meetingType: appt.meeting_type as string,
+        visitor: { name: appt.name as string, email: appt.email as string, phone: appt.phone as string | null },
+        token,
+        method: "CANCEL",
+      });
       if (resendKey) {
         try {
           const m = cancellationEmail({ name: appt.name as string, when: oldWhen, meetingType: appt.meeting_type as string });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, [cancelInvite]);
         } catch (e) {
           console.error("Cancellation email failed:", e);
         }
         try {
           const text = `Appointment CANCELLED by the visitor: ${oldWhen}\n${appt.name} <${appt.email}>\nType: ${kind}`;
-          await sendEmail(resendKey, [STAFF_EMAIL], `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text);
+          await sendEmail(resendKey, [STAFF_EMAIL], `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, [cancelInvite]);
         } catch (e) {
           console.error("Cancellation staff email failed:", e);
         }
@@ -131,6 +140,13 @@ Deno.serve(async (req: Request) => {
       }
 
       const newWhen = whenText(newDate, newSlot);
+      const moveInvite = inviteAttachment({
+        appointmentId: appt.id as string,
+        startIso,
+        meetingType: appt.meeting_type as string,
+        visitor: { name: appt.name as string, email: appt.email as string, phone: appt.phone as string | null },
+        token,
+      });
       if (resendKey) {
         try {
           const m = confirmationEmail({
@@ -139,16 +155,17 @@ Deno.serve(async (req: Request) => {
             meetingType: appt.meeting_type as string,
             phone: (appt.phone as string) ?? "",
             token,
+            startIso,
             rescheduled: true,
           });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, [moveInvite]);
         } catch (e) {
           console.error("Reschedule confirmation email failed:", e);
         }
         try {
           const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}${appt.meeting_type === "virtual" ? `
 To do: update the Google Meet time and re-send the link to ${appt.email}.` : ""}`;
-          await sendEmail(resendKey, [STAFF_EMAIL], `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string);
+          await sendEmail(resendKey, [STAFF_EMAIL], `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, [moveInvite]);
         } catch (e) {
           console.error("Reschedule staff email failed:", e);
         }

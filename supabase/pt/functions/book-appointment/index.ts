@@ -13,6 +13,7 @@ import { centralToUtcMs, slotProblem } from "../_shared/appointment-rules.ts";
 import {
   STAFF_EMAIL,
   confirmationEmail,
+  inviteAttachment,
   kindLabel,
   longDate,
   sendEmail,
@@ -115,9 +116,16 @@ Deno.serve(async (req: Request) => {
       const kind = kindLabel(meetingType);
       const { data: row } = await admin.from("appointments").select("manage_token").eq("id", id).single();
       const token = (row?.manage_token as string | undefined) ?? "";
+      const invite = inviteAttachment({
+        appointmentId: id as string,
+        startIso,
+        meetingType,
+        visitor: { name, email, phone },
+        token,
+      });
       try {
-        const m = confirmationEmail({ name, when, meetingType, phone, token });
-        await sendEmail(resendKey, [email], m.subject, m.html, m.text);
+        const m = confirmationEmail({ name, when, meetingType, phone, token, startIso });
+        await sendEmail(resendKey, [email], m.subject, m.html, m.text, undefined, [invite]);
         emailed = true;
       } catch (err) {
         console.error("Appointment confirmation email failed:", err);
@@ -135,6 +143,7 @@ ${notes ? `Notes: ${notes}` : ""}`;
           `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
           text,
           email,
+          [invite],
         );
       } catch (err) {
         console.error("Appointment staff email failed:", err);
