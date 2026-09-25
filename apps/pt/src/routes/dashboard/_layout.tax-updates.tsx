@@ -8,6 +8,7 @@ import {
   Landmark,
   Lightbulb,
   MapPin,
+  Phone,
   Scale,
   Search,
 } from "lucide-react";
@@ -260,7 +261,14 @@ function TaxUpdates() {
         </div>
       ) : (
         <>
-          <p className="mt-5 text-xs text-muted-foreground">
+          <p className="mt-5 flex items-center gap-2 text-sm font-medium">
+            <Lightbulb className="h-4 w-4 shrink-0 text-amber-500" />
+            Here are some rule changes and what they mean to you.{" "}
+            <a href="#tax-update-cards" className="text-accent hover:underline">
+              Find out more below ↓
+            </a>
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
             {report.title} · updated {new Date(report.generatedAt).toLocaleString()}
           </p>
           <button
@@ -383,7 +391,7 @@ function TaxUpdates() {
           </div>
 
           {/* Chapters */}
-          <div className="mt-6 grid gap-8">
+          <div id="tax-update-cards" className="mt-6 grid scroll-mt-32 gap-8">
             {CHAPTERS.map((ch) => {
               const items = visible.filter((u) => u.chapter === ch.n);
               const showStanding = ch.n === 6 && !filtering;
@@ -465,6 +473,31 @@ function TaxUpdates() {
           </section>
         </>
       )}
+
+      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white sm:p-6">
+        <h2 className="font-serif text-xl font-semibold">Let&rsquo;s build this around you</h2>
+        <p className="mt-2 max-w-2xl text-sm text-white/90">
+          We&rsquo;re partnering with property owners to tailor a platform that fits your needs. As
+          a beta customer, we&rsquo;ll address your concerns directly.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <a
+            href="tel:+14695019362"
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
+          >
+            <Phone className="h-4 w-4" />
+            Call (469) 501-9362 to make an appointment
+          </a>
+          <a
+            href="https://corvusre.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-white/50 px-4 py-2 text-sm font-medium hover:bg-white/10"
+          >
+            Visit corvusre.com
+          </a>
+        </div>
+      </section>
 
       <section className="mt-10">
         <h2 className="font-serif text-lg font-semibold">Your generated reports</h2>
