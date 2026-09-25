@@ -1,5 +1,5 @@
 // Deploy via the CLI (`supabase functions deploy admin-delete-user`).
-// Requires public.profiles.is_admin (see supabase-dp/schema.sql) to
+// Requires public.profiles.is_admin (see supabase/dp/schema.sql) to
 // already exist.
 //
 // Mirrors CorvusPT's own admin-delete-user function (same shape: caller
@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // profiles/projects both cascade on auth.users delete (see
-    // supabase-dp/schema.sql) -- this one call cleans up everything owned
+    // supabase/dp/schema.sql) -- this one call cleans up everything owned
     // by this account, same as CorvusPT's equivalent.
     const { error: deleteErr } = await adminClient.auth.admin.deleteUser(userId);
     if (deleteErr) throw deleteErr;

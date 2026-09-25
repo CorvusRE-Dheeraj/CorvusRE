@@ -15,7 +15,7 @@ name: Deploy CorvusRE
 # door's real (public, client-side-by-design) env vars, same values their
 # old standalone pipelines used. Phase 4 replaced apps/identity's placeholder
 # with the real shared /auth/ sign-in app (CorvusPT is the identity source —
-# see supabase-dp/functions/mint-door-session for the login-bridge mechanics).
+# see supabase/dp/functions/mint-door-session for the login-bridge mechanics).
 
 on:
   push:
@@ -25,7 +25,7 @@ on:
       project:
         description: "Edge functions: which project to redeploy in full (site jobs ignore this)"
         type: choice
-        options: [both, supabase-pt, supabase-dp]
+        options: [both, pt, dp]
         default: both
 
 permissions:
@@ -251,9 +251,9 @@ jobs:
         with:
           node-version: 22
       - name: Deploy CorvusPT (identity) functions
-        if: github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-pt'
-        run: bash scripts/deploy-functions.sh supabase-pt iotzuhuajbsxxuccuihn "$BASE_SHA"
+        if: github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'pt'
+        run: bash scripts/deploy-functions.sh supabase/pt iotzuhuajbsxxuccuihn "$BASE_SHA"
       - name: Deploy CorvusDP functions
         # !cancelled() so a failed CorvusPT deploy doesn't also skip this one
-        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'supabase-dp') }}
-        run: bash scripts/deploy-functions.sh supabase-dp xzhilwwlfajxhklkiteb "$BASE_SHA"
+        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.project == 'both' || inputs.project == 'dp') }}
+        run: bash scripts/deploy-functions.sh supabase/dp xzhilwwlfajxhklkiteb "$BASE_SHA"

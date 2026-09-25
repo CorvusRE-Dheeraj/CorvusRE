@@ -1,10 +1,10 @@
 // Deploy via the CLI (`supabase functions deploy admin-impersonate-user`).
-// Requires public.profiles.is_admin (see supabase-dp/schema.sql) to
+// Requires public.profiles.is_admin (see supabase/dp/schema.sql) to
 // already exist.
 //
 // Mirrors CorvusPT's own admin-impersonate-user function (same shape and
 // same generateLink({type:"magiclink"}) mechanic the CorvusRE login
-// bridge itself is built on -- see supabase-dp/functions/
+// bridge itself is built on -- see supabase/dp/functions/
 // mint-door-session/index.ts). Returns a real one-time login link for the
 // target user; the client opens it in a NEW tab so the admin's own tab
 // keeps its own session. Doesn't write admin_audit_log itself -- the

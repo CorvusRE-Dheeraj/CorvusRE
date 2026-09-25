@@ -2,14 +2,14 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { UsageSignals } from "./beta-feedback-questions";
 import { ZERO_SIGNALS } from "./beta-feedback-questions";
-import { FORM_MARKER_KEY, FORM_VERSION } from "./feedback-form";
+import { FORM_MARKER_KEY, FORM_VERSION, LEGACY_FORM_VERSIONS } from "./feedback-form";
 
 export type { UsageSignals } from "./beta-feedback-questions";
 
 // What the tester actually DID, read straight from their own data — this is
 // what every section's showIf() in beta-feedback-questions.ts gates on.
 // module_results.module_id === "executive" is the AI Review's own overall
-// synthesis (see MODULE_SPECS in supabase-pt/functions/ai-report-modules),
+// synthesis (see MODULE_SPECS in supabase/pt/functions/ai-report-modules),
 // so its existence is as close as this app gets to "they generated a real
 // AI Review," same for "comps" = they saw comparable properties.
 export async function computeUsageSignals(userId: string): Promise<UsageSignals> {
@@ -144,7 +144,12 @@ export async function submitFeedback(
 // who finished the older form is asked the new one, and their old answers stay
 // on file.
 export function isFormV2Complete(r: FeedbackResponse | null): boolean {
-  return !!r?.completedAt && r.answers[FORM_MARKER_KEY] === FORM_VERSION;
+  const marker = r?.answers[FORM_MARKER_KEY];
+  return (
+    !!r?.completedAt &&
+    typeof marker === "string" &&
+    (marker === FORM_VERSION || LEGACY_FORM_VERSIONS.includes(marker))
+  );
 }
 
 // Saves v2 progress (or the final submission). completed_at is written
@@ -239,7 +244,7 @@ export async function getFeedbackInsights(): Promise<FeedbackInsightsRecord | nu
 
 // Clusters the free-text answers (pain points, magic-wand requests, "what
 // would you miss") into themes via Gemini — see
-// supabase-pt/functions/summarize-beta-feedback. Admin-triggered on demand
+// supabase/pt/functions/summarize-beta-feedback. Admin-triggered on demand
 // (not automatic on every submission) since it re-reads every completed
 // response each time; same "Regenerate with AI" pattern as the AI Report's
 // own refresh button.

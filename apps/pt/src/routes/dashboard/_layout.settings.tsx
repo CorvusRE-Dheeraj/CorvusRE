@@ -89,7 +89,7 @@ function Settings() {
   // Applies immediately to every existing case, not just future ones — a
   // customer switching to Weekly (or Off) means it right now, not "starting
   // with my next case." The same switch this email's own unsubscribe link
-  // flips (see supabase-pt/functions/unsubscribe-evidence-reminders).
+  // flips (see supabase/pt/functions/unsubscribe-evidence-reminders).
   async function handleReminderFrequencyChange(frequency: ReminderFrequency) {
     if (!user) return;
     const prev = notificationPrefs;

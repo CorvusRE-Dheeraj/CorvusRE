@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { getMyProfile } from "@/lib/profile";
 import { notifyStaff } from "@/lib/staff-notification";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { ScheduleAppointment } from "@/components/ScheduleAppointment";
 
 const PHONE_DISPLAY = "(469) 501-9362";
 const PHONE_TEL = "+14695019362";
@@ -93,6 +94,7 @@ function Contact() {
 
       <div className="container-page pb-16 max-w-2xl">
         <ScrollReveal>
+          <ScheduleAppointment />
           <a
             href={`tel:${PHONE_TEL}`}
             className="card-elev mb-8 flex items-center justify-between gap-4 p-6 transition-all hover:-translate-y-0.5 hover:shadow-elev"

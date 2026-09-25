@@ -52,7 +52,7 @@ export async function deleteUserAccount(targetId: string): Promise<void> {
 }
 
 // Same generateLink({type:"magiclink"}) mechanic the login bridge itself
-// uses (see supabase-dp/functions/mint-door-session) — returns a one-time
+// uses (see supabase/dp/functions/mint-door-session) — returns a one-time
 // login link for the target user; the caller opens it in a new tab so the
 // admin's own session is untouched. Mirrors CorvusPT's admin panel, which
 // already has this.

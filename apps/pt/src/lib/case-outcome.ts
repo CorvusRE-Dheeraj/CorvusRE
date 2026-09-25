@@ -83,3 +83,33 @@ export function buildCaseOutcome(
     taxSavings,
   };
 }
+
+// Which route the case ended on / is on — plain words for banners and summaries.
+export function outcomeRouteLabel(protest: ProtestRecord): string {
+  if (protest.escalationPath === "arbitration") return "binding arbitration";
+  if (protest.escalationPath === "appeal") return "a district court appeal";
+  if (protest.arbDecision) return "the formal hearing (ARB)";
+  return "an informal review settlement";
+}
+
+// Where an open case is right now, in the same words as the case tabs.
+export function caseStageLabel(protest: ProtestRecord): string {
+  switch (protest.status) {
+    case "requested":
+      return "Preparing to file";
+    case "filed":
+    case "under_review":
+    case "offer_received":
+      return "Informal review";
+    case "hearing_scheduled":
+      return "Formal hearing";
+    case "decision_received":
+      return "Decision received";
+    case "arbitrating":
+      return "Arbitration";
+    case "appealing":
+      return "Court appeal";
+    case "resolved":
+      return "Resolved";
+  }
+}

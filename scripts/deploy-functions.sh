@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploys changed Supabase edge functions for one project.
-#   scripts/deploy-functions.sh <supabase-pt|supabase-dp> <project-ref> [base-sha]
+#   scripts/deploy-functions.sh <supabase/pt|supabase/dp> <project-ref> [base-sha]
 # Needs SUPABASE_ACCESS_TOKEN. DRY_RUN=1 only prints what it would deploy.
 #
 # A function is redeployed when its own folder changed since base-sha, or when
@@ -14,7 +14,7 @@
 # header's documented "--no-verify-jwt" line.
 set -euo pipefail
 
-dir="${1:?project folder, e.g. supabase-pt}"
+dir="${1:?project folder, e.g. supabase/pt}"
 ref="${2:?project ref}"
 base="${3:-}"
 src="$dir/functions"

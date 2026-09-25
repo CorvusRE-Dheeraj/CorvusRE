@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
 import {
@@ -220,6 +220,8 @@ import {
 import { getAiReportCacheEnabled } from "@/lib/app-settings";
 import { ValueHistorySection } from "@/components/ValueHistorySection";
 import { Modal } from "@/components/Modal";
+import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBanner";
+import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
 
 type ModuleAsyncState = {
   data: unknown;
@@ -3061,35 +3063,43 @@ function Report() {
           </div>
         )}
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((m) => (
-            <ModuleCard
-              key={m.id}
-              m={m}
-              unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
-              hasFullAccess={hasFullAccess}
-              moduleState={moduleData[m.id]}
-              moduleData={moduleData}
-              compsMap={compsMap}
-              siteGisMap={siteGisMap}
-              siteCoords={siteCoords}
-              estimated={estimated}
-              propertyType={state.propertyType}
-              address={resolvedProperty?.address || state.address}
-              totalValue={state.totalValue}
-              improvementValue={state.improvementValue}
-              overrides={overrides}
-              incomeComputed={incomeComputed}
-              incomeAnalysis={incomeAnalysis}
-              savingsAnalysis={savingsAnalysis}
-              uploadingEvidence={uploadingEvidence}
-              onUploadEvidence={handleUploadEvidence}
-              onSaveIncomeAnalysis={saveIncomeAnalysis}
-              onOpen={() => openModule(m)}
-              onForceReload={() => loadModule(m.id, { recheck: true })}
-            />
-          ))}
-        </div>
+        <CaseResultContext.Provider
+          value={
+            existingProtest && resolvedProperty && existingProtest.status === "resolved"
+              ? buildCaseOutcome(resolvedProperty, existingProtest)
+              : null
+          }
+        >
+          <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {MODULES.map((m) => (
+              <ModuleCard
+                key={m.id}
+                m={m}
+                unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
+                hasFullAccess={hasFullAccess}
+                moduleState={moduleData[m.id]}
+                moduleData={moduleData}
+                compsMap={compsMap}
+                siteGisMap={siteGisMap}
+                siteCoords={siteCoords}
+                estimated={estimated}
+                propertyType={state.propertyType}
+                address={resolvedProperty?.address || state.address}
+                totalValue={state.totalValue}
+                improvementValue={state.improvementValue}
+                overrides={overrides}
+                incomeComputed={incomeComputed}
+                incomeAnalysis={incomeAnalysis}
+                savingsAnalysis={savingsAnalysis}
+                uploadingEvidence={uploadingEvidence}
+                onUploadEvidence={handleUploadEvidence}
+                onSaveIncomeAnalysis={saveIncomeAnalysis}
+                onOpen={() => openModule(m)}
+                onForceReload={() => loadModule(m.id, { recheck: true })}
+              />
+            ))}
+          </div>
+        </CaseResultContext.Provider>
       </section>
 
       {/* Print-only linear report — reuses the exact same module-rendering logic as
@@ -3473,6 +3483,7 @@ function ModuleCard({
   onOpen: () => void;
   onForceReload: () => void;
 }) {
+  const caseResult = useContext(CaseResultContext);
   // Reflects what's actually happening now that the grid eager-loads real
   // data (see the effect above Report()), not the old static per-module
   // metadata — "Completed" used to show even for a module nobody had opened
@@ -3496,18 +3507,21 @@ function ModuleCard({
           : moduleState.error
             ? "Error"
             : "Completed";
-  const insight = unlocked
-    ? moduleInsight(
-        m,
-        moduleState,
-        compsMap,
-        estimated,
-        totalValue,
-        overrides,
-        incomeComputed,
-        savingsAnalysis,
-      )
-    : null;
+  const insight =
+    unlocked && caseResult && m.id === "health"
+      ? "Protest completed"
+      : unlocked
+        ? moduleInsight(
+            m,
+            moduleState,
+            compsMap,
+            estimated,
+            totalValue,
+            overrides,
+            incomeComputed,
+            savingsAnalysis,
+          )
+        : null;
   // Module 2's own score for this module's strategy, once it's resolved — see
   // the priorityContext sequencing in loadModule()/the eager-load effects
   // above. Only comps/site/improvement/income/zoning map to one of Module 2's
@@ -3737,6 +3751,7 @@ function ModuleVisual({
   onSaveIncomeAnalysis: (input: IncomeAnalysisInput) => void;
   onOpen: () => void;
 }) {
+  const caseResult = useContext(CaseResultContext);
   if (!unlocked) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -3865,8 +3880,9 @@ function ModuleVisual({
   switch (m.id) {
     case "health": {
       const d = moduleState.data as HealthScoreResult;
-      const label =
-        d.score >= 70
+      const label = caseResult
+        ? "Protest completed"
+        : d.score >= 70
           ? "Strong Opportunity"
           : d.score >= 40
             ? "Moderate Opportunity"
@@ -3902,7 +3918,22 @@ function ModuleVisual({
               })}
             </div>
           )}
-          {estimated.savings > 0 && (
+          {caseResult && caseResult.taxSavings != null && (
+            <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
+              <div className="font-serif text-2xl font-bold leading-none text-success">
+                {currency(caseResult.taxSavings)}
+              </div>
+              {caseResult.valueReductionPct != null ? (
+                <div className="mt-1 text-base font-bold text-success/90">
+                  {Math.round(caseResult.valueReductionPct)}% lower assessed value
+                </div>
+              ) : null}
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                actual tax savings from your completed protest
+              </div>
+            </div>
+          )}
+          {!caseResult && estimated.savings > 0 && (
             <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
               <div className="font-serif text-2xl font-bold leading-none text-success">
                 {currency(estimated.savings)}
@@ -8812,6 +8843,9 @@ function Module1Content({
   onOpenModule,
   compsMap,
   evidenceDocs,
+  protest,
+  property,
+  onViewCase,
 }: {
   data: HealthScoreResult;
   state: IntakeState;
@@ -8823,6 +8857,10 @@ function Module1Content({
   onOpenModule: (moduleId: string) => void;
   compsMap: { data: CompsResult | null; loading: boolean };
   evidenceDocs: DocumentRecord[];
+  // Once a protest exists this module reports how it went instead of pitching one.
+  protest: ProtestRecord | null;
+  property: PropertyRecord | null;
+  onViewCase: () => void;
 }) {
   const evidenceState = moduleData.evidence;
   const evidenceItems = (evidenceState?.data as ModuleResultMap["evidence"] | undefined)?.items;
@@ -8845,6 +8883,11 @@ function Module1Content({
 
   const tier = data.score >= 70 ? "Strong" : data.score >= 40 ? "Moderate" : "Limited";
 
+  // Case state: nothing yet / in progress / completed.
+  const caseOutcome = protest && property ? buildCaseOutcome(property, protest) : null;
+  const caseDone = !!protest && protest.status === "resolved" && !!caseOutcome;
+  const caseOpen = !!protest && protest.status !== "requested" && protest.status !== "resolved";
+
   return (
     <div className="mt-4 grid gap-5">
       {/* 1. Your Protest Recommendation — conclusion + the 3 headline numbers,
@@ -8859,27 +8902,51 @@ function Module1Content({
           <div className="text-center">
             <SpeedometerGauge value={data.score} size="lg" />
             <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
-              {tier} Protest Opportunity
+              {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Stat
-              label="Potential Tax Savings"
-              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
-              tone="success"
-            />
-            <Stat
-              label="Potential Assessment Reduction"
-              value={
-                estimated.hasEstimate && state.totalValue
-                  ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
-                  : "Not yet available"
-              }
-            />
-            <Stat
-              label="Current Assessed Value"
-              value={state.totalValue ? currency(state.totalValue) : "—"}
-            />
+            {caseDone && caseOutcome ? (
+              <>
+                <Stat
+                  label="Actual Tax Savings"
+                  value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
+                  tone="success"
+                />
+                <Stat
+                  label="Assessment Reduction"
+                  value={
+                    caseOutcome.valueReductionPct != null
+                      ? `${Math.round(caseOutcome.valueReductionPct)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Final Assessed Value"
+                  value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
+                />
+              </>
+            ) : (
+              <>
+                <Stat
+                  label="Potential Tax Savings"
+                  value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
+                  tone="success"
+                />
+                <Stat
+                  label="Potential Assessment Reduction"
+                  value={
+                    estimated.hasEstimate && state.totalValue
+                      ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                      : "Not yet available"
+                  }
+                />
+                <Stat
+                  label="Current Assessed Value"
+                  value={state.totalValue ? currency(state.totalValue) : "—"}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -8906,9 +8973,47 @@ function Module1Content({
 
       {/* 3. Recommended Next Step — large and unambiguous, one action only. */}
       <div
-        className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}
+        className={`rounded-lg p-5 ${caseDone || caseOpen || readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}
       >
-        {readyToProtest ? (
+        {caseDone && protest && caseOutcome ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Protest completed
+            </div>
+            <p className="mt-2 text-lg font-semibold">
+              Final value {currency(caseOutcome.finalValue)}
+              {caseOutcome.taxSavings
+                ? ` — about ${currency(caseOutcome.taxSavings)}/yr saved`
+                : ""}
+            </p>
+            <button
+              onClick={onViewCase}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              VIEW CASE OUTCOME
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Resolved through {outcomeRouteLabel(protest)}. Your property returns to tax monitoring
+              for next year.
+            </p>
+          </>
+        ) : caseOpen && protest ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Your protest is in progress
+            </div>
+            <p className="mt-2 text-lg font-semibold">Stage: {caseStageLabel(protest)}</p>
+            <button
+              onClick={onViewCase}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              VIEW CASE
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Open the case to see what to do next and to keep everything in one place.
+            </p>
+          </>
+        ) : readyToProtest ? (
           <>
             <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
               Corvus AI Recommends a Protest
@@ -10133,6 +10238,9 @@ function ModulePreviewContent({
         onOpenModule={onOpenModule}
         compsMap={compsMap}
         evidenceDocs={evidenceDocs}
+        protest={existingProtest}
+        property={resolvedProperty}
+        onViewCase={onViewCase}
       />
     );
   }
@@ -11157,7 +11265,9 @@ function ModulePreviewContent({
 
       // Single primary CTA, deterministic — never more than one rendered.
       let cta: { label: string; onClick: () => void } | null = null;
-      if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
+      if (existingProtest && existingProtest.status === "resolved") {
+        cta = { label: "View Case Outcome", onClick: onViewCase };
+      } else if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
         cta = null; // "Complete Missing Information" — see the Properties link below instead
       } else if (criticalMissing.length > 0) {
         cta = { label: "Complete Missing Evidence", onClick: () => onOpenModule("evidence") };
@@ -11546,6 +11656,11 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
     !!props.moduleState?.data;
   return (
     <>
+      <CaseOutcomeBanner
+        protest={props.existingProtest}
+        property={props.resolvedProperty}
+        onViewCase={props.onViewCase}
+      />
       <ModulePreviewContent {...props} />
       {showDataSheet && (
         <ModuleDataSheetButton
