@@ -85,12 +85,10 @@ export async function listAppointments(): Promise<AppointmentRecord[]> {
   }));
 }
 
+// Admin cancel: runs through the same server path as a customer cancelling, so the visitor
+// and the team get the cancellation emails and the calendar entry is removed.
 export async function cancelAppointment(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("appointments")
-    .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) throw error;
+  await invokeEdgeFunction("manage-appointment", { action: "admin_cancel", id });
 }
 
 export type AppointmentBlock = {

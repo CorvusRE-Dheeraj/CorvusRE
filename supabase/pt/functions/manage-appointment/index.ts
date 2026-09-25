@@ -45,16 +45,31 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return fail(405, "POST only");
   try {
     const body = (await req.json()) as Record<string, unknown>;
-    const token = String(body.token ?? "").trim();
-    const action = String(body.action ?? "get");
-    if (!/^[a-f0-9]{32}$/.test(token)) return fail(404, "This link isn't valid.");
-
+    let token = String(body.token ?? "").trim();
+    let action = String(body.action ?? "get");
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: appt, error } = await admin
-      .from("appointments")
-      .select("id, name, email, phone, meeting_type, start_at, status, google_event_id, meet_link")
-      .eq("manage_token", token)
-      .maybeSingle();
+
+    // An admin cancelling from the Admin dashboard (no token — they sign in instead). It then
+    // runs exactly like the customer's own cancel: same emails, same calendar cancellation.
+    const cols = "id, name, email, phone, meeting_type, start_at, status, google_event_id, meet_link, manage_token";
+    let found: { data: Record<string, unknown> | null; error: { message: string } | null };
+    if (action === "admin_cancel") {
+      const callerClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+      });
+      const { data: userData } = await callerClient.auth.getUser();
+      const uid = userData.user?.id;
+      if (!uid) return fail(401, "Sign in as an admin to cancel appointments.");
+      const { data: prof } = await admin.from("profiles").select("is_admin").eq("id", uid).maybeSingle();
+      if (!prof?.is_admin) return fail(403, "Only admins can cancel other people's appointments.");
+      found = await admin.from("appointments").select(cols).eq("id", String(body.id ?? "")).maybeSingle();
+      if (found.data) token = found.data.manage_token as string;
+      action = "cancel";
+    } else {
+      if (!/^[a-f0-9]{32}$/.test(token)) return fail(404, "This link isn't valid.");
+      found = await admin.from("appointments").select(cols).eq("manage_token", token).maybeSingle();
+    }
+    const { data: appt, error } = found;
     if (error) throw new Error(error.message);
     if (!appt) return fail(404, "We couldn't find that appointment.");
 
