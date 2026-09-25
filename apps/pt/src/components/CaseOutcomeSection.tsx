@@ -252,7 +252,7 @@ export function CaseOutcomeSection({
               onClick={onOpenAppeal}
               className="mt-1.5 text-xs text-accent hover:underline"
             >
-              Open Appeal / Arbitration →
+              Open {protest.escalationPath === "appeal" ? "Court Appeal" : "Arbitration"} →
             </button>
           </div>
         ) : (

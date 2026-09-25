@@ -478,7 +478,8 @@ function TaxUpdates() {
         <h2 className="font-serif text-xl font-semibold">Let&rsquo;s build this around you</h2>
         <p className="mt-2 max-w-2xl text-sm text-white/90">
           We&rsquo;re partnering with property owners to tailor a platform that fits your needs. As
-          a beta customer, we&rsquo;ll address your concerns directly.
+          a beta customer, we&rsquo;ll address your concerns directly &mdash; and we&rsquo;ll walk
+          you through the site in a free, one-on-one demo.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <a
@@ -486,7 +487,7 @@ function TaxUpdates() {
             className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
           >
             <Phone className="h-4 w-4" />
-            Call (469) 501-9362 to make an appointment
+            Book your one-on-one demo: (469) 501-9362
           </a>
           <a
             href="https://corvusre.com/"
