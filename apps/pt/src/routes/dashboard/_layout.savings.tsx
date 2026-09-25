@@ -100,6 +100,12 @@ function SavingsPage() {
               </div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <defs>
+                    <linearGradient id="savings-bar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#0ea5e9" />
+                    </linearGradient>
+                  </defs>
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis
                     tick={{ fontSize: 11 }}
@@ -107,7 +113,12 @@ function SavingsPage() {
                     tickFormatter={(v) => `$${Math.round(v / 1000)}K`}
                   />
                   <Tooltip formatter={(v: number) => currency(v)} />
-                  <Bar dataKey="value" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+                  <Bar
+                    dataKey="value"
+                    fill="url(#savings-bar)"
+                    radius={[8, 8, 0, 0]}
+                    animationDuration={1000}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>

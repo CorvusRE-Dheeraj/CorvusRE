@@ -8689,7 +8689,14 @@ function SpeedometerGauge({ value, size = "md" }: { value: number; size?: "sm" |
   // version (confirmed via a live console error and an empty sectors group)
   // — reverted in favor of this reliable single-bar approach.
   return (
-    <div className="relative mx-auto" style={{ width: dims.w, height: dims.h }}>
+    <div
+      className="relative mx-auto"
+      style={{
+        width: dims.w,
+        height: dims.h,
+        filter: `drop-shadow(0 0 8px color-mix(in oklch, ${color} 45%, transparent))`,
+      }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <RadialBarChart
           cx="50%"
