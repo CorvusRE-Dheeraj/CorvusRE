@@ -257,6 +257,20 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string; joinsPrev?:
   },
 ];
 
+// Arbitration / Court Appeal are done once that path was actually carried out —
+// the request or petition filed, or the case resolved through it.
+function escalationDone(id: CaseTabId, p: ProtestRecord): boolean {
+  if (id === "arbitration")
+    return (
+      !!p.arbitrationFiledAt || (p.status === "resolved" && p.escalationPath === "arbitration")
+    );
+  if (id === "court")
+    return (
+      !!p.courtAppeal?.petitionFiledAt || (p.status === "resolved" && p.escalationPath === "appeal")
+    );
+  return false;
+}
+
 // The number shown for a tab: its position, minus tabs that share a step number.
 function stepNumber(index: number): number {
   return index - CASE_TABS.slice(0, index + 1).filter((t) => t.joinsPrev).length;
@@ -906,7 +920,10 @@ function CaseTabBar({
         const isOpen = t.id === activeTab;
         const isHub = t.id === "overview";
         const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
-        const done = !isHub && !locked && i < currentIdx;
+        const pathDone = escalationDone(t.id, protest);
+        // The shared step 5 badge ticks once either path has been carried out.
+        const groupDone = (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
+        const done = !isHub && !locked && (i < currentIdx || groupDone);
         const isCurrent = !isHub && i === currentIdx;
         const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
         return (
@@ -948,6 +965,11 @@ function CaseTabBar({
                 </span>
               )}
               {t.label}
+              {(t.joinsPrev || t.id === "arbitration") && pathDone && (
+                <span aria-label="done" className="text-success">
+                  ✓
+                </span>
+              )}
             </button>
           </div>
         );
@@ -1001,7 +1023,10 @@ function CaseRoadmap({
         {CASE_TABS.map((t, i) => {
           const isHub = t.id === "overview";
           const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
-          const done = !isHub && unlocked && i < currentIdx;
+          const pathDone = escalationDone(t.id, protest);
+          const groupDone =
+            (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
+          const done = !isHub && unlocked && (i < currentIdx || groupDone);
           const here = i === currentIdx;
           const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(stepNumber(i));
           return (
@@ -1042,6 +1067,9 @@ function CaseRoadmap({
                   </span>
                 )}
                 {t.label}
+                {(t.joinsPrev || t.id === "arbitration") && pathDone && (
+                  <span className="text-success">✓</span>
+                )}
               </button>
             </li>
           );
