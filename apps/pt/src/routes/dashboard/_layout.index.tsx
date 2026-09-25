@@ -1000,22 +1000,25 @@ function ProtestStatusChart({
   return (
     <>
       <div className="mt-3 grid grid-cols-[7rem_1fr] items-center gap-3">
-        <ResponsiveContainer width="100%" height={110}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={30}
-              outerRadius={50}
-              paddingAngle={2}
-            >
-              {data.map((d) => (
-                <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
+        {/* The legend beside the ring lists the same numbers as text. */}
+        <div aria-hidden="true">
+          <ResponsiveContainer width="100%" height={110}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={30}
+                outerRadius={50}
+                paddingAngle={2}
+              >
+                {data.map((d) => (
+                  <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="grid gap-1.5">
           {data.map((d) => (
             <div key={d.status} className="flex items-center gap-2 text-sm">

@@ -483,7 +483,7 @@ export function CourtAppealWorkflow({
 
       {/* Court Appeal Review */}
       <section id="court-deadline" className={card}>
-        <h4 className={h}>Court appeal review</h4>
+        <h2 className={h}>Court appeal review</h2>
         {!review.ready ? (
           <p className="mt-2 text-sm text-muted-foreground">
             Record the ARB decision on the Decision tab (upload the ARB order) so Corvus can count
@@ -609,7 +609,7 @@ export function CourtAppealWorkflow({
         <>
           {/* Case Summary for Attorney Review + AI Case Review */}
           <section className={card}>
-            <h4 className={h}>Case summary for attorney review</h4>
+            <h2 className={h}>Case summary for attorney review</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Built from your existing case — nothing to upload again.
             </p>
@@ -650,7 +650,7 @@ export function CourtAppealWorkflow({
 
           {/* Prepare for Attorney */}
           <section id="court-package" className={card}>
-            <h4 className={h}>Prepare for attorney</h4>
+            <h2 className={h}>Prepare for attorney</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               One clean package: the case summary above plus the {evidenceDocuments.length} evidence
               file{evidenceDocuments.length === 1 ? "" : "s"} already in your case.
@@ -698,7 +698,7 @@ export function CourtAppealWorkflow({
 
           {/* Attorney */}
           <section id="court-attorney" className={card}>
-            <h4 className={h}>Your attorney</h4>
+            <h2 className={h}>Your attorney</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Add their contact details to keep everything in one place.
             </p>
@@ -759,7 +759,7 @@ export function CourtAppealWorkflow({
           {/* Petition filed */}
           {!filed && (
             <section id="court-petition" className={card}>
-              <h4 className={h}>Confirm petition filed</h4>
+              <h2 className={h}>Confirm petition filed</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 You and your attorney file the petition with the court — Corvus does not. Once
                 it&apos;s filed, confirm it here to start tracking the court case.
@@ -808,7 +808,7 @@ export function CourtAppealWorkflow({
       {/* Court case: updates + timeline */}
       {filed && (
         <section id="court-updates" className={card}>
-          <h4 className={h}>Court case</h4>
+          <h2 className={h}>Court case</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Filed {fmtDate(data.petitionFiledAt)}
             {data.court ? ` · ${data.court}` : ""}
@@ -913,7 +913,7 @@ export function CourtAppealWorkflow({
       {/* Resolution */}
       {filed && !closed && (
         <section id="court-resolution" className={card}>
-          <h4 className={h}>Case resolved?</h4>
+          <h2 className={h}>Case resolved?</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             When the court case ends (judgment or settlement), upload the document or enter the
             final value. Corvus updates your case and returns the property to tax monitoring.
@@ -961,7 +961,7 @@ export function CourtAppealWorkflow({
 
       {closed && impact && (
         <section id="court-monitoring" className={card}>
-          <h4 className={h}>Court appeal result</h4>
+          <h2 className={h}>Court appeal result</h2>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             <div className="rounded-md border border-border p-3 text-sm">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">

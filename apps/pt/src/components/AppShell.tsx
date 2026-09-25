@@ -1,3 +1,5 @@
+import { centerInStrip } from "@/lib/scroll-into-strip";
+import { GLOSSARY_MAP } from "@/lib/glossary";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
@@ -116,9 +118,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const tabBarRef = useRef<HTMLElement>(null);
   // On a narrow screen the tab strip scrolls sideways — keep the current page's tab in view.
   useEffect(() => {
-    tabBarRef.current
-      ?.querySelector<HTMLElement>("[data-status=active]")
-      ?.scrollIntoView({ inline: "center", block: "nearest" });
+    centerInStrip(
+      tabBarRef.current,
+      tabBarRef.current?.querySelector<HTMLElement>("[data-status=active]") ?? null,
+    );
   }, [pathname, user]);
 
   if (loading || !user || !shouldShowShell(pathname)) {
@@ -148,6 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   key={item.to}
                   type="button"
+                  title={item.label.includes("BPP") ? GLOSSARY_MAP.BPP : undefined}
                   onClick={() =>
                     toast(`${item.label} is coming soon`, {
                       description: "This section is still under development — check back soon.",

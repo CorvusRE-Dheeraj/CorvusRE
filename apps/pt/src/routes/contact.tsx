@@ -109,7 +109,7 @@ function Contact() {
                 <Phone className="h-5 w-5" />
               </span>
               <div>
-                <h3 className="font-semibold">Prefer to talk now?</h3>
+                <h2 className="font-semibold">Prefer to talk now?</h2>
                 <p className="text-sm text-muted-foreground">Call us at {PHONE_DISPLAY}</p>
               </div>
             </div>
@@ -118,7 +118,7 @@ function Contact() {
         </ScrollReveal>
         {sent ? (
           <div className="mt-8 card-elev p-6">
-            <h3 className="font-semibold text-lg">Thanks — we'll be in touch.</h3>
+            <h2 className="font-semibold text-lg">Thanks — we'll be in touch.</h2>
             <p className="text-muted-foreground mt-1">
               A CorvusPT specialist will reach out within one business day.
             </p>

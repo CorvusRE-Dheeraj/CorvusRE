@@ -151,7 +151,7 @@ export function CaseOutcomeSection({
   return (
     <div className="mt-2 rounded-md border border-border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">How your protest ended</h4>
+        <h2 className="font-serif text-base font-semibold">How your protest ended</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             outcome.closed ? "bg-success/15 text-success" : "bg-warning/15 text-warning-foreground"

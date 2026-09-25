@@ -55,7 +55,7 @@ function SavingsPage() {
         </div>
       ) : !savings || savings.resolvedCaseCount === 0 ? (
         <div className="card-elev mt-6 p-8 text-center">
-          <h3 className="font-serif text-xl font-semibold">No resolved cases yet.</h3>
+          <h2 className="font-serif text-xl font-semibold">No resolved cases yet.</h2>
           <p className="text-muted-foreground mt-1">
             Once a protest is resolved — an ARB decision, or an accepted settlement — its real
             savings will show up here.

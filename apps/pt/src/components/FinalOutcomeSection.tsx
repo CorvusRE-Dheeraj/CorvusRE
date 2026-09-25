@@ -78,7 +78,7 @@ export function FinalOutcomeSection({
   if (!outcome || !closed) {
     return (
       <div className="mt-2 rounded-md border border-border p-4 text-sm">
-        <h4 className="font-serif text-base font-semibold">Final outcome</h4>
+        <h2 className="font-serif text-base font-semibold">Final outcome</h2>
         <p className="mt-1 text-muted-foreground">
           Your case isn&apos;t concluded yet. When it ends — an informal settlement, an ARB
           decision, arbitration or a court result — the final value and what you saved appear here.
@@ -168,7 +168,7 @@ export function FinalOutcomeSection({
 
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="font-serif text-base font-semibold">Final outcome</h4>
+          <h2 className="font-serif text-base font-semibold">Final outcome</h2>
           <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
             Resolved · {route}
           </span>
@@ -219,7 +219,7 @@ export function FinalOutcomeSection({
 
       {trail.length > 0 && (
         <div className="rounded-md border border-border p-4">
-          <h4 className="text-sm font-semibold">How it got here</h4>
+          <h2 className="text-sm font-semibold">How it got here</h2>
           <ol className="mt-2 grid gap-2">
             {trail.map((t) => (
               <li

@@ -167,7 +167,7 @@ export function ScheduleAppointment({
                 <CalendarCheck className="h-5 w-5" />
               </span>
               <div>
-                <h3 className="font-semibold">You have an appointment coming up</h3>
+                <h2 className="font-semibold">You have an appointment coming up</h2>
                 <p className="text-sm text-muted-foreground">
                   {formatAppointment(mine.startAt)} · Google Meet. You can book another once this
                   one is finished.
@@ -202,7 +202,7 @@ export function ScheduleAppointment({
               <CalendarCheck className="h-5 w-5" />
             </span>
             <div>
-              <h3 className="font-semibold">Schedule a Call or Virtual Meeting</h3>
+              <h2 className="font-semibold">Schedule a Call or Virtual Meeting</h2>
               <p className="text-sm text-muted-foreground">
                 Want to know more? Pick a convenient time to speak with us.
               </p>

@@ -1151,7 +1151,7 @@ function Properties() {
                             className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
-                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                        <h2 className="font-serif text-xl font-semibold">{p.address}</h2>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">

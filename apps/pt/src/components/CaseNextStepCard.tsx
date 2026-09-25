@@ -123,7 +123,7 @@ export function CaseNextStepCard({
       >
         {step.done ? <CheckCircle2 className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-52">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {step.done ? "All done" : "Your next step"}
         </div>
