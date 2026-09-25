@@ -8,7 +8,6 @@ import {
   Landmark,
   Lightbulb,
   MapPin,
-  Phone,
   Scale,
   Search,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import { getErrorMessage } from "@/lib/error-message";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaxUpdateCard, updateAsText } from "@/components/TaxUpdateCard";
+import { ScheduleAppointment } from "@/components/ScheduleAppointment";
 import {
   ALL_TAGS,
   CHAPTERS,
@@ -34,6 +34,7 @@ import {
   filterUpdates,
   criticalLines,
   deleteSavedReport,
+  leadUpdate,
   listSavedReports,
   listTaxReports,
   MAX_SAVED_REPORTS,
@@ -474,29 +475,61 @@ function TaxUpdates() {
         </>
       )}
 
-      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white sm:p-6">
-        <h2 className="font-serif text-xl font-semibold">Let&rsquo;s build this around you</h2>
-        <p className="mt-2 max-w-2xl text-sm text-white/90">
-          We&rsquo;re partnering with property owners to tailor a platform that fits your needs. As
-          a beta customer, we&rsquo;ll address your concerns directly &mdash; and we&rsquo;ll walk
-          you through the site in a free, one-on-one demo.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <a
-            href="tel:+14695019362"
-            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
-          >
-            <Phone className="h-4 w-4" />
-            Book your one-on-one demo: (469) 501-9362
-          </a>
-          <a
-            href="https://corvusre.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-full border border-white/50 px-4 py-2 text-sm font-medium hover:bg-white/10"
-          >
-            Visit corvusre.com
-          </a>
+      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white sm:p-7">
+        {(() => {
+          const lead = report ? leadUpdate(report.updates) : null;
+          return (
+            <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
+              <p>
+                <strong className="text-white">A recent change: </strong>
+                {lead ? (
+                  <>
+                    {lead.title}. {lead.whatChanged.replace(/\.$/, "")}.{" "}
+                    <a
+                      href={lead.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2"
+                    >
+                      Read it at {lead.sourceName}
+                    </a>
+                    .
+                  </>
+                ) : (
+                  <>
+                    Texas property-tax rules, notices and deadlines change every year, and this
+                    week&rsquo;s official sources are still being checked.
+                  </>
+                )}
+              </p>
+              <p>
+                <strong className="text-white">What it means for you: </strong>
+                Changes like this arrive as new notices, meetings and deadlines spread across the
+                Comptroller, the Legislature and your appraisal district. Most owners never see them
+                until a deadline has already passed, and the pain points are familiar: confusing
+                valuation notices, hours spent piecing together which rules apply to your property,
+                a protest window that closes without warning, and no clear idea what to do next.
+              </p>
+              <p>
+                <strong className="text-white">How Corvus helps: </strong>
+                CorvusPT reads the official sources every week, tells you which updates may affect
+                your properties, and turns them into next steps &mdash; a protest opportunity
+                analysis, deadline and hearing alerts, evidence and hearing preparation, and every
+                stage of your case in one place. We&rsquo;re partnering with owners to shape it
+                around real needs, and as a beta customer your concerns come first.
+              </p>
+            </div>
+          );
+        })()}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <ScheduleAppointment
+            trigger="button"
+            buttonLabel="Schedule a Zoom meeting"
+            defaultType="virtual"
+          />
+          <span className="text-xs text-white/80">
+            One-on-one, 60 minutes. Pick a time that works for you.
+          </span>
         </div>
       </section>
 

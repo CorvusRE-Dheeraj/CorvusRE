@@ -28,7 +28,17 @@ import {
 // pick a time, tell us who you are, done. What's open is decided server-side
 // (appointment-slots) — 60-minute visits, Mon–Fri 10 AM–2 PM Central, 2 days' notice,
 // no holidays, no double booking.
-export function ScheduleAppointment() {
+export function ScheduleAppointment({
+  trigger = "card",
+  buttonLabel = "Schedule",
+  defaultType = "call",
+}: {
+  // "card": the Contact page's full card. "button": just a button, for use inside
+  // another section (e.g. the Texas Tax Updates call to action).
+  trigger?: "card" | "button";
+  buttonLabel?: string;
+  defaultType?: MeetingType;
+}) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [slots, setSlots] = useState<OpenSlots | null>(null);
@@ -38,7 +48,7 @@ export function ScheduleAppointment() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [meetingType, setMeetingType] = useState<MeetingType>("call");
+  const [meetingType, setMeetingType] = useState<MeetingType>(defaultType);
   const [notes, setNotes] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
   const [saving, setSaving] = useState(false);
@@ -115,29 +125,44 @@ export function ScheduleAppointment() {
 
   return (
     <>
-      <div className="card-elev mb-8 flex flex-wrap items-center justify-between gap-4 p-6">
-        <div className="flex items-center gap-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
-            <CalendarCheck className="h-5 w-5" />
-          </span>
-          <div>
-            <h3 className="font-semibold">Schedule a Call or Virtual Meeting</h3>
-            <p className="text-sm text-muted-foreground">
-              Want to know more? Pick a convenient time to speak with us.
-            </p>
-          </div>
-        </div>
+      {trigger === "button" ? (
         <button
           type="button"
           onClick={() => {
             reset();
+            setMeetingType(defaultType);
             setOpen(true);
           }}
-          className="btn-primary btn-primary-hover shrink-0"
+          className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
         >
-          Schedule
+          <Video className="h-4 w-4" />
+          {buttonLabel}
         </button>
-      </div>
+      ) : (
+        <div className="card-elev mb-8 flex flex-wrap items-center justify-between gap-4 p-6">
+          <div className="flex items-center gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+              <CalendarCheck className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="font-semibold">Schedule a Call or Virtual Meeting</h3>
+              <p className="text-sm text-muted-foreground">
+                Want to know more? Pick a convenient time to speak with us.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              reset();
+              setOpen(true);
+            }}
+            className="btn-primary btn-primary-hover shrink-0"
+          >
+            Schedule
+          </button>
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
@@ -154,7 +179,7 @@ export function ScheduleAppointment() {
               <p>
                 We&apos;ll talk on <strong>{booked.when}</strong>.{" "}
                 {meetingType === "virtual"
-                  ? "We'll email you the meeting link before then."
+                  ? "We'll email you the Zoom link before then."
                   : `We'll call you at ${phone}.`}
               </p>
               {booked.emailed && (
@@ -244,7 +269,7 @@ export function ScheduleAppointment() {
                     {(
                       [
                         ["call", "Phone call", PhoneIcon],
-                        ["virtual", "Virtual meeting", Video],
+                        ["virtual", "Zoom meeting", Video],
                       ] as const
                     ).map(([value, label, Icon]) => (
                       <button

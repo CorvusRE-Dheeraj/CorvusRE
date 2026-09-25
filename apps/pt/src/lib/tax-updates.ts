@@ -399,3 +399,18 @@ export function toBullets(text: string, max = 3, maxLen = 170): string[] {
     return `${(at > maxLen * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
   });
 }
+
+// The one update to open the "what this means for you" story with: a real change,
+// not just something posted — enacted law first, then an adopted rule, then any
+// other; among those, statewide beats a single county, and a topic owners act on
+// (tax rate, valuation, protest, deadlines) beats the rest. Deterministic, so the
+// same report always leads with the same item.
+export function leadUpdate(updates: TaxUpdate[]): TaxUpdate | null {
+  const usable = updates.filter((u) => u.status !== "failed_legislation");
+  const rank = (u: TaxUpdate) =>
+    (u.status === "enacted_law" ? 0 : u.status === "adopted_rule" ? 4 : 8) +
+    (u.counties.length === 0 ? 0 : 2) +
+    (u.tags.some((t) => ["tax_rate", "valuation", "protest", "deadlines"].includes(t)) ? 0 : 1) +
+    (u.isNew ? -1 : 0);
+  return [...usable].sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
