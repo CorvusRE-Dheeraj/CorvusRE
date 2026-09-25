@@ -161,7 +161,7 @@ Reschedule or cancel: ${manageUrl(opts.token)}`,
 // attached invite into a calendar entry on their own.
 function googleCalendarUrl(startIso: string, kind: string, name: string, meetingType: string, manage: string): string {
   const start = new Date(startIso).getTime();
-  const f = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/.d{3}/, "");
+  const f = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const p = new URLSearchParams({
     action: "TEMPLATE",
     text: `CorvusPT — ${kind} with ${name}`,
