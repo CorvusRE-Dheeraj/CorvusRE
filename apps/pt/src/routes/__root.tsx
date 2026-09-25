@@ -19,6 +19,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { FeedbackWidget } from "../components/FeedbackWidget";
+import { HourBeforeAlert } from "../components/HourBeforeAlert";
 import { LegalGate } from "../components/LegalGate";
 import { ProfileGate } from "../components/ProfileGate";
 import { AppShell, shouldShowShell } from "../components/AppShell";
@@ -169,6 +170,7 @@ function RootComponent() {
           </div>
           <AskAiWidget />
           <FeedbackWidget />
+          <HourBeforeAlert />
           <LegalGate />
           <ProfileGate />
           <Toaster />

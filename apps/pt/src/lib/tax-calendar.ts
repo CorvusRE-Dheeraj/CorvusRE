@@ -44,6 +44,9 @@ export type CalendarEvent = {
   // month-grid can show it directly under each event without parsing it
   // back out of title's "Event type — X" string.
   propertyLabel: string;
+  // Start time as written on the county notice, for hearings / informal reviews that
+  // have one — feeds the one-hour-before alert (see hour-alert.ts).
+  time?: string | null;
 };
 
 export const EVENT_TYPE_LABEL: Record<CalendarEventType, string> = {
@@ -161,6 +164,7 @@ function fromProtest(
       linkTo: "/dashboard/properties",
       resolved: new Date(pr.informalReviewDate) < new Date(),
       propertyLabel: address,
+      time: pr.informalReviewTime ?? null,
     });
   }
   if (pr.status === "hearing_scheduled" && pr.hearingDate) {
@@ -174,6 +178,7 @@ function fromProtest(
       linkTo: "/dashboard/properties",
       resolved: new Date(pr.hearingDate) < new Date(),
       propertyLabel: address,
+      time: pr.hearingTime ?? null,
     });
   }
   if (pr.arbDecisionDate) {

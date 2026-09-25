@@ -2465,3 +2465,12 @@ create policy "Users can delete their own decision notices"
   on public.decision_notices for delete
   using (auth.uid() = user_id);
 grant delete on public.decision_notices to authenticated;
+
+-- Deadline alert scheduling (2026-09-25). Both jobs are pg_cron -> net.http_post to the
+-- edge function with the service-role key (same shape as refresh-property-base-data):
+--   send-deadline-reminders  '0 14 * * *'    daily; 30/15/7/3/2/0-day reminders (email; SMS when connected)
+--   send-hour-before-alerts  '*/15 * * * *'  the "about an hour left" alert: one hour before a
+--     hearing / informal review with a start time, and at 4 PM Central on the day a date-only
+--     deadline falls due (treated as closing at 5 PM Central). Dedup via reminder_sends
+--     with offset_days = -1. Per-account switch: notification_prefs.deadline_hour_alert
+--     (missing = on). send-deadline-reminders was deployed earlier but had never been scheduled.
