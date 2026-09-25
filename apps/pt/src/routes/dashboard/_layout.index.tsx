@@ -69,6 +69,7 @@ import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
+import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 
@@ -473,6 +474,15 @@ function Overview() {
       )}
 
       <MyAppointments />
+
+      {loaded && (
+        <GettingStarted
+          properties={properties.length}
+          documents={documents.length}
+          protests={protests.length}
+          resolved={protests.filter((p) => p.status === "resolved").length}
+        />
+      )}
 
       {/* Entry points */}
       <div>
