@@ -130,7 +130,7 @@ function Deadlines() {
                       Protest deadline: {deadline.toLocaleDateString()}
                     </div>
                   </div>
-                  <span className={`badge-soft ${daysLeft <= 7 ? "text-destructive" : ""}`}>
+                  <span className={daysLeft <= 7 ? "chip-alert" : "chip-deadline"}>
                     {daysLeft < 0
                       ? "Deadline passed"
                       : daysLeft === 0

@@ -1253,16 +1253,16 @@ function DocRow({
               {doc.editedFrom && <span className="italic">· edited copy</span>}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="badge-soft">{cat.label}</span>
+              <span className="chip-doc">{cat.label}</span>
               <span className="badge-soft bg-secondary text-muted-foreground">
                 {sourceLabel(cat.source)}
               </span>
               {analyzing ? (
-                <span className="badge-soft-warning">AI: checking…</span>
+                <span className="chip-ai">AI: checking…</span>
               ) : (
                 <VerdictBadge doc={doc} />
               )}
-              {isEvidenceDoc(doc) && <span className="badge-soft">Evidence</span>}
+              {isEvidenceDoc(doc) && <span className="chip-doc">Evidence</span>}
               {doc.documentType?.startsWith("AI Data Sheet — ") && (
                 <span
                   className="badge-soft-warning"

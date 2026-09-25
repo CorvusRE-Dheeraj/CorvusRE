@@ -1056,3 +1056,50 @@ h3 {
     animation: none;
   }
 }
+
+/* Semantic chips — a colour means one thing everywhere:
+   amber = deadlines & time, violet = AI, sky = documents & evidence, coral = alerts. */
+.chip-deadline,
+.chip-ai,
+.chip-doc,
+.chip-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.chip-deadline {
+  background: oklch(0.95 0.06 80);
+  color: oklch(0.45 0.13 65);
+}
+.chip-ai {
+  background: oklch(0.94 0.05 300);
+  color: oklch(0.42 0.17 300);
+}
+.chip-doc {
+  background: oklch(0.94 0.04 235);
+  color: oklch(0.42 0.13 240);
+}
+.chip-alert {
+  background: oklch(0.94 0.05 25);
+  color: oklch(0.5 0.2 25);
+}
+.dark .chip-deadline {
+  background: oklch(0.32 0.06 80);
+  color: oklch(0.88 0.12 80);
+}
+.dark .chip-ai {
+  background: oklch(0.32 0.08 300);
+  color: oklch(0.86 0.1 300);
+}
+.dark .chip-doc {
+  background: oklch(0.3 0.06 235);
+  color: oklch(0.85 0.09 235);
+}
+.dark .chip-alert {
+  background: oklch(0.32 0.09 25);
+  color: oklch(0.86 0.11 25);
+}

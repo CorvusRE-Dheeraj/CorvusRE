@@ -6,7 +6,7 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 // screenshot and not a claim about anyone's property.
 export function ProductPreview() {
   return (
-    <section className="container-page py-14 md:py-20">
+    <section className="container-page overflow-x-clip py-14 md:py-20">
       <div className="mx-auto max-w-2xl text-center">
         <span className="badge-soft">A peek inside</span>
         <h2 className="mt-3 font-serif text-3xl font-semibold md:text-4xl">
