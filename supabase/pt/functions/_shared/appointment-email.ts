@@ -66,6 +66,8 @@ export function confirmationEmail(opts: {
   startIso?: string;
   // The Google Meet link, when one was created (Google also emails its own invite).
   meetLink?: string | null;
+  // True when Google itself is sending a calendar invite for this event (so ours is not attached).
+  googleInvite?: boolean;
   rescheduled?: boolean;
 }) {
   const kind = kindLabel(opts.meetingType);
@@ -75,14 +77,14 @@ export function confirmationEmail(opts: {
     : opts.meetingType === "virtual"
       ? "We'll email you the Google Meet link before your appointment."
       : `We'll call you at ${opts.phone}.`;
-  const gcal = opts.startIso && !opts.meetLink ? googleCalendarUrl(opts.startIso, kind, opts.name, opts.meetingType, url) : null;
+  const gcal = opts.startIso && !opts.googleInvite ? googleCalendarUrl(opts.startIso, kind, opts.name, opts.meetingType, url, opts.meetLink) : null;
   const html = emailShell({
     eyebrow: opts.rescheduled ? "Appointment rescheduled" : "Appointment confirmed",
     heading: opts.rescheduled ? "You're rebooked" : "You're booked",
     intro: `${opts.rescheduled ? "Your appointment has moved." : "Thanks,"} ${escapeHtml(opts.name)} — we'll see you on <strong>${escapeHtml(opts.when)}</strong> for a 60-minute ${kind}.`,
     bodyRows:
       `<tr><td style="padding:7px 0;">${escapeHtml(how)}${opts.meetLink ? ` <a href="${escapeHtml(opts.meetLink)}" style="color:#0f9d6b; font-weight:600;">${escapeHtml(opts.meetLink)}</a>` : ""}</td></tr>` +
-      (opts.meetLink
+      (opts.googleInvite
         ? `<tr><td style="padding:7px 0;">A Google Calendar invite with this link is also on its way from Google.</td></tr>`
         : "") +
       (gcal
@@ -132,6 +134,7 @@ export function inviteAttachment(opts: {
   meetingType: string;
   visitor: { name: string; email: string; phone?: string | null };
   token: string;
+  meetLink?: string | null;
   method?: "REQUEST" | "CANCEL";
 }): EmailAttachment {
   const startMs = new Date(opts.startIso).getTime();
@@ -144,12 +147,14 @@ export function inviteAttachment(opts: {
     summary: `CorvusPT — ${virtual ? "Google Meet" : "phone call"} with ${opts.visitor.name}`,
     description:
       (virtual
-        ? "Google Meet — the link will be emailed before the meeting."
+        ? opts.meetLink
+          ? `Join with Google Meet: ${opts.meetLink}`
+          : "Google Meet — the link will be emailed before the meeting."
         : `Phone call to ${opts.visitor.phone ?? "the number on file"}.`) +
       `
 Reschedule or cancel: ${manageUrl(opts.token)}`,
-    location: virtual ? "Google Meet (link to follow)" : "Phone call",
-    url: manageUrl(opts.token),
+    location: virtual ? (opts.meetLink ?? "Google Meet (link to follow)") : "Phone call",
+    url: opts.meetLink ?? manageUrl(opts.token),
     organizerEmail: STAFF_EMAIL,
     organizerName: "CorvusPT",
     attendees: [
@@ -167,7 +172,7 @@ Reschedule or cancel: ${manageUrl(opts.token)}`,
 
 // A "add to Google Calendar" link — the fallback for mail apps that do not turn the
 // attached invite into a calendar entry on their own.
-function googleCalendarUrl(startIso: string, kind: string, name: string, meetingType: string, manage: string): string {
+function googleCalendarUrl(startIso: string, kind: string, name: string, meetingType: string, manage: string, meetLink?: string | null): string {
   const start = new Date(startIso).getTime();
   const f = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const p = new URLSearchParams({
@@ -175,10 +180,17 @@ function googleCalendarUrl(startIso: string, kind: string, name: string, meeting
     text: `CorvusPT — ${kind} with ${name}`,
     dates: `${f(start)}/${f(start + 60 * 60_000)}`,
     details:
-      (meetingType === "virtual" ? "Google Meet — the link will be emailed before the meeting." : "Phone call.") +
+      (meetingType === "virtual" ? (meetLink ? `Join with Google Meet: ${meetLink}` : "Google Meet — the link will be emailed before the meeting.") : "Phone call.") +
       `
 Reschedule or cancel: ${manage}`,
-    location: meetingType === "virtual" ? "Google Meet (link to follow)" : "Phone call",
+    location: meetingType === "virtual" ? (meetLink ?? "Google Meet (link to follow)") : "Phone call",
   });
   return `https://calendar.google.com/calendar/render?${p.toString()}`;
+}
+
+// The standing meeting link an admin saved (used when no Google host creates a fresh one).
+export async function standingMeetLink(admin: { from: (t: string) => any }): Promise<string | null> {
+  const { data } = await admin.from("appointment_settings").select("meeting_link").eq("id", true).maybeSingle();
+  const link = (data?.meeting_link as string | null | undefined)?.trim();
+  return link ? link : null;
 }

@@ -20,6 +20,7 @@ import {
   longDate,
   manageUrl,
   sendEmail,
+  standingMeetLink,
   whenText,
 } from "../_shared/appointment-email.ts";
 import { slotLabel } from "../_shared/appointment-rules.ts";
@@ -140,6 +141,11 @@ Deno.serve(async (req: Request) => {
     } catch (err) {
       console.error("Google Meet creation failed:", err);
     }
+    // No Google host: use the standing meeting link the admin saved, if any.
+    if (!meetLink) {
+      meetLink = await standingMeetLink(admin);
+      if (meetLink) await admin.from("appointments").update({ meet_link: meetLink }).eq("id", id);
+    }
 
     // Emails are best-effort: the booking already exists and is on the admin dashboard.
     const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -153,9 +159,10 @@ Deno.serve(async (req: Request) => {
         meetingType,
         visitor: { name, email, phone },
         token,
+        meetLink,
       });
       try {
-        const m = confirmationEmail({ name, when, meetingType, phone, token, startIso, meetLink });
+        const m = confirmationEmail({ name, when, meetingType, phone, token, startIso, meetLink, googleInvite: !!googleEventId });
         await sendEmail(resendKey, [email], m.subject, m.html, m.text, STAFF_EMAIL, googleEventId ? undefined : [invite]);
         emailed = true;
       } catch (err) {
@@ -164,7 +171,7 @@ Deno.serve(async (req: Request) => {
       try {
         const text = `New appointment: ${when}
 ${name} <${email}>${phone ? ` · ${phone}` : ""}
-Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: create the Google Meet and email the link to ${email} (no Google host is connected yet).`}
+Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: create the Google Meet and email the link to ${email} (no meeting link is set up yet).`}
 ${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,

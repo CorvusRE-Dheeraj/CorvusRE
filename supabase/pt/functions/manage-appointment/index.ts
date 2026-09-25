@@ -105,6 +105,7 @@ Deno.serve(async (req: Request) => {
         meetingType: appt.meeting_type as string,
         visitor: { name: appt.name as string, email: appt.email as string, phone: appt.phone as string | null },
         token,
+        meetLink: appt.meet_link as string | null,
         method: "CANCEL",
       });
       if (resendKey) {
@@ -174,6 +175,7 @@ Deno.serve(async (req: Request) => {
         meetingType: appt.meeting_type as string,
         visitor: { name: appt.name as string, email: appt.email as string, phone: appt.phone as string | null },
         token,
+        meetLink: appt.meet_link as string | null,
       });
       if (resendKey) {
         try {
@@ -184,7 +186,8 @@ Deno.serve(async (req: Request) => {
             phone: (appt.phone as string) ?? "",
             token,
             startIso,
-            meetLink: googleMoved ? (appt.meet_link as string | null) : null,
+            meetLink: appt.meet_link as string | null,
+            googleInvite: googleMoved,
             rescheduled: true,
           });
           await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, STAFF_EMAIL, googleMoved ? undefined : [moveInvite]);

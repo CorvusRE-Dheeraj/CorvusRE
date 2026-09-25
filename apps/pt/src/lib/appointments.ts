@@ -216,3 +216,25 @@ export async function setMeetingHost(userId: string | null): Promise<void> {
     .eq("id", true);
   if (error) throw error;
 }
+
+// The standing meeting link (e.g. a Google Meet room) put in every appointment's email and
+// calendar file when no Google account is creating a fresh link per booking.
+export async function getMeetingLink(): Promise<string> {
+  const { data, error } = await supabase
+    .from("appointment_settings")
+    .select("meeting_link")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.meeting_link as string | null | undefined) ?? "";
+}
+
+export async function setMeetingLink(link: string): Promise<void> {
+  const clean = link.trim();
+  if (clean && !/^https:\/\//i.test(clean)) throw new Error("The link must start with https://");
+  const { error } = await supabase
+    .from("appointment_settings")
+    .update({ meeting_link: clean || null, updated_at: new Date().toISOString() })
+    .eq("id", true);
+  if (error) throw error;
+}

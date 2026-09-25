@@ -16,6 +16,8 @@ import {
   cancelAppointment,
   formatAppointment,
   getMeetingHost,
+  getMeetingLink,
+  setMeetingLink,
   setMeetingHost,
   listAppointments,
   listBlocks,
@@ -42,6 +44,7 @@ export function AdminAppointments() {
   const [hostId, setHostId] = useState<string | null>(null);
   const [iConnected, setIConnected] = useState(false);
   const [hostLoaded, setHostLoaded] = useState(false);
+  const [linkInput, setLinkInput] = useState("");
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [blocks, setBlocks] = useState<AppointmentBlock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +71,9 @@ export function AdminAppointments() {
       .then(setHostId)
       .catch(() => {})
       .finally(() => setHostLoaded(true));
+    getMeetingLink()
+      .then(setLinkInput)
+      .catch(() => {});
     getGoogleCalendarStatus()
       .then((s) => setIConnected(s.connected))
       .catch(() => {});
@@ -206,7 +212,32 @@ export function AdminAppointments() {
   return (
     <div className="mt-6 grid gap-8">
       <section className="rounded-md border border-border p-4">
-        <h2 className="text-sm font-semibold">Google Meet links</h2>
+        <h2 className="text-sm font-semibold">Meeting link</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Every confirmation email and calendar invite includes this link (for example a Google Meet
+          room made from properties@srclandbuilding.com). Leave it empty and the email just says the
+          link will follow.
+        </p>
+        <form
+          className="mt-2 flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(() => setMeetingLink(linkInput), "Meeting link saved.");
+          }}
+        >
+          <input
+            type="url"
+            value={linkInput}
+            onChange={(e) => setLinkInput(e.target.value)}
+            placeholder="https://meet.google.com/abc-defg-hij"
+            aria-label="Meeting link"
+            className={`${field} min-w-[18rem] flex-1`}
+          />
+          <button disabled={busy} className="btn-outline text-xs disabled:opacity-60">
+            Save link
+          </button>
+        </form>
+        <h3 className="mt-5 text-sm font-semibold">Or: a fresh Google Meet link per booking</h3>
         {!hostLoaded ? (
           <p className="mt-1 text-xs text-muted-foreground">Loading…</p>
         ) : hostId && hostId === user?.id ? (
