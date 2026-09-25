@@ -28,6 +28,7 @@ import { HeroBackground } from "@/components/HeroBackground";
 import { MicButton } from "@/components/MicButton";
 import { AnimatedSteps } from "@/components/AnimatedSteps";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { ProductPreview } from "@/components/ProductPreview";
 import { HouseIllustration } from "@/assets/illustrations/house";
 import { WavingBearIllustration } from "@/assets/illustrations/waving-bear";
 import { useFileDrop } from "@/hooks/use-file-drop";
@@ -53,6 +54,12 @@ export const Route = createFileRoute("/")({
   }),
   component: Home,
 });
+
+const STEP_GRADIENTS = [
+  "from-sky-500 to-blue-600",
+  "from-violet-500 to-fuchsia-600",
+  "from-emerald-500 to-teal-600",
+];
 
 function Home() {
   const navigate = useNavigate();
@@ -286,10 +293,21 @@ function Home() {
         <div className="mt-12 grid gap-8 md:grid-cols-3">
           {PROCESS_STEPS.map((step, i) => (
             <ScrollReveal key={step.title} delay={i * 150} className="text-center">
-              <span
-                className={`mx-auto grid h-14 w-14 place-items-center rounded-full ${step.color.bg} ${step.color.text}`}
-              >
-                <step.icon className="h-6 w-6" />
+              <span className="relative mx-auto grid h-16 w-16 place-items-center">
+                {i < PROCESS_STEPS.length - 1 && (
+                  <span
+                    aria-hidden
+                    className="absolute left-full top-1/2 hidden h-0.5 w-[calc(100%+4rem)] -translate-y-1/2 bg-gradient-to-r from-accent/50 to-transparent md:block"
+                  />
+                )}
+                <span
+                  className={`relative grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br shadow-md transition-transform hover:-translate-y-1 hover:rotate-3 ${STEP_GRADIENTS[i % STEP_GRADIENTS.length]} text-white`}
+                >
+                  <step.icon className="h-7 w-7" />
+                  <span className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-background text-xs font-bold text-foreground shadow ring-1 ring-border">
+                    {i + 1}
+                  </span>
+                </span>
               </span>
               <h3 className="mt-4 font-serif text-lg font-semibold">{step.title}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
@@ -305,6 +323,8 @@ function Home() {
           </Link>
         </div>
       </section>
+
+      <ProductPreview />
 
       {/* How CorvusPT Helps You Save — real, existing services only (no stats,
         no testimonials — see plan notes on why those are out of scope). A

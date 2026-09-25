@@ -242,3 +242,102 @@ button:disabled {
 .google-btn + .google-btn {
   margin-top: 8px;
 }
+
+/* ── Colourful refresh: gradient backdrop with drifting glows, a softer card, a
+   gradient primary button and a gradient logo mark. Purely visual. ── */
+body {
+  background: linear-gradient(135deg, #ecfdf5 0%, #e0f2fe 50%, #ede9fe 100%);
+}
+.wrap {
+  position: relative;
+  overflow: hidden;
+}
+.wrap::before,
+.wrap::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.45;
+  pointer-events: none;
+  animation: drift 14s ease-in-out infinite;
+}
+.wrap::before {
+  top: -120px;
+  left: -100px;
+  background: #34d399;
+}
+.wrap::after {
+  bottom: -140px;
+  right: -100px;
+  background: #818cf8;
+  animation-delay: -6s;
+}
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(40px, 30px) scale(1.12);
+  }
+}
+.card {
+  position: relative;
+  z-index: 1;
+  max-width: 400px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 32px 28px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 20px 50px -20px rgba(15, 23, 42, 0.35);
+  animation: card-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.logo .mark {
+  background: linear-gradient(135deg, #059669, #0ea5e9);
+  border-radius: 10px;
+  box-shadow: 0 6px 14px -6px rgba(5, 150, 105, 0.7);
+}
+h1 {
+  font-size: 22px;
+  background: linear-gradient(90deg, #0f172a, #047857);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+button:not(.google-btn):not(.password-toggle):not(.toggle button) {
+  background: linear-gradient(135deg, #059669, #0284c7);
+  box-shadow: 0 8px 18px -8px rgba(2, 132, 199, 0.7);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+button:not(.google-btn):not(.password-toggle):not(.toggle button):hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+input:focus-visible {
+  outline-color: #059669;
+  border-color: #059669;
+}
+.toggle button {
+  color: #047857;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wrap::before,
+  .wrap::after,
+  .card {
+    animation: none;
+  }
+}

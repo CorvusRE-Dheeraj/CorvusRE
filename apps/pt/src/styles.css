@@ -1038,3 +1038,21 @@ h2,
 h3 {
   text-wrap: pretty;
 }
+
+@keyframes tu-float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.tu-float-slow {
+  animation: tu-float-slow 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tu-float-slow {
+    animation: none;
+  }
+}
