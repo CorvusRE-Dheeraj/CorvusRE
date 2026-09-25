@@ -5,6 +5,7 @@ import type { ProtestRecord } from "./protests";
 import {
   buildReportPdf,
   countiesIn,
+  leadUpdate,
   criticalUpdates,
   filterUpdates,
   NO_FILTER,
@@ -196,5 +197,24 @@ describe("toBullets", () => {
     ]);
     expect(toBullets("x".repeat(300), 3, 20)[0]).toHaveLength(20);
     expect(toBullets("")).toEqual([]);
+  });
+});
+
+describe("leadUpdate", () => {
+  it("prefers enacted law, then statewide, then an actionable topic", () => {
+    const list = [
+      u({ id: "notice", status: "notice_guidance", tags: ["protest"] }),
+      u({
+        id: "county-law",
+        status: "enacted_law",
+        counties: ["Dallas County"],
+        tags: ["tax_rate"],
+      }),
+      u({ id: "state-law", status: "enacted_law", tags: ["tax_rate"] }),
+      u({ id: "failed", status: "failed_legislation", tags: ["tax_rate"] }),
+    ];
+    expect(leadUpdate(list)?.id).toBe("state-law");
+    expect(leadUpdate([u({ id: "only", status: "failed_legislation" })])).toBeNull();
+    expect(leadUpdate([])).toBeNull();
   });
 });
