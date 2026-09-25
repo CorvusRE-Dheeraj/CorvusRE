@@ -60,6 +60,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DocumentReviewModal } from "@/components/DocumentReviewModal";
 import { DocumentEditorModal, isEditableDoc } from "@/components/DocumentEditorModal";
+import { PageHero } from "@/components/PageHero";
+import { FolderOpen as HeroDocsIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/documents")({
   // Lets a screen that just worked on one property (Module 8, View Case) open
@@ -469,13 +471,12 @@ function Documents() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold">Documents</h1>
-      <p className="text-muted-foreground text-sm">
-        Documents you upload during property intake land here automatically — or upload several at
-        once below and AI sorts each one to the right property. Run an AI check on any file to
-        classify it, confirm it belongs to that property, flag anything off, and get a suggested
-        name.
-      </p>
+      <PageHero
+        icon={HeroDocsIcon}
+        title="Documents"
+        tone="sky"
+        subtitle="Documents you upload during property intake land here automatically — or upload several at once below and AI sorts each one to the right property. Run an AI check on any file to classify it, confirm it belongs to that property, flag anything off, and get a suggested name."
+      />
 
       <div className="mt-6 card-elev p-6">
         <h2 className="font-semibold">Upload Documents</h2>

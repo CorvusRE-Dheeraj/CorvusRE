@@ -9,6 +9,8 @@ import { listProtests } from "@/lib/protests";
 import { computePortfolioSavings, type PortfolioSavings } from "@/lib/portfolio-savings";
 import { currency } from "@/lib/intake-store";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHero } from "@/components/PageHero";
+import { PiggyBank as HeroSavingsIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/savings")({
   component: SavingsPage,
@@ -39,12 +41,12 @@ function SavingsPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold">Lifetime Savings</h1>
-      <p className="text-muted-foreground text-sm">
-        Real, decision-backed savings from every resolved case — original assessed value vs. the
-        final value your protest actually landed at, at your county's real effective tax rate. Not
-        an estimate.
-      </p>
+      <PageHero
+        icon={HeroSavingsIcon}
+        title="Lifetime Savings"
+        tone="emerald"
+        subtitle="Real, decision-backed savings from every resolved case — original assessed value vs. the final value your protest actually landed at, at your county's real effective tax rate. Not an estimate."
+      />
 
       {loading ? (
         <div className="mt-6 grid gap-4">

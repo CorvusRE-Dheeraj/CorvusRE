@@ -23,6 +23,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { PageHero } from "@/components/PageHero";
+import { Settings as HeroSettingsIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/settings")({
   component: Settings,
@@ -236,8 +238,12 @@ function Settings() {
     // screens. One shared max-w here, centered once, makes every card line
     // up to the same width and the whole page read as one balanced column.
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-serif text-2xl font-semibold">Settings</h1>
-      <p className="text-muted-foreground text-sm">Your account details.</p>
+      <PageHero
+        icon={HeroSettingsIcon}
+        title="Settings"
+        tone="slate"
+        subtitle="Your account details."
+      />
 
       {loading ? (
         <p className="mt-6 text-sm text-muted-foreground">Loading…</p>

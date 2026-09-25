@@ -41,6 +41,8 @@ import {
 } from "@/lib/google-calendar-sync";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { CalendarDays as HeroCalendarIcon } from "lucide-react";
 
 // google_connected/google_error round-trip from google-calendar-oauth-
 // callback's redirect back here after the user finishes (or abandons) the
@@ -458,12 +460,12 @@ function CalendarPage() {
   if (loading) {
     return (
       <div className="grid gap-8">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">Calendar</h1>
-          <p className="text-muted-foreground text-sm">
-            Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place.
-          </p>
-        </div>
+        <PageHero
+          icon={HeroCalendarIcon}
+          title="Calendar"
+          tone="violet"
+          subtitle="Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place."
+        />
         <div className="grid gap-3">
           {[0, 1].map((i) => (
             <div key={i} className="card-elev p-4 flex items-center justify-between gap-2">
@@ -481,32 +483,28 @@ function CalendarPage() {
 
   return (
     <div className="grid gap-8">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">Calendar</h1>
-          <p className="text-muted-foreground text-sm">
-            {upcomingCount > 0
-              ? `${upcomingCount} upcoming item${upcomingCount === 1 ? "" : "s"} across protests, hearings, and tax bills.`
-              : "Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place."}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHero
+        icon={HeroCalendarIcon}
+        title="Calendar"
+        tone="violet"
+        subtitle={
+          upcomingCount > 0
+            ? `${upcomingCount} upcoming item${upcomingCount === 1 ? "" : "s"} across protests, hearings, and tax bills.`
+            : "Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place."
+        }
+      >
+        <button onClick={() => setSyncOpen((o) => !o)} className={heroButton}>
+          <RefreshCw className="h-3.5 w-3.5" /> Sync with Google Calendar
+        </button>
+        {events.length > 0 && (
           <button
-            onClick={() => setSyncOpen((o) => !o)}
-            className="btn-outline text-sm inline-flex items-center gap-1.5"
+            onClick={() => downloadIcs("corvuspt-tax-calendar.ics", events)}
+            className={heroButtonGhost}
           >
-            <RefreshCw className="h-3.5 w-3.5" /> Sync with Google Calendar
+            <Download className="h-3.5 w-3.5" /> Export all (.ics)
           </button>
-          {events.length > 0 && (
-            <button
-              onClick={() => downloadIcs("corvuspt-tax-calendar.ics", events)}
-              className="btn-outline text-sm inline-flex items-center gap-1.5"
-            >
-              <Download className="h-3.5 w-3.5" /> Export all (.ics)
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+      </PageHero>
 
       {hearingConflicts.length > 0 && (
         <div className="grid gap-3">

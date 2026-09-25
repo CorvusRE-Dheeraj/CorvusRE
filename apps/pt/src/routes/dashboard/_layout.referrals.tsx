@@ -28,6 +28,8 @@ import {
 import { CopyButton } from "@/components/CopyButton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getErrorMessage } from "@/lib/error-message";
+import { PageHero } from "@/components/PageHero";
+import { Gift as HeroGiftIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/referrals")({
   head: () => ({
@@ -112,12 +114,12 @@ function Referrals() {
 
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="font-serif text-2xl font-semibold">Referrals</h1>
-        <p className="text-muted-foreground text-sm">
-          Share your link — for every friend who signs up and subscribes, you get one month free.
-        </p>
-      </div>
+      <PageHero
+        icon={HeroGiftIcon}
+        title="Referrals"
+        tone="rose"
+        subtitle="Share your link — for every friend who signs up and subscribes, you get one month free."
+      />
 
       {loading ? (
         <div className="grid gap-6">

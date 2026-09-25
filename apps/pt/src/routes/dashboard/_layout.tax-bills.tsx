@@ -16,6 +16,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { ComingSoonLock } from "@/components/ComingSoonLock";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { Receipt as HeroBillsIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/tax-bills")({
   component: TaxBills,
@@ -170,18 +172,16 @@ function TaxBillsContent() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">Tax Bills</h1>
-          <p className="text-muted-foreground text-sm">
-            Track what the county actually billed, whether it's paid, and any refund — per property,
-            per tax year.
-          </p>
-        </div>
-        <button onClick={() => setShowAddForm((v) => !v)} className="btn-primary btn-primary-hover">
+      <PageHero
+        icon={HeroBillsIcon}
+        title="Tax Bills"
+        tone="teal"
+        subtitle="Track what the county actually billed, whether it's paid, and any refund — per property, per tax year."
+      >
+        <button onClick={() => setShowAddForm((v) => !v)} className={heroButton}>
           {showAddForm ? "Cancel" : "Add Tax Bill"}
         </button>
-      </div>
+      </PageHero>
 
       {bills.length > 0 && (
         <p className="mt-4 text-sm text-muted-foreground">

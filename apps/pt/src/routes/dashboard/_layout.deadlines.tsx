@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth";
 import { listProperties, markPropertyPaid, type PropertyRecord } from "@/lib/properties";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHero } from "@/components/PageHero";
+import { CalendarClock as HeroDeadlinesIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/deadlines")({
   component: Deadlines,
@@ -76,10 +78,12 @@ function Deadlines() {
   if (loading) {
     return (
       <div className="grid gap-8">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">Deadlines</h1>
-          <p className="text-muted-foreground text-sm">Protest deadlines, ARB hearings, and tax bills, in one place.</p>
-        </div>
+        <PageHero
+          icon={HeroDeadlinesIcon}
+          title="Deadlines"
+          tone="amber"
+          subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+        />
         <div className="grid gap-3">
           {[0, 1].map((i) => (
             <div key={i} className="card-elev p-4 flex items-center justify-between gap-2">
@@ -97,10 +101,12 @@ function Deadlines() {
 
   return (
     <div className="grid gap-8">
-      <div>
-        <h1 className="font-serif text-2xl font-semibold">Deadlines</h1>
-        <p className="text-muted-foreground text-sm">Protest deadlines, ARB hearings, and tax bills, in one place.</p>
-      </div>
+      <PageHero
+        icon={HeroDeadlinesIcon}
+        title="Deadlines"
+        tone="amber"
+        subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+      />
 
       <section>
         <h2 className="font-semibold">Protest Deadlines</h2>
@@ -130,7 +136,8 @@ function Deadlines() {
             </div>
           ) : (
             <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-              No notifications. Upload an appraisal notice with a protest deadline and it'll show up here.
+              No notifications. Upload an appraisal notice with a protest deadline and it'll show up
+              here.
             </div>
           )}
         </div>
@@ -215,8 +222,8 @@ function Deadlines() {
             </div>
           ) : (
             <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-              No tax bills tracked yet. Upload a tax bill or statement and its due date and amount will
-              show up here.
+              No tax bills tracked yet. Upload a tax bill or statement and its due date and amount
+              will show up here.
             </div>
           )}
         </div>

@@ -75,6 +75,8 @@ import {
   ArrowLeftRight,
   SlidersHorizontal,
 } from "lucide-react";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { Building2 as HeroPropertiesIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -745,16 +747,23 @@ function Properties() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h1 className="font-serif text-2xl font-semibold">My Properties</h1>
-          {!propertiesLoading && (
-            <span className="badge-soft">
-              {properties.length} propert{properties.length === 1 ? "y" : "ies"}
-            </span>
-          )}
-          <PaymentsModeChip />
-        </div>
+      <PageHero
+        icon={HeroPropertiesIcon}
+        title="My Properties"
+        tone="emerald"
+        subtitle="Every property you're tracking — values, deadlines and cases at a glance."
+        badges={
+          <>
+            {!propertiesLoading && (
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {properties.length} propert{properties.length === 1 ? "y" : "ies"}
+              </span>
+            )}
+            <PaymentsModeChip />
+          </>
+        }
+      />
+      <div className="mt-4 flex flex-wrap items-end justify-end gap-4">
         <div className="flex flex-wrap items-center gap-2">
           {/* Bulk actions for a multi-selection — once one or more property
               checkboxes are ticked, this floats and stays pinned near the top
