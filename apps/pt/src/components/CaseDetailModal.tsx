@@ -304,7 +304,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-hearing-notice": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
-  "case-escalation": "arbitration",
+  "case-escalation": "decision",
 };
 
 // noticeSigned: the Notice of Protest has been signed. That opens Informal
@@ -493,7 +493,7 @@ export function CaseDetailView({
       goToGuidanceAnchor(anchor);
       return;
     }
-    const targetTab = anchor === "case-escalation" ? escalationTab : ANCHOR_TAB[anchor];
+    const targetTab = ANCHOR_TAB[anchor];
     if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
     // The filing steps live inside the popup — open it so the anchor exists.
     if (targetTab === "file") setFilingOpen(true);
@@ -552,14 +552,18 @@ export function CaseDetailView({
               <button
                 type="button"
                 onClick={() => {
-                  document
-                    .getElementById("case-escalation")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  window.dispatchEvent(new Event(COMPARE_ESCALATION_EVENT));
+                  setActiveTab("decision");
+                  // Let the Decision tab mount, then scroll to the options and compare.
+                  setTimeout(() => {
+                    document
+                      .getElementById("case-escalation")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    window.dispatchEvent(new Event(COMPARE_ESCALATION_EVENT));
+                  }, 350);
                 }}
                 className="text-left text-accent hover:underline"
               >
-                {CASE_TAB_INTRO[activeTab]} Compare the options with AI →
+                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on the Decision tab) →
               </button>
             </p>
           ) : (
@@ -754,6 +758,13 @@ export function CaseDetailView({
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
+              <EscalationEvaluationSection
+                protest={current}
+                property={property}
+                evidenceDocumentCount={evidenceDocuments.length}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
+              />
             </div>
           )}
 
@@ -777,13 +788,6 @@ export function CaseDetailView({
                   onOtherTab={() => setActiveTab("court")}
                 />
               )}
-              <EscalationEvaluationSection
-                protest={current}
-                property={property}
-                evidenceDocumentCount={evidenceDocuments.length}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
-              />
             </div>
           )}
 
@@ -807,13 +811,6 @@ export function CaseDetailView({
                   onOtherTab={() => setActiveTab("arbitration")}
                 />
               )}
-              <EscalationEvaluationSection
-                protest={current}
-                property={property}
-                evidenceDocumentCount={evidenceDocuments.length}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
-              />
             </div>
           )}
           {/* --- Final Outcome --- */}
