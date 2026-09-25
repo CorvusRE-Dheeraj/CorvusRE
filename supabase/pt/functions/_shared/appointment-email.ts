@@ -5,6 +5,8 @@ import { slotLabel } from "./appointment-rules.ts";
 import { buildIcs, toBase64 } from "./appointment-ics.ts";
 
 export const STAFF_EMAIL = "properties@srclandbuilding.com";
+// Everyone on the team who is told about, and invited to, every appointment.
+export const TEAM_EMAILS = [STAFF_EMAIL, "info@corvusre.com"];
 
 // Where the manage page lives. APP_URL is not set as a secret today, so default to the
 // real production address (the app is served under /corvuspt/).
@@ -146,7 +148,7 @@ Reschedule or cancel: ${manageUrl(opts.token)}`,
     organizerName: "CorvusPT",
     attendees: [
       { email: opts.visitor.email, name: opts.visitor.name },
-      { email: STAFF_EMAIL, name: "CorvusPT team" },
+      ...TEAM_EMAILS.map((email) => ({ email, name: "CorvusPT team" })),
     ],
     method,
   });

@@ -11,7 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotProblem } from "../_shared/appointment-rules.ts";
 import {
-  STAFF_EMAIL,
+  TEAM_EMAILS,
   confirmationEmail,
   inviteAttachment,
   kindLabel,
@@ -138,7 +138,7 @@ To do: create the Google Meet and email the link to ${email}.` : ""}
 ${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,
-          [STAFF_EMAIL],
+          TEAM_EMAILS,
           `New appointment — ${longDate(date)}, ${slotLabel(slot)} CT — ${name}`,
           `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
           text,

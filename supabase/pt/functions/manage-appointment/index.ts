@@ -10,7 +10,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotKey, slotProblem } from "../_shared/appointment-rules.ts";
 import {
-  STAFF_EMAIL,
+  TEAM_EMAILS,
   cancellationEmail,
   confirmationEmail,
   inviteAttachment,
@@ -101,7 +101,7 @@ Deno.serve(async (req: Request) => {
         }
         try {
           const text = `Appointment CANCELLED by the visitor: ${oldWhen}\n${appt.name} <${appt.email}>\nType: ${kind}`;
-          await sendEmail(resendKey, [STAFF_EMAIL], `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, [cancelInvite]);
+          await sendEmail(resendKey, TEAM_EMAILS, `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, [cancelInvite]);
         } catch (e) {
           console.error("Cancellation staff email failed:", e);
         }
@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
         try {
           const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}${appt.meeting_type === "virtual" ? `
 To do: update the Google Meet time and re-send the link to ${appt.email}.` : ""}`;
-          await sendEmail(resendKey, [STAFF_EMAIL], `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, [moveInvite]);
+          await sendEmail(resendKey, TEAM_EMAILS, `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, [moveInvite]);
         } catch (e) {
           console.error("Reschedule staff email failed:", e);
         }
