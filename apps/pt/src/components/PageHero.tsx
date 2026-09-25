@@ -88,7 +88,7 @@ export function PageHero({
       />
       <div className="relative flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="tu-float grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur sm:h-14 sm:w-14">
+          <div className="tu-float hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur sm:grid sm:h-14 sm:w-14">
             <Icon className="h-6 w-6 sm:h-7 sm:w-7" />
           </div>
           <div className="min-w-0">

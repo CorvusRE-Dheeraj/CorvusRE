@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageHero } from "@/components/PageHero";
 import { Settings as HeroSettingsIcon } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/settings")({
   component: Settings,
@@ -246,7 +247,7 @@ function Settings() {
       />
 
       {loading ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : (
         <form onSubmit={handleSave} className="mt-6 card-elev p-6 grid gap-4">
           <label className="grid gap-1">

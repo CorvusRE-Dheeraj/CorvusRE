@@ -999,3 +999,42 @@ header .container-page {
   --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 26px -10px oklch(0 0 0 / 0.5);
   background: oklch(0.2 0.03 255);
 }
+
+/* Typography and polish pass */
+::selection {
+  background: color-mix(in oklch, var(--color-accent) 30%, transparent);
+}
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+/* Clickable cards (links / buttons that use .card-elev) lift a little on hover. */
+a.card-elev,
+button.card-elev {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+a.card-elev:hover,
+button.card-elev:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -14px oklch(0.18 0.06 250 / 0.35);
+}
+/* Numbers line up in columns and read as figures, not prose. */
+.tabular-nums,
+.font-serif.font-black,
+.font-serif.font-bold {
+  font-variant-numeric: tabular-nums;
+}
+h1 {
+  text-wrap: balance;
+}
+h2,
+h3 {
+  text-wrap: pretty;
+}

@@ -78,6 +78,7 @@ import {
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Building2 as HeroPropertiesIcon } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -1562,7 +1563,7 @@ function PropertyDocsModal({
       {loadError ? (
         <p className="mt-6 text-sm text-destructive">Couldn't load documents.</p>
       ) : docs === null ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : docs.length === 0 ? (
         <div className="mt-6 rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
           No documents for this property yet.

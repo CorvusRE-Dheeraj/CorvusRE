@@ -1552,7 +1552,7 @@ function NextStepFooter({
   if (!next) return null;
 
   return (
-    <div className="mt-5 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+    <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-accent/40 bg-card/95 p-3 text-sm shadow-lg backdrop-blur">
       <p className="text-xs font-semibold uppercase tracking-wide text-accent">
         Reminder — your next step
       </p>
