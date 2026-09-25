@@ -196,6 +196,7 @@ import { PdfFormEditor } from "@/components/PdfFormEditor";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { Modal } from "@/components/Modal";
 import { UndoButton } from "@/components/UndoButton";
+import { FinalOutcomeSection } from "@/components/FinalOutcomeSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -212,9 +213,11 @@ import { CalendarDays } from "lucide-react";
 const COMPARE_ESCALATION_EVENT = "corvuspt:compare-escalation";
 
 type CaseTabId =
-  "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court";
+  "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court" | "outcome";
 
-const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
+// joinsPrev: shares the previous tab's step number (Arbitration and Court Appeal are
+// two buttons under one step).
+const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string; joinsPrev?: boolean }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
   {
     id: "file",
@@ -245,8 +248,19 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
     id: "court",
     label: "Court Appeal",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
+    joinsPrev: true,
+  },
+  {
+    id: "outcome",
+    label: "Final Outcome",
+    lockedHint: "Unlocks once your case is resolved.",
   },
 ];
+
+// The number shown for a tab: its position, minus tabs that share a step number.
+function stepNumber(index: number): number {
+  return index - CASE_TABS.slice(0, index + 1).filter((t) => t.joinsPrev).length;
+}
 
 // One plain sentence per phase — "what this step is for" — shown under the tab
 // bar for whichever tab is open, so landing on a tab always explains itself.
@@ -259,6 +273,7 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   decision: "Record the ARB's decision.",
   arbitration: "Weigh binding arbitration or a district-court appeal.",
   court: "Weigh binding arbitration or a district-court appeal.",
+  outcome: "How your case ended — the final value, what you saved, and the route it took.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -298,6 +313,8 @@ function caseTabUnlocked(
     case "informal":
     case "hearing":
       return filed || noticeSigned;
+    case "outcome":
+      return s === "resolved" || protest.informalStatus === "accepted";
     case "decision":
     case "arbitration":
     case "court":
@@ -326,7 +343,7 @@ function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): Case
     case "arbitrating":
       return "decision";
     case "resolved":
-      return "overview";
+      return "outcome";
     default:
       return "overview";
   }
@@ -785,6 +802,14 @@ export function CaseDetailView({
               />
             </div>
           )}
+          {/* --- Final Outcome --- */}
+          {activeTab === "outcome" && (
+            <FinalOutcomeSection
+              protest={current}
+              property={property}
+              onOpenTab={(tab) => setActiveTab(tab)}
+            />
+          )}
         </>
       )}
     </div>
@@ -883,12 +908,12 @@ function CaseTabBar({
         const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
         const done = !isHub && !locked && i < currentIdx;
         const isCurrent = !isHub && i === currentIdx;
-        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(i);
+        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
         return (
           <div key={t.id} className="flex shrink-0 items-center gap-1">
             {i > 0 && (
               <span aria-hidden className="px-0.5 text-muted-foreground/30">
-                →
+                {t.joinsPrev ? "/" : "→"}
               </span>
             )}
             <button
@@ -906,20 +931,22 @@ function CaseTabBar({
                     : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              <span
-                aria-hidden
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                  done
-                    ? "bg-success/15 text-success"
-                    : isCurrent && !locked
-                      ? "bg-accent text-accent-foreground"
-                      : locked
-                        ? "bg-muted text-muted-foreground/60"
-                        : "border border-border text-muted-foreground"
-                }`}
-              >
-                {marker}
-              </span>
+              {!t.joinsPrev && (
+                <span
+                  aria-hidden
+                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold leading-none ${
+                    done
+                      ? "bg-success/15 text-success"
+                      : isCurrent && !locked
+                        ? "bg-accent text-accent-foreground"
+                        : locked
+                          ? "bg-muted text-muted-foreground/60"
+                          : "border border-border text-muted-foreground"
+                  }`}
+                >
+                  {marker}
+                </span>
+              )}
               {t.label}
             </button>
           </div>
@@ -976,12 +1003,12 @@ function CaseRoadmap({
           const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
           const done = !isHub && unlocked && i < currentIdx;
           const here = i === currentIdx;
-          const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(i);
+          const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(stepNumber(i));
           return (
             <li key={t.id} className="flex items-center gap-1">
               {i > 0 && (
                 <span aria-hidden className="text-muted-foreground/30">
-                  →
+                  {t.joinsPrev ? "/" : "→"}
                 </span>
               )}
               <button
@@ -998,20 +1025,22 @@ function CaseRoadmap({
                         : "text-muted-foreground/40"
                 }`}
               >
-                <span
-                  aria-hidden
-                  className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold leading-none ${
-                    here
-                      ? "bg-accent text-accent-foreground"
-                      : done
-                        ? "bg-success/20 text-success"
-                        : unlocked
-                          ? "border border-border"
-                          : "bg-muted text-muted-foreground/50"
-                  }`}
-                >
-                  {marker}
-                </span>
+                {!t.joinsPrev && (
+                  <span
+                    aria-hidden
+                    className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold leading-none ${
+                      here
+                        ? "bg-accent text-accent-foreground"
+                        : done
+                          ? "bg-success/20 text-success"
+                          : unlocked
+                            ? "border border-border"
+                            : "bg-muted text-muted-foreground/50"
+                    }`}
+                  >
+                    {marker}
+                  </span>
+                )}
                 {t.label}
               </button>
             </li>
