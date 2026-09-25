@@ -207,7 +207,8 @@ import { CalendarDays } from "lucide-react";
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
-type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision" | "appeal";
+type CaseTabId =
+  "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court";
 
 const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
@@ -232,8 +233,13 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
   {
-    id: "appeal",
-    label: "Appeal / Arbitration",
+    id: "arbitration",
+    label: "Arbitration",
+    lockedHint: "Unlocks after your hearing or a decision is recorded.",
+  },
+  {
+    id: "court",
+    label: "Court Appeal",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
 ];
@@ -247,7 +253,9 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   hearing:
     "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
   decision: "Record the ARB's decision.",
-  appeal: "Weigh binding arbitration or a district-court appeal.",
+  arbitration: "Binding arbitration — an alternative to a court appeal for eligible properties.",
+  court:
+    "Appeal to district court. You can pursue this in addition to (or instead of) arbitration.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -264,7 +272,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-hearing-notice": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
-  "case-escalation": "appeal",
+  "case-escalation": "arbitration",
 };
 
 // noticeSigned: the Notice of Protest has been signed. That opens Informal
@@ -288,7 +296,8 @@ function caseTabUnlocked(
     case "hearing":
       return filed || noticeSigned;
     case "decision":
-    case "appeal":
+    case "arbitration":
+    case "court":
       return (
         ["decision_received", "appealing", "arbitrating", "resolved"].includes(s) ||
         protest.hearingDate != null ||
@@ -450,7 +459,7 @@ export function CaseDetailView({
       goToGuidanceAnchor(anchor);
       return;
     }
-    const targetTab = ANCHOR_TAB[anchor];
+    const targetTab = anchor === "case-escalation" ? escalationTab : ANCHOR_TAB[anchor];
     if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
     // The filing steps live inside the popup — open it so the anchor exists.
     if (targetTab === "file") setFilingOpen(true);
@@ -466,6 +475,9 @@ export function CaseDetailView({
     };
     requestAnimationFrame(tryScroll);
   }
+
+  // Which of the two escalation tabs a generic "open appeal / arbitration" link goes to.
+  const escalationTab: CaseTabId = current.escalationPath === "appeal" ? "court" : "arbitration";
 
   function handleTabClick(id: CaseTabId) {
     if (caseTabUnlocked(id, current, needsGuidanceAck, noticeSigned)) {
@@ -654,7 +666,7 @@ export function CaseDetailView({
                 protest={current}
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onOpenAppeal={() => setActiveTab("appeal")}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
               />
               <HearingNoticeSection
                 userId={userId}
@@ -682,7 +694,7 @@ export function CaseDetailView({
                 property={property}
                 agreement={settlementAgreement}
                 onAgreementChange={setSettlementAgreement}
-                onOpenAppeal={() => setActiveTab("appeal")}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
               <DecisionNoticeSection
@@ -694,10 +706,10 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Appeal / Arbitration --- */}
-          {activeTab === "appeal" && (
+          {/* --- Arbitration --- */}
+          {activeTab === "arbitration" && (
             <div>
-              {current.escalationPath === "arbitration" && (
+              {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
                 <ArbitrationWorkflow
                   userId={userId}
                   protest={current}
@@ -706,8 +718,23 @@ export function CaseDetailView({
                   caseData={caseData}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 />
+              ) : (
+                <EscalationStart
+                  kind="arbitration"
+                  protest={current}
+                  property={property}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onOtherTab={() => setActiveTab("court")}
+                />
               )}
-              {current.escalationPath === "appeal" && (
+            </div>
+          )}
+
+          {/* --- Court Appeal --- */}
+          {activeTab === "court" && (
+            <div>
+              {current.escalationPath === "appeal" || current.courtAppeal ? (
                 <CourtAppealWorkflow
                   userId={userId}
                   protest={current}
@@ -716,19 +743,91 @@ export function CaseDetailView({
                   caseData={caseData}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 />
-              )}
-              {current.escalationPath !== "arbitration" && current.escalationPath !== "appeal" && (
-                <EscalationEvaluationSection
+              ) : (
+                <EscalationStart
+                  kind="appeal"
                   protest={current}
                   property={property}
                   evidenceDocumentCount={evidenceDocuments.length}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onOtherTab={() => setActiveTab("arbitration")}
                 />
               )}
             </div>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// The not-started state of the Arbitration / Court Appeal tabs: the option
+// evaluation (eligibility, deadlines) plus a button to begin that path. Each path
+// is independent — an owner can start one and later also start the other.
+function EscalationStart({
+  kind,
+  protest,
+  property,
+  evidenceDocumentCount,
+  onUpdate,
+  onOtherTab,
+}: {
+  kind: "arbitration" | "appeal";
+  protest: ProtestRecord;
+  property: PropertyRecord;
+  evidenceDocumentCount: number;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onOtherTab: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const label = kind === "arbitration" ? "binding arbitration" : "a court appeal";
+  async function start() {
+    setBusy(true);
+    try {
+      await recordEscalation(protest.id, kind);
+      onUpdate({ escalationPath: kind, status: kind === "appeal" ? "appealing" : "arbitrating" });
+      toast.success(
+        kind === "arbitration"
+          ? "Recorded — the case moved to arbitration."
+          : "Recorded — the case moved to a court appeal.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not record this next step."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-md border border-border p-4">
+        <h4 className="text-sm font-semibold">
+          {kind === "arbitration" ? "Binding arbitration" : "Court appeal"}
+        </h4>
+        <p className="mt-1 text-xs text-muted-foreground">
+          You haven&apos;t started {label} for this case yet. Starting it doesn&apos;t close the
+          other option — you can also use the{" "}
+          <button type="button" onClick={onOtherTab} className="text-accent hover:underline">
+            {kind === "arbitration" ? "Court Appeal" : "Arbitration"} tab
+          </button>{" "}
+          {kind === "arbitration" ? "before or after" : "in addition to or instead of arbitration"}.
+        </p>
+        <button
+          type="button"
+          onClick={() => void start()}
+          disabled={busy}
+          className="btn-accent mt-3 text-xs py-1.5 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : kind === "arbitration" ? "Start arbitration" : "Start court appeal"}
+        </button>
+      </div>
+      <EscalationEvaluationSection
+        protest={protest}
+        property={property}
+        evidenceDocumentCount={evidenceDocumentCount}
+        onUpdate={(patch) => {
+          onUpdate(patch);
+        }}
+      />
     </div>
   );
 }
