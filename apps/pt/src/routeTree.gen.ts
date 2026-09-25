@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AiReportRouteImport } from './routes/ai-report'
+import { Route as AppointmentRouteImport } from './routes/appointment'
 import { Route as BppRenditionRouteImport } from './routes/bpp-rendition'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DocumentReviewRouteImport } from './routes/document-review'
@@ -63,6 +64,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
 const AiReportRoute = AiReportRouteImport.update({
   id: '/ai-report',
   path: '/ai-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppointmentRoute = AppointmentRouteImport.update({
+  id: '/appointment',
+  path: '/appointment',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BppRenditionRoute = BppRenditionRouteImport.update({
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -270,6 +277,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -346,6 +355,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -383,6 +393,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -419,6 +430,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -457,6 +469,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AiReportRoute: typeof AiReportRoute
+  AppointmentRoute: typeof AppointmentRoute
   BppRenditionRoute: typeof BppRenditionRoute
   ContactRoute: typeof ContactRoute
   DocumentReviewRoute: typeof DocumentReviewRoute
@@ -503,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-report'
       fullPath: '/ai-report'
       preLoaderRoute: typeof AiReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/appointment': {
+      id: '/appointment'
+      path: '/appointment'
+      fullPath: '/appointment'
+      preLoaderRoute: typeof AppointmentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/bpp-rendition': {
@@ -770,6 +790,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AdminLoginRoute: AdminLoginRoute,
   AiReportRoute: AiReportRoute,
+  AppointmentRoute: AppointmentRoute,
   BppRenditionRoute: BppRenditionRoute,
   ContactRoute: ContactRoute,
   DocumentReviewRoute: DocumentReviewRoute,

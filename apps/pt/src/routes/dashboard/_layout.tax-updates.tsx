@@ -524,7 +524,7 @@ function TaxUpdates() {
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <ScheduleAppointment
             trigger="button"
-            buttonLabel="Schedule a Zoom meeting"
+            buttonLabel="Schedule a Google Meet"
             defaultType="virtual"
           />
           <span className="text-xs text-white/80">
