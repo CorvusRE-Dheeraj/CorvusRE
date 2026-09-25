@@ -1,3 +1,4 @@
+import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
@@ -630,6 +631,11 @@ export function CaseDetailView({
         </div>
       ) : (
         <>
+          <CaseNextStepCard
+            step={nextStepFor(current.status, { needsGuidanceAck, noticeSigned })}
+            activeTab={activeTab}
+            onGo={handleTabClick}
+          />
           <CaseTabBar
             activeTab={activeTab}
             protest={current}

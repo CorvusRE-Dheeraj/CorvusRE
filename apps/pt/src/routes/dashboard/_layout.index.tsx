@@ -1,3 +1,4 @@
+import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -130,6 +131,13 @@ function Overview() {
   const [hearingNudge, setHearingNudge] = useState<string | null>(null);
   const nudgedHearingProtestId = useRef<string | null>(null);
   const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
+
+  // Brand-new accounts (nothing added yet) get the quick tour once.
+  useEffect(() => {
+    if (!loaded || properties.length > 0 || protests.length > 0) return;
+    const t = setTimeout(maybeStartTour, 600);
+    return () => clearTimeout(t);
+  }, [loaded, properties.length, protests.length]);
 
   useEffect(() => {
     if (!user) return;

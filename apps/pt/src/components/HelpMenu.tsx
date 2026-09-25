@@ -1,5 +1,6 @@
+import { OPEN_TOUR_EVENT } from "@/components/WelcomeTour";
 import { Link } from "@tanstack/react-router";
-import { BookOpen, CalendarCheck, HelpCircle, MessageCircle } from "lucide-react";
+import { BookOpen, CalendarCheck, HelpCircle, Sparkles, MessageCircle } from "lucide-react";
 import { GLOSSARY } from "@/lib/glossary";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -21,6 +22,13 @@ export function HelpMenu() {
         <div className="border-b border-border p-4">
           <div className="font-serif text-base font-semibold">Need a hand?</div>
           <div className="mt-2 grid gap-1 text-sm">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(OPEN_TOUR_EVENT))}
+              className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-secondary"
+            >
+              <Sparkles className="h-4 w-4 text-amber-600" /> Take the quick tour
+            </button>
             <Link
               to="/how-it-works"
               className="flex items-center gap-2 rounded-md p-2 hover:bg-secondary"
