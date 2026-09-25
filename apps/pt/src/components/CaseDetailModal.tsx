@@ -207,6 +207,10 @@ import { CalendarDays } from "lucide-react";
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
+// Fired by the Arbitration / Court Appeal tab's intro line; the option comparison
+// listens and runs its AI comparison.
+const COMPARE_ESCALATION_EVENT = "corvuspt:compare-escalation";
+
 type CaseTabId =
   "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court";
 
@@ -253,9 +257,8 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   hearing:
     "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
   decision: "Record the ARB's decision.",
-  arbitration: "Binding arbitration — an alternative to a court appeal for eligible properties.",
-  court:
-    "Appeal to district court. You can pursue this in addition to (or instead of) arbitration.",
+  arbitration: "Weigh binding arbitration or a district-court appeal.",
+  court: "Weigh binding arbitration or a district-court appeal.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -513,7 +516,24 @@ export function CaseDetailView({
             noticeSigned={noticeSigned}
             onSelect={handleTabClick}
           />
-          <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+          {activeTab === "arbitration" || activeTab === "court" ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => {
+                  document
+                    .getElementById("case-escalation")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  window.dispatchEvent(new Event(COMPARE_ESCALATION_EVENT));
+                }}
+                className="text-left text-accent hover:underline"
+              >
+                {CASE_TAB_INTRO[activeTab]} Compare the options with AI →
+              </button>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+          )}
 
           {activeTab === "overview" && (
             <div className="mt-3">
@@ -722,12 +742,17 @@ export function CaseDetailView({
                 <EscalationStart
                   kind="arbitration"
                   protest={current}
-                  property={property}
-                  evidenceDocumentCount={evidenceDocuments.length}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                   onOtherTab={() => setActiveTab("court")}
                 />
               )}
+              <EscalationEvaluationSection
+                protest={current}
+                property={property}
+                evidenceDocumentCount={evidenceDocuments.length}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
+              />
             </div>
           )}
 
@@ -747,12 +772,17 @@ export function CaseDetailView({
                 <EscalationStart
                   kind="appeal"
                   protest={current}
-                  property={property}
-                  evidenceDocumentCount={evidenceDocuments.length}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                   onOtherTab={() => setActiveTab("arbitration")}
                 />
               )}
+              <EscalationEvaluationSection
+                protest={current}
+                property={property}
+                evidenceDocumentCount={evidenceDocuments.length}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
+              />
             </div>
           )}
         </>
@@ -767,15 +797,11 @@ export function CaseDetailView({
 function EscalationStart({
   kind,
   protest,
-  property,
-  evidenceDocumentCount,
   onUpdate,
   onOtherTab,
 }: {
   kind: "arbitration" | "appeal";
   protest: ProtestRecord;
-  property: PropertyRecord;
-  evidenceDocumentCount: number;
   onUpdate: (patch: Partial<ProtestRecord>) => void;
   onOtherTab: () => void;
 }) {
@@ -820,14 +846,6 @@ function EscalationStart({
           {busy ? "Saving…" : kind === "arbitration" ? "Start arbitration" : "Start court appeal"}
         </button>
       </div>
-      <EscalationEvaluationSection
-        protest={protest}
-        property={property}
-        evidenceDocumentCount={evidenceDocumentCount}
-        onUpdate={(patch) => {
-          onUpdate(patch);
-        }}
-      />
     </div>
   );
 }
@@ -6661,12 +6679,17 @@ function EscalationEvaluationSection({
   property,
   evidenceDocumentCount,
   onUpdate,
+  onChosen,
 }: {
   protest: ProtestRecord;
   property: PropertyRecord;
   evidenceDocumentCount: number;
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  // Called after a path is recorded, so the page can jump to that path's tab.
+  onChosen?: (path: "appeal" | "arbitration") => void;
 }) {
+  const [comparison, setComparison] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
   const [opinionInput, setOpinionInput] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
@@ -6682,7 +6705,42 @@ function EscalationEvaluationSection({
     evidenceDocumentCount,
     opinionOfValue && opinionOfValue > 0 ? opinionOfValue : null,
   );
+  const compareRef = useRef<() => void>(() => {});
+  compareRef.current = () => void compareWithAi();
+  useEffect(() => {
+    const run = () => compareRef.current();
+    window.addEventListener(COMPARE_ESCALATION_EVENT, run);
+    return () => window.removeEventListener(COMPARE_ESCALATION_EVENT, run);
+  }, []);
   if (!evalr.available) return null;
+
+  async function compareWithAi() {
+    if (comparing || !evalr.available) return;
+    setComparing(true);
+    try {
+      const lines = evalr.options.map(
+        (o) =>
+          `- ${o.title} (${o.statute}): ${o.eligible ? "available" : "not available"}; deadline ${o.deadline.date ?? "n/a"}; ` +
+          `est. cost ${o.estimatedCost ? `${currency(o.estimatedCost.min)}-${currency(o.estimatedCost.max)}` : "n/a"}; ` +
+          `added savings/yr ${o.potentialAdditionalSavings.amount != null ? currency(o.potentialAdditionalSavings.amount) : "n/a"}; ` +
+          `ROI ${o.estimatedRoi.ratio != null ? `${o.estimatedRoi.ratio}x` : "n/a"}; evidence ${o.evidenceStrength}; risk ${o.risk.band}. ${o.practicalBenefit}`,
+      );
+      const { answer } = await askAboutDocument({
+        question:
+          "Compare these remedies for my case in plain language: binding arbitration versus a district-court appeal (and any other listed option). " +
+          "Reply as short bullets under these labels: Best fit for my case; Arbitration vs court appeal; Main risks; Questions to ask the county or an attorney. " +
+          "Use only the data below. Do not give legal advice or predict outcomes; remind me to verify deadlines with the county.",
+        context:
+          `CASE: ${property.address}; ARB decision ${protest.arbDecision ?? "n/a"}; original value ${protest.originalValue ?? "n/a"}; final value ${protest.finalValue ?? "n/a"}.\n` +
+          `HEADLINE: ${evalr.headline}\nOPTIONS:\n${lines.join("\n")}`,
+      });
+      setComparison(answer);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not compare the options.");
+    } finally {
+      setComparing(false);
+    }
+  }
 
   const eligibleValueRemedies = evalr.options.filter(
     (o) =>
@@ -6707,6 +6765,7 @@ function EscalationEvaluationSection({
           : "Recorded — binding arbitration. This is handled with the Comptroller's office.",
       );
       setShowApprove(false);
+      onChosen?.(path);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not record this next step.");
     } finally {
@@ -6764,6 +6823,14 @@ function EscalationEvaluationSection({
         >
           {expanded ? "Hide detail" : "Review Escalation"}
         </button>
+        <button
+          type="button"
+          onClick={() => void compareWithAi()}
+          disabled={comparing}
+          className="btn-outline text-sm py-1.5 disabled:opacity-60"
+        >
+          {comparing ? "Comparing…" : comparison ? "Compare again with AI" : "Compare with AI"}
+        </button>
         {eligibleValueRemedies.length > 0 && (
           <button
             type="button"
@@ -6788,6 +6855,13 @@ function EscalationEvaluationSection({
           Close Case
         </button>
       </div>
+
+      {comparison && (
+        <div className="mt-3 rounded-md border border-border bg-secondary/30 p-3">
+          <div className="text-xs font-semibold">AI comparison of your options</div>
+          <MarkdownLite text={comparison} className="mt-1 text-xs text-muted-foreground" />
+        </div>
+      )}
 
       {showApprove && eligibleValueRemedies.length > 0 && (
         <div className="mt-3 rounded-md border border-border p-3">
