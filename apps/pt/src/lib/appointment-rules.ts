@@ -1,5 +1,5 @@
 // Appointment scheduling rules for "Schedule a Call or Virtual Meeting". Pure — no
-// I/O. KEEP IN SYNC BY HAND with supabase-pt/functions/_shared/appointment-rules.ts (the edge
+// I/O. KEEP IN SYNC BY HAND with supabase/pt/functions/_shared/appointment-rules.ts (the edge
 // copy is the source of truth for what can actually be booked; this one drives the admin screen).
 //
 // The rules:

@@ -1,5 +1,5 @@
 // "One hour before" alerts — the pure timing rules. KEEP IN SYNC BY HAND with
-// supabase-pt/functions/_shared/alert-time.ts (the edge function copy; the browser and Deno can't share a file).
+// supabase/pt/functions/_shared/alert-time.ts (the edge function copy; the browser and Deno can't share a file).
 //
 // Two kinds of moment:
 //  - timed:        an ARB hearing or informal review that has a real start time
