@@ -923,3 +923,29 @@ header .container-page {
     transform: none;
   }
 }
+
+/* Case celebration: confetti pieces fall and spin once, then stay hidden. */
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, -20px, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-x, 0px), 420px, 0) rotate(720deg);
+  }
+}
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: confetti-fall var(--confetti-d, 2.8s) ease-in var(--confetti-delay, 0s) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti-piece {
+    display: none;
+  }
+}
