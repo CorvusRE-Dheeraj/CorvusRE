@@ -643,10 +643,51 @@ export function CaseDetailView({
       ) : (
         <>
           <CaseNextStepCard
-            step={nextStepFor(current.status, { needsGuidanceAck, noticeSigned })}
+            step={nextStepFor(current.status, {
+              needsGuidanceAck,
+              noticeSigned,
+              informalStatus: current.informalStatus,
+            })}
             activeTab={activeTab}
             onGo={handleTabClick}
           />
+          {(() => {
+            // Viewing a later phase than the one the case is actually in: say so, and
+            // say what is still open, so nobody wonders why an earlier step keeps blinking.
+            const order = CASE_TABS.map((t) => t.id);
+            const isEscalation = activeTab === "arbitration" || activeTab === "court";
+            const behind: CaseTabId | null = isEscalation
+              ? current.status !== "resolved" && current.arbDecision == null
+                ? "decision"
+                : null
+              : order.indexOf(activeTab) > order.indexOf(phaseDefault) &&
+                  activeTab !== "overview" &&
+                  activeTab !== "outcome"
+                ? phaseDefault
+                : null;
+            if (!behind) return null;
+            const label = CASE_TABS.find((t) => t.id === behind)?.label ?? "";
+            const todo: Partial<Record<CaseTabId, string>> = {
+              file: "Confirm you delivered your signed protest to the county, so your deadline is protected.",
+              informal: "Record how the informal review ended.",
+              hearing: "Add your hearing notice, then record what happened.",
+              decision: "Record the ARB decision (upload the ARB order).",
+            };
+            return (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="min-w-0 flex-1 basis-64">
+                  <span className="font-semibold">Finish "{label}" first.</span> {todo[behind]}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(behind)}
+                  className="btn-primary shrink-0 text-sm"
+                >
+                  Go to {label} →
+                </button>
+              </div>
+            );
+          })()}
           <CaseTabBar
             activeTab={activeTab}
             protest={current}
@@ -792,6 +833,10 @@ export function CaseDetailView({
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
                 onNoticeSigned={setNoticeSignedAt}
+                onFinish={() => {
+                  setFilingOpen(false);
+                  handleTabClick("informal");
+                }}
               />
             </Modal>
           )}
@@ -3114,6 +3159,9 @@ export function DocumentsSection({
   // hide signing entirely, keeping Save Progress/Download available for
   // staff to help prep the form without ever touching the signature step.
   allowSigning = true,
+  // Called from the last filing step's footer: close the popup and move on to the
+  // next case phase. Omitted by the admin copy.
+  onFinish,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -3125,6 +3173,7 @@ export function DocumentsSection({
   onNoticeSigned: (signedAt: string | null) => void;
   onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
   allowSigning?: boolean;
+  onFinish?: () => void;
 }) {
   const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3732,6 +3781,53 @@ export function DocumentsSection({
           onConfirmed={handleEvidenceFilingConfirmed}
         />
       )}
+
+      {(() => {
+        const idx = filingSteps.indexOf(activeStep);
+        const next = idx >= 0 ? filingSteps[idx + 1] : undefined;
+        const done = stepDone(activeStep);
+        const blocked = preFilingBlocked && activeStep === "prefiling";
+        return (
+          <div
+            className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
+              done ? "border-success/30 bg-success/5" : "border-border bg-secondary/40"
+            }`}
+          >
+            <div className="min-w-0 basis-56 flex-1 text-sm">
+              <div className="text-xs text-muted-foreground">
+                Step {idx + 1} of {filingSteps.length}: {FILING_STEP_META[activeStep].label}
+              </div>
+              <div className={done ? "font-medium text-success" : "font-medium"}>
+                {done
+                  ? "✓ This step is complete."
+                  : blocked
+                    ? "Fix the flagged items above to continue."
+                    : !next
+                      ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
+                      : "Not finished yet. Complete it above, or skip ahead."}
+              </div>
+            </div>
+            {next ? (
+              <button
+                type="button"
+                onClick={() => selectStep(next)}
+                disabled={blocked}
+                className="btn-primary shrink-0 text-sm disabled:opacity-60"
+              >
+                Next step: {FILING_STEP_META[next].label} →
+              </button>
+            ) : onFinish ? (
+              <button type="button" onClick={onFinish} className="btn-primary shrink-0 text-sm">
+                {done ? "Done — go to Informal Review →" : "Skip for now — go to Informal Review →"}
+              </button>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {done ? "All filing steps are done." : "This is the last step."}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {editingForm && (
         <PdfFormEditor
@@ -4659,6 +4755,21 @@ function InformalReviewSection({
               onUpdate(patch);
             }}
           />
+        </div>
+      )}
+      {protest.status !== "resolved" && protest.informalStatus === "completed" && (
+        <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm">
+          <div className="font-semibold">Next: tell us how the informal review ended</div>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">You agreed on a value:</span> upload the
+              signed settlement below. That closes your protest.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">You did not agree:</span> click
+              Unsatisfied below. We will move you on to a formal hearing.
+            </li>
+          </ul>
         </div>
       )}
       {protest.status !== "resolved" &&

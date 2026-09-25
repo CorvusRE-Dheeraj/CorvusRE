@@ -14,7 +14,7 @@ export type NextStep = {
 // One plain answer to "what do I do now?" for a case, derived only from its real status.
 export function nextStepFor(
   status: string,
-  opts: { needsGuidanceAck: boolean; noticeSigned: boolean },
+  opts: { needsGuidanceAck: boolean; noticeSigned: boolean; informalStatus?: string },
 ): NextStep {
   switch (status) {
     case "requested":
@@ -40,6 +40,13 @@ export function nextStepFor(
           };
     case "filed":
     case "under_review":
+      if (opts.informalStatus === "completed")
+        return {
+          title: "Your informal review is done. How did it end?",
+          body: "Agreed on a value? Upload the signed settlement. Not happy with the offer? Choose Unsatisfied to move on to a formal hearing.",
+          tab: "informal",
+          cta: "Choose the result",
+        };
       return {
         title: "Talk to the county's appraiser",
         body: "Try to settle your value informally first. It is faster than a hearing.",
