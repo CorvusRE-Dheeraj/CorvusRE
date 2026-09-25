@@ -65,7 +65,10 @@ export function LegalGate() {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 sm:p-6">
+    <div
+      data-blocking-dialog
+      className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 sm:p-6"
+    >
       {/* overflow-hidden on the rounded shell keeps the scrollbar off the
           corners; only the middle region scrolls, so the heading and the
           Accept button stay put no matter how long the list is. */}

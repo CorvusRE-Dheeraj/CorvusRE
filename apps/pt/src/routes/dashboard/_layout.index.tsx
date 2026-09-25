@@ -135,8 +135,7 @@ function Overview() {
   // Brand-new accounts (nothing added yet) get the quick tour once.
   useEffect(() => {
     if (!loaded || properties.length > 0 || protests.length > 0) return;
-    const t = setTimeout(maybeStartTour, 600);
-    return () => clearTimeout(t);
+    return maybeStartTour();
   }, [loaded, properties.length, protests.length]);
 
   useEffect(() => {

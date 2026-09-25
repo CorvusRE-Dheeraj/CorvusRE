@@ -1,3 +1,4 @@
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -375,6 +376,8 @@ function Settings() {
           </button>
         </form>
       )}
+
+      {!loading && <TextSizeControl />}
 
       {!loading && (
         <div className="mt-8 card-elev p-6">

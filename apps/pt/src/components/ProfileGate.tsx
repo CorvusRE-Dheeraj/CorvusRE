@@ -107,7 +107,10 @@ export function ProfileGate() {
   }
 
   return (
-    <div className="fixed inset-0 z-[99] grid place-items-center bg-black/60 p-4 sm:p-6">
+    <div
+      data-blocking-dialog
+      className="fixed inset-0 z-[99] grid place-items-center bg-black/60 p-4 sm:p-6"
+    >
       <div className="bg-card w-full max-w-md rounded-2xl p-6 shadow-elev sm:p-8">
         <h2 className="font-serif text-xl font-semibold">A couple of details</h2>
         <p className="text-muted-foreground mt-1 text-sm">

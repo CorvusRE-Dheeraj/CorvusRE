@@ -134,7 +134,7 @@ function RootShell({ children }: { children: ReactNode }) {
           // Re-apply a saved dark-mode choice before first paint (no flash of light).
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}",
+              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark');var z=localStorage.getItem('corvuspt.textSize');if(z&&z!=='100')document.documentElement.style.fontSize=z+'%'}catch(e){}",
           }}
         />
         <HeadContent />

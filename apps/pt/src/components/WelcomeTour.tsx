@@ -3,15 +3,24 @@ import { Building2, CalendarClock, FileText, Scale, Sparkles } from "lucide-reac
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 const KEY = "corvuspt.tourSeen";
-export function maybeStartTour() {
-  try {
-    if (localStorage.getItem(KEY) !== "1") window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
-  } catch {
-    // storage blocked — skip the automatic tour
-  }
-}
-
 export const OPEN_TOUR_EVENT = "corvuspt:open-tour";
+
+// Starts the tour once, but only when no other dialog (terms, profile details) is in the way —
+// it waits and re-checks so the required sign-up steps always come first. Returns a cancel fn.
+export function maybeStartTour(): () => void {
+  let tries = 0;
+  const id = window.setInterval(() => {
+    if (++tries > 80) return window.clearInterval(id);
+    if (document.querySelector("[role=dialog],[role=alertdialog],[data-blocking-dialog]")) return;
+    window.clearInterval(id);
+    try {
+      if (localStorage.getItem(KEY) !== "1") window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
+    } catch {
+      // storage blocked — skip the automatic tour
+    }
+  }, 1500);
+  return () => window.clearInterval(id);
+}
 
 const SLIDES = [
   {

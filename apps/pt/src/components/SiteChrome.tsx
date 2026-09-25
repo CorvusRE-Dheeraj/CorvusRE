@@ -1,3 +1,4 @@
+import { NotificationsBell } from "@/components/NotificationsBell";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { WelcomeTour } from "@/components/WelcomeTour";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -286,6 +287,7 @@ export function SiteNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <NotificationsBell />
           <HelpMenu />
           <WelcomeTour />
           <ConfirmHost />
