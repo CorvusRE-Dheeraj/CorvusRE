@@ -125,6 +125,13 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script
+          // Re-apply a saved dark-mode choice before first paint (no flash of light).
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
         <HeadContent />
       </head>
       <body>

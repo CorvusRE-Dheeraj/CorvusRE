@@ -161,6 +161,48 @@
   display: none;
 }
 
+/* Dark theme — opt-in only, via the toggle in the header (adds .dark to <html>). The app
+   stays light by default, whatever the OS prefers. */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.17 0.03 255);
+  --foreground: oklch(0.95 0.01 250);
+  --card: oklch(0.22 0.035 255);
+  --card-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.22 0.035 255);
+  --popover-foreground: oklch(0.95 0.01 250);
+  --primary: oklch(0.33 0.09 255);
+  --primary-foreground: oklch(0.985 0.005 90);
+  --secondary: oklch(0.27 0.03 255);
+  --secondary-foreground: oklch(0.93 0.01 250);
+  --muted: oklch(0.27 0.025 255);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.7 0.17 163);
+  --accent-foreground: oklch(0.15 0.03 163);
+  --destructive: oklch(0.66 0.21 27);
+  --success: oklch(0.72 0.17 155);
+  --warning: oklch(0.82 0.16 80);
+  --warning-foreground: oklch(0.2 0.04 60);
+  --border: oklch(0.32 0.03 255);
+  --input: oklch(0.3 0.03 255);
+  --ring: oklch(0.7 0.15 163);
+  --nav-highlight: oklch(0.32 0.07 163);
+  --nav-highlight-foreground: oklch(0.92 0.08 163);
+  --hero-sky-top: oklch(0.2 0.04 255);
+  --hero-sky-bottom: oklch(0.17 0.03 255);
+  --hero-cloud: oklch(0.3 0.03 255);
+  --hero-cloud-opacity: 0.5;
+  --hero-field: oklch(0.34 0.07 150);
+  --hero-field-shade: oklch(0.28 0.08 150);
+  --hero-tree: oklch(0.3 0.08 150);
+}
+.dark .hero-sun-wrap {
+  display: none;
+}
+.dark .hero-moon-wrap {
+  display: block;
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -948,4 +990,12 @@ header .container-page {
   .confetti-piece {
     display: none;
   }
+}
+
+/* Dark mode: the dashboard's soft canvas zone and its contrast overrides. */
+.dark .dashboard-contrast {
+  --border: oklch(0.34 0.03 255);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 26px -10px oklch(0 0 0 / 0.5);
+  background: oklch(0.2 0.03 255);
 }

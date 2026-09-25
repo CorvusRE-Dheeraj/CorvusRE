@@ -7,6 +7,7 @@ import { shouldShowShell } from "@/components/AppShell";
 import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Dialog,
   DialogContent,
@@ -282,6 +283,7 @@ export function SiteNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {signedIn ? (
             <div className="relative" ref={profileRef}>
               <button
