@@ -387,6 +387,22 @@ function Overview() {
         title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
         tone="emerald"
         subtitle="Pick any entry point below — AI figures out the right workflow."
+        stats={
+          loaded
+            ? [
+                { label: "Properties", value: properties.length },
+                {
+                  label: "Open cases",
+                  value: protests.filter((p) => p.status !== "resolved").length,
+                },
+                {
+                  label: "Lifetime savings",
+                  value: lifetimeSavings,
+                  format: (n) => compactCurrency(n),
+                },
+              ]
+            : undefined
+        }
         badges={
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime-300" /> AI is watching

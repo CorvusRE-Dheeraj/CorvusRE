@@ -1,4 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
+import { CountUp } from "@/components/CountUp";
+
+export type HeroStat = { label: string; value: number; format?: (n: number) => string };
 
 export type HeroTone =
   "emerald" | "sky" | "violet" | "amber" | "teal" | "rose" | "indigo" | "slate";
@@ -57,6 +60,7 @@ export function PageHero({
   tone = "emerald",
   children,
   badges,
+  stats,
   className = "",
 }: {
   icon: ComponentType<{ className?: string }>;
@@ -67,6 +71,8 @@ export function PageHero({
   children?: ReactNode;
   // Small chips shown next to the title.
   badges?: ReactNode;
+  // Live numbers shown in tiles under the title; they count up when the page loads.
+  stats?: HeroStat[];
   className?: string;
 }) {
   const t = TONE[tone];
@@ -95,6 +101,18 @@ export function PageHero({
         </div>
         {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
       </div>
+      {stats && stats.length > 0 && (
+        <div className="relative mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {stats.map((st) => (
+            <div key={st.label} className="rounded-xl bg-white/15 px-4 py-2 ring-1 ring-white/20">
+              <div className="text-2xl font-semibold tabular-nums">
+                <CountUp to={st.value} format={st.format} />
+              </div>
+              <div className="text-[11px] uppercase tracking-wide text-white/80">{st.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

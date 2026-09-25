@@ -475,6 +475,10 @@ function Documents() {
         icon={HeroDocsIcon}
         title="Documents"
         tone="sky"
+        stats={[
+          { label: "Documents", value: documents.length },
+          { label: "Properties", value: properties.length },
+        ]}
         subtitle="Documents you upload during property intake land here automatically — or upload several at once below and AI sorts each one to the right property. Run an AI check on any file to classify it, confirm it belongs to that property, flag anything off, and get a suggested name."
       />
 

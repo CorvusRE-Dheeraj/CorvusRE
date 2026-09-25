@@ -105,6 +105,11 @@ function Deadlines() {
         icon={HeroDeadlinesIcon}
         title="Deadlines"
         tone="amber"
+        stats={[
+          { label: "Protest deadlines", value: deadlines.length },
+          { label: "Hearings", value: hearings.length },
+          { label: "Tax bills", value: bills.length },
+        ]}
         subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
       />
 

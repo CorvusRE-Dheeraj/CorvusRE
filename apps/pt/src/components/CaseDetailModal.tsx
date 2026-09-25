@@ -25,7 +25,7 @@ import {
   type InformalStatus,
   type AttendanceType,
 } from "@/lib/protests";
-import { currency, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, updateIntake } from "@/lib/intake-store";
 import {
   getCase,
   generateCasePrep,
@@ -201,7 +201,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Scale } from "lucide-react";
+import { PageHero } from "@/components/PageHero";
+import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
 
 // --- Tabbed filing workflow -------------------------------------------------
 // The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
@@ -582,10 +584,44 @@ export function CaseDetailView({
       <button onClick={onBack} className="btn-outline text-sm mb-4">
         ← Back
       </button>
-      <h3 className="font-serif text-xl font-semibold">Case: {property.address}</h3>
-      <p className="text-xs text-muted-foreground">
-        AI-generated from your property's official CAD record.
-      </p>
+      {(() => {
+        const outcome = current.status === "resolved" ? buildCaseOutcome(property, current) : null;
+        const original = current.originalValue ?? property.totalValue ?? 0;
+        return (
+          <PageHero
+            icon={Scale}
+            title={`Case: ${property.address}`}
+            tone={outcome ? "emerald" : current.status === "requested" ? "sky" : "violet"}
+            subtitle="AI-generated from your property's official CAD record."
+            badges={
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {caseStageLabel(current)}
+              </span>
+            }
+            stats={[
+              { label: "Original value", value: original, format: (n) => compactCurrency(n) },
+              ...(outcome && outcome.finalValue != null
+                ? [
+                    {
+                      label: "Final value",
+                      value: outcome.finalValue,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+              ...(outcome && outcome.taxSavings
+                ? [
+                    {
+                      label: "Saved per year",
+                      value: outcome.taxSavings,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        );
+      })()}
 
       {loading ? (
         <div className="mt-4 grid gap-2">

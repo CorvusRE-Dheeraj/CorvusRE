@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { currency, resetIntake, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, resetIntake, updateIntake } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
 import {
   listProperties,
@@ -752,6 +752,15 @@ function Properties() {
         title="My Properties"
         tone="emerald"
         subtitle="Every property you're tracking — values, deadlines and cases at a glance."
+        stats={[
+          { label: "Properties", value: properties.length },
+          { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },
+          {
+            label: "Assessed value",
+            value: properties.reduce((sum, p) => sum + (p.totalValue ?? 0), 0),
+            format: (n) => compactCurrency(n),
+          },
+        ]}
         badges={
           <>
             {!propertiesLoading && (
