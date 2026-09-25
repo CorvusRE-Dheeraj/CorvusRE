@@ -387,7 +387,7 @@ function Overview() {
         icon={HeroWelcomeIcon}
         title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
         tone="emerald"
-        subtitle="Pick any entry point below — AI figures out the right workflow."
+        subtitle="New here? Start with the checklist below. Everything else is one click away."
         stats={
           loaded
             ? [

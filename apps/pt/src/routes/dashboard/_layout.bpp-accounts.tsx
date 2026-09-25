@@ -213,7 +213,7 @@ function BppAccounts() {
         icon={HeroBppIcon}
         title="BPP Accounts"
         tone="sky"
-        subtitle="Business Personal Property tax accounts — separate from real estate you own."
+        subtitle="Tax accounts for business equipment and inventory (BPP). These are separate from the real estate you own."
       >
         <Link to="/dashboard/bpp-intake" className={heroButton}>
           Guided Intake (AI reads a document)

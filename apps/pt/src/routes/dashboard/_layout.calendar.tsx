@@ -464,7 +464,7 @@ function CalendarPage() {
           icon={HeroCalendarIcon}
           title="Calendar"
           tone="violet"
-          subtitle="Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place."
+          subtitle="All your important dates in one calendar. Click a date to see what is due."
         />
         <div className="grid gap-3">
           {[0, 1].map((i) => (
@@ -490,7 +490,7 @@ function CalendarPage() {
         subtitle={
           upcomingCount > 0
             ? `${upcomingCount} upcoming item${upcomingCount === 1 ? "" : "s"} across protests, hearings, and tax bills.`
-            : "Protest deadlines, ARB hearings, tax bills, and BPP renditions, in one place."
+            : "All your important dates in one calendar. Click a date to see what is due."
         }
       >
         <button onClick={() => setSyncOpen((o) => !o)} className={heroButton}>

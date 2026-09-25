@@ -753,7 +753,7 @@ function Properties() {
         icon={HeroPropertiesIcon}
         title="My Properties"
         tone="emerald"
-        subtitle="Every property you're tracking — values, deadlines and cases at a glance."
+        subtitle="Your properties, with their values, deadlines and cases. Open one to see what to do next."
         stats={[
           { label: "Properties", value: properties.length },
           { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },

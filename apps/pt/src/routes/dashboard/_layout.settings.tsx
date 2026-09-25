@@ -243,7 +243,7 @@ function Settings() {
         icon={HeroSettingsIcon}
         title="Settings"
         tone="slate"
-        subtitle="Your account details."
+        subtitle="Update your name, contact details and preferences."
       />
 
       {loading ? (

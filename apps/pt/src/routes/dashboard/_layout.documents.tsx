@@ -480,7 +480,7 @@ function Documents() {
           { label: "Documents", value: documents.length },
           { label: "Properties", value: properties.length },
         ]}
-        subtitle="Documents you upload during property intake land here automatically — or upload several at once below and AI sorts each one to the right property. Run an AI check on any file to classify it, confirm it belongs to that property, flag anything off, and get a suggested name."
+        subtitle="Keep every file for your case here. Drop in your appraisal notice or any photos and AI files each one under the right property. Use the AI check on a file to see what it is and whether anything looks off."
       />
 
       <div className="mt-6 card-elev p-6">

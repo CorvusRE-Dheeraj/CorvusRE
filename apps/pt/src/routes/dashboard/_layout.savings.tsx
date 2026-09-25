@@ -45,7 +45,7 @@ function SavingsPage() {
         icon={HeroSavingsIcon}
         title="Lifetime Savings"
         tone="emerald"
-        subtitle="Real, decision-backed savings from every resolved case — original assessed value vs. the final value your protest actually landed at, at your county's real effective tax rate. Not an estimate."
+        subtitle="What you actually saved. Each resolved case compares the original value with the final one, at your county's real tax rate. Nothing here is estimated."
       />
 
       {loading ? (

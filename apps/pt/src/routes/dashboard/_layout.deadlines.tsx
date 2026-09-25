@@ -1,3 +1,4 @@
+import { Term } from "@/components/Term";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -83,7 +84,7 @@ function Deadlines() {
           icon={HeroDeadlinesIcon}
           title="Deadlines"
           tone="amber"
-          subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+          subtitle="Every date you need to act on: protest deadlines, hearings and tax bills. We remind you before each one."
         />
         <div className="grid gap-3">
           {[0, 1].map((i) => (
@@ -111,7 +112,7 @@ function Deadlines() {
           { label: "Hearings", value: hearings.length },
           { label: "Tax bills", value: bills.length },
         ]}
-        subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+        subtitle="Every date you need to act on: protest deadlines, hearings and tax bills. We remind you before each one."
       />
 
       <section>
@@ -161,7 +162,7 @@ function Deadlines() {
                   <div>
                     <div className="font-medium">{property.address}</div>
                     <div className="text-xs text-muted-foreground">
-                      ARB hearing: {hearingDate.toLocaleDateString()}
+                      <Term name="ARB">ARB</Term> hearing: {hearingDate.toLocaleDateString()}
                     </div>
                   </div>
                   <span className={`badge-soft ${daysLeft <= 7 ? "text-destructive" : ""}`}>
