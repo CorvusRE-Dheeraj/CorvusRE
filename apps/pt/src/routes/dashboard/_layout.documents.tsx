@@ -50,6 +50,7 @@ import {
   Pencil,
   FileEdit,
   MoreHorizontal,
+  Search,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -109,6 +110,7 @@ function Documents() {
   // page, so only the selected one's documents render at a time. Keyed by
   // property id (or "orphaned" for documents whose property was removed),
   // not the address, since two properties could share an address string.
+  const [docQuery, setDocQuery] = useState("");
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
   // Refetches when a document is added/changed anywhere (this tab or another),
@@ -608,10 +610,31 @@ function Documents() {
                 ))}
               </select>
             </div>
+            <div className="relative">
+              <label className="sr-only" htmlFor="doc-search">
+                Search documents
+              </label>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="doc-search"
+                type="search"
+                value={docQuery}
+                onChange={(e) => setDocQuery(e.target.value)}
+                placeholder="Search this property's documents by file name"
+                className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm"
+              />
+            </div>
             {activeGroup && (
               <PropertyDocGroup
                 key={activeGroup.key}
-                group={activeGroup}
+                group={{
+                  ...activeGroup,
+                  docs: docQuery.trim()
+                    ? activeGroup.docs.filter((d) =>
+                        d.fileName.toLowerCase().includes(docQuery.trim().toLowerCase()),
+                      )
+                    : activeGroup.docs,
+                }}
                 allDocs={documents}
                 dupDismissed={dupDismissed}
                 selectedIds={selectedIds}
