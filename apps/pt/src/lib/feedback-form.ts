@@ -1,14 +1,17 @@
-// The Corvus beta feedback form (v2) — 20 questions in 6 groups, asked one at a
-// time by the chat-style FeedbackWidget. Answers are stored on the same
-// beta_feedback_responses row as before, under the ids below (f1..f20), plus
-// `${id}__other` for the optional "Other / Comment" box and `__form: "v2"` so
-// a v2 response can be told apart from one given to the earlier 57-question
-// form (whose answers stay on file and stay visible to admins).
+// The Corvus beta feedback form (v3) — 10 questions, asked one at a time by the
+// chat-style FeedbackWidget. Answers are stored on the same beta_feedback_responses
+// row as before, under the ids g1..g10, plus `${id}__other` for the "Other: ____"
+// box and `__form: "v3"` so a response can be told apart from the earlier 20-question
+// form (v2, ids f1..f20 — see feedback-form-v2.ts) and the 57-question one. Their
+// answers stay on file and stay visible to admins, and anyone who finished v2 is
+// not asked again (see isFormV2Complete in beta-feedback.ts).
 //
 // Shaped as Section[] on purpose — the admin viewer already renders that shape.
 import type { Answer, Question, Section } from "./beta-feedback-questions";
 
-export const FORM_VERSION = "v2";
+export const FORM_VERSION = "v3";
+// Earlier forms whose completion still counts as "done".
+export const LEGACY_FORM_VERSIONS = ["v2"];
 export const FORM_MARKER_KEY = "__form";
 
 const always = () => true;
@@ -37,203 +40,102 @@ const open = (id: string, label: string, helper?: string): Question => ({
 
 export const FORM_SECTIONS: Section[] = [
   {
-    key: "overall",
-    title: "Overall Experience",
+    key: "value",
+    title: "Value & Usefulness",
     showIf: always,
     questions: [
-      choice("f1", "After using Corvus, what do you think its main value is?", [
-        "Finding property tax protest opportunities",
-        "Understanding how my property is valued",
-        "Helping me manage the protest process",
-        "Managing my property taxes year after year",
+      choice("g1", "After using Corvus, what would you say is its biggest benefit to you?", [
+        "Helps me find protest opportunities",
+        "Helps me understand my property’s assessment",
+        "Makes the protest process easier",
+        "Helps me manage my property taxes over time",
       ]),
-      choice("f2", "What part of Corvus felt most valuable to you?", [
-        "AI property analysis",
-        "Finding valuation/evidence opportunities",
-        "Comparable properties and market analysis",
-        "Managing the protest process",
+      choice("g2", "What did you find most useful?", [
+        "AI analysis of my property",
+        "Finding potential valuation issues",
+        "Comparable properties / market information",
+        "Evidence and protest preparation",
       ]),
-      choice("f3", "What part of Corvus felt least useful or unnecessary?", [
+      choice("g3", "What did you find least useful?", [
         "Property information",
         "AI analysis",
-        "Comparable/market analysis",
+        "Comparable / market information",
         "Protest workflow",
-        "Nothing felt unnecessary",
+        "Nothing — it was all useful",
       ]),
-    ],
-  },
-  {
-    key: "ai_analysis",
-    title: "AI & Analysis",
-    showIf: always,
-    questions: [
       choice(
-        "f4",
-        "Did Corvus help you understand something about your property that you didn't know before?",
-        ["Yes, significantly", "Yes, somewhat", "Not really", "No"],
+        "g4",
+        "Did Corvus uncover anything you found interesting or didn't already know?",
+        ["Yes, a lot", "Yes, a few things", "Not really", "No"],
         {
           followUp: {
             showIf: (a: Answer | undefined) => typeof a === "string" && a.startsWith("Yes"),
-            question: open("f4_what", "What did it help you understand?"),
+            question: open("g4_what", "What did it uncover?"),
           },
         },
       ),
-      choice(
-        "f5",
-        "When Corvus gives you an AI conclusion, what do you most want to see with it?",
-        [
-          "Supporting evidence",
-          "Data sources",
-          "How Corvus calculated it",
-          "Comparable properties",
-          "All of the above",
-        ],
-      ),
-      choice("f6", "How confident would you be using Corvus' analysis as part of a real protest?", [
-        "I would rely on it with normal review",
-        "I would use it but verify important conclusions",
-        "I would mainly use it for research",
-        "I would not rely on it yet",
-      ]),
-      choice(
-        "f7",
-        "What is the biggest thing Corvus needs to improve before you would trust its analysis more?",
-        [
-          "Accuracy of the AI",
-          "Quality of property/county data",
-          "Valuation methodology",
-          "Supporting evidence",
-          "Explanation of its reasoning",
-        ],
-      ),
     ],
   },
   {
-    key: "strategy",
-    title: "Finding the Protest Strategy",
+    key: "trust_automation",
+    title: "Trust & Automation",
     showIf: always,
     questions: [
-      choice("f8", "Did Corvus make it clear why you might want to protest?", [
-        "Very clear",
-        "Mostly clear",
-        "Somewhat clear",
-        "Not clear yet",
+      choice("g5", "When Corvus gives you an answer or recommendation, what makes you trust it?", [
+        "Showing the evidence",
+        "Showing the sources",
+        "Explaining how it reached the conclusion",
+        "Showing comparable properties",
+        "All of these",
       ]),
-      choice(
-        "f9",
-        "When Corvus recommends a protest strategy, what would make that recommendation more useful?",
-        [
-          "Stronger supporting evidence",
-          "More comparable properties",
-          "More explanation of the reasoning",
-          "Clearer estimate of potential impact",
-          "Clearer next steps",
-        ],
-      ),
-      choice("f10", "What would you most want Corvus to investigate automatically for you?", [
-        "Comparable sales",
-        "Property/site conditions",
-        "Building condition",
-        "Income/rental information",
-        "Zoning/classification",
-        "County/CAD information",
+      choice("g6", "What would you like Corvus to do for you automatically?", [
+        "Find and analyze comparable properties",
+        "Investigate site/property issues",
+        "Analyze building condition",
+        "Analyze income/rental information",
+        "Check zoning/classification",
+        "Research county/CAD information",
+      ]),
+      choice("g7", "How much of the protest process would you want Corvus to handle?", [
+        "Research and preparation",
+        "Evidence and filing",
+        "County communication and tracking",
+        "Hearings and follow-up",
+        "As much of the process as possible",
       ]),
     ],
   },
   {
-    key: "evidence_workflow",
-    title: "Evidence, Documents & Workflow",
+    key: "improve",
+    title: "Making It Better",
     showIf: always,
     questions: [
-      choice("f11", "How would you prefer Corvus to handle your property documents?", [
-        "Upload everything once and let Corvus organize it",
-        "Upload only when Corvus asks for something",
-        "Upload documents individually as I go",
-        "A combination of these",
-      ]),
-      choice("f12", "What should Corvus do with your documents automatically?", [
-        "Extract important information",
-        "Find missing evidence",
-        "Connect evidence to the protest strategy",
-        "Prepare documents/information for filing",
-        "All of the above",
-      ]),
       choice(
-        "f13",
-        "Which part of the actual protest process would you most want Corvus to handle or guide?",
-        [
-          "Research and preparation",
-          "Evidence and filing",
-          "County communication and tracking",
-          "Hearings and follow-up",
-          "The entire process",
-        ],
-      ),
-      choice(
-        "f14",
-        "At any point, did you feel unsure about what you were supposed to do next?",
-        ["Never", "Once", "A few times", "Frequently"],
+        "g8",
+        "While using Corvus, did you ever wonder, “What do I do next?”",
+        ["Never", "Occasionally", "Several times", "Frequently"],
         {
           followUp: {
             showIf: (a: Answer | undefined) => typeof a === "string" && a !== "Never",
-            question: open("f14_where", "Where?"),
+            question: open("g8_where", "Where did you feel unsure?"),
           },
         },
       ),
-    ],
-  },
-  {
-    key: "control_trust",
-    title: "Control & Trust",
-    showIf: always,
-    questions: [
-      choice("f15", "Where do you most want to remain personally in control?", [
-        "Reviewing AI analysis",
-        "Approving evidence/documents",
-        "Approving filings",
-        "Making all major decisions",
-        "I would prefer Corvus to handle as much as possible",
+      choice("g9", "What is the biggest thing that would make Corvus better for you?", [
+        "More accurate AI analysis",
+        "Better property / county information",
+        "Better valuation analysis",
+        "Better evidence",
+        "Easier filing and case management",
+        "Clearer explanation of the AI",
       ]),
-      choice("f16", "What would make you stop using or trusting Corvus?", [
-        "Incorrect AI analysis",
-        "Incorrect property/county information",
-        "Unrealistic valuation or savings estimates",
-        "Incorrect filing/procedural guidance",
-        "Not being able to understand why AI reached a conclusion",
-      ]),
-    ],
-  },
-  {
-    key: "build_next",
-    title: "What Should We Build Next?",
-    showIf: always,
-    questions: [
-      choice("f17", "Which area should Corvus improve first?", [
-        "Better property valuation analysis",
-        "Better evidence gathering",
-        "Better protest filing/case management",
-        "Better hearing and follow-up support",
-        "Better yearly property monitoring",
-      ]),
-      choice(
-        "f18",
-        "If Corvus monitored your property every year, what would you most want it to tell you?",
-        [
-          "My assessment changed significantly",
-          "I may have a new protest opportunity",
-          "Comparable/market conditions changed",
-          "I may have significant potential savings",
-          "I have an upcoming deadline/action",
-        ],
-      ),
-      open("f19", "If you could add one feature to Corvus tomorrow, what would it be?"),
-      open("f20", "Complete this sentence: “I would use Corvus every year if __________________.”"),
+      open("g10", "If you could tell us to build ONE thing next, what would it be?"),
     ],
   },
 ];
 
 // The flat question order the widget walks through — follow-ups are attached to
-// their parent question, not separate steps, so this is exactly 20 steps.
+// their parent question, not separate steps, so this is exactly 10 steps.
 export const FORM_QUESTIONS: Question[] = FORM_SECTIONS.flatMap((s) => s.questions);
 export const FORM_TOTAL = FORM_QUESTIONS.length;
 

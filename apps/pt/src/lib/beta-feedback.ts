@@ -2,7 +2,7 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { UsageSignals } from "./beta-feedback-questions";
 import { ZERO_SIGNALS } from "./beta-feedback-questions";
-import { FORM_MARKER_KEY, FORM_VERSION } from "./feedback-form";
+import { FORM_MARKER_KEY, FORM_VERSION, LEGACY_FORM_VERSIONS } from "./feedback-form";
 
 export type { UsageSignals } from "./beta-feedback-questions";
 
@@ -144,7 +144,12 @@ export async function submitFeedback(
 // who finished the older form is asked the new one, and their old answers stay
 // on file.
 export function isFormV2Complete(r: FeedbackResponse | null): boolean {
-  return !!r?.completedAt && r.answers[FORM_MARKER_KEY] === FORM_VERSION;
+  const marker = r?.answers[FORM_MARKER_KEY];
+  return (
+    !!r?.completedAt &&
+    typeof marker === "string" &&
+    (marker === FORM_VERSION || LEGACY_FORM_VERSIONS.includes(marker))
+  );
 }
 
 // Saves v2 progress (or the final submission). completed_at is written

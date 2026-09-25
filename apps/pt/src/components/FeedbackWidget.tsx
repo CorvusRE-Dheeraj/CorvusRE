@@ -59,7 +59,7 @@ function FeedbackBot({ className = "" }: { className?: string }) {
 
 // The beta-feedback experience: a floating bot in the bottom-right corner that
 // pops a friendly hello, asks if now is a good time (2–3 minutes), then walks
-// through the 20 questions one at a time, chat-style. Progress saves after every
+// through the 10 questions one at a time, chat-style. Progress saves after every
 // answer, so closing it (or the browser) never loses anything.
 export function FeedbackWidget() {
   const { user } = useAuth();

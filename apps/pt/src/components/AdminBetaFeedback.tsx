@@ -10,6 +10,7 @@ import {
 } from "@/lib/beta-feedback";
 import { ALL_SECTIONS, type Answer, type Question } from "@/lib/beta-feedback-questions";
 import { FORM_SECTIONS } from "@/lib/feedback-form";
+import { FORM_V2_SECTIONS } from "@/lib/feedback-form-v2";
 import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import {
   Dialog,
@@ -106,7 +107,7 @@ function tally(rows: AdminFeedbackRow[], id: string): { name: string; value: num
 
 // The current chat-style form first, then the earlier 57-question form (its
 // answers stay on file and stay readable here).
-const ALL_BANKS = [...FORM_SECTIONS, ...ALL_SECTIONS];
+const ALL_BANKS = [...FORM_SECTIONS, ...FORM_V2_SECTIONS, ...ALL_SECTIONS];
 
 const QUESTION_BY_ID = new Map<string, Question>();
 for (const section of ALL_BANKS) {
