@@ -24,6 +24,9 @@ export type DeadlineEvent = {
   title: string;
   amount: number | null;
   resolved: boolean;
+  // Start time as written on the county notice ("9:00 AM") for hearings / informal
+  // reviews that have one; drives the one-hour-before alert. Absent = date-only.
+  time?: string | null;
 };
 
 function toIsoDate(value: string): string {
@@ -55,7 +58,7 @@ export async function buildDeadlineEvents(
       admin
         .from("protests")
         .select(
-          "id, property_id, bpp_account_id, status, hearing_date, hearing_time, hearing_location, arb_decision_date, informal_status, informal_review_date, tax_year",
+          "id, property_id, bpp_account_id, status, hearing_date, hearing_time, hearing_location, arb_decision_date, informal_status, informal_review_date, informal_review_time, tax_year",
         )
         .eq("user_id", userId),
       admin
@@ -121,6 +124,7 @@ export async function buildDeadlineEvents(
         key: `informal-review:${id}`,
         date,
         title: `Informal review — ${address}`,
+        time: (pr.informal_review_time as string | null) ?? null,
         amount: null,
         resolved: isPast(date, todayIso),
       });
@@ -133,6 +137,7 @@ export async function buildDeadlineEvents(
       events.push({
         key: `hearing:${id}`,
         date,
+        time: (pr.hearing_time as string | null) ?? null,
         title: parts.join(" "),
         amount: null,
         resolved: isPast(date, todayIso),

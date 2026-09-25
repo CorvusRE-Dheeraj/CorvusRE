@@ -34,6 +34,7 @@ import {
   type CourtUpdateType,
 } from "@/lib/court-appeal";
 import { buildAttorneyPackagePdf } from "@/lib/court-appeal-package";
+import { extractDecisionDocument } from "@/lib/decision-notice";
 
 const COURT_DOC_TYPE = "Court Appeal Document";
 const ATTORNEY_PACKAGE_TYPE = "Attorney Case Package";
@@ -95,6 +96,8 @@ export function CourtAppealWorkflow({
   const [updFile, setUpdFile] = useState<File | null>(null);
   const [titleError, setTitleError] = useState(false);
   const [finalInput, setFinalInput] = useState("");
+  const [resFile, setResFile] = useState<File | null>(null);
+  const [readingRes, setReadingRes] = useState(false);
 
   const requestedValue = facts.requestedValue ?? parseMoney(enteredValue);
   const review = useMemo(
@@ -380,14 +383,51 @@ export function CourtAppealWorkflow({
     );
   }
 
+  // Reads the judgment / settlement document and pre-fills the final value for the
+  // owner to confirm — nothing is recorded until they press Record resolution.
+  async function chooseResolutionFile(file: File) {
+    setResFile(file);
+    setReadingRes(true);
+    try {
+      const ex = await extractDecisionDocument(property, protest, file);
+      if (ex.finalValue && ex.finalValue > 0) {
+        setFinalInput(String(ex.finalValue));
+        toast.success(`Read ${currency(ex.finalValue)} from the document — check it, then record.`);
+      } else {
+        toast.info("Couldn't read a final value from the document — enter it below.");
+      }
+    } catch {
+      toast.info("Couldn't read the document — enter the final value below.");
+    } finally {
+      setReadingRes(false);
+    }
+  }
+
   async function resolveCase() {
     const value = parseMoney(finalInput);
     if (!value) return toast.error("Enter the final value.");
     await run(
       "resolve",
       async () => {
+        if (resFile) {
+          const doc = await uploadDocument(userId, property.id, resFile, COURT_DOC_TYPE);
+          await save({
+            updates: [
+              {
+                id: newUpdateId(),
+                date: todayIso(),
+                type: "order",
+                title: "Judgment / settlement document",
+                summary: `Final value ${currency(value)}.`,
+                documentId: doc.id,
+              },
+              ...(data.updates ?? []),
+            ],
+          });
+        }
         await closeCase(protest.id, value);
         onUpdate({ finalValue: value, status: "resolved", closedAt: new Date().toISOString() });
+        setResFile(null);
         toast.success(`Case resolved at ${currency(value)}.`);
       },
       "Could not close the case.",
@@ -875,8 +915,8 @@ export function CourtAppealWorkflow({
         <section id="court-resolution" className={card}>
           <h4 className={h}>Case resolved?</h4>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            When the court case ends (judgment or settlement), enter the final value. Corvus updates
-            your case and returns the property to tax monitoring.
+            When the court case ends (judgment or settlement), upload the document or enter the
+            final value. Corvus updates your case and returns the property to tax monitoring.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
@@ -887,11 +927,31 @@ export function CourtAppealWorkflow({
               aria-label="Final value"
               className={input}
             />
+            <label
+              className={`btn-outline inline-flex cursor-pointer text-xs py-1.5 ${readingRes ? "pointer-events-none opacity-60" : ""}`}
+            >
+              {readingRes
+                ? "Reading document…"
+                : resFile
+                  ? resFile.name
+                  : "Upload judgment / settlement"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                disabled={readingRes}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void chooseResolutionFile(file);
+                }}
+              />
+            </label>
             <button
               type="button"
               onClick={() => void resolveCase()}
-              disabled={busy === "resolve"}
-              className="btn-outline text-xs py-1.5 disabled:opacity-60"
+              disabled={busy === "resolve" || readingRes}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
             >
               {busy === "resolve" ? "Saving…" : "Record resolution"}
             </button>

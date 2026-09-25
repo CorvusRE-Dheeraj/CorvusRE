@@ -26,6 +26,10 @@ export type NotificationPrefs = {
   // key = every offset on, same "absent = default" treatment as the two
   // booleans above.
   deadlineReminderOffsets: number[];
+  // An alert about an hour before a hearing / informal review starts, or before a
+  // date-only deadline closes (send-hour-before-alerts + the in-app banner). On by
+  // default; only an explicit false turns it off.
+  deadlineHourAlert: boolean;
 };
 
 // The only offsets send-deadline-reminders ever sends at — also this app's
@@ -38,6 +42,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   deadlineRemindersEmail: true,
   deadlineRemindersSms: false,
   deadlineReminderOffsets: [...DEADLINE_REMINDER_OFFSETS],
+  deadlineHourAlert: true,
 };
 
 export type MyProfile = {
@@ -60,6 +65,7 @@ type ProfileRow = {
     deadline_reminders_email?: boolean;
     deadline_reminders_sms?: boolean;
     deadline_reminder_offsets?: number[];
+    deadline_hour_alert?: boolean;
   } | null;
 };
 
@@ -89,6 +95,8 @@ export async function getMyProfile(userId: string): Promise<MyProfile> {
       deadlineReminderOffsets:
         row.notification_prefs?.deadline_reminder_offsets ??
         DEFAULT_NOTIFICATION_PREFS.deadlineReminderOffsets,
+      deadlineHourAlert:
+        row.notification_prefs?.deadline_hour_alert ?? DEFAULT_NOTIFICATION_PREFS.deadlineHourAlert,
     },
   };
 }
@@ -116,6 +124,7 @@ export async function updateNotificationPrefs(
     merged.deadline_reminders_sms = prefs.deadlineRemindersSms;
   if (prefs.deadlineReminderOffsets !== undefined)
     merged.deadline_reminder_offsets = prefs.deadlineReminderOffsets;
+  if (prefs.deadlineHourAlert !== undefined) merged.deadline_hour_alert = prefs.deadlineHourAlert;
 
   const { error } = await supabase
     .from("profiles")

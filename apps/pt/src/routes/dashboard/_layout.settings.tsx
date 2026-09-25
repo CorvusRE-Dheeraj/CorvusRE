@@ -111,6 +111,22 @@ function Settings() {
   // see send-deadline-reminders. SMS can't actually be turned on without a
   // phone number on file (checked here, not just disabled in the JSX, since
   // the checkbox's own onChange is the only path that sets it true).
+  async function handleHourAlertChange(value: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    setNotificationPrefs({ ...prev, deadlineHourAlert: value });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { deadlineHourAlert: value });
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
   async function handleDeadlineReminderChange(channel: "email" | "sms", value: boolean) {
     if (!user) return;
     if (channel === "sms" && value && !phone.trim()) {
@@ -383,7 +399,8 @@ function Settings() {
             Every protest deadline, ARB hearing, informal review, tax date, and personal reminder on
             your Calendar gets a reminder 30, 15, 7, 3, and 2 days before, and the day of, by
             whichever channel(s) you turn on below — all six are on by default, but you can turn any
-            of them off.
+            of them off. You also get a short alert about an hour before a hearing or informal
+            review starts, and an hour before a deadline day closes (5 PM Central).
           </p>
           <div className="mt-4 grid gap-3">
             <label className="flex items-center gap-2 text-sm">
@@ -408,6 +425,16 @@ function Settings() {
               <span className="text-xs">— coming soon</span>
             </label>
           </div>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notificationPrefs.deadlineHourAlert}
+              disabled={savingPrefs}
+              onChange={(e) => handleHourAlertChange(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Alert me about an hour before (email and on-screen)
+          </label>
           <p className="mt-5 text-xs font-medium text-muted-foreground">When to remind me</p>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
             {DEADLINE_REMINDER_OFFSETS.map((offset) => (
