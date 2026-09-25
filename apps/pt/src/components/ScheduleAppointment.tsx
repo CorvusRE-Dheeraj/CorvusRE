@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { CalendarCheck, Video } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
@@ -18,6 +19,9 @@ import {
   fetchOpenSlots,
   formatSlotDay,
   fromIsoLocal,
+  formatAppointment,
+  listMyUpcomingAppointments,
+  type MyAppointment,
   toIsoLocal,
   type MeetingType,
   type OpenSlots,
@@ -51,6 +55,9 @@ export function ScheduleAppointment({
   const [meetLink, setMeetLink] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
+  // One appointment at a time: a signed-in customer who already has one coming up sees it
+  // (with Reschedule) instead of the booking button. It frees up once the appointment is over.
+  const [mine, setMine] = useState<MyAppointment | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<{ when: string; emailed: boolean } | null>(null);
@@ -68,6 +75,16 @@ export function ScheduleAppointment({
     setSlots(null);
     loadSlots();
   }, [open]);
+
+  useEffect(() => {
+    if (!user) {
+      setMine(null);
+      return;
+    }
+    listMyUpcomingAppointments()
+      .then((list) => setMine(list[0] ?? null))
+      .catch(() => {});
+  }, [user, booked]);
 
   // Signed-in visitors: pre-fill what we already know.
   useEffect(() => {
@@ -126,7 +143,44 @@ export function ScheduleAppointment({
 
   return (
     <>
-      {trigger === "button" ? (
+      {mine ? (
+        trigger === "button" ? (
+          <div className="flex flex-wrap items-center gap-3 text-sm text-white">
+            <span>
+              Your appointment: <strong>{formatAppointment(mine.startAt)}</strong>
+            </span>
+            <Link
+              to="/appointment"
+              search={{ token: mine.manageToken }}
+              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800"
+            >
+              Reschedule or cancel
+            </Link>
+          </div>
+        ) : (
+          <div className="card-elev mb-8 flex flex-wrap items-center justify-between gap-4 p-6">
+            <div className="flex items-center gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+                <CalendarCheck className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="font-semibold">You have an appointment coming up</h3>
+                <p className="text-sm text-muted-foreground">
+                  {formatAppointment(mine.startAt)} · Google Meet. You can book another once this
+                  one is finished.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/appointment"
+              search={{ token: mine.manageToken }}
+              className="btn-primary btn-primary-hover shrink-0"
+            >
+              Reschedule or cancel
+            </Link>
+          </div>
+        )
+      ) : trigger === "button" ? (
         <button
           type="button"
           onClick={() => {
@@ -206,6 +260,14 @@ export function ScheduleAppointment({
             </div>
           ) : (
             <form onSubmit={submit} className="grid gap-5">
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
+                </p>
+              )}
               <div className="grid gap-4 md:grid-cols-[auto_1fr]">
                 <div>
                   <div className="mb-1 text-xs font-medium text-muted-foreground">
@@ -329,7 +391,6 @@ export function ScheduleAppointment({
                     onChange={(e) => setWebsite(e.target.value)}
                     className="hidden"
                   />
-                  {error && <p className="text-sm text-destructive">{error}</p>}
                   <button
                     disabled={saving}
                     className="btn-primary btn-primary-hover w-fit disabled:opacity-60"

@@ -18,6 +18,7 @@ import {
   inviteAttachment,
   kindLabel,
   sendEmail,
+  teamNoticeEmail,
   whenText,
 } from "../_shared/appointment-email.ts";
 
@@ -116,8 +117,18 @@ Deno.serve(async (req: Request) => {
           console.error("Cancellation email failed:", e);
         }
         try {
-          const text = `Appointment CANCELLED by the visitor: ${oldWhen}\n${appt.name} <${appt.email}>\nType: ${kind}`;
-          await sendEmail(resendKey, TEAM_EMAILS, `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, googleHandled ? undefined : [cancelInvite]);
+          const t = teamNoticeEmail({
+            eyebrow: "Appointment cancelled",
+            heading: "An appointment was cancelled",
+            rows: [
+              ["Was", oldWhen],
+              ["Name", appt.name as string],
+              ["Email", appt.email as string],
+              ["Type", kind],
+            ],
+            todo: "no meeting link is needed any more.",
+          });
+          await sendEmail(resendKey, TEAM_EMAILS, `Cancelled — ${oldWhen} — ${appt.name}`, t.html, t.text, undefined, googleHandled ? undefined : [cancelInvite]);
         } catch (e) {
           console.error("Cancellation staff email failed:", e);
         }
@@ -195,9 +206,21 @@ Deno.serve(async (req: Request) => {
           console.error("Reschedule confirmation email failed:", e);
         }
         try {
-          const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}${appt.meeting_type === "virtual" ? `
-To do: re-send the meeting link (new time) to ${appt.email}.` : ""}`;
-          await sendEmail(resendKey, TEAM_EMAILS, `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, googleMoved ? undefined : [moveInvite]);
+          const t = teamNoticeEmail({
+            eyebrow: "Appointment rescheduled",
+            heading: "An appointment was rescheduled",
+            rows: [
+              ["Was", oldWhen],
+              ["Now", newWhen],
+              ["Name", appt.name as string],
+              ["Email", appt.email as string],
+              ...(appt.phone ? ([["Phone", appt.phone as string]] as [string, string][]) : []),
+              ["Type", kind],
+              ...(appt.meet_link ? ([["Meeting link", appt.meet_link as string]] as [string, string][]) : []),
+            ],
+            todo: appt.meet_link ? null : `re-send the meeting link (new time) to ${appt.email}.`,
+          });
+          await sendEmail(resendKey, TEAM_EMAILS, `Rescheduled — now ${newWhen} — ${appt.name}`, t.html, t.text, appt.email as string, googleMoved ? undefined : [moveInvite]);
         } catch (e) {
           console.error("Reschedule staff email failed:", e);
         }

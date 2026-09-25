@@ -194,3 +194,35 @@ export async function standingMeetLink(admin: { from: (t: string) => any }): Pro
   const link = (data?.meeting_link as string | null | undefined)?.trim();
   return link ? link : null;
 }
+
+// The notice the team gets for a new / rescheduled / cancelled appointment — the same
+// branded layout as every other CorvusPT email, with the details laid out as rows.
+export function teamNoticeEmail(opts: {
+  eyebrow: string;
+  heading: string;
+  rows: [string, string][]; // label, value (plain text — escaped here)
+  todo?: string | null;
+  notes?: string | null;
+}) {
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:6px 12px 6px 0; vertical-align:top; color:#8592a6; white-space:nowrap;">${escapeHtml(label)}</td><td style="padding:6px 0;"><strong>${escapeHtml(value)}</strong></td></tr>`;
+  const html = emailShell({
+    eyebrow: opts.eyebrow,
+    heading: opts.heading,
+    intro: opts.todo ? `<strong>To do:</strong> ${escapeHtml(opts.todo)}` : "Here are the details.",
+    bodyRows:
+      opts.rows.map(([l, v]) => row(l, v)).join("") +
+      (opts.notes
+        ? `<tr><td style="padding:6px 12px 6px 0; vertical-align:top; color:#8592a6;">Notes</td><td style="padding:6px 0;">${escapeHtml(opts.notes)}</td></tr>`
+        : ""),
+    ctaLabel: "Open Appointments",
+    ctaHref: `${appBaseUrl()}/admin`,
+    footnote: "Sent to the CorvusPT team. The calendar invite is attached.",
+  });
+  const text =
+    `${opts.heading}\n` +
+    opts.rows.map(([l, v]) => `${l}: ${v}`).join("\n") +
+    (opts.notes ? `\nNotes: ${opts.notes}` : "") +
+    (opts.todo ? `\nTo do: ${opts.todo}` : "");
+  return { html, text };
+}

@@ -21,6 +21,7 @@ import {
   manageUrl,
   sendEmail,
   standingMeetLink,
+  teamNoticeEmail,
   whenText,
 } from "../_shared/appointment-email.ts";
 import { slotLabel } from "../_shared/appointment-rules.ts";
@@ -31,7 +32,6 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const MAX_ACTIVE_PER_EMAIL = 2;
 
 const fail = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), { status, headers: corsHeaders });
@@ -81,10 +81,30 @@ Deno.serve(async (req: Request) => {
     const [{ data: booked }, { data: blocks }, { data: mine }] = await Promise.all([
       admin.from("appointments").select("start_at").eq("status", "booked").gte("start_at", new Date(now - 86_400_000).toISOString()),
       admin.from("appointment_blocks").select("block_date, slot").eq("block_date", date),
-      admin.from("appointments").select("id").eq("status", "booked").eq("email", email).gte("start_at", new Date(now).toISOString()),
+      // One appointment at a time per customer (same email, or the same signed-in account):
+      // it counts until it has finished, and a cancelled one doesn't count.
+      admin
+        .from("appointments")
+        .select("start_at")
+        .eq("status", "booked")
+        .gte("end_at", new Date(now).toISOString())
+        .or(userId ? `email.eq.${email},user_id.eq.${userId}` : `email.eq.${email}`)
+        .order("start_at", { ascending: true })
+        .limit(1),
     ]);
-    if ((mine ?? []).length >= MAX_ACTIVE_PER_EMAIL) {
-      return fail(409, `You already have ${MAX_ACTIVE_PER_EMAIL} upcoming appointments. Please call us to change one.`);
+    if ((mine ?? []).length > 0) {
+      const when = new Date(mine![0].start_at as string).toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return fail(
+        409,
+        `You already have an appointment on ${when} Central. You can book another once it's finished — or reschedule it with the button in your confirmation email${userId ? " or from your dashboard" : ""}.`,
+      );
     }
 
     const problem = slotProblem(
@@ -169,16 +189,26 @@ Deno.serve(async (req: Request) => {
         console.error("Appointment confirmation email failed:", err);
       }
       try {
-        const text = `New appointment: ${when}
-${name} <${email}>${phone ? ` · ${phone}` : ""}
-Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: send the meeting link to ${email}.`}
-${notes ? `Notes: ${notes}` : ""}`;
+        const t = teamNoticeEmail({
+          eyebrow: "New appointment",
+          heading: "New appointment booked",
+          rows: [
+            ["When", when],
+            ["Name", name],
+            ["Email", email],
+            ...(phone ? ([["Phone", phone]] as [string, string][]) : []),
+            ["Type", kind],
+            ...(meetLink ? ([["Meeting link", meetLink]] as [string, string][]) : []),
+          ],
+          todo: meetLink ? null : `send the meeting link to ${email}.`,
+          notes,
+        });
         await sendEmail(
           resendKey,
           TEAM_EMAILS,
           `New appointment — ${longDate(date)}, ${slotLabel(slot)} CT — ${name}`,
-          `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
-          text,
+          t.html,
+          t.text,
           email,
           googleEventId ? undefined : [invite],
         );
