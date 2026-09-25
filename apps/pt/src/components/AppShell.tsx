@@ -32,6 +32,40 @@ const NAV = [
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
 ] as const;
 
+// Each tab has its own colour: a tinted icon at rest, and a matching gradient pill when
+// it's the open page (the same colours as the page's banner). Full class strings so
+// Tailwind can see them.
+const TAB_COLOR: Record<string, { icon: string; active: string }> = {
+  "/dashboard": {
+    icon: "text-emerald-600",
+    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-teal-600",
+  },
+  "/dashboard/properties": {
+    icon: "text-emerald-600",
+    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-sky-600",
+  },
+  "/dashboard/bpp-accounts": {
+    icon: "text-sky-600",
+    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+  },
+  "/dashboard/documents": {
+    icon: "text-sky-600",
+    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+  },
+  "/dashboard/deadlines": {
+    icon: "text-amber-600",
+    active: "data-[status=active]:from-amber-500 data-[status=active]:to-rose-500",
+  },
+  "/dashboard/calendar": {
+    icon: "text-violet-600",
+    active: "data-[status=active]:from-violet-500 data-[status=active]:to-fuchsia-600",
+  },
+  "/dashboard/tax-bills": {
+    icon: "text-teal-600",
+    active: "data-[status=active]:from-teal-500 data-[status=active]:to-blue-600",
+  },
+};
+
 // Pages that keep their own full-width marketing/tooling layout instead of the
 // account sidebar: the home page (explicitly excluded), the admin workspace
 // (a different persona than "my properties"), and sign-in (nothing to show a
@@ -116,15 +150,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               );
             }
+            const color = TAB_COLOR[item.to];
             return (
               <Link
                 key={item.to}
                 to={item.to}
-                className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
-                activeProps={{ className: "bg-nav-highlight text-nav-highlight-foreground" }}
+                className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
                 activeOptions={{ exact: item.to === "/dashboard" }}
               >
-                <Icon className="h-4 w-4" />
+                <Icon
+                  className={`h-4 w-4 transition-colors group-data-[status=active]:text-white ${color?.icon ?? ""}`}
+                />
                 {item.label}
               </Link>
             );

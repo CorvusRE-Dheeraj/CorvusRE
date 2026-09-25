@@ -69,6 +69,8 @@ import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
+import { PageHero } from "@/components/PageHero";
+import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
@@ -380,17 +382,18 @@ function Overview() {
 
   return (
     <div className="dashboard-contrast grid grid-cols-1 min-w-0 gap-6">
-      <div>
-        <span className="badge-soft">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" /> AI is watching your properties
-        </span>
-        <h1 className="mt-3 font-serif text-3xl font-bold">
-          Welcome back{firstName ? `, ${firstName}` : ""}.
-        </h1>
-        <p className="text-muted-foreground">
-          Pick any entry point below — AI figures out the right workflow.
-        </p>
-      </div>
+      <PageHero
+        icon={HeroWelcomeIcon}
+        title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
+        tone="emerald"
+        subtitle="Pick any entry point below — AI figures out the right workflow."
+        badges={
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime-300" /> AI is watching
+            your properties
+          </span>
+        }
+      />
 
       {nudge && urgentProperties.length > 0 && (
         <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
@@ -624,7 +627,7 @@ function Overview() {
       {/* Stats */}
       <div>
         <h2 className="font-serif text-xl font-bold">Your Portfolio at a Glance</h2>
-        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Properties"
             value={loaded ? properties.length : null}
@@ -758,7 +761,13 @@ function StatCard({
 }) {
   const content = (
     <>
-      <span className={`grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}>
+      <span
+        aria-hidden
+        className={`tu-glow pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl ${color.bg}`}
+      />
+      <span
+        className={`relative grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}
+      >
         <Icon className="h-5 w-5" />
       </span>
       <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
@@ -780,7 +789,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev flex min-h-[11rem] flex-col p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -789,7 +798,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev flex min-h-[11rem] flex-col p-5"
+      className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}

@@ -3539,7 +3539,9 @@ function ModuleCard({
       ? cardDataGap(m.id, moduleState?.data, compsMap, overrides)
       : null;
   return (
-    <div className="card-elev overflow-hidden flex flex-col">
+    <div className="card-elev flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+      {/* A strip in the module's own colour along the top. */}
+      <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">

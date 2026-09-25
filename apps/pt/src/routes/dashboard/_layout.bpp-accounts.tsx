@@ -27,6 +27,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BppRenditionEditor } from "@/components/BppRenditionEditor";
 import { BppProtestFlow } from "@/components/BppProtestFlow";
 import { ComingSoonLock } from "@/components/ComingSoonLock";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { Briefcase as HeroBppIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/bpp-accounts")({
   component: BppAccounts,
@@ -207,22 +209,19 @@ function BppAccounts() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">BPP Accounts</h1>
-          <p className="text-muted-foreground text-sm">
-            Business Personal Property tax accounts — separate from real estate you own.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/dashboard/bpp-intake" className="btn-primary btn-primary-hover">
-            Guided Intake (AI reads a document)
-          </Link>
-          <button onClick={() => setShowForm((v) => !v)} className="btn-outline">
-            {showForm ? "Cancel" : "Add Manually"}
-          </button>
-        </div>
-      </div>
+      <PageHero
+        icon={HeroBppIcon}
+        title="BPP Accounts"
+        tone="sky"
+        subtitle="Business Personal Property tax accounts — separate from real estate you own."
+      >
+        <Link to="/dashboard/bpp-intake" className={heroButton}>
+          Guided Intake (AI reads a document)
+        </Link>
+        <button onClick={() => setShowForm((v) => !v)} className={heroButtonGhost}>
+          {showForm ? "Cancel" : "Add Manually"}
+        </button>
+      </PageHero>
 
       {showForm && (
         <form onSubmit={handleAdd} className="card-elev mt-6 grid gap-3 p-6 sm:grid-cols-2">
