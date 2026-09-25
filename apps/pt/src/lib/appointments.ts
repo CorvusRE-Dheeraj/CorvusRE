@@ -238,3 +238,37 @@ export async function setMeetingLink(link: string): Promise<void> {
     .eq("id", true);
   if (error) throw error;
 }
+
+// ── A signed-in customer's own upcoming appointments (RLS limits this to their rows) ──
+export type MyAppointment = {
+  id: string;
+  startAt: string;
+  meetingType: MeetingType;
+  meetLink: string | null;
+  manageToken: string;
+};
+
+export async function listMyUpcomingAppointments(): Promise<MyAppointment[]> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("id, start_at, meeting_type, meet_link, manage_token")
+    .eq("status", "booked")
+    .gte("start_at", new Date().toISOString())
+    .order("start_at", { ascending: true });
+  if (error) throw error;
+  return (
+    data as {
+      id: string;
+      start_at: string;
+      meeting_type: MeetingType;
+      meet_link: string | null;
+      manage_token: string;
+    }[]
+  ).map((r) => ({
+    id: r.id,
+    startAt: r.start_at,
+    meetingType: r.meeting_type,
+    meetLink: r.meet_link,
+    manageToken: r.manage_token,
+  }));
+}

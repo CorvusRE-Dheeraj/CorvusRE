@@ -68,6 +68,7 @@ import { ICON_COLORS } from "@/lib/icon-colors";
 import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
+import { MyAppointments } from "@/components/MyAppointments";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
@@ -451,6 +452,8 @@ function Overview() {
           </button>
         </div>
       )}
+
+      <MyAppointments />
 
       {/* Entry points */}
       <div>
