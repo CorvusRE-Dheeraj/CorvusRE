@@ -5,8 +5,8 @@ import { slotLabel } from "./appointment-rules.ts";
 import { buildIcs, toBase64 } from "./appointment-ics.ts";
 
 export const STAFF_EMAIL = "properties@srclandbuilding.com";
-// Everyone on the team who is told about, and invited to, every appointment.
-export const TEAM_EMAILS = [STAFF_EMAIL, "info@corvusre.com"];
+// Who gets the team notice (one email, to the info inbox only) and is invited on the event.
+export const TEAM_EMAILS = ["info@corvusre.com"];
 
 // Where the manage page lives. APP_URL is not set as a secret today, so default to the
 // real production address (the app is served under /corvuspt/).
@@ -217,7 +217,7 @@ export function teamNoticeEmail(opts: {
         : ""),
     ctaLabel: "Open Appointments",
     ctaHref: `${appBaseUrl()}/admin`,
-    footnote: "Sent to the CorvusPT team. The calendar invite is attached.",
+    footnote: "Sent to the CorvusPT team inbox. The calendar invite is attached.",
   });
   const text =
     `${opts.heading}\n` +
