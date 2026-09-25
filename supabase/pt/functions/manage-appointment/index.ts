@@ -9,6 +9,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotKey, slotProblem } from "../_shared/appointment-rules.ts";
+import { deleteMeetEvent, hostAccessToken, moveMeetEvent } from "../_shared/google-meet.ts";
 import {
   TEAM_EMAILS,
   cancellationEmail,
@@ -49,7 +50,7 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: appt, error } = await admin
       .from("appointments")
-      .select("id, name, email, phone, meeting_type, start_at, status")
+      .select("id, name, email, phone, meeting_type, start_at, status, google_event_id, meet_link")
       .eq("manage_token", token)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -84,6 +85,19 @@ Deno.serve(async (req: Request) => {
         .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
         .eq("id", appt.id);
       if (upErr) throw new Error(upErr.message);
+      // Remove the Google event too (Google emails everyone the cancellation).
+      let googleHandled = false;
+      if (appt.google_event_id) {
+        try {
+          const gToken = await hostAccessToken(admin);
+          if (gToken) {
+            await deleteMeetEvent(gToken, appt.google_event_id as string);
+            googleHandled = true;
+          }
+        } catch (e) {
+          console.error("Google event delete failed:", e);
+        }
+      }
       const cancelInvite = inviteAttachment({
         appointmentId: appt.id as string,
         startIso: appt.start_at as string,
@@ -95,13 +109,13 @@ Deno.serve(async (req: Request) => {
       if (resendKey) {
         try {
           const m = cancellationEmail({ name: appt.name as string, when: oldWhen, meetingType: appt.meeting_type as string });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, [cancelInvite]);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, googleHandled ? undefined : [cancelInvite]);
         } catch (e) {
           console.error("Cancellation email failed:", e);
         }
         try {
           const text = `Appointment CANCELLED by the visitor: ${oldWhen}\n${appt.name} <${appt.email}>\nType: ${kind}`;
-          await sendEmail(resendKey, TEAM_EMAILS, `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, [cancelInvite]);
+          await sendEmail(resendKey, TEAM_EMAILS, `Cancelled — ${oldWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, undefined, googleHandled ? undefined : [cancelInvite]);
         } catch (e) {
           console.error("Cancellation staff email failed:", e);
         }
@@ -139,6 +153,19 @@ Deno.serve(async (req: Request) => {
         throw new Error(rpcErr.message);
       }
 
+      // Move the Google event too (Google emails everyone the new time).
+      let googleMoved = false;
+      if (appt.google_event_id) {
+        try {
+          const gToken = await hostAccessToken(admin);
+          if (gToken) {
+            await moveMeetEvent(gToken, appt.google_event_id as string, startIso);
+            googleMoved = true;
+          }
+        } catch (e) {
+          console.error("Google event move failed:", e);
+        }
+      }
       const newWhen = whenText(newDate, newSlot);
       const moveInvite = inviteAttachment({
         appointmentId: appt.id as string,
@@ -156,16 +183,17 @@ Deno.serve(async (req: Request) => {
             phone: (appt.phone as string) ?? "",
             token,
             startIso,
+            meetLink: googleMoved ? (appt.meet_link as string | null) : null,
             rescheduled: true,
           });
-          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, [moveInvite]);
+          await sendEmail(resendKey, [appt.email as string], m.subject, m.html, m.text, undefined, googleMoved ? undefined : [moveInvite]);
         } catch (e) {
           console.error("Reschedule confirmation email failed:", e);
         }
         try {
           const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}${appt.meeting_type === "virtual" ? `
 To do: update the Google Meet time and re-send the link to ${appt.email}.` : ""}`;
-          await sendEmail(resendKey, TEAM_EMAILS, `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, [moveInvite]);
+          await sendEmail(resendKey, TEAM_EMAILS, `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string, googleMoved ? undefined : [moveInvite]);
         } catch (e) {
           console.error("Reschedule staff email failed:", e);
         }

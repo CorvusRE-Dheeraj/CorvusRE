@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CalendarCheck, Phone, Video } from "lucide-react";
 import { getErrorMessage } from "@/lib/error-message";
+import { useAuth } from "@/lib/auth";
+import { getGoogleCalendarStatus, startGoogleCalendarConnect } from "@/lib/google-calendar-sync";
 import {
   SLOT_HOURS,
   centralToday,
@@ -13,6 +15,8 @@ import {
   addBlock,
   cancelAppointment,
   formatAppointment,
+  getMeetingHost,
+  setMeetingHost,
   listAppointments,
   listBlocks,
   removeBlock,
@@ -34,6 +38,10 @@ const dayLabel = (date: string) =>
 // and the controls for closing days or single time slots. Federal holidays are always
 // closed automatically; this is for everything else.
 export function AdminAppointments() {
+  const { user } = useAuth();
+  const [hostId, setHostId] = useState<string | null>(null);
+  const [iConnected, setIConnected] = useState(false);
+  const [hostLoaded, setHostLoaded] = useState(false);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [blocks, setBlocks] = useState<AppointmentBlock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +62,16 @@ export function AdminAppointments() {
       })
       .catch((err) => toast.error(getErrorMessage(err, "Could not load appointments.")));
   }
+
+  useEffect(() => {
+    getMeetingHost()
+      .then(setHostId)
+      .catch(() => {})
+      .finally(() => setHostLoaded(true));
+    getGoogleCalendarStatus()
+      .then((s) => setIConnected(s.connected))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     void load().finally(() => setLoading(false));
@@ -124,6 +142,24 @@ export function AdminAppointments() {
               </>
             )}
           </div>
+          {a.meetLink ? (
+            <div className="mt-1">
+              <a
+                href={a.meetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                Join: {a.meetLink}
+              </a>
+            </div>
+          ) : (
+            a.status === "booked" && (
+              <div className="mt-1 text-xs text-warning-foreground">
+                No Meet link was created — create one and email it to the visitor.
+              </div>
+            )
+          )}
           {a.notes && <p className="mt-1 whitespace-pre-line text-muted-foreground">{a.notes}</p>}
           <div className="mt-1 text-[11px] text-muted-foreground">
             Booked {new Date(a.createdAt).toLocaleString()}
@@ -169,6 +205,93 @@ export function AdminAppointments() {
 
   return (
     <div className="mt-6 grid gap-8">
+      <section className="rounded-md border border-border p-4">
+        <h2 className="text-sm font-semibold">Google Meet links</h2>
+        {!hostLoaded ? (
+          <p className="mt-1 text-xs text-muted-foreground">Loading…</p>
+        ) : hostId && hostId === user?.id ? (
+          <div className="mt-1 text-sm">
+            <p>
+              ✓ Every new appointment gets its own Google Meet link, created on{" "}
+              <strong>your</strong> connected Google account. Google emails the invite to the
+              visitor and the team.
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  await setMeetingHost(null);
+                  setHostId(null);
+                }, "Stopped creating Meet links.")
+              }
+              className="mt-2 text-xs text-muted-foreground hover:underline"
+            >
+              Stop using my Google account
+            </button>
+          </div>
+        ) : hostId ? (
+          <div className="mt-1 text-sm">
+            <p>✓ Meet links are created on another admin&rsquo;s connected Google account.</p>
+            {iConnected && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    if (!user) return;
+                    await setMeetingHost(user.id);
+                    setHostId(user.id);
+                  }, "Meet links will now be created on your Google account.")
+                }
+                className="mt-2 text-xs text-accent hover:underline"
+              >
+                Use my Google account instead
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="mt-1 text-sm">
+            <p className="text-muted-foreground">
+              No Google account is set up to create Meet links yet. Bookings still work, but the
+              team has to create each meeting and email the link by hand.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              {iConnected ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      if (!user) return;
+                      await setMeetingHost(user.id);
+                      setHostId(user.id);
+                    }, "Done — every new appointment now gets a Meet link.")
+                  }
+                  className="btn-primary text-xs"
+                >
+                  Use my Google account for Meet links
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void startGoogleCalendarConnect()}
+                  className="btn-primary text-xs"
+                >
+                  Connect Google (sign in as info@corvusre.com)
+                </button>
+              )}
+              {!iConnected && (
+                <span className="text-xs text-muted-foreground">
+                  After connecting, come back to this tab and choose &ldquo;Use my Google
+                  account&rdquo;.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       <section>
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 font-serif text-lg font-semibold">

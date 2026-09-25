@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CalendarCheck, Video, Phone as PhoneIcon } from "lucide-react";
+import { CalendarCheck, Video } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
@@ -31,13 +31,11 @@ import {
 export function ScheduleAppointment({
   trigger = "card",
   buttonLabel = "Schedule",
-  defaultType = "call",
 }: {
   // "card": the Contact page's full card. "button": just a button, for use inside
   // another section (e.g. the Texas Tax Updates call to action).
   trigger?: "card" | "button";
   buttonLabel?: string;
-  defaultType?: MeetingType;
 }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -48,7 +46,9 @@ export function ScheduleAppointment({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [meetingType, setMeetingType] = useState<MeetingType>(defaultType);
+  // Every appointment is a Google Meet (a link is created for each booking).
+  const meetingType: MeetingType = "virtual";
+  const [meetLink, setMeetLink] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
   const [saving, setSaving] = useState(false);
@@ -109,6 +109,7 @@ export function ScheduleAppointment({
         website,
       });
       setBooked({ when: formatSlotDay(date, slot), emailed: !!res.emailed });
+      setMeetLink(res.meetLink ?? null);
       toast.success("Appointment booked.");
     } catch (err) {
       const message = getErrorMessage(err, "Could not book that time. Please try again.");
@@ -130,7 +131,6 @@ export function ScheduleAppointment({
           type="button"
           onClick={() => {
             reset();
-            setMeetingType(defaultType);
             setOpen(true);
           }}
           className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
@@ -178,14 +178,28 @@ export function ScheduleAppointment({
               <p className="text-base font-semibold">You&apos;re booked.</p>
               <p>
                 We&apos;ll talk on <strong>{booked.when}</strong>.{" "}
-                {meetingType === "virtual"
-                  ? "We'll email you the Google Meet link before then."
-                  : `We'll call you at ${phone}.`}
+                {meetLink
+                  ? "Your Google Meet link:"
+                  : "We'll email you the Google Meet link before then."}
               </p>
-              {booked.emailed && (
-                <p className="text-muted-foreground">A confirmation is on its way to {email}.</p>
+              {meetLink && (
+                <a
+                  href={meetLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all text-accent hover:underline"
+                >
+                  {meetLink}
+                </a>
               )}
-              <p className="text-muted-foreground">Need to change it? Call (469) 501-9362.</p>
+              {booked.emailed && (
+                <p className="text-muted-foreground">
+                  A confirmation and calendar invite are on their way to {email}.
+                </p>
+              )}
+              <p className="text-muted-foreground">
+                Need to change it? Use the Reschedule or cancel button in your confirmation email.
+              </p>
               <button type="button" onClick={() => setOpen(false)} className="btn-primary w-fit">
                 Done
               </button>
@@ -265,29 +279,6 @@ export function ScheduleAppointment({
               {date && slot && (
                 <div className="grid gap-3">
                   <div className="text-xs font-medium text-muted-foreground">3. Your details</div>
-                  <div className="flex flex-wrap gap-2">
-                    {(
-                      [
-                        ["call", "Phone call", PhoneIcon],
-                        ["virtual", "Google Meet", Video],
-                      ] as const
-                    ).map(([value, label, Icon]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setMeetingType(value)}
-                        aria-pressed={meetingType === value}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
-                          meetingType === value
-                            ? "border-accent bg-accent/10 text-accent"
-                            : "border-input hover:bg-secondary/60"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="grid gap-1 text-sm">
                       <span className="font-medium">Name *</span>
@@ -310,12 +301,9 @@ export function ScheduleAppointment({
                     </label>
                   </div>
                   <label className="grid gap-1 text-sm">
-                    <span className="font-medium">
-                      Phone {meetingType === "call" ? "*" : "(optional)"}
-                    </span>
+                    <span className="font-medium">Phone (optional)</span>
                     <input
                       type="tel"
-                      required={meetingType === "call"}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className={input}

@@ -26,8 +26,11 @@ export type BookingInput = {
 
 export async function bookAppointment(
   input: BookingInput,
-): Promise<{ ok: boolean; emailed: boolean }> {
-  return invokeEdgeFunction<{ ok: boolean; emailed: boolean }>("book-appointment", input);
+): Promise<{ ok: boolean; emailed: boolean; meetLink: string | null }> {
+  return invokeEdgeFunction<{ ok: boolean; emailed: boolean; meetLink: string | null }>(
+    "book-appointment",
+    input,
+  );
 }
 
 // ── Admin: read and manage (RLS: admins only) ──
@@ -38,6 +41,7 @@ export type AppointmentRecord = {
   phone: string | null;
   meetingType: MeetingType;
   notes: string | null;
+  meetLink: string | null;
   startAt: string;
   endAt: string;
   status: "booked" | "cancelled";
@@ -51,6 +55,7 @@ type AppointmentRow = {
   phone: string | null;
   meeting_type: MeetingType;
   notes: string | null;
+  meet_link: string | null;
   start_at: string;
   end_at: string;
   status: "booked" | "cancelled";
@@ -60,7 +65,9 @@ type AppointmentRow = {
 export async function listAppointments(): Promise<AppointmentRecord[]> {
   const { data, error } = await supabase
     .from("appointments")
-    .select("id, name, email, phone, meeting_type, notes, start_at, end_at, status, created_at")
+    .select(
+      "id, name, email, phone, meeting_type, notes, meet_link, start_at, end_at, status, created_at",
+    )
     .order("start_at", { ascending: true });
   if (error) throw error;
   return (data as AppointmentRow[]).map((r) => ({
@@ -70,6 +77,7 @@ export async function listAppointments(): Promise<AppointmentRecord[]> {
     phone: r.phone,
     meetingType: r.meeting_type,
     notes: r.notes,
+    meetLink: r.meet_link,
     startAt: r.start_at,
     endAt: r.end_at,
     status: r.status,
@@ -188,4 +196,23 @@ export async function rescheduleMyAppointment(
 
 export async function cancelMyAppointment(token: string): Promise<void> {
   await invokeEdgeFunction("manage-appointment", { token, action: "cancel" });
+}
+
+// ── Meeting host: whose Google account creates the Meet events ──
+export async function getMeetingHost(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("appointment_settings")
+    .select("host_user_id")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.host_user_id as string | null | undefined) ?? null;
+}
+
+export async function setMeetingHost(userId: string | null): Promise<void> {
+  const { error } = await supabase
+    .from("appointment_settings")
+    .update({ host_user_id: userId, updated_at: new Date().toISOString() })
+    .eq("id", true);
+  if (error) throw error;
 }

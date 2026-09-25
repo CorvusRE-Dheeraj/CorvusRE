@@ -64,21 +64,27 @@ export function confirmationEmail(opts: {
   phone: string;
   token: string;
   startIso?: string;
+  // The Google Meet link, when one was created (Google also emails its own invite).
+  meetLink?: string | null;
   rescheduled?: boolean;
 }) {
   const kind = kindLabel(opts.meetingType);
   const url = manageUrl(opts.token);
-  const how =
-    opts.meetingType === "virtual"
+  const how = opts.meetLink
+    ? "Join with Google Meet at the time above:"
+    : opts.meetingType === "virtual"
       ? "We'll email you the Google Meet link before your appointment."
       : `We'll call you at ${opts.phone}.`;
-  const gcal = opts.startIso ? googleCalendarUrl(opts.startIso, kind, opts.name, opts.meetingType, url) : null;
+  const gcal = opts.startIso && !opts.meetLink ? googleCalendarUrl(opts.startIso, kind, opts.name, opts.meetingType, url) : null;
   const html = emailShell({
     eyebrow: opts.rescheduled ? "Appointment rescheduled" : "Appointment confirmed",
     heading: opts.rescheduled ? "You're rebooked" : "You're booked",
     intro: `${opts.rescheduled ? "Your appointment has moved." : "Thanks,"} ${escapeHtml(opts.name)} — we'll see you on <strong>${escapeHtml(opts.when)}</strong> for a 60-minute ${kind}.`,
     bodyRows:
-      `<tr><td style="padding:7px 0;">${escapeHtml(how)}</td></tr>` +
+      `<tr><td style="padding:7px 0;">${escapeHtml(how)}${opts.meetLink ? ` <a href="${escapeHtml(opts.meetLink)}" style="color:#0f9d6b; font-weight:600;">${escapeHtml(opts.meetLink)}</a>` : ""}</td></tr>` +
+      (opts.meetLink
+        ? `<tr><td style="padding:7px 0;">A Google Calendar invite with this link is also on its way from Google.</td></tr>`
+        : "") +
       (gcal
         ? `<tr><td style="padding:7px 0;">A calendar invite is attached. Not showing up? <a href="${escapeHtml(gcal)}" style="color:#0f9d6b;">Add it to Google Calendar</a>.</td></tr>`
         : "") +
@@ -88,7 +94,7 @@ export function confirmationEmail(opts: {
     footnote: "You received this because you booked an appointment on CorvusPT.",
   });
   const text =
-    `${opts.rescheduled ? "Your appointment has moved" : "You're booked"}: ${opts.when} (60-minute ${kind}).\n${how}\n` +
+    `${opts.rescheduled ? "Your appointment has moved" : "You're booked"}: ${opts.when} (60-minute ${kind}).\n${how}${opts.meetLink ? ` ${opts.meetLink}` : ""}\n` +
     (gcal ? `Add to Google Calendar: ${gcal}
 ` : "") +
     `Need to change it? Reschedule or cancel here: ${url}`;

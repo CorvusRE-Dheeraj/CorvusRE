@@ -522,11 +522,7 @@ function TaxUpdates() {
           );
         })()}
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          <ScheduleAppointment
-            trigger="button"
-            buttonLabel="Schedule a Google Meet"
-            defaultType="virtual"
-          />
+          <ScheduleAppointment trigger="button" buttonLabel="Schedule a Google Meet" />
           <span className="text-xs text-white/80">
             One-on-one, 60 minutes. Pick a time that works for you.
           </span>
