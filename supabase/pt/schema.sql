@@ -2679,3 +2679,12 @@ grant select, insert, update, delete on public.appointment_settings to service_r
 -- A standing meeting link (e.g. a Google Meet room) included in every appointment's email and
 -- calendar file when no Google host account is connected to create a fresh link per booking.
 alter table public.appointment_settings add column if not exists meeting_link text;
+
+
+-- A signed-in customer can see (and reach the reschedule/cancel link for) their own
+-- appointments: ones booked while signed in, or booked with their account's email.
+drop policy if exists "Users read their own appointments" on public.appointments;
+create policy "Users read their own appointments"
+  on public.appointments for select
+  to authenticated
+  using (user_id = auth.uid() or lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')));
