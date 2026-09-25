@@ -62,6 +62,7 @@ import { DocumentReviewModal } from "@/components/DocumentReviewModal";
 import { DocumentEditorModal, isEditableDoc } from "@/components/DocumentEditorModal";
 import { PageHero } from "@/components/PageHero";
 import { FolderOpen as HeroDocsIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/documents")({
   // Lets a screen that just worked on one property (Module 8, View Case) open
@@ -635,12 +636,9 @@ function Documents() {
             )}
           </div>
         ) : (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No documents yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Documents you upload during property intake are stored here automatically.
-            </p>
-          </div>
+          <EmptyState kind="documents" title="No documents yet.">
+            Documents you upload during property intake are stored here automatically.
+          </EmptyState>
         )}
 
         {trashed.length > 0 && (

@@ -77,6 +77,7 @@ import {
 } from "lucide-react";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Building2 as HeroPropertiesIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -992,19 +993,21 @@ function Properties() {
             <PropertyCardSkeleton />
           </div>
         ) : properties.length === 0 ? (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Start with an address or upload an appraisal notice.
-            </p>
-            <Link
-              to="/intake"
-              onClick={() => resetIntake()}
-              className="btn-primary btn-primary-hover mt-4 inline-flex"
-            >
-              Start Free AI Property Review
-            </Link>
-          </div>
+          <EmptyState
+            kind="properties"
+            title="No properties yet."
+            action={
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover inline-flex"
+              >
+                Start Free AI Property Review
+              </Link>
+            }
+          >
+            Start with an address or upload an appraisal notice.
+          </EmptyState>
         ) : displayProperties.length === 0 ? (
           <div className="card-elev p-8 text-center">
             <h3 className="font-serif text-xl font-semibold">No matches.</h3>

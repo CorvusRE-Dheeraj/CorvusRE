@@ -8,6 +8,7 @@ import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHero } from "@/components/PageHero";
 import { CalendarClock as HeroDeadlinesIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/deadlines")({
   component: Deadlines,
@@ -140,10 +141,9 @@ function Deadlines() {
               ))}
             </div>
           ) : (
-            <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-              No notifications. Upload an appraisal notice with a protest deadline and it'll show up
-              here.
-            </div>
+            <EmptyState kind="deadlines" title="No protest deadlines yet." compact>
+              Upload an appraisal notice with a protest deadline and it'll show up here.
+            </EmptyState>
           )}
         </div>
       </section>
@@ -175,10 +175,9 @@ function Deadlines() {
               ))}
             </div>
           ) : (
-            <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-              No hearings scheduled. Once a hearing is scheduled from a case's Case Progress
-              section, it'll show up here.
-            </div>
+            <EmptyState kind="hearings" title="No hearings scheduled." compact>
+              Once a hearing is scheduled from a case's Case Progress section, it'll show up here.
+            </EmptyState>
           )}
         </div>
       </section>
@@ -226,10 +225,9 @@ function Deadlines() {
               ))}
             </div>
           ) : (
-            <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-              No tax bills tracked yet. Upload a tax bill or statement and its due date and amount
-              will show up here.
-            </div>
+            <EmptyState kind="bills" title="No tax bills tracked yet." compact>
+              Upload a tax bill or statement and its due date and amount will show up here.
+            </EmptyState>
           )}
         </div>
       </section>
