@@ -1,3 +1,4 @@
+import { FieldError, emailError, requiredError, useTouched } from "@/components/FieldError";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -56,6 +57,10 @@ function Contact() {
         console.error("Could not load your profile for the contact form:", err);
       });
   }, [user]);
+
+  const nameT = useTouched();
+  const emailT = useTouched();
+  const msgT = useTouched();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -139,7 +144,14 @@ function Contact() {
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
+                      onBlur={nameT.onBlur}
+                      aria-invalid={nameT.touched && !!requiredError(name, "your name")}
+                      aria-describedby="contact-name-err"
                       className="rounded-md border border-input bg-background px-3 py-2"
+                    />
+                    <FieldError
+                      id="contact-name-err"
+                      message={nameT.touched ? requiredError(name, "your name") : null}
                     />
                   </label>
                   <label className="grid gap-1 text-sm">
@@ -151,7 +163,14 @@ function Contact() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={emailT.onBlur}
+                      aria-invalid={emailT.touched && !!emailError(email)}
+                      aria-describedby="contact-email-err"
                       className="rounded-md border border-input bg-background px-3 py-2"
+                    />
+                    <FieldError
+                      id="contact-email-err"
+                      message={emailT.touched ? emailError(email) : null}
                     />
                   </label>
                 </>
@@ -165,7 +184,14 @@ function Contact() {
                   required
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  onBlur={msgT.onBlur}
+                  aria-invalid={msgT.touched && !!requiredError(message, "a message")}
+                  aria-describedby="contact-msg-err"
                   className="rounded-md border border-input bg-background px-3 py-2"
+                />
+                <FieldError
+                  id="contact-msg-err"
+                  message={msgT.touched ? requiredError(message, "a message") : null}
                 />
               </label>
               {error && <p className="text-sm text-destructive">{error}</p>}

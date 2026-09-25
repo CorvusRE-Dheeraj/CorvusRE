@@ -1,3 +1,4 @@
+import { FieldError, emailError, requiredError, useTouched } from "@/components/FieldError";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -46,6 +47,8 @@ export function ScheduleAppointment({
   const [slots, setSlots] = useState<OpenSlots | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
+  const nameT = useTouched();
+  const emailT = useTouched();
   const [slot, setSlot] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -348,7 +351,14 @@ export function ScheduleAppointment({
                         required
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        onBlur={nameT.onBlur}
+                        aria-invalid={nameT.touched && !!requiredError(name, "your name")}
+                        aria-describedby="appt-name-err"
                         className={input}
+                      />
+                      <FieldError
+                        id="appt-name-err"
+                        message={nameT.touched ? requiredError(name, "your name") : null}
                       />
                     </label>
                     <label className="grid gap-1 text-sm">
@@ -358,7 +368,14 @@ export function ScheduleAppointment({
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        onBlur={emailT.onBlur}
+                        aria-invalid={emailT.touched && !!emailError(email)}
+                        aria-describedby="appt-email-err"
                         className={input}
+                      />
+                      <FieldError
+                        id="appt-email-err"
+                        message={emailT.touched ? emailError(email) : null}
                       />
                     </label>
                   </div>
