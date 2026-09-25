@@ -10,12 +10,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { escapeHtml } from "../_shared/email-shell.ts";
 import { centralToUtcMs, slotProblem } from "../_shared/appointment-rules.ts";
+import { createMeetEvent, hostAccessToken } from "../_shared/google-meet.ts";
 import {
   STAFF_EMAIL,
+  TEAM_EMAILS,
   confirmationEmail,
+  inviteAttachment,
   kindLabel,
   longDate,
+  manageUrl,
   sendEmail,
+  standingMeetLink,
   whenText,
 } from "../_shared/appointment-email.ts";
 import { slotLabel } from "../_shared/appointment-rules.ts";
@@ -49,7 +54,8 @@ Deno.serve(async (req: Request) => {
     const notes = str("notes", 1000);
     const date = str("date", 10);
     const slot = str("slot", 5);
-    const meetingType = body.meetingType === "virtual" ? "virtual" : "call";
+    // Every appointment is a Google Meet.
+    const meetingType = "virtual";
 
     if (!name) return fail(400, "Please enter your name.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400, "Please enter a valid email address.");
@@ -107,17 +113,57 @@ Deno.serve(async (req: Request) => {
       throw new Error(error.message);
     }
 
+    const { data: row } = await admin.from("appointments").select("manage_token").eq("id", id).single();
+    const token = (row?.manage_token as string | undefined) ?? "";
+
+    // Every appointment gets a Google Meet: an event on the host's Google account, which
+    // Google emails to everyone as an invite. If no host is connected (or Google errors),
+    // the booking still stands and the emailed calendar file is used instead.
+    let meetLink: string | null = null;
+    let googleEventId: string | null = null;
+    try {
+      const gToken = await hostAccessToken(admin);
+      if (gToken) {
+        const ev = await createMeetEvent(gToken, {
+          startIso,
+          summary: `CorvusPT — Google Meet with ${name}`,
+          description:
+            `Booked on CorvusPT by ${name} <${email}>${phone ? ` · ${phone}` : ""}.\n` +
+            (notes ? `Notes: ${notes}\n` : "") +
+            `Reschedule or cancel: ${manageUrl(token)}`,
+          attendees: [email, ...TEAM_EMAILS],
+          requestId: id as string,
+        });
+        googleEventId = ev.eventId;
+        meetLink = ev.meetLink;
+        await admin.from("appointments").update({ google_event_id: googleEventId, meet_link: meetLink }).eq("id", id);
+      }
+    } catch (err) {
+      console.error("Google Meet creation failed:", err);
+    }
+    // No Google host: use the standing meeting link the admin saved, if any.
+    if (!meetLink) {
+      meetLink = await standingMeetLink(admin);
+      if (meetLink) await admin.from("appointments").update({ meet_link: meetLink }).eq("id", id);
+    }
+
     // Emails are best-effort: the booking already exists and is on the admin dashboard.
     const resendKey = Deno.env.get("RESEND_API_KEY");
     let emailed = false;
     if (resendKey) {
       const when = whenText(date, slot);
       const kind = kindLabel(meetingType);
-      const { data: row } = await admin.from("appointments").select("manage_token").eq("id", id).single();
-      const token = (row?.manage_token as string | undefined) ?? "";
+      const invite = inviteAttachment({
+        appointmentId: id as string,
+        startIso,
+        meetingType,
+        visitor: { name, email, phone },
+        token,
+        meetLink,
+      });
       try {
-        const m = confirmationEmail({ name, when, meetingType, phone, token });
-        await sendEmail(resendKey, [email], m.subject, m.html, m.text);
+        const m = confirmationEmail({ name, when, meetingType, phone, token, startIso, meetLink, googleInvite: !!googleEventId });
+        await sendEmail(resendKey, [email], m.subject, m.html, m.text, STAFF_EMAIL, googleEventId ? undefined : [invite]);
         emailed = true;
       } catch (err) {
         console.error("Appointment confirmation email failed:", err);
@@ -125,23 +171,23 @@ Deno.serve(async (req: Request) => {
       try {
         const text = `New appointment: ${when}
 ${name} <${email}>${phone ? ` · ${phone}` : ""}
-Type: ${kind}${meetingType === "virtual" ? `
-To do: create the Google Meet and email the link to ${email}.` : ""}
+Type: ${kind}${meetLink ? `\nMeet link: ${meetLink}` : `\nTo do: send the meeting link to ${email}.`}
 ${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,
-          [STAFF_EMAIL],
+          TEAM_EMAILS,
           `New appointment — ${longDate(date)}, ${slotLabel(slot)} CT — ${name}`,
           `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
           text,
           email,
+          googleEventId ? undefined : [invite],
         );
       } catch (err) {
         console.error("Appointment staff email failed:", err);
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, id, emailed, start: startIso }), {
+    return new Response(JSON.stringify({ ok: true, id, emailed, start: startIso, meetLink }), {
       status: 200,
       headers: corsHeaders,
     });
