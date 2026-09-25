@@ -93,6 +93,7 @@ export function CourtAppealWorkflow({
     notes: "",
   });
   const [updFile, setUpdFile] = useState<File | null>(null);
+  const [titleError, setTitleError] = useState(false);
   const [finalInput, setFinalInput] = useState("");
 
   const requestedValue = facts.requestedValue ?? parseMoney(enteredValue);
@@ -339,7 +340,14 @@ export function CourtAppealWorkflow({
   }
 
   async function addUpdate() {
-    if (!upd.title.trim()) return toast.error("Give the update a short title.");
+    // Attaching a document is enough: the title falls back to the file name.
+    const title = upd.title.trim() || (updFile ? updFile.name.replace(/.[^.]+$/, "") : "");
+    if (!title) {
+      setTitleError(true);
+      document.getElementById("court-update-title")?.focus();
+      return toast.error("Give the update a short title, or attach a document.");
+    }
+    setTitleError(false);
     await run(
       "update",
       async () => {
@@ -357,7 +365,7 @@ export function CourtAppealWorkflow({
               id: newUpdateId(),
               date: upd.date,
               type: upd.type,
-              title: upd.title.trim(),
+              title,
               summary,
               documentId,
             },
@@ -796,13 +804,25 @@ export function CourtAppealWorkflow({
                   </select>
                 </label>
                 <label className="grid gap-1 text-xs">
-                  <span className="text-muted-foreground">Title</span>
+                  <span className="text-muted-foreground">
+                    Title <span className="text-[10px]">(or attach a document)</span>
+                  </span>
                   <input
+                    id="court-update-title"
                     value={upd.title}
-                    onChange={(e) => setUpd((u) => ({ ...u, title: e.target.value }))}
+                    onChange={(e) => {
+                      setTitleError(false);
+                      setUpd((u) => ({ ...u, title: e.target.value }));
+                    }}
                     placeholder="e.g. Scheduling order"
-                    className={input}
+                    aria-invalid={titleError}
+                    className={`${input} ${titleError ? "border-destructive" : ""}`}
                   />
+                  {titleError && (
+                    <span className="text-destructive">
+                      Add a short title, or attach a document and we&rsquo;ll use its name.
+                    </span>
+                  )}
                 </label>
               </div>
               <textarea
