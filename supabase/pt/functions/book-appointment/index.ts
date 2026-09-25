@@ -8,12 +8,17 @@
 // staff (Resend, same key as every other transactional email). The appointment also
 // shows up immediately on the Admin dashboard → Appointments tab.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
+import { escapeHtml } from "../_shared/email-shell.ts";
+import { centralToUtcMs, slotProblem } from "../_shared/appointment-rules.ts";
 import {
-  centralToUtcMs,
-  slotLabel,
-  slotProblem,
-} from "../_shared/appointment-rules.ts";
+  STAFF_EMAIL,
+  confirmationEmail,
+  kindLabel,
+  longDate,
+  sendEmail,
+  whenText,
+} from "../_shared/appointment-email.ts";
+import { slotLabel } from "../_shared/appointment-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,36 +26,11 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const STAFF_EMAIL = "properties@srclandbuilding.com";
 const MAX_ACTIVE_PER_EMAIL = 2;
 
 const fail = (status: number, error: string) =>
   new Response(JSON.stringify({ error }), { status, headers: corsHeaders });
 
-const longDate = (date: string) =>
-  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
-async function sendEmail(resendKey: string, to: string[], subject: string, html: string, text: string, replyTo?: string) {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: "CorvusPT <info@corvusre.com>",
-      to,
-      subject,
-      html,
-      text,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -131,34 +111,22 @@ Deno.serve(async (req: Request) => {
     const resendKey = Deno.env.get("RESEND_API_KEY");
     let emailed = false;
     if (resendKey) {
-      const when = `${longDate(date)} at ${slotLabel(slot)} Central Time`;
-      const kind = meetingType === "virtual" ? "Zoom meeting" : "phone call";
+      const when = whenText(date, slot);
+      const kind = kindLabel(meetingType);
+      const { data: row } = await admin.from("appointments").select("manage_token").eq("id", id).single();
+      const token = (row?.manage_token as string | undefined) ?? "";
       try {
-        await sendEmail(
-          resendKey,
-          [email],
-          `Your CorvusPT appointment is booked — ${longDate(date)}, ${slotLabel(slot)} CT`,
-          emailShell({
-            eyebrow: "Appointment confirmed",
-            heading: "You're booked",
-            intro: `Thanks, ${escapeHtml(name)} — we'll see you on <strong>${escapeHtml(when)}</strong> for a 60-minute ${kind}.`,
-            bodyRows:
-              `<tr><td style="padding:7px 0;">${
-                meetingType === "virtual"
-                  ? "We'll email you the Zoom link before your appointment."
-                  : `We'll call you at ${escapeHtml(phone)}.`
-              }</td></tr>` +
-              `<tr><td style="padding:7px 0; color:#8592a6;">Need to change it? Call (469) 501-9362.</td></tr>`,
-            footnote: "You received this because you booked an appointment on CorvusPT.",
-          }),
-          `You're booked for ${when} (60-minute ${kind}). Need to change it? Call (469) 501-9362.`,
-        );
+        const m = confirmationEmail({ name, when, meetingType, phone, token });
+        await sendEmail(resendKey, [email], m.subject, m.html, m.text);
         emailed = true;
       } catch (err) {
         console.error("Appointment confirmation email failed:", err);
       }
       try {
-        const text = `New appointment: ${when}\n${name} <${email}>${phone ? ` · ${phone}` : ""}\nType: ${kind}\n${notes ? `Notes: ${notes}` : ""}`;
+        const text = `New appointment: ${when}
+${name} <${email}>${phone ? ` · ${phone}` : ""}
+Type: ${kind}
+${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,
           [STAFF_EMAIL],

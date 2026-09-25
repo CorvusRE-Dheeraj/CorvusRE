@@ -7,8 +7,9 @@ export type MeetingType = "call" | "virtual";
 // ── Visitors: open slots and booking (edge functions; work signed-out) ──
 export type OpenSlots = { days: Record<string, string[]>; from: string; to: string };
 
-export async function fetchOpenSlots(): Promise<OpenSlots> {
-  return invokeEdgeFunction<OpenSlots>("appointment-slots", {});
+// Pass the manage token when rescheduling so your own current time counts as free.
+export async function fetchOpenSlots(token?: string): Promise<OpenSlots> {
+  return invokeEdgeFunction<OpenSlots>("appointment-slots", token ? { token } : {});
 }
 
 export type BookingInput = {
@@ -157,3 +158,34 @@ export const fromIsoLocal = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d);
 };
+
+// ── Manage your own appointment (the link in the confirmation email) ──
+export type ManagedAppointment = {
+  name: string;
+  meetingType: MeetingType;
+  startAt: string;
+  date: string;
+  slot: string;
+  status: "booked" | "cancelled";
+  canChange: boolean;
+};
+
+export async function getManagedAppointment(token: string): Promise<ManagedAppointment> {
+  const res = await invokeEdgeFunction<{ appointment: ManagedAppointment }>("manage-appointment", {
+    token,
+    action: "get",
+  });
+  return res.appointment;
+}
+
+export async function rescheduleMyAppointment(
+  token: string,
+  date: string,
+  slot: string,
+): Promise<void> {
+  await invokeEdgeFunction("manage-appointment", { token, action: "reschedule", date, slot });
+}
+
+export async function cancelMyAppointment(token: string): Promise<void> {
+  await invokeEdgeFunction("manage-appointment", { token, action: "cancel" });
+}
