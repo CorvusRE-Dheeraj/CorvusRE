@@ -129,7 +129,7 @@ function ManageAppointment() {
             </span>
             <div>
               <div className="text-sm text-muted-foreground">
-                {appt.meetingType === "virtual" ? "Zoom meeting" : "Phone call"} · 60 minutes
+                {appt.meetingType === "virtual" ? "Google Meet" : "Phone call"} · 60 minutes
               </div>
               <div className="text-lg font-semibold">{now} CT</div>
               <div className="text-sm text-muted-foreground">for {appt.name}</div>

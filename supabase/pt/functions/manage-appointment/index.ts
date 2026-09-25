@@ -146,7 +146,8 @@ Deno.serve(async (req: Request) => {
           console.error("Reschedule confirmation email failed:", e);
         }
         try {
-          const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}`;
+          const text = `Appointment RESCHEDULED by the visitor:\nWas: ${oldWhen}\nNow: ${newWhen}\n${appt.name} <${appt.email}>${appt.phone ? ` · ${appt.phone}` : ""}\nType: ${kind}${appt.meeting_type === "virtual" ? `
+To do: update the Google Meet time and re-send the link to ${appt.email}.` : ""}`;
           await sendEmail(resendKey, [STAFF_EMAIL], `Rescheduled — now ${newWhen} — ${appt.name}`, `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`, text, appt.email as string);
         } catch (e) {
           console.error("Reschedule staff email failed:", e);

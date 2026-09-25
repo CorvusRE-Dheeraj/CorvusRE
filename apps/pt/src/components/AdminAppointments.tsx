@@ -106,7 +106,7 @@ export function AdminAppointments() {
             )}
             {formatAppointment(a.startAt)}
             <span className="text-xs font-normal text-muted-foreground">
-              · {a.meetingType === "virtual" ? "Zoom meeting" : "Phone call"} · 60 min
+              · {a.meetingType === "virtual" ? "Google Meet" : "Phone call"} · 60 min
             </span>
           </div>
           <div className="mt-1">
@@ -183,8 +183,8 @@ export function AdminAppointments() {
           </button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Calls and Zoom meetings booked from the Contact page. All times are Central. New bookings
-          appear here automatically.
+          Calls and Google Meet meetings booked from the Contact page. All times are Central. New
+          bookings appear here automatically.
         </p>
         {loading ? (
           <p className="mt-3 text-sm text-muted-foreground">Loading…</p>

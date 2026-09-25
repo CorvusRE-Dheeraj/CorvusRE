@@ -1,4 +1,4 @@
-// Emails for "Schedule a Call or Zoom Meeting" — shared by book-appointment and
+// Emails for "Schedule a Call or Google Meet" — shared by book-appointment and
 // manage-appointment so a booking, a reschedule and a cancellation all read alike.
 import { emailShell, escapeHtml } from "./email-shell.ts";
 import { slotLabel } from "./appointment-rules.ts";
@@ -23,7 +23,7 @@ export const whenText = (date: string, slot: string) =>
   `${longDate(date)} at ${slotLabel(slot)} Central Time`;
 
 export const kindLabel = (meetingType: string) =>
-  meetingType === "virtual" ? "Zoom meeting" : "phone call";
+  meetingType === "virtual" ? "Google Meet" : "phone call";
 
 export async function sendEmail(
   resendKey: string,
@@ -62,7 +62,7 @@ export function confirmationEmail(opts: {
   const url = manageUrl(opts.token);
   const how =
     opts.meetingType === "virtual"
-      ? "We'll email you the Zoom link before your appointment."
+      ? "We'll email you the Google Meet link before your appointment."
       : `We'll call you at ${opts.phone}.`;
   const html = emailShell({
     eyebrow: opts.rescheduled ? "Appointment rescheduled" : "Appointment confirmed",

@@ -179,7 +179,7 @@ export function ScheduleAppointment({
               <p>
                 We&apos;ll talk on <strong>{booked.when}</strong>.{" "}
                 {meetingType === "virtual"
-                  ? "We'll email you the Zoom link before then."
+                  ? "We'll email you the Google Meet link before then."
                   : `We'll call you at ${phone}.`}
               </p>
               {booked.emailed && (
@@ -269,7 +269,7 @@ export function ScheduleAppointment({
                     {(
                       [
                         ["call", "Phone call", PhoneIcon],
-                        ["virtual", "Zoom meeting", Video],
+                        ["virtual", "Google Meet", Video],
                       ] as const
                     ).map(([value, label, Icon]) => (
                       <button

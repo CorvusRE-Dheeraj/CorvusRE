@@ -1,5 +1,5 @@
 // Deploy via CLI: `supabase functions deploy book-appointment`.
-// Books a 60-minute phone call / Zoom meeting. Public (works signed-out; a signed-in
+// Books a 60-minute phone call / Google Meet. Public (works signed-out; a signed-in
 // caller's account is attached). The slot is re-validated here against the same rules
 // appointment-slots uses, then book_appointment() (schema.sql) takes it under a lock
 // so two people can never double-book or land within 2 hours of each other.
@@ -125,7 +125,8 @@ Deno.serve(async (req: Request) => {
       try {
         const text = `New appointment: ${when}
 ${name} <${email}>${phone ? ` · ${phone}` : ""}
-Type: ${kind}
+Type: ${kind}${meetingType === "virtual" ? `
+To do: create the Google Meet and email the link to ${email}.` : ""}
 ${notes ? `Notes: ${notes}` : ""}`;
         await sendEmail(
           resendKey,
