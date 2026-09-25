@@ -1,3 +1,4 @@
+import { VerdictChip, verdictFor } from "@/components/ProtestVerdictCard";
 import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
@@ -1135,11 +1136,11 @@ function Properties() {
               return (
                 <div
                   key={p.id}
-                  className="card-elev p-6"
+                  className="card-elev p-4 sm:p-6"
                   style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-60">
                       <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
@@ -1167,6 +1168,9 @@ function Properties() {
                         • Tax year {p.taxYear}
                       </p>
                       <AiScoreBadge score={healthScores[p.id]} />
+                      <div className="mt-2">
+                        <VerdictChip verdict={verdictFor(p, protests, healthScores[p.id])} />
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs text-muted-foreground">Assessed value</div>

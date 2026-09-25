@@ -144,7 +144,12 @@ function Page() {
               live at 390px: without it, "Additional property, same bracket" squeezed down
               to unreadable fragments instead of the wrapper actually scrolling) — wide
               content should scroll inside its own container, never squeeze. */}
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            tabIndex={0}
+            role="region"
+            aria-label="Plan comparison table"
+          >
             <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-t border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

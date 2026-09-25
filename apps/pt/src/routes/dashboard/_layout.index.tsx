@@ -1,3 +1,4 @@
+import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
 import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -394,7 +395,11 @@ function Overview() {
         icon={HeroWelcomeIcon}
         title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
         tone="emerald"
-        subtitle="New here? Start with the checklist below. Everything else is one click away."
+        subtitle={
+          loaded && properties.length > 0
+            ? "Here is where your properties stand and what to do next."
+            : "New here? Start with the checklist below. Everything else is one click away."
+        }
         stats={
           loaded
             ? [
@@ -478,6 +483,15 @@ function Overview() {
             <X className="h-4 w-4" />
           </button>
         </div>
+      )}
+
+      {loaded && (
+        <ProtestVerdictCard
+          properties={properties}
+          protests={protests}
+          healthScores={healthScores}
+          onOpenReport={openAiReport}
+        />
       )}
 
       <MyAppointments />
@@ -803,7 +817,7 @@ function StatCard({
       >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
+      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -822,7 +836,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -831,7 +845,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5"
+      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}

@@ -1003,8 +1003,16 @@ function CaseTabBar({
 }) {
   const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
   const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  const barRef = useRef<HTMLDivElement>(null);
+  // On a narrow screen the strip scrolls sideways — keep the open tab in view.
+  useEffect(() => {
+    barRef.current
+      ?.querySelector<HTMLElement>("[aria-selected=true]")
+      ?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [activeTab]);
   return (
     <div
+      ref={barRef}
       role="tablist"
       aria-label="Case phases"
       className="mt-4 flex items-center gap-1 overflow-x-auto border-b border-border pb-2"
