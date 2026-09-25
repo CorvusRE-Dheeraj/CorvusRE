@@ -1,3 +1,4 @@
+import { CasePhaseGuide } from "@/components/CasePhaseGuide";
 import { centerInStrip } from "@/lib/scroll-into-strip";
 import { GLOSSARY_MAP } from "@/lib/glossary";
 import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
@@ -421,9 +422,11 @@ function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): Case
     case "hearing_scheduled":
       return "hearing";
     case "decision_received":
-    case "appealing":
-    case "arbitrating":
       return "decision";
+    case "appealing":
+      return "court";
+    case "arbitrating":
+      return "arbitration";
     case "resolved":
       return "outcome";
     default:
@@ -650,6 +653,18 @@ export function CaseDetailView({
             })}
             activeTab={activeTab}
             onGo={handleTabClick}
+            onFocus={(focus) => {
+              if (focus === "filing") {
+                setFilingOpen(true);
+                return;
+              }
+              const id = {
+                informal: "case-informal-review",
+                hearing: "case-hearing-notice",
+                decision: "case-decision-notice",
+              }[focus];
+              document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
           />
           {(() => {
             // Viewing a later phase than the one the case is actually in: say so, and
@@ -717,6 +732,7 @@ export function CaseDetailView({
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
           )}
+          <CasePhaseGuide tab={activeTab} informalStatus={current.informalStatus} />
 
           {activeTab === "overview" && (
             <div className="mt-3">
@@ -1058,7 +1074,10 @@ function CaseTabBar({
   onSelect: (id: CaseTabId) => void;
 }) {
   const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
-  const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  // Arbitration and Court Appeal share one step, so a court-appeal case sits on that step.
+  const currentIdx = CASE_TABS.findIndex(
+    (t) => t.id === (currentPhase === "court" ? "arbitration" : currentPhase),
+  );
   const barRef = useRef<HTMLDivElement>(null);
   // On a narrow screen the strip scrolls sideways — keep the open tab in view.
   useEffect(() => {
@@ -1082,7 +1101,9 @@ function CaseTabBar({
         // The shared step 5 badge ticks once either path has been carried out.
         const groupDone = (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
         const done = !isHub && !locked && (i < currentIdx || groupDone);
-        const isCurrent = !isHub && i === currentIdx;
+        const isCurrent =
+          !isHub &&
+          (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
         const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
         const style = PHASE_STYLE[t.id];
         return (
