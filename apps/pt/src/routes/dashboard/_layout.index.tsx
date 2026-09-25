@@ -875,13 +875,25 @@ function PortfolioValueChart({
   properties: PropertyRecord[];
   onOpenReport: (p: PropertyRecord) => void;
 }) {
+  // On a wide screen show each full address on one line; on a phone there is no room, so
+  // keep the short, wrapped form.
+  const [wide, setWide] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const data = properties
     .filter((p) => p.totalValue != null)
     .sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0))
     .slice(0, 8)
     .map((p) => ({
       id: p.id,
-      name: p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
+      name: !wide && p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
       value: p.totalValue ?? 0,
       property: p,
     }));
@@ -897,10 +909,16 @@ function PortfolioValueChart({
         <YAxis
           type="category"
           dataKey="name"
-          width={160}
+          width={
+            wide
+              ? Math.min(340, Math.max(160, Math.max(...data.map((d) => d.name.length)) * 6.6))
+              : 160
+          }
           tickLine={false}
           axisLine={false}
-          tick={(props) => <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} />}
+          tick={(props) => (
+            <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} oneLine={wide} />
+          )}
         />
         <Bar
           dataKey="value"
@@ -940,12 +958,13 @@ function PortfolioAxisTick(
   } & {
     data: { name: string; property: PropertyRecord }[];
     onOpenReport: (p: PropertyRecord) => void;
+    oneLine?: boolean;
   },
 ) {
   const { x = 0, y = 0, payload, data, onOpenReport } = props;
   const row = data.find((d) => d.name === payload?.value);
   if (!row) return null;
-  const lines = row.name.split(/(?<=,)\s+/);
+  const lines = props.oneLine ? [row.name] : row.name.split(/(?<=,)\s+/);
   return (
     <text
       x={x}
@@ -1001,9 +1020,9 @@ function ProtestStatusChart({
     <>
       <div className="mt-3 grid grid-cols-[7rem_1fr] items-center gap-3">
         {/* The legend beside the ring lists the same numbers as text. */}
-        <div aria-hidden="true">
+        <div aria-hidden="true" inert>
           <ResponsiveContainer width="100%" height={110}>
-            <PieChart>
+            <PieChart accessibilityLayer={false}>
               <Pie
                 data={data}
                 dataKey="value"
