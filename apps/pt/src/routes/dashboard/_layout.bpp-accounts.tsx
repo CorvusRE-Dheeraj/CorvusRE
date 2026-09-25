@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -131,7 +132,7 @@ function BppAccounts() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Remove this BPP account?")) return;
+    if (!(await confirmDialog("Remove this BPP account?"))) return;
     setDeletingId(id);
     try {
       await deleteBppAccount(id);
@@ -156,7 +157,7 @@ function BppAccounts() {
   }
 
   async function handleCancel(account: BppAccountRecord) {
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `Cancel the subscription for ${account.businessName}? It ends immediately.`,
     );
     if (!ok) return;
@@ -213,7 +214,7 @@ function BppAccounts() {
         icon={HeroBppIcon}
         title="BPP Accounts"
         tone="sky"
-        subtitle="Business Personal Property tax accounts — separate from real estate you own."
+        subtitle="Tax accounts for business equipment and inventory (BPP). These are separate from the real estate you own."
       >
         <Link to="/dashboard/bpp-intake" className={heroButton}>
           Guided Intake (AI reads a document)

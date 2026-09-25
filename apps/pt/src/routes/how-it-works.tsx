@@ -80,7 +80,7 @@ function HowItWorks() {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground font-serif text-lg">
                       {s.n}
                     </span>
-                    <h3 className="text-xl font-semibold">{s.t}</h3>
+                    <h2 className="text-xl font-semibold">{s.t}</h2>
                   </div>
                   <p className="mt-3 text-muted-foreground">{s.d}</p>
                 </div>

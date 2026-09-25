@@ -1,3 +1,6 @@
+import { centerInStrip } from "@/lib/scroll-into-strip";
+import { GLOSSARY_MAP } from "@/lib/glossary";
+import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
@@ -327,6 +330,15 @@ const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: strin
     },
   };
 
+// Plain-English meaning of the jargon-named phases, shown on hover.
+const TAB_MEANING: Partial<Record<CaseTabId, string>> = {
+  informal: GLOSSARY_MAP["Informal review"],
+  hearing: GLOSSARY_MAP["Formal hearing"],
+  decision: GLOSSARY_MAP["ARB"],
+  arbitration: GLOSSARY_MAP["Binding arbitration"],
+  court: GLOSSARY_MAP["Court appeal"],
+};
+
 // The number shown for a tab: its position, minus tabs that share a step number.
 function stepNumber(index: number): number {
   return index - CASE_TABS.slice(0, index + 1).filter((t) => t.joinsPrev).length;
@@ -630,6 +642,11 @@ export function CaseDetailView({
         </div>
       ) : (
         <>
+          <CaseNextStepCard
+            step={nextStepFor(current.status, { needsGuidanceAck, noticeSigned })}
+            activeTab={activeTab}
+            onGo={handleTabClick}
+          />
           <CaseTabBar
             activeTab={activeTab}
             protest={current}
@@ -952,9 +969,9 @@ function EscalationStart({
   return (
     <div className="grid gap-4">
       <div className="rounded-md border border-border p-4">
-        <h4 className="text-sm font-semibold">
+        <h2 className="text-sm font-semibold">
           {kind === "arbitration" ? "Binding arbitration" : "Court appeal"}
-        </h4>
+        </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           You haven&apos;t started {label} for this case yet. Starting it doesn&apos;t close the
           other option — you can also use the{" "}
@@ -997,8 +1014,17 @@ function CaseTabBar({
 }) {
   const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
   const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  const barRef = useRef<HTMLDivElement>(null);
+  // On a narrow screen the strip scrolls sideways — keep the open tab in view.
+  useEffect(() => {
+    centerInStrip(
+      barRef.current,
+      barRef.current?.querySelector<HTMLElement>("[aria-selected=true]") ?? null,
+    );
+  }, [activeTab]);
   return (
     <div
+      ref={barRef}
       role="tablist"
       aria-label="Case phases"
       className="mt-4 flex items-center gap-1 overflow-x-auto border-b border-border pb-2"
@@ -1035,7 +1061,7 @@ function CaseTabBar({
               role="tab"
               aria-selected={isOpen}
               aria-current={isCurrent ? "step" : undefined}
-              title={locked ? t.lockedHint : undefined}
+              title={locked ? t.lockedHint : TAB_MEANING[t.id]}
               onClick={() => onSelect(t.id)}
               className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
                 isOpen
@@ -1258,7 +1284,7 @@ function CorvusGuidanceGate({
   return (
     <div className="mt-4 grid gap-4">
       <div className="card-elev p-4">
-        <h4 className="text-sm font-semibold">AI Guidance & Filing Notice</h4>
+        <h2 className="text-sm font-semibold">AI Guidance & Filing Notice</h2>
         <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
           <p>
             Corvus AI is an assistant designed to guide you through the property protest process and
@@ -1302,7 +1328,7 @@ function CorvusGuidanceGate({
       </div>
 
       <div className="card-elev p-4">
-        <h4 className="text-sm font-semibold">County Requirements Check</h4>
+        <h2 className="text-sm font-semibold">County Requirements Check</h2>
         {verifyState === "loading" ? (
           <p className="mt-2 text-xs text-muted-foreground">
             Corvus is verifying this case against {property.cad || "the county"}'s requirements…
@@ -1615,7 +1641,7 @@ function PreFilingCheckList({
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">Pre-Filing Check</h4>
+        <h2 className="text-sm font-semibold">Pre-Filing Check</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             blocked ? "bg-destructive/10 text-destructive" : "bg-success/15 text-success"
@@ -1848,7 +1874,7 @@ export function CasePlanSection({
   return (
     <div className="mt-4 grid gap-5">
       <section>
-        <h4 className="text-sm font-semibold">Strategy</h4>
+        <h2 className="text-sm font-semibold">Strategy</h2>
         {caseData?.strategyRecommendation ? (
           <div className="mt-1">
             <span className="badge-soft">{caseData.strategyRecommendation}</span>
@@ -2766,7 +2792,7 @@ function FiledProtestStatusCard({
   return (
     <div className="mt-4 card-elev p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Filed Protest</h4>
+        <h2 className="font-serif text-base font-semibold">Filed Protest</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             status === "confirmed"
@@ -2948,7 +2974,7 @@ function EvidenceStatusCard({
   return (
     <div className="mt-4 card-elev p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Evidence</h4>
+        <h2 className="font-serif text-base font-semibold">Evidence</h2>
         {status && (
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -3514,7 +3540,7 @@ export function DocumentsSection({
 
   return (
     <div id="case-documents">
-      <h4 className="font-serif text-lg font-semibold">File Your Protest</h4>
+      <h2 className="font-serif text-lg font-semibold">File Your Protest</h2>
       <p className="text-xs text-muted-foreground">
         Corvus takes you through only the steps this case needs — one at a time. Official Texas
         Comptroller forms, pre-filled; review every field, then sign. Completed forms save to your
@@ -4600,11 +4626,12 @@ function InformalReviewSection({
 
   return (
     <div id="case-informal-review" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Informal Review</h4>
+      <h2 className="text-sm font-semibold">Informal Review</h2>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="badge-soft">{INFORMAL_STATUS_LABEL[protest.informalStatus]}</span>
         <select
+          aria-label="Informal review status"
           value={protest.informalStatus}
           disabled={updatingStatus}
           onChange={(e) => handleStatusChange(e.target.value as InformalStatus)}
@@ -5150,7 +5177,7 @@ function HearingNoticeSection({
 
   return (
     <div id="case-hearing-notice" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Hearing Notice</h4>
+      <h2 className="text-sm font-semibold">Hearing Notice</h2>
 
       {!notice && !pending && (
         <div className="mt-2 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
@@ -5417,7 +5444,7 @@ function HearingPrepSection({
   return (
     <div id="case-hearing-prep" className="mt-5 border-t border-border pt-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">Hearing Preparation</h4>
+        <h2 className="text-sm font-semibold">Hearing Preparation</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${HEARING_STATUS_STYLE[hearingStatus]}`}
         >
@@ -5684,7 +5711,7 @@ function DecisionNoticeSection({
 
   return (
     <div id="case-decision-notice" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Hearing Decision</h4>
+      <h2 className="text-sm font-semibold">Hearing Decision</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         After your hearing, upload the ARB Order, hearing decision, settlement, revised value
         notice, or other final determination you receive.
@@ -6135,7 +6162,7 @@ function SettlementSignatureSection({
 
   return (
     <div id="case-settlement-signature" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Settlement / Proposed Value</h4>
+      <h2 className="text-sm font-semibold">Settlement / Proposed Value</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         When the county proposes a value or sends a settlement, upload it here. AI reads the real
         settled value and terms; you tell us whether you&apos;ve already accepted or rejected it, or
@@ -6541,7 +6568,7 @@ function CaseRecordSection({
   return (
     <div id="case-record" className="mt-4 card-elev p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Case Record</h4>
+        <h2 className="font-serif text-base font-semibold">Case Record</h2>
         <span className="text-xs text-muted-foreground">
           {onFile}/{applicable} on file
         </span>
@@ -6773,7 +6800,7 @@ function CaseAuditTrailSection({ protestId }: { protestId: string }) {
 
   return (
     <div id="case-audit-trail" className="mt-4 card-elev p-4">
-      <h4 className="font-serif text-base font-semibold">Audit Trail</h4>
+      <h2 className="font-serif text-base font-semibold">Audit Trail</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Every change and county contact on this case, timestamped.
       </p>
@@ -6954,7 +6981,7 @@ function EscalationEvaluationSection({
 
   return (
     <div id="case-escalation" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Escalation May Be Available</h4>
+      <h2 className="text-sm font-semibold">Escalation May Be Available</h2>
       <p className="mt-1 text-sm text-foreground">{evalr.headline}</p>
       <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-snug text-warning-foreground">
         {evalr.disclaimer}
@@ -7357,7 +7384,7 @@ export function CaseProgress({
 
   return (
     <div id="case-progress" className="mt-4 card-elev p-4">
-      <h4 className="font-serif text-base font-semibold">Case Progress</h4>
+      <h2 className="font-serif text-base font-semibold">Case Progress</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Record what has happened — settlement offers, the hearing date, the ARB&apos;s decision.
       </p>

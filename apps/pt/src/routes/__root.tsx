@@ -28,17 +28,22 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+        <div className="tu-float mx-auto grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-emerald-600 to-cyan-800 text-3xl font-bold text-white shadow-lg">
+          ?
+        </div>
+        <h1 className="mt-5 text-5xl font-bold text-foreground">Oops — page not found</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist or has moved. Here's where most people go next:
         </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link to="/" className="btn-primary btn-primary-hover">
             Go home
+          </Link>
+          <Link to="/dashboard" className="btn-outline">
+            My dashboard
+          </Link>
+          <Link to="/contact" className="btn-outline">
+            Contact us
           </Link>
         </div>
       </div>
@@ -129,7 +134,7 @@ function RootShell({ children }: { children: ReactNode }) {
           // Re-apply a saved dark-mode choice before first paint (no flash of light).
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}",
+              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark');var z=localStorage.getItem('corvuspt.textSize');if(z&&z!=='100')document.documentElement.style.fontSize=z+'%'}catch(e){}",
           }}
         />
         <HeadContent />

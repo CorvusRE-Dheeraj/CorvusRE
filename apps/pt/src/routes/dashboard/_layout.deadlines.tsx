@@ -1,3 +1,4 @@
+import { Term } from "@/components/Term";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +8,7 @@ import { listProperties, markPropertyPaid, type PropertyRecord } from "@/lib/pro
 import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHero } from "@/components/PageHero";
-import { CalendarClock as HeroDeadlinesIcon } from "lucide-react";
+import { CalendarClock as HeroDeadlinesIcon, Search } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/deadlines")({
@@ -19,6 +20,7 @@ function Deadlines() {
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,8 +47,11 @@ function Deadlines() {
     }
   }
 
+  const q = query.trim().toLowerCase();
+  const matches = (p?: PropertyRecord) => !q || (p?.address ?? "").toLowerCase().includes(q);
+
   const deadlines = properties
-    .filter((p) => !!p.protestDeadline)
+    .filter((p) => !!p.protestDeadline && matches(p))
     .map((p) => {
       const deadline = new Date(p.protestDeadline as string);
       const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -55,7 +60,7 @@ function Deadlines() {
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
   const bills = properties
-    .filter((p) => !!p.paymentDueDate)
+    .filter((p) => !!p.paymentDueDate && matches(p))
     .map((p) => {
       const dueDate = new Date(p.paymentDueDate as string);
       const daysLeft = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -72,7 +77,8 @@ function Deadlines() {
       return { property, hearingDate, daysLeft };
     })
     .filter(
-      (h): h is { property: PropertyRecord; hearingDate: Date; daysLeft: number } => !!h.property,
+      (h): h is { property: PropertyRecord; hearingDate: Date; daysLeft: number } =>
+        !!h.property && matches(h.property),
     )
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
@@ -83,7 +89,7 @@ function Deadlines() {
           icon={HeroDeadlinesIcon}
           title="Deadlines"
           tone="amber"
-          subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+          subtitle="Every date you need to act on: protest deadlines, hearings and tax bills. We remind you before each one."
         />
         <div className="grid gap-3">
           {[0, 1].map((i) => (
@@ -111,8 +117,25 @@ function Deadlines() {
           { label: "Hearings", value: hearings.length },
           { label: "Tax bills", value: bills.length },
         ]}
-        subtitle="Protest deadlines, ARB hearings, and tax bills, in one place."
+        subtitle="Every date you need to act on: protest deadlines, hearings and tax bills. We remind you before each one."
       />
+
+      {properties.length > 1 && (
+        <div className="relative">
+          <label className="sr-only" htmlFor="deadline-search">
+            Search deadlines by address
+          </label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            id="deadline-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by property address"
+            className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm"
+          />
+        </div>
+      )}
 
       <section>
         <h2 className="font-semibold">Protest Deadlines</h2>
@@ -161,7 +184,7 @@ function Deadlines() {
                   <div>
                     <div className="font-medium">{property.address}</div>
                     <div className="text-xs text-muted-foreground">
-                      ARB hearing: {hearingDate.toLocaleDateString()}
+                      <Term name="ARB">ARB</Term> hearing: {hearingDate.toLocaleDateString()}
                     </div>
                   </div>
                   <span className={`badge-soft ${daysLeft <= 7 ? "text-destructive" : ""}`}>

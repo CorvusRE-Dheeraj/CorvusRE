@@ -501,7 +501,11 @@ export function JourneyBlock({
         </div>
       </div>
 
-      <ol className="mt-5 flex items-start overflow-x-auto pb-1">
+      <ol
+        tabIndex={0}
+        aria-label="Journey steps"
+        className="mt-5 flex items-start overflow-x-auto pb-1"
+      >
         {STEP_LABELS.flatMap((label, i) => {
           const done = steps[i];
           const skipped = !!skippedSteps?.[i];

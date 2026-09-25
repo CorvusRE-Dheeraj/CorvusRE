@@ -34,7 +34,7 @@ function TaxBills() {
     return (
       <ComingSoonLock
         title="Tax Bills"
-        description="Track what the county actually billed, whether it's paid, and any refund — per property, per tax year."
+        description="Record what the county billed you, whether it's paid, and any refund, for each property and year."
       />
     );
   }
@@ -176,7 +176,7 @@ function TaxBillsContent() {
         icon={HeroBillsIcon}
         title="Tax Bills"
         tone="teal"
-        subtitle="Track what the county actually billed, whether it's paid, and any refund — per property, per tax year."
+        subtitle="Record what the county billed you, whether it's paid, and any refund, for each property and year."
       >
         <button onClick={() => setShowAddForm((v) => !v)} className={heroButton}>
           {showAddForm ? "Cancel" : "Add Tax Bill"}

@@ -30,9 +30,9 @@ const CAT_META: Record<
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-border p-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
-      </h4>
+      </h2>
       <div className="mt-2 text-sm">{children}</div>
     </section>
   );
@@ -337,7 +337,7 @@ export function FinalCaseSummaryPanel({ summary }: { summary: FinalCaseSummary }
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-bold text-foreground">Final Case Summary</h4>
+        <h2 className="font-serif text-base font-bold text-foreground">Final Case Summary</h2>
         <span
           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
             closed ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive"

@@ -55,10 +55,10 @@ export function RelevantTaxUpdates({
   return (
     <section className="rounded-md border border-warning/40 bg-warning/10 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
+        <h2 className="flex items-center gap-1.5 text-xs font-semibold text-warning-foreground">
           <MapPin className="h-3.5 w-3.5" />
           Texas tax updates that may affect {property.address}
-        </h4>
+        </h2>
         <Link to="/dashboard/tax-updates" className="text-xs text-accent hover:underline">
           See all updates →
         </Link>

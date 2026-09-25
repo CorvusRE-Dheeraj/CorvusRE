@@ -1,3 +1,5 @@
+import { VerdictChip, verdictFor } from "@/components/ProtestVerdictCard";
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -374,7 +376,7 @@ function Properties() {
   // Cancels exactly this property's own subscription — unambiguous now that
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property.`,
     );
     if (!confirmed) return;
@@ -438,7 +440,7 @@ function Properties() {
         : currentPrice != null && newPrice < currentPrice
           ? "This is a downgrade — Stripe will credit your account today for the prorated difference (applied to your next invoice, not refunded directly to your card)."
           : "Stripe will settle the prorated difference today.";
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Switch ${p.address} from ${TIER_LABEL[p.planTier as Tier] ?? "its current plan"} to ${TIER_LABEL[tier]}? ${settlementNote}`,
     );
     if (!confirmed) return;
@@ -472,7 +474,7 @@ function Properties() {
       toast.error("Cancel this property's subscription before deleting it.");
       return;
     }
-    if (!window.confirm(`Remove ${p.address} from your dashboard?`)) return;
+    if (!(await confirmDialog(`Remove ${p.address} from your dashboard?`))) return;
     setDeletingId(p.id);
     try {
       await deleteProperty(p.id);
@@ -500,12 +502,12 @@ function Properties() {
     }
     const n = deletable.length;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Remove ${n} propert${n === 1 ? "y" : "ies"} from your dashboard?` +
           (blocked.length
             ? `\n\n${blocked.length} with an active subscription will be skipped.`
             : ""),
-      )
+      ))
     ) {
       return;
     }
@@ -753,7 +755,7 @@ function Properties() {
         icon={HeroPropertiesIcon}
         title="My Properties"
         tone="emerald"
-        subtitle="Every property you're tracking — values, deadlines and cases at a glance."
+        subtitle="Your properties, with their values, deadlines and cases. Open one to see what to do next."
         stats={[
           { label: "Properties", value: properties.length },
           { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },
@@ -1134,11 +1136,11 @@ function Properties() {
               return (
                 <div
                   key={p.id}
-                  className="card-elev p-6"
+                  className="card-elev p-4 sm:p-6"
                   style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-60">
                       <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
@@ -1149,7 +1151,7 @@ function Properties() {
                             className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
-                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                        <h2 className="font-serif text-xl font-semibold">{p.address}</h2>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
@@ -1166,6 +1168,9 @@ function Properties() {
                         • Tax year {p.taxYear}
                       </p>
                       <AiScoreBadge score={healthScores[p.id]} />
+                      <div className="mt-2">
+                        <VerdictChip verdict={verdictFor(p, protests, healthScores[p.id])} />
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs text-muted-foreground">Assessed value</div>

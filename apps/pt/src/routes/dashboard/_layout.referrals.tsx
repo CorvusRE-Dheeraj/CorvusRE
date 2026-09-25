@@ -118,7 +118,7 @@ function Referrals() {
         icon={HeroGiftIcon}
         title="Referrals"
         tone="rose"
-        subtitle="Share your link — for every friend who signs up and subscribes, you get one month free."
+        subtitle="Send your link to a friend. When they sign up and subscribe, you get one month free."
       />
 
       {loading ? (

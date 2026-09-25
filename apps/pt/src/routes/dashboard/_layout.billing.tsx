@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -146,7 +147,7 @@ function Billing() {
   async function handleCancel(s: MySubscription, label: string) {
     if (!s.propertyId && !s.bppAccountId) return;
     const subjectWord = s.bppAccountId ? "BPP account" : "property";
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `Cancel the subscription for ${label}? It ends immediately — you'll lose paid AI Report ` +
         `access and the ability to request a new protest filing for this ${subjectWord}.`,
     );

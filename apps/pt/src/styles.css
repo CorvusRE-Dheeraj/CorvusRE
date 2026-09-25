@@ -87,11 +87,11 @@
   /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
      feedback — same hue (163) and lightness, just richer, so every existing
      accent/badge/ring usage sitewide reads more vivid without a redesign. */
-  --accent: oklch(0.596 0.185 163.225); /* emerald, matching the PT door green */
+  --accent: oklch(0.49 0.14 163); /* emerald, matching the PT door green */
   --accent-foreground: oklch(0.99 0.01 163);
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.62 0.17 155);
+  --success: oklch(0.49 0.14 155);
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.78 0.19 75);
   --warning-foreground: oklch(0.22 0.05 60);
@@ -1103,3 +1103,11 @@ h3 {
   background: oklch(0.32 0.09 25);
   color: oklch(0.86 0.11 25);
 }
+
+/* Small coloured labels use the -700 shade for contrast on light surfaces; in dark mode
+   they switch to the lighter -400 shade so they stay readable. */
+.dark .text-emerald-700 { color: var(--color-emerald-400); }
+.dark .text-sky-700 { color: var(--color-sky-400); }
+.dark .text-amber-700 { color: var(--color-amber-400); }
+.dark .text-violet-700 { color: var(--color-violet-400); }
+.dark .text-rose-700 { color: var(--color-rose-400); }

@@ -1,3 +1,5 @@
+import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
+import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -69,6 +71,7 @@ import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
+import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 
@@ -129,6 +132,12 @@ function Overview() {
   const [hearingNudge, setHearingNudge] = useState<string | null>(null);
   const nudgedHearingProtestId = useRef<string | null>(null);
   const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
+
+  // Brand-new accounts (nothing added yet) get the quick tour once.
+  useEffect(() => {
+    if (!loaded || properties.length > 0 || protests.length > 0) return;
+    return maybeStartTour();
+  }, [loaded, properties.length, protests.length]);
 
   useEffect(() => {
     if (!user) return;
@@ -386,7 +395,11 @@ function Overview() {
         icon={HeroWelcomeIcon}
         title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
         tone="emerald"
-        subtitle="Pick any entry point below — AI figures out the right workflow."
+        subtitle={
+          loaded && properties.length > 0
+            ? "Here is where your properties stand and what to do next."
+            : "New here? Start with the checklist below. Everything else is one click away."
+        }
         stats={
           loaded
             ? [
@@ -472,7 +485,25 @@ function Overview() {
         </div>
       )}
 
+      {loaded && (
+        <ProtestVerdictCard
+          properties={properties}
+          protests={protests}
+          healthScores={healthScores}
+          onOpenReport={openAiReport}
+        />
+      )}
+
       <MyAppointments />
+
+      {loaded && (
+        <GettingStarted
+          properties={properties.length}
+          documents={documents.length}
+          protests={protests.length}
+          resolved={protests.filter((p) => p.status === "resolved").length}
+        />
+      )}
 
       {/* Entry points */}
       <div>
@@ -786,7 +817,7 @@ function StatCard({
       >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
+      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -805,7 +836,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -814,7 +845,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev relative flex min-h-[11rem] flex-col overflow-hidden p-5"
+      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
@@ -844,13 +875,25 @@ function PortfolioValueChart({
   properties: PropertyRecord[];
   onOpenReport: (p: PropertyRecord) => void;
 }) {
+  // On a wide screen show each full address on one line; on a phone there is no room, so
+  // keep the short, wrapped form.
+  const [wide, setWide] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const data = properties
     .filter((p) => p.totalValue != null)
     .sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0))
     .slice(0, 8)
     .map((p) => ({
       id: p.id,
-      name: p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
+      name: !wide && p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
       value: p.totalValue ?? 0,
       property: p,
     }));
@@ -866,10 +909,16 @@ function PortfolioValueChart({
         <YAxis
           type="category"
           dataKey="name"
-          width={160}
+          width={
+            wide
+              ? Math.min(340, Math.max(160, Math.max(...data.map((d) => d.name.length)) * 6.6))
+              : 160
+          }
           tickLine={false}
           axisLine={false}
-          tick={(props) => <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} />}
+          tick={(props) => (
+            <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} oneLine={wide} />
+          )}
         />
         <Bar
           dataKey="value"
@@ -909,12 +958,13 @@ function PortfolioAxisTick(
   } & {
     data: { name: string; property: PropertyRecord }[];
     onOpenReport: (p: PropertyRecord) => void;
+    oneLine?: boolean;
   },
 ) {
   const { x = 0, y = 0, payload, data, onOpenReport } = props;
   const row = data.find((d) => d.name === payload?.value);
   if (!row) return null;
-  const lines = row.name.split(/(?<=,)\s+/);
+  const lines = props.oneLine ? [row.name] : row.name.split(/(?<=,)\s+/);
   return (
     <text
       x={x}
@@ -969,22 +1019,25 @@ function ProtestStatusChart({
   return (
     <>
       <div className="mt-3 grid grid-cols-[7rem_1fr] items-center gap-3">
-        <ResponsiveContainer width="100%" height={110}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={30}
-              outerRadius={50}
-              paddingAngle={2}
-            >
-              {data.map((d) => (
-                <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
+        {/* The legend beside the ring lists the same numbers as text. */}
+        <div aria-hidden="true" inert>
+          <ResponsiveContainer width="100%" height={110}>
+            <PieChart accessibilityLayer={false}>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={30}
+                outerRadius={50}
+                paddingAngle={2}
+              >
+                {data.map((d) => (
+                  <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="grid gap-1.5">
           {data.map((d) => (
             <div key={d.status} className="flex items-center gap-2 text-sm">

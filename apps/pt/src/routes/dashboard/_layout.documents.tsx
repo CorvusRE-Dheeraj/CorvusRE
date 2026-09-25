@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { useEffect, useState } from "react";
@@ -50,6 +51,7 @@ import {
   Pencil,
   FileEdit,
   MoreHorizontal,
+  Search,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -109,6 +111,7 @@ function Documents() {
   // page, so only the selected one's documents render at a time. Keyed by
   // property id (or "orphaned" for documents whose property was removed),
   // not the address, since two properties could share an address string.
+  const [docQuery, setDocQuery] = useState("");
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
 
   // Refetches when a document is added/changed anywhere (this tab or another),
@@ -189,7 +192,8 @@ function Documents() {
   }
 
   async function handlePurge(doc: DocumentRecord) {
-    if (!window.confirm(`Permanently delete "${doc.fileName}"? This can't be undone.`)) return;
+    if (!(await confirmDialog(`Permanently delete "${doc.fileName}"? This can't be undone.`)))
+      return;
     try {
       await purgeDocument(doc);
       setTrashed((prev) => prev.filter((d) => d.id !== doc.id));
@@ -480,7 +484,7 @@ function Documents() {
           { label: "Documents", value: documents.length },
           { label: "Properties", value: properties.length },
         ]}
-        subtitle="Documents you upload during property intake land here automatically — or upload several at once below and AI sorts each one to the right property. Run an AI check on any file to classify it, confirm it belongs to that property, flag anything off, and get a suggested name."
+        subtitle="Keep every file for your case here. Drop in your appraisal notice or any photos and AI files each one under the right property. Use the AI check on a file to see what it is and whether anything looks off."
       />
 
       <div className="mt-6 card-elev p-6">
@@ -608,10 +612,31 @@ function Documents() {
                 ))}
               </select>
             </div>
+            <div className="relative">
+              <label className="sr-only" htmlFor="doc-search">
+                Search documents
+              </label>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="doc-search"
+                type="search"
+                value={docQuery}
+                onChange={(e) => setDocQuery(e.target.value)}
+                placeholder="Search this property's documents by file name"
+                className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm"
+              />
+            </div>
             {activeGroup && (
               <PropertyDocGroup
                 key={activeGroup.key}
-                group={activeGroup}
+                group={{
+                  ...activeGroup,
+                  docs: docQuery.trim()
+                    ? activeGroup.docs.filter((d) =>
+                        d.fileName.toLowerCase().includes(docQuery.trim().toLowerCase()),
+                      )
+                    : activeGroup.docs,
+                }}
                 allDocs={documents}
                 dupDismissed={dupDismissed}
                 selectedIds={selectedIds}

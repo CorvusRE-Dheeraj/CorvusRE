@@ -1,3 +1,4 @@
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -243,7 +244,7 @@ function Settings() {
         icon={HeroSettingsIcon}
         title="Settings"
         tone="slate"
-        subtitle="Your account details."
+        subtitle="Update your name, contact details and preferences."
       />
 
       {loading ? (
@@ -375,6 +376,8 @@ function Settings() {
           </button>
         </form>
       )}
+
+      {!loading && <TextSizeControl />}
 
       {!loading && (
         <div className="mt-8 card-elev p-6">

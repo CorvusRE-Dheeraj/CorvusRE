@@ -1,3 +1,5 @@
+import { centerInStrip } from "@/lib/scroll-into-strip";
+import { GLOSSARY_MAP } from "@/lib/glossary";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
@@ -37,32 +39,32 @@ const NAV = [
 // Tailwind can see them.
 const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard": {
-    icon: "text-emerald-600",
-    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-teal-600",
+    icon: "text-emerald-700",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-teal-700",
   },
   "/dashboard/properties": {
-    icon: "text-emerald-600",
-    active: "data-[status=active]:from-emerald-500 data-[status=active]:to-sky-600",
+    icon: "text-emerald-700",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-sky-700",
   },
   "/dashboard/bpp-accounts": {
-    icon: "text-sky-600",
-    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+    icon: "text-sky-700",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
   },
   "/dashboard/documents": {
-    icon: "text-sky-600",
-    active: "data-[status=active]:from-sky-500 data-[status=active]:to-indigo-600",
+    icon: "text-sky-700",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
   },
   "/dashboard/deadlines": {
-    icon: "text-amber-600",
-    active: "data-[status=active]:from-amber-500 data-[status=active]:to-rose-500",
+    icon: "text-amber-700",
+    active: "data-[status=active]:from-amber-600 data-[status=active]:to-rose-700",
   },
   "/dashboard/calendar": {
-    icon: "text-violet-600",
-    active: "data-[status=active]:from-violet-500 data-[status=active]:to-fuchsia-600",
+    icon: "text-violet-700",
+    active: "data-[status=active]:from-violet-600 data-[status=active]:to-fuchsia-700",
   },
   "/dashboard/tax-bills": {
     icon: "text-teal-600",
-    active: "data-[status=active]:from-teal-500 data-[status=active]:to-blue-600",
+    active: "data-[status=active]:from-teal-600 data-[status=active]:to-blue-700",
   },
 };
 
@@ -113,6 +115,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const transitionRef = usePageTransitionReplay(pathname);
+  const tabBarRef = useRef<HTMLElement>(null);
+  // On a narrow screen the tab strip scrolls sideways — keep the current page's tab in view.
+  useEffect(() => {
+    centerInStrip(
+      tabBarRef.current,
+      tabBarRef.current?.querySelector<HTMLElement>("[data-status=active]") ?? null,
+    );
+  }, [pathname, user]);
 
   if (loading || !user || !shouldShowShell(pathname)) {
     return (
@@ -123,13 +133,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="w-full px-6 py-10 sm:px-10 lg:px-16">
+    <div className="w-full px-3 py-6 sm:px-10 sm:py-10 lg:px-16">
       <div className="grid grid-cols-1 gap-2">
         {/* Sticks just under SiteNav's own sticky header (top-16 matches its
             h-16) so this tab bar stays reachable on long pages (Properties,
             Documents) instead of scrolling away — bg-background keeps page
             content from showing through once it's actually stuck. */}
-        <nav className="sticky top-16 z-30 flex min-w-0 justify-center gap-1 overflow-x-auto bg-background pb-2 pt-2">
+        <nav
+          ref={tabBarRef}
+          aria-label="Dashboard sections"
+          className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2"
+        >
           {NAV.map((item) => {
             const Icon = item.icon;
             if (item.locked) {
@@ -137,6 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   key={item.to}
                   type="button"
+                  title={item.label.includes("BPP") ? GLOSSARY_MAP.BPP : undefined}
                   onClick={() =>
                     toast(`${item.label} is coming soon`, {
                       description: "This section is still under development — check back soon.",

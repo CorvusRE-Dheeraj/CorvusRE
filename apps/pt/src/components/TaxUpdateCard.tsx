@@ -216,19 +216,19 @@ export function TaxUpdateCard({
           <Points
             icon={FileText}
             label="What changed"
-            tone="text-sky-600"
+            tone="text-sky-700"
             text={update.whatChanged}
           />
           <Points
             icon={Lightbulb}
             label="Why it matters"
-            tone="text-amber-600"
+            tone="text-amber-700"
             text={update.whyItMatters}
           />
           <Points
             icon={CheckCircle2}
             label="What to do"
-            tone="text-emerald-600"
+            tone="text-emerald-700"
             text={update.actionNeeded}
           />
         </div>

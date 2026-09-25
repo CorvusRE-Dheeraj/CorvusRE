@@ -30,7 +30,7 @@ export function CopyButton({ value, label = "Copied" }: { value: string; label?:
           type="button"
           onClick={handleCopy}
           aria-label={copied ? "Copied" : "Copy to clipboard"}
-          className="inline-grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground transition-all hover:scale-110 hover:text-foreground"
+          className="relative inline-grid h-5 w-5 shrink-0 place-items-center rounded after:absolute after:-inset-2.5 after:content-['']  text-muted-foreground transition-all hover:scale-110 hover:text-foreground"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-success animate-in zoom-in-50 duration-200" />

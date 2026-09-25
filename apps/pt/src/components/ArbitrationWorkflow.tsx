@@ -302,7 +302,7 @@ export function ArbitrationWorkflow({
       {/* 1. Eligibility */}
       <section className="rounded-md border border-border p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-sm font-semibold">Arbitration eligibility</h4>
+          <h2 className="text-sm font-semibold">Arbitration eligibility</h2>
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip}`}>
             {eligibility.label}
           </span>
@@ -360,7 +360,7 @@ export function ArbitrationWorkflow({
         <>
           {/* 2. Prepare for Arbitration */}
           <section className="rounded-md border border-border p-4">
-            <h4 className="text-sm font-semibold">Prepare for arbitration</h4>
+            <h2 className="text-sm font-semibold">Prepare for arbitration</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Built from what&apos;s already in your case — nothing to upload again.
             </p>
@@ -542,7 +542,7 @@ export function ArbitrationWorkflow({
           {/* 3. Arbitration Q&A */}
           <section className="rounded-md border border-border p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold">Arbitration Q&amp;A — practice</h4>
+              <h2 className="text-sm font-semibold">Arbitration Q&amp;A — practice</h2>
               <button
                 type="button"
                 onClick={() => void generateQuestions()}
@@ -607,7 +607,7 @@ export function ArbitrationWorkflow({
           {/* 4. Ready to file */}
           {!filed && (
             <section className="rounded-md border border-border p-4">
-              <h4 className="text-sm font-semibold">Ready to file checklist</h4>
+              <h2 className="text-sm font-semibold">Ready to file checklist</h2>
               <ul className="mt-2 grid gap-1.5 text-sm">
                 {(
                   [
@@ -698,7 +698,7 @@ export function ArbitrationWorkflow({
       {/* 5. After filing — settlement / hearing, then the result */}
       {filed && !closed && (
         <section className="rounded-md border border-border p-4">
-          <h4 className="text-sm font-semibold">Settlement / hearing</h4>
+          <h2 className="text-sm font-semibold">Settlement / hearing</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Filed {fmtDate(protest.arbitrationFiledAt)}. An arbitrator will decide the value, and
             you may settle with the appraisal district beforehand. When you have the result — or a
@@ -709,7 +709,7 @@ export function ArbitrationWorkflow({
 
       {filed && !closed && (
         <section className="rounded-md border border-border p-4">
-          <h4 className="text-sm font-semibold">Add the arbitration result</h4>
+          <h2 className="text-sm font-semibold">Add the arbitration result</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Upload the arbitrator&apos;s award or settlement. Corvus reads the final value and
             updates this case.
@@ -763,7 +763,7 @@ export function ArbitrationWorkflow({
       {/* 6. Result + next phase */}
       {closed && impact && (
         <section className="rounded-md border border-border bg-card p-4">
-          <h4 className="text-sm font-semibold">Arbitration result</h4>
+          <h2 className="text-sm font-semibold">Arbitration result</h2>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             <div className="rounded-md border border-border p-3 text-sm">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
