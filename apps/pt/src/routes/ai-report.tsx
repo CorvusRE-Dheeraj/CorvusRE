@@ -221,6 +221,7 @@ import { getAiReportCacheEnabled } from "@/lib/app-settings";
 import { ValueHistorySection } from "@/components/ValueHistorySection";
 import { Modal } from "@/components/Modal";
 import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBanner";
+import { ProgressRing } from "@/components/ProgressRing";
 import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
 
 type ModuleAsyncState = {
@@ -2808,7 +2809,12 @@ function Report() {
             ) : estimated.savings >= 1 ? (
               <>
                 <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary-foreground/70">
-                  Estimated tax savings this year
+                  {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                    ? buildCaseOutcome(resolvedProperty, existingProtest)
+                    : null
+                  )?.taxSavings != null
+                    ? "Actual tax savings from your protest"
+                    : "Estimated tax savings this year"}
                 </p>
                 {/* Sized off the actual formatted string's length, not just the
                     viewport — a fixed text-6xl/7xl/8xl scale (confirmed live)
@@ -2827,7 +2833,16 @@ function Report() {
                   }`}
                 >
                   <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
-                  <AnimatedNumber value={estimated.savings} format={currency} duration={900} />
+                  <AnimatedNumber
+                    value={
+                      (existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                        ? buildCaseOutcome(resolvedProperty, existingProtest)
+                        : null
+                      )?.taxSavings ?? estimated.savings
+                    }
+                    format={currency}
+                    duration={900}
+                  />
                 </p>
               </>
             ) : !estimated.hasEstimate ? (
@@ -3539,13 +3554,29 @@ function ModuleCard({
       ? cardDataGap(m.id, moduleState?.data, compsMap, overrides)
       : null;
   return (
-    <div className="card-elev flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
-      {/* A strip in the module's own colour along the top. */}
+    <div className="card-elev relative flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+      {/* A strip in the module's own colour along the top; a soft glow once it's completed. */}
       <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
+      <m.icon
+        aria-hidden
+        className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
+      />
+      {status === "Completed" && (
+        <div
+          aria-hidden
+          className={`tu-glow pointer-events-none absolute -right-8 top-2 h-28 w-28 rounded-full bg-current opacity-15 blur-2xl ${m.color.text}`}
+        />
+      )}
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <NumberBadge n={m.n} color={m.color} size="lg" />
+            <ProgressRing
+              percent={status === "Completed" ? 100 : status === "Analyzing" ? 35 : 0}
+              spinning={status === "Analyzing"}
+              className={m.color.text}
+            >
+              <NumberBadge n={m.n} color={m.color} size="lg" />
+            </ProgressRing>
             {/* Wraps instead of truncating — confirmed live on a narrow
                 mobile card that even the already-shortened names ("Zoning &
                 Classification", "Executive Protest Report") still don't fit
@@ -8658,7 +8689,14 @@ function SpeedometerGauge({ value, size = "md" }: { value: number; size?: "sm" |
   // version (confirmed via a live console error and an empty sectors group)
   // — reverted in favor of this reliable single-bar approach.
   return (
-    <div className="relative mx-auto" style={{ width: dims.w, height: dims.h }}>
+    <div
+      className="relative mx-auto"
+      style={{
+        width: dims.w,
+        height: dims.h,
+        filter: `drop-shadow(0 0 8px color-mix(in oklch, ${color} 45%, transparent))`,
+      }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <RadialBarChart
           cx="50%"

@@ -1,7 +1,44 @@
+import { useEffect, useState } from "react";
+import { PartyPopper } from "lucide-react";
+import { Confetti } from "@/components/Confetti";
 import type { PropertyRecord } from "@/lib/properties";
 import { INFORMAL_STATUS_LABEL, type ProtestRecord } from "@/lib/protests";
 import { buildCaseOutcome } from "@/lib/case-outcome";
 import { currency } from "@/lib/intake-store";
+
+// Confetti plays once per case per browser — reopening the tab later stays calm.
+const celebrateKey = (id: string) => `corvuspt.celebrated.${id}`;
+function alreadyCelebrated(id: string): boolean {
+  try {
+    return localStorage.getItem(celebrateKey(id)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+// Counts up to `to` over ~1.2s (jumps straight there for reduced motion).
+function useCountUp(to: number): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || to <= 0) {
+      setN(to);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / 1200);
+      setN(Math.round(to * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [to]);
+  return n;
+}
 
 type OpenTab = "informal" | "hearing" | "decision" | "arbitration" | "court";
 
@@ -26,6 +63,17 @@ export function FinalOutcomeSection({
 }) {
   const outcome = buildCaseOutcome(property, protest);
   const closed = protest.status === "resolved";
+  const savings = outcome?.taxSavings ?? 0;
+  const counted = useCountUp(closed ? savings : 0);
+  const [celebrate] = useState(() => !alreadyCelebrated(protest.id));
+  useEffect(() => {
+    if (!closed || !celebrate) return;
+    try {
+      localStorage.setItem(celebrateKey(protest.id), "1");
+    } catch {
+      // storage blocked — the confetti may replay next visit, harmless
+    }
+  }, [closed, celebrate, protest.id]);
 
   if (!outcome || !closed) {
     return (
@@ -88,6 +136,36 @@ export function FinalOutcomeSection({
 
   return (
     <div className="mt-2 grid gap-4">
+      <div className="tu-rise relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-sky-700 p-6 text-white">
+        {celebrate && <Confetti />}
+        <div className="tu-glow pointer-events-none absolute -right-8 -top-8 h-44 w-44 rounded-full bg-white/25 blur-3xl" />
+        <div className="relative flex flex-wrap items-center gap-4">
+          <div className="tu-float grid h-14 w-14 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30">
+            <PartyPopper className="h-7 w-7" />
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-white/80">
+              Case closed
+            </div>
+            <div className="font-serif text-3xl font-semibold sm:text-4xl">
+              {savings > 0 ? (
+                <>
+                  You saved about {currency(counted)} <span className="text-lg">a year</span>
+                </>
+              ) : (
+                "Your case is closed"
+              )}
+            </div>
+            <p className="text-sm text-white/85">
+              Final value {currency(outcome.finalValue)}
+              {outcome.valueReductionPct != null && outcome.valueReductionPct > 0
+                ? ` — ${Math.round(outcome.valueReductionPct)}% lower than the original.`
+                : "."}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="font-serif text-base font-semibold">Final outcome</h4>

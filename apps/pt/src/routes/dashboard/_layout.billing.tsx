@@ -24,6 +24,7 @@ import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
 import { PageHero } from "@/components/PageHero";
 import { CreditCard as HeroBillingIcon } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/billing")({
   component: Billing,
@@ -210,7 +211,7 @@ function Billing() {
       />
 
       {loading ? (
-        <p className="text-muted-foreground mt-6 text-sm">Loading…</p>
+        <PageSkeleton />
       ) : isBeta ? (
         <div className="card-elev mt-6 p-6">
           <div className="text-muted-foreground text-xs uppercase tracking-wide">Current plan</div>

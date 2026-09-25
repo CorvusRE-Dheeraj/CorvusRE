@@ -284,7 +284,7 @@ export function AskAiWidget() {
           <button
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close Ask AI" : "Open Ask AI"}
-            className="grid h-14 w-14 place-items-center rounded-full bg-accent text-accent-foreground shadow-lg transition-all hover:opacity-90 hover:scale-105 active:scale-95"
+            className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-violet-500 via-purple-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/30 transition-all hover:opacity-95 hover:scale-105 active:scale-95"
           >
             {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
           </button>

@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { currency, resetIntake, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, resetIntake, updateIntake } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
 import {
   listProperties,
@@ -77,6 +77,8 @@ import {
 } from "lucide-react";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Building2 as HeroPropertiesIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -752,6 +754,15 @@ function Properties() {
         title="My Properties"
         tone="emerald"
         subtitle="Every property you're tracking — values, deadlines and cases at a glance."
+        stats={[
+          { label: "Properties", value: properties.length },
+          { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },
+          {
+            label: "Assessed value",
+            value: properties.reduce((sum, p) => sum + (p.totalValue ?? 0), 0),
+            format: (n) => compactCurrency(n),
+          },
+        ]}
         badges={
           <>
             {!propertiesLoading && (
@@ -983,19 +994,21 @@ function Properties() {
             <PropertyCardSkeleton />
           </div>
         ) : properties.length === 0 ? (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Start with an address or upload an appraisal notice.
-            </p>
-            <Link
-              to="/intake"
-              onClick={() => resetIntake()}
-              className="btn-primary btn-primary-hover mt-4 inline-flex"
-            >
-              Start Free AI Property Review
-            </Link>
-          </div>
+          <EmptyState
+            kind="properties"
+            title="No properties yet."
+            action={
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover inline-flex"
+              >
+                Start Free AI Property Review
+              </Link>
+            }
+          >
+            Start with an address or upload an appraisal notice.
+          </EmptyState>
         ) : displayProperties.length === 0 ? (
           <div className="card-elev p-8 text-center">
             <h3 className="font-serif text-xl font-semibold">No matches.</h3>
@@ -1550,7 +1563,7 @@ function PropertyDocsModal({
       {loadError ? (
         <p className="mt-6 text-sm text-destructive">Couldn't load documents.</p>
       ) : docs === null ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : docs.length === 0 ? (
         <div className="mt-6 rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
           No documents for this property yet.

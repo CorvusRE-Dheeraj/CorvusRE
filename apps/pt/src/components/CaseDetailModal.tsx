@@ -25,7 +25,7 @@ import {
   type InformalStatus,
   type AttendanceType,
 } from "@/lib/protests";
-import { currency, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, updateIntake } from "@/lib/intake-store";
 import {
   getCase,
   generateCasePrep,
@@ -201,7 +201,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Scale } from "lucide-react";
+import { PageHero } from "@/components/PageHero";
+import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
 
 // --- Tabbed filing workflow -------------------------------------------------
 // The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
@@ -270,6 +272,60 @@ function escalationDone(id: CaseTabId, p: ProtestRecord): boolean {
     );
   return false;
 }
+
+// The case "road": each phase has its own colour, so where you are (and how far you've
+// come) reads at a glance. Full class strings so Tailwind can see them.
+const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: string; ping: string }> =
+  {
+    overview: {
+      grad: "from-emerald-500 to-teal-600",
+      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
+      border: "border-emerald-400",
+      ping: "bg-emerald-400",
+    },
+    file: {
+      grad: "from-sky-500 to-blue-600",
+      tint: "bg-sky-500/10 ring-1 ring-sky-500/30",
+      border: "border-sky-400",
+      ping: "bg-sky-400",
+    },
+    informal: {
+      grad: "from-amber-500 to-orange-600",
+      tint: "bg-amber-500/10 ring-1 ring-amber-500/30",
+      border: "border-amber-400",
+      ping: "bg-amber-400",
+    },
+    hearing: {
+      grad: "from-violet-500 to-purple-600",
+      tint: "bg-violet-500/10 ring-1 ring-violet-500/30",
+      border: "border-violet-400",
+      ping: "bg-violet-400",
+    },
+    decision: {
+      grad: "from-indigo-500 to-blue-700",
+      tint: "bg-indigo-500/10 ring-1 ring-indigo-500/30",
+      border: "border-indigo-400",
+      ping: "bg-indigo-400",
+    },
+    arbitration: {
+      grad: "from-rose-500 to-pink-600",
+      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
+      border: "border-rose-400",
+      ping: "bg-rose-400",
+    },
+    court: {
+      grad: "from-rose-500 to-pink-600",
+      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
+      border: "border-rose-400",
+      ping: "bg-rose-400",
+    },
+    outcome: {
+      grad: "from-emerald-500 to-lime-600",
+      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
+      border: "border-emerald-400",
+      ping: "bg-emerald-400",
+    },
+  };
 
 // The number shown for a tab: its position, minus tabs that share a step number.
 function stepNumber(index: number): number {
@@ -528,10 +584,44 @@ export function CaseDetailView({
       <button onClick={onBack} className="btn-outline text-sm mb-4">
         ← Back
       </button>
-      <h3 className="font-serif text-xl font-semibold">Case: {property.address}</h3>
-      <p className="text-xs text-muted-foreground">
-        AI-generated from your property's official CAD record.
-      </p>
+      {(() => {
+        const outcome = current.status === "resolved" ? buildCaseOutcome(property, current) : null;
+        const original = current.originalValue ?? property.totalValue ?? 0;
+        return (
+          <PageHero
+            icon={Scale}
+            title={`Case: ${property.address}`}
+            tone={outcome ? "emerald" : current.status === "requested" ? "sky" : "violet"}
+            subtitle="AI-generated from your property's official CAD record."
+            badges={
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {caseStageLabel(current)}
+              </span>
+            }
+            stats={[
+              { label: "Original value", value: original, format: (n) => compactCurrency(n) },
+              ...(outcome && outcome.finalValue != null
+                ? [
+                    {
+                      label: "Final value",
+                      value: outcome.finalValue,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+              ...(outcome && outcome.taxSavings
+                ? [
+                    {
+                      label: "Saved per year",
+                      value: outcome.taxSavings,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        );
+      })()}
 
       {loading ? (
         <div className="mt-4 grid gap-2">
@@ -923,13 +1013,23 @@ function CaseTabBar({
         const done = !isHub && !locked && (i < currentIdx || groupDone);
         const isCurrent = !isHub && i === currentIdx;
         const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
+        const style = PHASE_STYLE[t.id];
         return (
           <div key={t.id} className="flex shrink-0 items-center gap-1">
-            {i > 0 && (
-              <span aria-hidden className="px-0.5 text-muted-foreground/30">
-                {t.joinsPrev ? "/" : "→"}
-              </span>
-            )}
+            {i > 0 &&
+              (t.joinsPrev ? (
+                <span aria-hidden className="px-0.5 text-muted-foreground/40">
+                  /
+                </span>
+              ) : (
+                // The road between steps: filled once you've passed it.
+                <span
+                  aria-hidden
+                  className={`h-1 w-6 rounded-full transition-colors ${
+                    i <= currentIdx ? "bg-emerald-400" : "bg-border"
+                  }`}
+                />
+              ))}
             <button
               type="button"
               role="tab"
@@ -937,28 +1037,36 @@ function CaseTabBar({
               aria-current={isCurrent ? "step" : undefined}
               title={locked ? t.lockedHint : undefined}
               onClick={() => onSelect(t.id)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
                 isOpen
-                  ? "bg-accent/10 font-semibold text-foreground"
+                  ? `${style.tint} font-semibold text-foreground`
                   : locked
                     ? "font-medium text-muted-foreground/50"
                     : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {!t.joinsPrev && (
-                <span
-                  aria-hidden
-                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                    done
-                      ? "bg-success/15 text-success"
-                      : isCurrent && !locked
-                        ? "bg-accent text-accent-foreground"
-                        : locked
-                          ? "bg-muted text-muted-foreground/60"
-                          : "border border-border text-muted-foreground"
-                  }`}
-                >
-                  {marker}
+                <span className="relative grid shrink-0 place-items-center">
+                  {isCurrent && !locked && !done && (
+                    <span
+                      aria-hidden
+                      className={`absolute inset-0 animate-ping rounded-full opacity-40 motion-reduce:animate-none ${style.ping}`}
+                    />
+                  )}
+                  <span
+                    aria-hidden
+                    className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold leading-none ${
+                      done
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : isCurrent && !locked
+                          ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
+                          : locked
+                            ? "bg-muted text-muted-foreground/60"
+                            : `border-2 bg-background text-muted-foreground ${style.border}`
+                    }`}
+                  >
+                    {marker}
+                  </span>
                 </span>
               )}
               {t.label}
@@ -1444,7 +1552,7 @@ function NextStepFooter({
   if (!next) return null;
 
   return (
-    <div className="mt-5 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+    <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-accent/40 bg-card/95 p-3 text-sm shadow-lg backdrop-blur">
       <p className="text-xs font-semibold uppercase tracking-wide text-accent">
         Reminder — your next step
       </p>

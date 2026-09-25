@@ -46,6 +46,7 @@ import {
   type TaxUpdateTag,
   type UpdateFilter,
 } from "@/lib/tax-updates";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/tax-updates")({
   head: () => ({ meta: [{ title: "Texas Tax Law & Updates — CorvusPT" }] }),
@@ -536,9 +537,11 @@ function TaxUpdates() {
           short summary of critical updates for the tax year.
         </p>
         {saved.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Nothing yet — use Generate update report above.
-          </p>
+          <div className="mt-3">
+            <EmptyState kind="reports" title="No reports yet." compact>
+              Use "Generate update report" above to save your first one.
+            </EmptyState>
+          </div>
         ) : (
           <ul className="mt-3 grid gap-2">
             {saved.map((r) => (

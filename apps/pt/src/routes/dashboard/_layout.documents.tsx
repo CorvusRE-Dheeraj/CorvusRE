@@ -62,6 +62,7 @@ import { DocumentReviewModal } from "@/components/DocumentReviewModal";
 import { DocumentEditorModal, isEditableDoc } from "@/components/DocumentEditorModal";
 import { PageHero } from "@/components/PageHero";
 import { FolderOpen as HeroDocsIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/documents")({
   // Lets a screen that just worked on one property (Module 8, View Case) open
@@ -475,6 +476,10 @@ function Documents() {
         icon={HeroDocsIcon}
         title="Documents"
         tone="sky"
+        stats={[
+          { label: "Documents", value: documents.length },
+          { label: "Properties", value: properties.length },
+        ]}
         subtitle="Documents you upload during property intake land here automatically — or upload several at once below and AI sorts each one to the right property. Run an AI check on any file to classify it, confirm it belongs to that property, flag anything off, and get a suggested name."
       />
 
@@ -631,12 +636,9 @@ function Documents() {
             )}
           </div>
         ) : (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No documents yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Documents you upload during property intake are stored here automatically.
-            </p>
-          </div>
+          <EmptyState kind="documents" title="No documents yet.">
+            Documents you upload during property intake are stored here automatically.
+          </EmptyState>
         )}
 
         {trashed.length > 0 && (
@@ -1251,16 +1253,16 @@ function DocRow({
               {doc.editedFrom && <span className="italic">· edited copy</span>}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="badge-soft">{cat.label}</span>
+              <span className="chip-doc">{cat.label}</span>
               <span className="badge-soft bg-secondary text-muted-foreground">
                 {sourceLabel(cat.source)}
               </span>
               {analyzing ? (
-                <span className="badge-soft-warning">AI: checking…</span>
+                <span className="chip-ai">AI: checking…</span>
               ) : (
                 <VerdictBadge doc={doc} />
               )}
-              {isEvidenceDoc(doc) && <span className="badge-soft">Evidence</span>}
+              {isEvidenceDoc(doc) && <span className="chip-doc">Evidence</span>}
               {doc.documentType?.startsWith("AI Data Sheet — ") && (
                 <span
                   className="badge-soft-warning"

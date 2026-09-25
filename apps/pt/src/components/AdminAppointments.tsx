@@ -25,6 +25,7 @@ import {
   type AppointmentBlock,
   type AppointmentRecord,
 } from "@/lib/appointments";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 const field = "rounded-md border border-input bg-background px-2.5 py-1.5 text-sm";
 const dayLabel = (date: string) =>
@@ -341,7 +342,7 @@ export function AdminAppointments() {
           bookings appear here automatically.
         </p>
         {loading ? (
-          <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+          <PageSkeleton rows={2} />
         ) : upcoming.length === 0 ? (
           <p className="mt-3 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
             No upcoming appointments.
