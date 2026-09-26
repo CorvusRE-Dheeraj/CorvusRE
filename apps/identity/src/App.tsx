@@ -408,7 +408,7 @@ export function App() {
                 You're all set -- your password has been changed.
               </p>
               <div className="toggle">
-                <button type="button" onClick={proceed}>
+                <button type="button" onClick={() => void proceed()}>
                   Continue
                 </button>
               </div>
