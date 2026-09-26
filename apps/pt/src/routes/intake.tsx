@@ -523,9 +523,10 @@ function Intake() {
                   type="button"
                   disabled
                   title="Residential — coming soon"
-                  className="rounded-full px-3 py-1 text-xs font-medium capitalize text-muted-foreground/40 cursor-not-allowed"
+                  className="rounded-full px-3 py-1 text-xs font-medium capitalize text-muted-foreground/70 cursor-not-allowed"
                 >
                   {kind}
+                  <span className="ml-1 text-[10px] font-semibold normal-case">(soon)</span>
                 </button>
               ) : (
                 <button

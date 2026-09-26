@@ -163,9 +163,10 @@ function Home() {
                       aria-checked={false}
                       disabled
                       title="Residential — coming soon"
-                      className="rounded-full px-4 py-1.5 text-sm font-medium capitalize text-muted-foreground/40 cursor-not-allowed"
+                      className="rounded-full px-4 py-1.5 text-sm font-medium capitalize text-muted-foreground/70 cursor-not-allowed"
                     >
                       {kind}
+                      <span className="ml-1 text-[10px] font-semibold normal-case">(soon)</span>
                     </button>
                   ) : (
                     <button
