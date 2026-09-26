@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { protestVerdict, type VerdictInput } from "./protest-verdict";
+import { protestVerdict, usualDeadlinePassed, type VerdictInput } from "./protest-verdict";
 
 const base: VerdictInput = {
   score: 80,
@@ -35,5 +35,14 @@ describe("protestVerdict", () => {
       protestVerdict({ ...base, hasProtest: true, protestStageLabel: "Hearing" }).detail,
     ).toContain("Hearing");
     expect(protestVerdict({ ...base, hasProtest: true, protestResolved: true }).tone).toBe("done");
+  });
+  it("warns when no deadline is on file and May 15 has passed", () => {
+    const v = protestVerdict({ ...base, daysLeft: null, usualDeadlinePassed: true });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toContain("May 15");
+  });
+  it("knows when May 15 has passed", () => {
+    expect(usualDeadlinePassed(new Date(2026, 8, 25))).toBe(true);
+    expect(usualDeadlinePassed(new Date(2026, 2, 1))).toBe(false);
   });
 });

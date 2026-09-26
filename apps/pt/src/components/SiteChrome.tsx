@@ -161,8 +161,14 @@ export function SiteNav() {
     // had the same pre-existing race (signOut-then-navigate), just newly
     // visible once testing actually followed the sign-out through.
     setProfileOpen(false);
-    await nav({ to: "/" });
-    await supabase.auth.signOut();
+    // The sign-out itself must never depend on the navigation finishing: if the home route is
+    // slow (or a page is mid-load) the navigation promise can stay pending, and awaiting it
+    // alone meant no logout request was ever sent. So wait for it, but only briefly.
+    try {
+      await Promise.race([nav({ to: "/" }), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    } finally {
+      await supabase.auth.signOut();
+    }
   }
 
   useEffect(() => {

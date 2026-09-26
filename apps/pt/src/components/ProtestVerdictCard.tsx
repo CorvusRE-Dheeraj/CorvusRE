@@ -4,7 +4,12 @@ import type { PropertyRecord } from "@/lib/properties";
 import type { ProtestRecord } from "@/lib/protests";
 import type { PropertyAiScore } from "@/lib/property-scores";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
-import { protestVerdict, type ProtestVerdict, type VerdictTone } from "@/lib/protest-verdict";
+import {
+  protestVerdict,
+  usualDeadlinePassed,
+  type ProtestVerdict,
+  type VerdictTone,
+} from "@/lib/protest-verdict";
 
 const TONE: Record<VerdictTone, { box: string; icon: string; Icon: typeof Info }> = {
   good: {
@@ -31,6 +36,7 @@ export function verdictFor(
     daysLeft: property.protestDeadline
       ? Math.ceil((new Date(property.protestDeadline).getTime() - Date.now()) / 86_400_000)
       : null,
+    usualDeadlinePassed: !property.protestDeadline && usualDeadlinePassed(),
     estimatedSavings: property.estimatedSavings,
     hasProtest: !!protest,
     protestResolved: protest?.status === "resolved",

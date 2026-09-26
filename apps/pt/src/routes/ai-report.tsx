@@ -3973,7 +3973,11 @@ function ModuleVisual({
               </div>
               {totalValue ? (
                 <div className="mt-1 text-base font-bold text-success/90">
-                  {Math.round((estimated.reduction / totalValue) * 100)}% of assessed value
+                  {(() => {
+                    // The percentage is how much the assessed VALUE drops (not the tax $ above).
+                    const pct = (estimated.reduction / totalValue) * 100;
+                    return `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}% lower assessed value`;
+                  })()}
                 </div>
               ) : null}
               <div className="mt-1 text-[10px] text-muted-foreground">
@@ -8119,7 +8123,12 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
         />
       </div>
       <div className="flex items-center justify-center gap-2 text-xs">
-        <span className="text-muted-foreground">Net benefit</span>
+        <span
+          className="text-muted-foreground"
+          title="After our standard 25% success fee. Beta testers do not pay it."
+        >
+          Net benefit (after 25% fee)
+        </span>
         <span className="font-serif font-bold text-success">{compactCurrency(a.netBenefit)}</span>
         {a.roiPct != null ? (
           <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
