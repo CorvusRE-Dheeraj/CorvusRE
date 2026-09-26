@@ -3555,18 +3555,12 @@ function ModuleCard({
       : null;
   return (
     <div className="card-elev relative flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
-      {/* A strip in the module's own colour along the top; a soft glow once it's completed. */}
+      {/* A strip in the module's own colour along the top. */}
       <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
       <m.icon
         aria-hidden
         className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
       />
-      {status === "Completed" && (
-        <div
-          aria-hidden
-          className={`tu-glow pointer-events-none absolute -right-8 top-2 h-28 w-28 rounded-full bg-current opacity-15 blur-2xl ${m.color.text}`}
-        />
-      )}
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">

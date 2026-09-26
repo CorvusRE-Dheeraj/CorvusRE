@@ -100,10 +100,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // fires INITIAL_SESSION instead, not SIGNED_IN. Safe to call more
       // often than that anyway: send-welcome-email only actually emails once
       // per account, gated by its own atomic DB claim.
-      if (event === "SIGNED_IN") {
-        invokeEdgeFunction("send-welcome-email", {}).catch((err) =>
-          console.error("Could not send welcome email:", err),
-        );
+      // Sign-in normally happens on the shared /auth/ page, so a brand-new account usually
+      // arrives here as INITIAL_SESSION (a restored session), never SIGNED_IN — which meant the
+      // welcome email was never triggered. So also ask once per browser session per user on
+      // INITIAL_SESSION; the server-side claim still guarantees a single email per account.
+      if (
+        event === "SIGNED_IN" ||
+        (event === "INITIAL_SESSION" &&
+          session?.user &&
+          // Only for accounts made in the last day, so long-standing accounts are never welcomed late.
+          Date.now() - new Date(session.user.created_at).getTime() < 24 * 60 * 60 * 1000)
+      ) {
+        const askedKey = `corvuspt.welcomeAsked.${session?.user?.id ?? ""}`;
+        let alreadyAsked = false;
+        if (event === "INITIAL_SESSION") {
+          try {
+            alreadyAsked = sessionStorage.getItem(askedKey) === "1";
+            sessionStorage.setItem(askedKey, "1");
+          } catch {
+            // storage blocked — asking again is harmless
+          }
+        }
+        if (!alreadyAsked) {
+          invokeEdgeFunction("send-welcome-email", {}).catch((err) =>
+            console.error("Could not send welcome email:", err),
+          );
+        }
       }
       // Same account re-announced (e.g. the tab regaining focus): keep the
       // existing user object so effects keyed on it don't re-run and reset
