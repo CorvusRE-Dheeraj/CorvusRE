@@ -496,9 +496,9 @@ const SERVED_COUNTIES = [
 export function SiteFooter() {
   return (
     <footer className="bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 text-white">
-      {/* sm:pr-24 keeps the text clear of the fixed Ask AI / feedback buttons
-          that sit in the bottom-right corner. */}
-      <div className="container-page py-6 sm:pr-24">
+      {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
+          bottom-right corner: extra bottom room on phones, right room above. */}
+      <div className="container-page pt-6 pb-24 sm:pb-6 sm:pr-24">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 ring-1 ring-white/25">
