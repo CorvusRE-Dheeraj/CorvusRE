@@ -50,7 +50,9 @@ async function applyPendingReferral() {
     const code = localStorage.getItem(PENDING_REF_KEY);
     if (!code) return;
     localStorage.removeItem(PENDING_REF_KEY);
-    await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
+    await supabase.functions.invoke("apply-referral", {
+      body: { referralCode: code },
+    });
   } catch {
     // ignore -- a lost referral must not break sign-in
   }
@@ -100,6 +102,9 @@ export function App() {
   );
   const [email, setEmail] = useState(signupCtx.email);
   const [password, setPassword] = useState("");
+  // Asked on the sign-up form itself so the app does not need a separate "your name" screen.
+  const [firstName, setFirstName] = useState(signupCtx.firstName);
+  const [lastName, setLastName] = useState(signupCtx.lastName);
   // Only ever asked for, and only ever validated against, on the two
   // screens that set a NEW password (sign-up, and the reset-password
   // screen reached from an email link) -- sign-in has no confirm field, so
@@ -119,7 +124,9 @@ export function App() {
   // visitor here (e.g. an idle-timeout sign-out) -- shown once on the plain
   // sign-in screen so the redirect doesn't feel unexplained. Read once on
   // mount, same as `redirect` -- this page never mutates its own URL.
-  const [reason] = useState(() => new URLSearchParams(window.location.search).get("reason"));
+  const [reason] = useState(() =>
+    new URLSearchParams(window.location.search).get("reason"),
+  );
   // Separate from `status` -- the forgot/reset screens are picked by status
   // (reached via a link click or a recovery-email URL, not the sign-in/up
   // toggle), so a failed submit on either must NOT fall back to "error"
@@ -134,10 +141,15 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  async function proceed() {
+  async function proceed(justSignedUp = false) {
     await applyPendingReferral();
     await applyPendingBeta();
-    const target = safeRedirectTarget();
+    let target = safeRedirectTarget();
+    // A brand-new account that came from a door's marketing home page belongs on that door's
+    // dashboard, not back on the page that made them sign up.
+    const doorHome = target?.match(/^\/(corvuspt|corvusdp)\/?$/);
+    if (justSignedUp && target && doorHome)
+      target = `/${doorHome[1]}/dashboard`;
     if (target) {
       window.location.assign(target);
     } else {
@@ -188,7 +200,10 @@ export function App() {
     setSubmitting(true);
     setError(null);
     const redirectTo = `${window.location.origin}${window.location.pathname}`;
-    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
+      email,
+      { redirectTo },
+    );
     setSubmitting(false);
     if (resetErr) {
       setError(resetErr.message);
@@ -229,7 +244,10 @@ export function App() {
     setStatus("busy");
 
     if (mode === "sign-in") {
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signInErr) {
         setError(signInErr.message);
         setStatus("error");
@@ -243,9 +261,16 @@ export function App() {
       email,
       password,
       options: {
+        // The confirmation link brings the person back to this screen, which finishes sign-in
+        // and sends them on to where they were headed.
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}${
+          safeRedirectTarget()
+            ? `?redirect=${encodeURIComponent(safeRedirectTarget() ?? "")}`
+            : ""
+        }`,
         data: {
-          ...(signupCtx.firstName ? { first_name: signupCtx.firstName } : {}),
-          ...(signupCtx.lastName ? { last_name: signupCtx.lastName } : {}),
+          ...(firstName.trim() ? { first_name: firstName.trim() } : {}),
+          ...(lastName.trim() ? { last_name: lastName.trim() } : {}),
           ...(signupCtx.ref ? { referral_code_used: signupCtx.ref } : {}),
           ...(wantsBeta ? { wants_beta: "true" } : {}),
         },
@@ -261,7 +286,7 @@ export function App() {
       setStatus("check-email");
       return;
     }
-    proceed();
+    proceed(true);
   }
 
   // One OAuth path for every social provider -- Supabase calls Microsoft "azure".
@@ -288,7 +313,10 @@ export function App() {
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider,
       // Azure only returns an email address when asked for the scope.
-      options: { redirectTo, ...(provider === "azure" ? { scopes: "email" } : {}) },
+      options: {
+        redirectTo,
+        ...(provider === "azure" ? { scopes: "email" } : {}),
+      },
     });
     if (oauthErr) {
       setError(oauthErr.message);
@@ -341,8 +369,8 @@ export function App() {
           <Logo />
           <h1>Check your email</h1>
           <p className="notice">
-            We sent a confirmation link to <strong>{email}</strong>. Follow it to finish creating
-            your account, then come back here to sign in.
+            We sent a confirmation link to <strong>{email}</strong>. Follow it
+            to finish creating your account, then come back here to sign in.
           </p>
         </div>
       </div>
@@ -356,8 +384,8 @@ export function App() {
           <Logo />
           <h1>Check your email</h1>
           <p className="notice">
-            If an account exists for <strong>{email}</strong>, we've sent a link to reset your
-            password. Click it to choose a new one.
+            If an account exists for <strong>{email}</strong>, we've sent a link
+            to reset your password. Click it to choose a new one.
           </p>
           <div className="toggle">
             <button
@@ -383,9 +411,11 @@ export function App() {
           {status === "reset-done" ? (
             <>
               <h1>Password updated</h1>
-              <p className="notice">You're all set -- your password has been changed.</p>
+              <p className="notice">
+                You're all set -- your password has been changed.
+              </p>
               <div className="toggle">
-                <button type="button" onClick={proceed}>
+                <button type="button" onClick={() => void proceed()}>
                   Continue
                 </button>
               </div>
@@ -393,7 +423,9 @@ export function App() {
           ) : (
             <>
               <h1>Choose a new password</h1>
-              <p className="sub">One account works across every CorvusRE door.</p>
+              <p className="sub">
+                One account works across every CorvusRE door.
+              </p>
               <form onSubmit={submitNewPassword}>
                 <PasswordField
                   label="New password"
@@ -431,7 +463,8 @@ export function App() {
           <Logo />
           <h1>Reset your password</h1>
           <p className="sub">
-            Enter the email on your account and we'll send you a link to reset your password.
+            Enter the email on your account and we'll send you a link to reset
+            your password.
           </p>
           <form onSubmit={submitForgotPassword}>
             <label>
@@ -491,6 +524,30 @@ export function App() {
         </div>
 
         <form onSubmit={submit}>
+          {mode === "sign-up" && (
+            <div className="name-row">
+              <label>
+                First name
+                <input
+                  type="text"
+                  required
+                  autoComplete="given-name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
           <label>
             Email
             <input
@@ -503,12 +560,17 @@ export function App() {
           </label>
           <PasswordField
             label="Password"
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+            autoComplete={
+              mode === "sign-in" ? "current-password" : "new-password"
+            }
             value={password}
             onChange={setPassword}
             show={showPassword}
             onToggleShow={() => setShowPassword((v) => !v)}
           />
+          {mode === "sign-up" && (
+            <p className="hint">Use at least 8 characters.</p>
+          )}
           {mode === "sign-up" && (
             <PasswordField
               label="Confirm password"
@@ -532,7 +594,11 @@ export function App() {
           )}
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={status === "busy"}>
-            {status === "busy" ? "Please wait…" : mode === "sign-in" ? "Sign in" : "Sign up"}
+            {status === "busy"
+              ? "Please wait…"
+              : mode === "sign-in"
+                ? "Sign in"
+                : "Sign up"}
           </button>
         </form>
 
@@ -549,6 +615,10 @@ export function App() {
             </button>
           </div>
         )}
+
+        <div className="toggle">
+          <a href="/">← Back to the CorvusRE site</a>
+        </div>
 
         <div className="toggle">
           {mode === "sign-in" ? (
@@ -664,7 +734,14 @@ function Logo() {
   return (
     <div className="logo">
       <span className="mark" aria-hidden>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M4 20c3-6 5-9 8-9s5 3 8 9" strokeLinecap="round" />
           <circle cx="16" cy="7" r="2" fill="currentColor" />
         </svg>

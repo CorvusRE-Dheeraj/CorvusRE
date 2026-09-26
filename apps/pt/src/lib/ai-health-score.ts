@@ -20,6 +20,8 @@ export type HealthScoreInput = {
   // reporting them as missing.
   valueHistory?: { year: number; total: number }[];
   evidenceFileNames?: string[];
+  // Deterministic reading of what the uploaded evidence says about value (evidence-value.ts).
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
   // The % gap between the CAD value and the comps' (adjusted) indicated value,
   // straight from computeComparableStats — fed to the deterministic score
   // formula (see computeHealthScore). Null / absent when there are no comps.
@@ -80,6 +82,7 @@ export async function getHealthScore(input: HealthScoreInput): Promise<HealthSco
         : null,
     buildingSqft: input.buildingSqft ?? null,
     evidenceCount: input.evidenceFileNames?.length ?? 0,
+    evidence: input.evidence ?? null,
   });
 
   const prose = await invokeEdgeFunction<HealthScoreProse>("ai-health-score", {

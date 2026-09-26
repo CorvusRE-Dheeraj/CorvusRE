@@ -161,8 +161,14 @@ export function SiteNav() {
     // had the same pre-existing race (signOut-then-navigate), just newly
     // visible once testing actually followed the sign-out through.
     setProfileOpen(false);
-    await nav({ to: "/" });
-    await supabase.auth.signOut();
+    // The sign-out itself must never depend on the navigation finishing: if the home route is
+    // slow (or a page is mid-load) the navigation promise can stay pending, and awaiting it
+    // alone meant no logout request was ever sent. So wait for it, but only briefly.
+    try {
+      await Promise.race([nav({ to: "/" }), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    } finally {
+      await supabase.auth.signOut();
+    }
   }
 
   useEffect(() => {
@@ -262,7 +268,7 @@ export function SiteNav() {
         <nav
           aria-label="Main"
           ref={navContainerRef}
-          className="relative hidden lg:flex items-center gap-1"
+          className="relative hidden min-[1340px]:flex items-center gap-0.5"
         >
           <span
             aria-hidden
@@ -281,7 +287,7 @@ export function SiteNav() {
               }}
               to={item.to}
               onClick={feedbackItemClick(item.to)}
-              className="relative rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
+              className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1500px]:px-3 min-[1500px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}
               activeOptions={{ exact: item.to === "/" }}
             >
@@ -389,7 +395,7 @@ export function SiteNav() {
           )}
           <button
             ref={menuButtonRef}
-            className="lg:hidden btn-outline text-sm"
+            className="min-[1340px]:hidden btn-outline text-sm"
             onClick={() => setOpen((v) => !v)}
             aria-label="Menu"
             aria-expanded={open}
@@ -399,7 +405,7 @@ export function SiteNav() {
         </div>
       </div>
       {open && (
-        <div className="lg:hidden border-t border-border/70 bg-background">
+        <div className="min-[1340px]:hidden border-t border-border/70 bg-background">
           <div className="container-page grid gap-1 py-3">
             {navItems.map((item) => (
               <Link
@@ -469,30 +475,88 @@ export function SiteNav() {
 // footer (logo blurb + Platform/Services/Company link columns) was removed
 // site-wide as redundant with the top nav, but this bottom line stays as the
 // one place stating real county coverage.
+// Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder — the
+// real counties with a live data source, not an aspirational "all 254" claim.
+// Update this list if that array ever changes (the count is derived from it).
+const SERVED_COUNTIES = [
+  "Collin",
+  "Montgomery",
+  "Denton",
+  "Harris",
+  "Tarrant",
+  "Fort Bend",
+  "Williamson",
+  "Grayson",
+  "Travis",
+  "Bexar",
+  "Dallas",
+  "Kaufman",
+];
+
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border/70 bg-secondary/40">
-      <div className="container-page py-5 text-xs text-muted-foreground flex flex-wrap justify-between gap-2">
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>
+    <footer className="bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 text-white">
+      {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
+          bottom-right corner: extra bottom room on phones, right room above. */}
+      <div className="container-page pt-6 pb-24 sm:pb-6 sm:pr-24">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 ring-1 ring-white/25">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <path d="M4 20c3-6 5-9 8-9s5 3 8 9" strokeLinecap="round" />
+                <circle cx="16" cy="7" r="2" fill="currentColor" />
+              </svg>
+            </span>
+            <span className="leading-tight">
+              <span className="block text-sm font-semibold">CorvusPT</span>
+              <span className="block text-xs text-white/75">Texas Property Tax AI</span>
+            </span>
+          </Link>
+          <nav aria-label="Legal" className="flex items-center gap-2 text-xs font-medium">
+            <Link
+              to="/terms"
+              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              to="/privacy"
+              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              Privacy Policy
+            </Link>
+          </nav>
+        </div>
+
+        <div className="mt-5 border-t border-white/15 pt-4">
+          <p className="flex items-center gap-2 text-xs font-semibold text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
+            Serving {SERVED_COUNTIES.length} Texas counties
+            <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+              Beta
+            </span>
+          </p>
+          <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Counties served">
+            {SERVED_COUNTIES.map((county) => (
+              <li
+                key={county}
+                className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/90 ring-1 ring-white/15"
+              >
+                {county}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-xs text-white/70">
             © {new Date().getFullYear()} CorvusPT — Texas Property Tax AI. All rights reserved.
-          </span>
-          <Link to="/terms" className="underline underline-offset-2 hover:text-foreground">
-            Terms of Service
-          </Link>
-          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
-            Privacy Policy
-          </Link>
-        </span>
-        {/* Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder
-            (Collin, Montgomery, Denton, Harris, Tarrant, Fort Bend, Williamson,
-            Grayson, Travis, Bexar, Dallas, Kaufman) — the real counties with a
-            live data source, not an aspirational "all 254" claim. Update both
-            this list and the count if that array ever changes. */}
-        <span>
-          Serving 12 Texas counties for Beta phase — Collin, Montgomery, Denton, Harris, Tarrant,
-          Fort Bend, Williamson, Grayson, Travis, Bexar, Dallas, and Kaufman.
-        </span>
+          </p>
+        </div>
       </div>
     </footer>
   );

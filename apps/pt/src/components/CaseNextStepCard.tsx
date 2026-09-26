@@ -3,7 +3,12 @@ import { ArrowRight, CheckCircle2 } from "lucide-react";
 export type NextStepTab =
   "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court" | "outcome";
 
+export type NextFocus = "filing" | "informal" | "hearing" | "decision";
+
 export type NextStep = {
+  // When the user is already on the right tab: a button label and what it should jump to.
+  hereCta?: string;
+  focus?: NextFocus;
   title: string;
   body: string;
   tab: NextStepTab;
@@ -14,7 +19,7 @@ export type NextStep = {
 // One plain answer to "what do I do now?" for a case, derived only from its real status.
 export function nextStepFor(
   status: string,
-  opts: { needsGuidanceAck: boolean; noticeSigned: boolean },
+  opts: { needsGuidanceAck: boolean; noticeSigned: boolean; informalStatus?: string },
 ): NextStep {
   switch (status) {
     case "requested":
@@ -31,20 +36,35 @@ export function nextStepFor(
             body: "Your Notice of Protest is signed. Submit it to the county before your deadline.",
             tab: "file",
             cta: "Go to Prepare & File",
+            hereCta: "Confirm filing",
+            focus: "filing",
           }
         : {
             title: "Prepare and sign your Notice of Protest",
             body: "Fill in the form, gather your evidence, and sign. We'll walk you through it.",
             tab: "file",
             cta: "Go to Prepare & File",
+            hereCta: "Start filing",
+            focus: "filing",
           };
     case "filed":
     case "under_review":
+      if (opts.informalStatus === "completed")
+        return {
+          title: "Your informal review is done. How did it end?",
+          body: "Agreed on a value? Upload the signed settlement. Not happy with the offer? Choose Unsatisfied to move on to a formal hearing.",
+          tab: "informal",
+          cta: "Choose the result",
+          hereCta: "Choose the result",
+          focus: "informal",
+        };
       return {
         title: "Talk to the county's appraiser",
         body: "Try to settle your value informally first. It is faster than a hearing.",
         tab: "informal",
         cta: "Open Informal Review",
+        hereCta: "Update my informal review",
+        focus: "informal",
       };
     case "offer_received":
       return {
@@ -52,6 +72,8 @@ export function nextStepFor(
         body: "Accept it, or keep going to a formal hearing if the value is still too high.",
         tab: "informal",
         cta: "Review the offer",
+        hereCta: "Record my decision",
+        focus: "informal",
       };
     case "hearing_scheduled":
       return {
@@ -59,6 +81,8 @@ export function nextStepFor(
         body: "Add your hearing notice, then prepare your evidence and talking points.",
         tab: "hearing",
         cta: "Open Formal Hearing",
+        hereCta: "Add my hearing notice",
+        focus: "hearing",
       };
     case "decision_received":
       return {
@@ -66,6 +90,8 @@ export function nextStepFor(
         body: "Enter what the ARB decided. If you're not happy with it, you can compare arbitration and a court appeal.",
         tab: "decision",
         cta: "Open Decision",
+        hereCta: "Upload the decision",
+        focus: "decision",
       };
     case "appealing":
       return {
@@ -103,10 +129,12 @@ export function CaseNextStepCard({
   step,
   activeTab,
   onGo,
+  onFocus,
 }: {
   step: NextStep;
   activeTab: NextStepTab;
   onGo: (tab: NextStepTab) => void;
+  onFocus?: (focus: NextFocus) => void;
 }) {
   const here = step.tab === activeTab;
   return (
@@ -133,6 +161,15 @@ export function CaseNextStepCard({
       {!here && (
         <button type="button" onClick={() => onGo(step.tab)} className="btn-primary text-sm">
           {step.cta} →
+        </button>
+      )}
+      {here && step.hereCta && step.focus && onFocus && (
+        <button
+          type="button"
+          onClick={() => onFocus(step.focus as NextFocus)}
+          className="btn-primary text-sm"
+        >
+          {step.hereCta} →
         </button>
       )}
     </section>

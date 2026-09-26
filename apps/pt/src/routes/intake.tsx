@@ -160,7 +160,11 @@ function Intake() {
     // behind an "Edit Address" click the user has no reason to expect.
     if (s.address && !s.confirmed) {
       setAddress(s.address);
-      runValidation(s.address);
+      // The county lookup already finished before the reload (the record is saved with the
+      // in-progress intake), so go straight back to the Confirm step instead of repeating a
+      // slow lookup from step 1.
+      if (s.accountNumber && s.cad) setStep("confirm");
+      else runValidation(s.address);
     }
   }, []);
 
@@ -523,9 +527,10 @@ function Intake() {
                   type="button"
                   disabled
                   title="Residential — coming soon"
-                  className="rounded-full px-3 py-1 text-xs font-medium capitalize text-muted-foreground/40 cursor-not-allowed"
+                  className="rounded-full px-3 py-1 text-xs font-medium capitalize text-muted-foreground/70 cursor-not-allowed"
                 >
                   {kind}
+                  <span className="ml-1 text-[10px] font-semibold normal-case">(soon)</span>
                 </button>
               ) : (
                 <button
@@ -684,6 +689,23 @@ function Intake() {
               <h3 className="text-sm font-semibold">
                 We didn't find that exact address, but found these nearby:
               </h3>
+              {(() => {
+                // If the address named a city but none of the suggestions are in it, say so, so
+                // nobody picks a same-street record from a different city by mistake.
+                const askedCity = (address.split(",")[1] ?? "").trim();
+                if (!askedCity || /^\d/.test(askedCity)) return null;
+                const anyInCity = nearby.some((r) =>
+                  r.propertyAddress.toLowerCase().includes(askedCity.toLowerCase()),
+                );
+                if (anyInCity) return null;
+                return (
+                  <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                    None of these are in {askedCity}. The county's public records may not list this
+                    address. Try the account number from your appraisal notice, or upload the notice
+                    instead.
+                  </p>
+                );
+              })()}
               <div className="mt-3 grid gap-2">
                 {nearby.map((r, i) => {
                   // The county's own record is authoritative, same check
@@ -1003,7 +1025,7 @@ function Intake() {
             <Field label="Property Address" value={state.address} />
             <Field label="County / CAD" value={state.cad} />
             <Field label="CAD Account Number" value={state.accountNumber} />
-            <Field label="Property Type" value={state.propertyType} />
+            <Field label="Property Type" value={state.propertyType ?? "Not listed by the county"} />
             <Field label="Tax Year" value={state.taxYear?.toString()} />
             <Field label="Land Value" value={currency(state.landValue)} />
             <Field label="Improvement Value" value={currency(state.improvementValue)} />
@@ -1029,35 +1051,38 @@ function Intake() {
 
           <ValueHistorySection history={state.valueHistory ?? []} />
 
-          {state.deeds && state.deeds.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold">Deed History</h3>
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <th className="py-1 pr-4">Date</th>
-                      <th className="py-1 pr-4">Type</th>
-                      <th className="py-1 pr-4">Seller</th>
-                      <th className="py-1 pr-4">Buyer</th>
-                      <th className="py-1 pr-4">Instrument #</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {state.deeds.map((d, i) => (
-                      <tr key={i} className="border-t border-border">
-                        <td className="py-1 pr-4">{d.date?.slice(0, 10) ?? "—"}</td>
-                        <td className="py-1 pr-4">{d.description ?? d.type ?? "—"}</td>
-                        <td className="py-1 pr-4">{d.seller ?? "—"}</td>
-                        <td className="py-1 pr-4">{d.buyer ?? "—"}</td>
-                        <td className="py-1 pr-4">{d.instrumentNum ?? "—"}</td>
+          {state.deeds &&
+            state.deeds.some(
+              (d) => d.date || d.type || d.description || d.seller || d.buyer || d.instrumentNum,
+            ) && (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold">Deed History</h3>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th className="py-1 pr-4">Date</th>
+                        <th className="py-1 pr-4">Type</th>
+                        <th className="py-1 pr-4">Seller</th>
+                        <th className="py-1 pr-4">Buyer</th>
+                        <th className="py-1 pr-4">Instrument #</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {state.deeds.map((d, i) => (
+                        <tr key={i} className="border-t border-border">
+                          <td className="py-1 pr-4">{d.date?.slice(0, 10) ?? "—"}</td>
+                          <td className="py-1 pr-4">{d.description ?? d.type ?? "—"}</td>
+                          <td className="py-1 pr-4">{d.seller ?? "—"}</td>
+                          <td className="py-1 pr-4">{d.buyer ?? "—"}</td>
+                          <td className="py-1 pr-4">{d.instrumentNum ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {alreadySaved && (
             <div className="mt-4 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">
@@ -1151,7 +1176,11 @@ function Intake() {
                   if (f) onFile(f);
                 }}
               />
-              {isDragging ? "Drop to upload" : "Upload Another Notice"}
+              {isDragging
+                ? "Drop to upload"
+                : state.noticeFileName || state.extraction
+                  ? "Upload Another Notice"
+                  : "Upload Your Appraisal Notice"}
             </label>
           </div>
         </section>

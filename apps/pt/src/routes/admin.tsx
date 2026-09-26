@@ -769,7 +769,8 @@ function AdminPanel() {
           <h2 className="font-serif text-xl font-semibold">Beta Signups</h2>
           <p className="text-sm text-muted-foreground">
             Everyone who submitted the "Request Beta Access" form on the hub site. Most recent
-            first.
+            first. People who tick "join as a beta tester" when creating an account are not listed
+            here: they appear under Users with the Beta plan.
           </p>
           <div className="mt-4 grid gap-2">
             {betaLeadsLoading ? (

@@ -91,3 +91,32 @@ describe("computeHealthScore", () => {
     expect(noComps.scoreBreakdown.map((b) => b.label)).toContain("CAD Valuation");
   });
 });
+
+describe("computeHealthScore — owner evidence", () => {
+  it("is unchanged when no evidence has been read", () => {
+    expect(computeHealthScore(signals({ evidence: null }))).toEqual(computeHealthScore(signals()));
+  });
+
+  it("raises the score when evidence shows the county value is too high", () => {
+    const base = computeHealthScore(signals()).score;
+    const withEvidence = computeHealthScore(
+      signals({ evidence: { valueGapPct: 15, strength: 0.8 } }),
+    );
+    expect(withEvidence.score).toBeGreaterThan(base);
+    expect(withEvidence.scoreBreakdown.some((b) => b.label === "Owner Evidence")).toBe(true);
+  });
+
+  it("lowers the score when evidence supports the county value", () => {
+    const base = computeHealthScore(signals()).score;
+    const supporting = computeHealthScore(
+      signals({ evidence: { valueGapPct: -10, strength: 0.8 } }),
+    ).score;
+    expect(supporting).toBeLessThan(base);
+  });
+
+  it("stronger evidence moves the score further", () => {
+    const weak = computeHealthScore(signals({ evidence: { valueGapPct: 12, strength: 0.2 } }));
+    const strong = computeHealthScore(signals({ evidence: { valueGapPct: 12, strength: 1 } }));
+    expect(strong.score).toBeGreaterThanOrEqual(weak.score);
+  });
+});

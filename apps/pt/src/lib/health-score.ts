@@ -27,6 +27,10 @@ export type HealthScoreSignals = {
   buildingSqft: number | null;
   // How many protest-evidence documents the owner has uploaded.
   evidenceCount: number;
+  // What that evidence says about value (see evidence-value.ts). valueGapPct > 0 means the
+  // evidence says the county value is too high; < 0 means it supports the county value.
+  // strength is 0..1 (how much confident, usable evidence there is). Absent = none read yet.
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
 };
 
 export type HealthScoreComputed = {
@@ -75,6 +79,20 @@ export function computeHealthScore(s: HealthScoreSignals): HealthScoreComputed {
     score += Math.min(6, (trend.trailingCagrPct - 0.08) * 60);
   }
 
+  // What the owner's uploaded evidence says. Evidence that shows the value is too high raises
+  // the score, evidence that supports the county's value lowers it, and more confident evidence
+  // moves it further. Deterministic: it only changes when the stored evidence readings change.
+  const ev = s.evidence;
+  if (ev && ev.otherNet) {
+    // Condition / site / zoning evidence: nudges the score by how important it is.
+    score += ev.otherNet * 8;
+  }
+  if (ev && ev.strength > 0 && ev.valueGapPct != null) {
+    const pts =
+      ev.valueGapPct > 0 ? Math.min(22, ev.valueGapPct * 1.6) : Math.max(-18, ev.valueGapPct * 1.2);
+    score += pts * (0.35 + 0.65 * ev.strength);
+  }
+
   score = clamp(15, 90, Math.round(score));
 
   // --- confidencePct: pure data-completeness tally ------------------------
@@ -87,6 +105,7 @@ export function computeHealthScore(s: HealthScoreSignals): HealthScoreComputed {
   if (compCount >= 6) c += 5;
   if (s.buildingSqft != null) c += 10;
   if (s.evidenceCount >= 1) c += 5;
+  if (ev && ev.strength > 0) c += Math.round(ev.strength * 10);
   const confidencePct = clamp(25, 92, Math.round(c));
 
   // --- scoreBreakdown: labelled 0-100 sub-scores over the same signals ----
@@ -111,6 +130,13 @@ export function computeHealthScore(s: HealthScoreSignals): HealthScoreComputed {
     });
   } else if (histYears >= 2) {
     scoreBreakdown.push({ label: "Historical Valuation", score: 45 });
+  }
+
+  if (ev && ev.strength > 0 && ev.valueGapPct != null) {
+    scoreBreakdown.push({
+      label: "Owner Evidence",
+      score: clamp(0, 100, Math.round(50 + ev.valueGapPct * 2.2)),
+    });
   }
 
   const dataSufficient = confidencePct >= 45 && (compCount >= 3 || histYears >= 2);

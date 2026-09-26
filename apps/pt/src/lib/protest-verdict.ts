@@ -18,6 +18,8 @@ export type VerdictInput = {
   score: number | null;
   daysLeft: number | null; // days until the protest deadline; null when unknown
   estimatedSavings: number | null;
+  // No deadline is on file and the usual Texas May 15 date has already gone by this year.
+  usualDeadlinePassed?: boolean;
   hasProtest: boolean;
   protestResolved: boolean;
   protestStageLabel: string | null;
@@ -67,6 +69,17 @@ export function protestVerdict(i: VerdictInput): ProtestVerdict {
     };
   }
 
+  if (i.daysLeft == null && i.usualDeadlinePassed) {
+    return {
+      tone: "warn",
+      headline: "The usual May 15 deadline has passed",
+      detail:
+        "We have no deadline on file. If your notice arrived late you may still have 30 days from the date it was mailed. Check the date on your notice before you start.",
+      action: "upload",
+      actionLabel: "Add appraisal notice",
+    };
+  }
+
   if (i.score == null) {
     return {
       tone: "info",
@@ -108,4 +121,10 @@ export function protestVerdict(i: VerdictInput): ProtestVerdict {
     action: "report",
     actionLabel: "View report",
   };
+}
+
+// Texas protests are normally due May 15 (or 30 days after the notice was mailed, if later).
+// True when there is no deadline on file and it is now past May 15 of the current year.
+export function usualDeadlinePassed(now: Date = new Date()): boolean {
+  return now.getTime() > new Date(now.getFullYear(), 4, 15, 23, 59, 59).getTime();
 }

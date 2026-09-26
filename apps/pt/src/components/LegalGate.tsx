@@ -19,6 +19,8 @@ export function LegalGate() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [needed, setNeeded] = useState(false);
   const [checked, setChecked] = useState(false);
+  // Nothing recorded yet = a brand-new account, so "we've updated" would be misleading.
+  const [firstTime, setFirstTime] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const onExemptRoute =
@@ -37,7 +39,10 @@ export function LegalGate() {
     let cancelled = false;
     getLatestTermsAcceptance()
       .then((acc) => {
-        if (!cancelled) setNeeded(termsAcceptanceNeeded(acc));
+        if (!cancelled) {
+          setNeeded(termsAcceptanceNeeded(acc));
+          setFirstTime(!acc);
+        }
       })
       .catch(() => {
         // A read failure shouldn't lock a paying user out of the app — the
@@ -74,7 +79,9 @@ export function LegalGate() {
           Accept button stay put no matter how long the list is. */}
       <div className="bg-card flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-elev">
         <div className="border-border border-b px-6 py-5 sm:px-8">
-          <h2 className="font-serif text-xl font-semibold">We&apos;ve updated our Terms</h2>
+          <h2 className="font-serif text-xl font-semibold">
+            {firstTime ? "Welcome! Please review our Terms" : "We've updated our Terms"}
+          </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Our{" "}
             <Link
@@ -94,7 +101,9 @@ export function LegalGate() {
             >
               Privacy Policy
             </Link>{" "}
-            have changed. Please review and accept them to continue using CorvusPT.
+            {firstTime
+              ? "apply to your use of CorvusPT. Please review and accept them to get started."
+              : "have changed. Please review and accept them to continue using CorvusPT."}
           </p>
         </div>
 

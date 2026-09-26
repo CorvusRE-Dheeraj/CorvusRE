@@ -72,3 +72,29 @@ export async function listHealthScores(userId: string): Promise<Record<string, P
   }
   return byProperty;
 }
+
+// Keeps the score shown on the dashboard and Properties list in step with the AI Report's own
+// Module 1 score (which moves as the owner uploads evidence). Scores are insert-only with the
+// latest row winning, so this only adds a row when the score has actually changed.
+export async function syncHealthScore(propertyId: string, score: PropertyAiScore): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data } = await supabase
+    .from("property_ai_scores")
+    .select("score")
+    .eq("property_id", propertyId)
+    .eq("user_id", user.id)
+    .order("computed_at", { ascending: false })
+    .limit(1);
+  if (data && data.length > 0 && (data[0] as { score: number }).score === score.score) return;
+  const { error } = await supabase.from("property_ai_scores").insert({
+    property_id: propertyId,
+    user_id: user.id,
+    score: score.score,
+    summary: score.summary,
+    factors: score.factors,
+  });
+  if (error) throw error;
+}

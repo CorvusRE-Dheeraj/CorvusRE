@@ -1,3 +1,4 @@
+import { tidyAddress } from "./tidy-address";
 import { supabase } from "./supabase";
 import { computeAndStoreHealthScore } from "./property-scores";
 import type { CadValueHistoryEntry } from "./cad-lookup";
@@ -93,7 +94,7 @@ type PropertyRow = {
 function fromRow(row: PropertyRow): PropertyRecord {
   return {
     id: row.id,
-    address: row.address,
+    address: tidyAddress(row.address),
     cad: row.cad,
     accountNumber: row.account_number,
     ownerName: row.owner_name,

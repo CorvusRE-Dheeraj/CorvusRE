@@ -1,3 +1,10 @@
+// Business-style owner names (LP, LLC, INC, TRUST...) as the county records them.
+const ENTITY_WORDS =
+  /\b(LP|LLC|LLP|INC|CORP|CORPORATION|CO|LTD|TRUST|PARTNERS|PARTNERSHIP|HOLDINGS|PROPERTIES|ASSOCIATES|FUND|OWNER|COMPANY)\b/i;
+function looksLikeEntity(name: string | null | undefined): boolean {
+  return !!name && ENTITY_WORDS.test(name);
+}
+
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -108,7 +115,10 @@ export function ProtestAuthorizationFlow({
   const [lastName, setLastName] = useState(initialOwnerInfo?.lastName ?? "");
   const [email, setEmail] = useState(initialOwnerInfo?.email ?? userEmail ?? "");
   const [phone, setPhone] = useState(initialOwnerInfo?.phone ?? "");
-  const [isEntity, setIsEntity] = useState(initialOwnerInfo?.isEntity ?? false);
+  // A county owner name like "FPG CT OWNER LP" is a business, so start on "Yes" and ask how the
+  // signer is connected to it, rather than defaulting to "No" and skipping that question.
+  const ownerLooksLikeEntity = looksLikeEntity(property.ownerName);
+  const [isEntity, setIsEntity] = useState(initialOwnerInfo?.isEntity ?? ownerLooksLikeEntity);
   // The question names the county's owner of record whenever there is one;
   // the generic wording is only the fallback when the county has none.
   const ownerNamedAsEntity = !!property.ownerName;
@@ -472,6 +482,14 @@ export function ProtestAuthorizationFlow({
                   </label>
                 </div>
               </div>
+              {!isEntity && ownerLooksLikeEntity && (
+                <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                  The county lists the owner as{" "}
+                  <span className="font-medium">{property.ownerName}</span>, which looks like a
+                  business. If you are not that owner yourself, choose Yes and tell us how you are
+                  connected to it. We may ask for proof before we file.
+                </p>
+              )}
               {property.ownerName && !ownerNamedAsEntity && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   County record shows owner:{" "}

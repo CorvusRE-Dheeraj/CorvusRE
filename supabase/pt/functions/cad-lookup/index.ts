@@ -612,7 +612,9 @@ function singleFieldWhere(field: string, house: string, core: string): string {
   const coreClause = coreVariants(core)
     .map(
       (c) =>
-        `(UPPER(${field}) LIKE UPPER('%${c} %') OR UPPER(${field}) LIKE UPPER('%${c},%') OR UPPER(${field}) LIKE UPPER('%${c}'))`,
+        // A leading space is required so the core only matches a WHOLE word ("ROSS" must not match
+        // "CROSS TIMBER"; "ELM" must not match "BELMONT") — the house number always precedes it.
+        `(UPPER(${field}) LIKE UPPER('% ${c} %') OR UPPER(${field}) LIKE UPPER('% ${c},%') OR UPPER(${field}) LIKE UPPER('% ${c}'))`,
     )
     .join(" OR ");
   return `UPPER(${field}) LIKE UPPER('${house} %') AND (${coreClause})`;
@@ -664,7 +666,8 @@ function coreClauseOr(field: string, core: string): string {
   return coreVariants(core)
     .map(
       (c) =>
-        `(UPPER(${field}) LIKE UPPER('%${c} %') OR UPPER(${field}) LIKE UPPER('%${c},%') OR UPPER(${field}) LIKE UPPER('%${c}'))`,
+        // Whole-word only, as above; here the core may also be the very start of the field.
+        `(UPPER(${field}) LIKE UPPER('${c} %') OR UPPER(${field}) LIKE UPPER('% ${c} %') OR UPPER(${field}) LIKE UPPER('${c},%') OR UPPER(${field}) LIKE UPPER('% ${c},%') OR UPPER(${field}) LIKE UPPER('% ${c}') OR UPPER(${field}) LIKE UPPER('${c}'))`,
     )
     .join(" OR ");
 }

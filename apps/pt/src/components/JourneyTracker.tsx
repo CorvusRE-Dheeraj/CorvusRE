@@ -36,7 +36,8 @@ const STATUS_RANK: Record<ProtestStatus, number> = {
   filed: 2,
   under_review: 3,
   offer_received: 3,
-  hearing_scheduled: 4,
+  // A scheduled hearing is still the "Track" stage; Decision only completes once a decision exists.
+  hearing_scheduled: 3,
   decision_received: 4,
   appealing: 4,
   arbitrating: 4,

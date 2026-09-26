@@ -1,3 +1,4 @@
+import type { ValueSignal } from "./evidence-value";
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { FormType } from "./protest-form-submissions";
@@ -119,6 +120,9 @@ export type DocumentRecord = {
   // src/lib/document-modules.ts. Optional for the same reason as the fields
   // above; fromRow always populates it (to [] when the column is null).
   modules?: string[];
+  // What this file says about the property's value, read once by extract-evidence-value and
+  // stored. null = not read yet. See evidence-value.ts.
+  valueSignal?: ValueSignal | null;
 };
 
 type DocumentRow = {
@@ -142,10 +146,11 @@ type DocumentRow = {
   ai_explanation: string | null;
   edited_from: string | null;
   modules: string[] | null;
+  value_signal: ValueSignal | null;
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, file_name, storage_path, document_type, uploaded_at, category, source, ai_verdict, ai_notes, ai_cross_refs, ai_checked_at, suggested_name, deleted_at, use_as_evidence, duplicate_of, dup_reviewed, ai_explanation, edited_from, modules";
+  "id, property_id, file_name, storage_path, document_type, uploaded_at, category, source, ai_verdict, ai_notes, ai_cross_refs, ai_checked_at, suggested_name, deleted_at, use_as_evidence, duplicate_of, dup_reviewed, ai_explanation, edited_from, modules, value_signal";
 
 function fromRow(row: DocumentRow): DocumentRecord {
   return {
@@ -169,6 +174,7 @@ function fromRow(row: DocumentRow): DocumentRecord {
     aiExplanation: row.ai_explanation,
     editedFrom: row.edited_from,
     modules: row.modules ?? [],
+    valueSignal: row.value_signal ?? null,
   };
 }
 
@@ -525,6 +531,20 @@ export async function analyzeDocument(documentId: string): Promise<DocAnalysis> 
   const analysis = await invokeEdgeFunction<DocAnalysis>("analyze-document", { documentId });
   notifyDocumentsChanged();
   return analysis;
+}
+
+// Reads one evidence file for what it says about value (extract-evidence-value edge function) and
+// stores the result on the row. An already-read file returns its stored result, so this is cheap to
+// call again and never changes an answer unless the file itself is replaced.
+export async function extractEvidenceValue(
+  documentId: string,
+  opts?: { force?: boolean },
+): Promise<ValueSignal | null> {
+  const res = await invokeEdgeFunction<{ signal: ValueSignal | null }>("extract-evidence-value", {
+    documentId,
+    force: opts?.force ?? false,
+  });
+  return res.signal ?? null;
 }
 
 // Apply a suggested rename — file_name is the one field a user may now change

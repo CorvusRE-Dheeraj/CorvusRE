@@ -151,7 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   key={item.to}
                   type="button"
-                  title={item.label.includes("BPP") ? GLOSSARY_MAP.BPP : undefined}
+                  title={`${item.label} is coming soon.${item.label.includes("BPP") ? " " + GLOSSARY_MAP.BPP : ""}`}
                   onClick={() =>
                     toast(`${item.label} is coming soon`, {
                       description: "This section is still under development — check back soon.",
