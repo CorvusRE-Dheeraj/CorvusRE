@@ -277,6 +277,8 @@ export type EvidenceAdjustment = {
   contributions: EvidenceContribution[];
   // Points to add to each analysis's score.
   moduleUplift: Record<ModuleKey, number>;
+  // 0..1 per analysis: how much important evidence now covers it, whichever way it points.
+  moduleCoverage: Record<ModuleKey, number>;
   // Evidence that was uploaded and read but could not be used, with the reason.
   ignored: string[];
 };
@@ -301,6 +303,7 @@ const NONE: EvidenceAdjustment = {
   direction: "none",
   contributions: [],
   moduleUplift: ZERO_UPLIFT,
+  moduleCoverage: ZERO_UPLIFT,
   ignored: [],
 };
 
@@ -350,6 +353,12 @@ export function computeEvidenceAdjustment(args: {
   const effects = computeModuleEffects(items, V);
   const moduleUplift = { ...ZERO_UPLIFT };
   for (const m of EFFECT_MODULES) moduleUplift[m] = pointsFor(effects[m].net);
+  const moduleCoverage = { ...ZERO_UPLIFT };
+  for (const m of EFFECT_MODULES) {
+    moduleCoverage[m] = combine(
+      items.map((it) => evidenceWeight(it.signal) * affinities(it.signal)[m]),
+    );
+  }
 
   const candidates: { value: number; weight: number }[] = [];
   const repairCandidates: { cost: number; applied: number }[] = [];
@@ -503,8 +512,18 @@ export function computeEvidenceAdjustment(args: {
     direction,
     contributions,
     moduleUplift,
+    moduleCoverage,
     ignored,
   };
+}
+
+// Adds evidence points to a 0-100 score. Points count in full at low scores and taper toward the
+// top, so an already-high score can't run away past 98.
+export function applyPoints(base: number, points: number): number {
+  if (points === 0) return base;
+  const scaled =
+    points > 0 ? points * (1 - Math.max(0, base) / 100) : points * (Math.max(0, base) / 100);
+  return clamp(5, 98, Math.round(base + scaled));
 }
 
 // Re-states a savings estimate using the evidence-adjusted indicated value. Returned in the

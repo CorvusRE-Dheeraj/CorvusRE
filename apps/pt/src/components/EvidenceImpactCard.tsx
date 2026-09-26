@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import { FileSearch, TrendingDown, TrendingUp } from "lucide-react";
-import { moduleLabel, type EvidenceAdjustment } from "@/lib/evidence-value";
+import { moduleLabel, type EvidenceAdjustment, type ModuleKey } from "@/lib/evidence-value";
 
 export type EvidenceImpact = {
   adjustment: EvidenceAdjustment;
@@ -85,7 +85,20 @@ export function EvidenceImpactCard() {
           : up
             ? `Your evidence points to a lower value than the county's. Estimated yearly savings went from ${money(beforeAmount)} to ${money(afterAmount)}.`
             : `Your evidence points to a value closer to the county's. Estimated yearly savings went from ${money(beforeAmount)} to ${money(afterAmount)}.`}{" "}
-        Your scores moved by how important each file is:
+        Your scores moved by how important each file is.
+      </p>
+      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-medium">
+          Overall evidence strength: {Math.round(a.strength * 100)}%
+        </span>
+        {(Object.keys(a.moduleUplift) as ModuleKey[])
+          .filter((m) => a.moduleUplift[m] !== 0)
+          .map((m) => (
+            <span key={m} className={a.moduleUplift[m] > 0 ? "text-emerald-700" : "text-amber-700"}>
+              {moduleLabel(m)} {a.moduleUplift[m] > 0 ? "+" : ""}
+              {a.moduleUplift[m]}
+            </span>
+          ))}
       </p>
       <ul className="mt-2 grid gap-2">
         {a.contributions.map((c, i) => (

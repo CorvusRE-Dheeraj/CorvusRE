@@ -175,3 +175,14 @@ describe("evidence importance", () => {
     expect(baseIndicatedValue(base, V)).toBe(900_000);
   });
 });
+
+describe("applyPoints", () => {
+  it("adds points in full at low scores and tapers near the top", async () => {
+    const { applyPoints } = await import("./evidence-value");
+    expect(applyPoints(50, 20)).toBe(60);
+    expect(applyPoints(90, 20)).toBeLessThan(93);
+    expect(applyPoints(60, -20)).toBeGreaterThanOrEqual(5);
+    expect(applyPoints(96, 30)).toBeLessThanOrEqual(98);
+    expect(applyPoints(50, 0)).toBe(50);
+  });
+});

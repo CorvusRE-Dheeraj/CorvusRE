@@ -132,6 +132,7 @@ import { EvidenceImpactCard, EvidenceImpactContext } from "@/components/Evidence
 import {
   applyEvidenceToEstimate,
   baseIndicatedValue,
+  applyPoints,
   computeEvidenceAdjustment,
   VALUE_SIGNAL_SCHEMA_VERSION,
   type ValueSignal,
@@ -2439,24 +2440,61 @@ function Report() {
   // time, so a critical file raises them a lot, a minor one a little, and evidence that backs the
   // county lowers them. Nothing is written back to the cached results.
   const moduleData = useMemo(() => {
+    if (!evidenceAdj.applied) return rawModuleData;
+    const uplift = evidenceAdj.moduleUplift as Record<string, number>;
+    const coverage = evidenceAdj.moduleCoverage as Record<string, number>;
+    const next = { ...rawModuleData };
+
+    // Modules 2-7: the per-analysis strength scores and confidence.
     const st = rawModuleData.strategy;
     const d = st?.data as ModuleResultMap["strategy"] | undefined;
-    if (!st || !d || !evidenceAdj.applied) return rawModuleData;
-    const uplift = evidenceAdj.moduleUplift as Record<string, number>;
-    const strategies = d.strategies
-      .map((s, i) => {
-        const pts = s.relatedModules.reduce(
-          (best, m) => (Math.abs(uplift[m] ?? 0) > Math.abs(best) ? (uplift[m] ?? 0) : best),
-          0,
-        );
-        return {
-          s: pts ? { ...s, strengthScore: Math.max(5, Math.min(98, s.strengthScore + pts)) } : s,
-          i,
-        };
-      })
-      .sort((a, b) => b.s.strengthScore - a.s.strengthScore || a.i - b.i)
-      .map((x) => x.s);
-    return { ...rawModuleData, strategy: { ...st, data: { ...d, strategies } } };
+    if (st && d) {
+      const strategies = d.strategies
+        .map((s, i) => {
+          const pts = s.relatedModules.reduce(
+            (best, m) => (Math.abs(uplift[m] ?? 0) > Math.abs(best) ? (uplift[m] ?? 0) : best),
+            0,
+          );
+          const cov = s.relatedModules.reduce((best, m) => Math.max(best, coverage[m] ?? 0), 0);
+          return {
+            s: {
+              ...s,
+              strengthScore: applyPoints(s.strengthScore, pts),
+              confidencePct: Math.min(95, s.confidencePct + Math.round(cov * 15)),
+            },
+            i,
+          };
+        })
+        .sort((x, y) => y.s.strengthScore - x.s.strengthScore || x.i - y.i)
+        .map((x) => x.s);
+      next.strategy = { ...st, data: { ...d, strategies } };
+    }
+
+    // Modules 4 and 5: the "documentation priority" meters fall as important evidence covers them.
+    for (const id of ["site", "improvement"] as const) {
+      const m = rawModuleData[id];
+      const md = m?.data as { priorityScore?: number } | undefined;
+      if (m && md && typeof md.priorityScore === "number") {
+        const reduced = Math.max(5, md.priorityScore - Math.round((coverage[id] ?? 0) * 25));
+        next[id] = { ...m, data: { ...md, priorityScore: reduced } as never };
+      }
+    }
+
+    // Module 10: the value to argue for follows the evidence-adjusted indication.
+    const ex = rawModuleData.executive;
+    const exd = ex?.data as ModuleResultMap["executive"] | undefined;
+    if (ex && exd && evidenceAdj.indicatedValue != null) {
+      next.executive = {
+        ...ex,
+        data: {
+          ...exd,
+          recommendedProtestValue: evidenceAdj.indicatedValue,
+          recommendedProtestValueBasis:
+            "Weighted from the county estimate and the evidence you uploaded, by how important each file is.",
+        },
+      };
+    }
+    return next;
   }, [rawModuleData, evidenceAdj]);
   const evidenceImpact = useMemo(
     () => ({
