@@ -393,7 +393,7 @@ function Overview() {
     <div className="dashboard-contrast grid grid-cols-1 min-w-0 gap-6">
       <PageHero
         icon={HeroWelcomeIcon}
-        title={`Welcome back${firstName ? `, ${firstName}` : ""}.`}
+        title={`${loaded && properties.length === 0 && protests.length === 0 ? "Welcome" : "Welcome back"}${firstName ? `, ${firstName}` : ""}.`}
         tone="emerald"
         subtitle={
           loaded && properties.length > 0
@@ -458,7 +458,7 @@ function Overview() {
         </div>
       )}
 
-      {showFeedbackBanner && (
+      {showFeedbackBanner && properties.length > 0 && (
         <div className="card-elev p-4 flex items-start gap-3">
           <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
           <div className="min-w-0 flex-1">

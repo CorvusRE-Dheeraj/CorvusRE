@@ -321,6 +321,9 @@ function Properties() {
   // reload/revisit never re-triggers this.
   useEffect(() => {
     if (!user || checkout !== "success") return;
+    toast.success(
+      "Payment received. We are activating your subscription. This takes a few seconds.",
+    );
     let cancelled = false;
     const delaysMs = [1500, 3000, 5000, 8000];
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -364,6 +367,9 @@ function Properties() {
     setSubscribing({ propertyId: p.id, tier });
     try {
       await startPropertyCheckout(p.id, tier, { newTab: true });
+      toast.info(
+        "Stripe checkout opened in a new tab. Finish paying there, then come back to this tab.",
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not start checkout. Please try again.",
@@ -377,7 +383,7 @@ function Properties() {
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
     const confirmed = await confirmDialog(
-      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property.`,
+      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property. This takes effect immediately, not at the end of the billing period.`,
     );
     if (!confirmed) return;
     setCancelingId(p.id);
@@ -1263,6 +1269,17 @@ function Properties() {
                       <span className="text-sm font-normal text-muted-foreground">/mo</span>
                     </div>
                     <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
+                    {(() => {
+                      const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
+                      const est = protestingProperty.estimatedSavings;
+                      if (est == null || est <= 0 || est >= yearly) return null;
+                      return (
+                        <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                          Heads up: this plan costs about {currency(yearly)} a year, but the
+                          estimated tax saving for this property is only {currency(est)} a year.
+                        </p>
+                      );
+                    })()}
                     <button
                       disabled={!!subscribing}
                       onClick={async () => {
