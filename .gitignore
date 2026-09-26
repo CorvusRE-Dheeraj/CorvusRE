@@ -1,12 +1,54 @@
-node_modules/
-dist/
-.DS_Store
-*.log
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+.output
+.vinxi
+.nitro
+.tanstack/
+
+# Local-only assembled previews (hub/ + built apps merged together, same layout the
+# deploy workflow produces) — see .github/workflows/deploy.yml.
+apps/*/site
+apps/*/site2
+
+# Environment and secrets
 .env
 .env.local
+*.local
+SECRETS.md
 
-# The Supabase CLI always writes link/deploy state under <cwd>/supabase/,
-# regardless of the actual folder name — deploying from supabase/pt/ or
-# supabase/dp/ creates a *nested* supabase/.temp/ inside them. Never
-# real function code, always safe to delete/ignore.
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+# Supabase CLI local state. The CLI always writes link/deploy state under <cwd>/supabase/,
+# regardless of the actual folder name — deploying from supabase/pt/ or supabase/dp/ creates
+# a nested supabase/.temp/ inside them. Never real function code, always safe to ignore.
 supabase/*/supabase/
+**/supabase/.temp/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# Editor directories and files
+**/.vscode/*
+!**/.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
