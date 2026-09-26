@@ -2,18 +2,7 @@ import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  eachDayOfInterval,
-  addMonths,
-  subMonths,
-  isSameMonth,
-  isToday,
-  format,
-} from "date-fns";
+import { startOfMonth, addMonths, subMonths, isToday, format } from "date-fns";
 import { ChevronLeft, ChevronRight, Download, ExternalLink, RefreshCw, Copy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { markPropertyPaid, listProperties } from "@/lib/properties";
@@ -21,8 +10,6 @@ import { listProtests } from "@/lib/protests";
 import {
   getCalendarEvents,
   googleCalendarAddUrl,
-  EVENT_TYPE_LABEL,
-  EVENT_TYPE_COLOR,
   type CalendarEvent,
   type CalendarEventType,
 } from "@/lib/tax-calendar";
@@ -41,7 +28,6 @@ import {
   type GoogleCalendarStatus,
 } from "@/lib/google-calendar-sync";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { CalendarDays as HeroCalendarIcon } from "lucide-react";
 
@@ -59,18 +45,6 @@ export const Route = createFileRoute("/dashboard/_layout/calendar")({
   }),
   component: CalendarPage,
 });
-
-const GROUP_ORDER: CalendarEventType[] = [
-  "protest_deadline",
-  "informal_review",
-  "hearing",
-  "arb_decision",
-  "tax_due",
-  "tax_penalty",
-  "refund_expected",
-  "bpp_rendition",
-  "reminder",
-];
 
 function daysUntil(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -376,7 +350,6 @@ function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
   const [syncOpen, setSyncOpen] = useState(!!(search.google_connected || search.google_error));
   const [hearingConflicts, setHearingConflicts] = useState<HearingConflictGroup[]>([]);
@@ -445,20 +418,21 @@ function CalendarPage() {
     return map;
   }, [events]);
 
-  const gridDays = useMemo(() => {
-    const start = startOfWeek(startOfMonth(month));
-    const end = endOfWeek(endOfMonth(month));
-    return eachDayOfInterval({ start, end });
-  }, [month]);
+  // Only days in this month that have something on them, in date order.
+  const monthDays = useMemo(() => {
+    const key = format(month, "yyyy-MM");
+    return [...eventsByDate.entries()]
+      .filter(([iso]) => iso.startsWith(key))
+      .sort(([a], [b]) => a.localeCompare(b));
+  }, [eventsByDate, month]);
+  // When this month is empty, the next month that has dates (so the page is never a dead end).
+  const nextMonthWithEvents = useMemo(() => {
+    const cur = format(month, "yyyy-MM");
+    const later = [...eventsByDate.keys()].filter((iso) => iso.slice(0, 7) > cur).sort();
+    return later.length > 0 ? startOfMonth(new Date(later[0] + "T00:00:00")) : null;
+  }, [eventsByDate, month]);
 
   const upcomingCount = events.filter((e) => !e.resolved && daysUntil(e.date) >= 0).length;
-
-  const visibleEvents = selectedDate ? (eventsByDate.get(selectedDate) ?? []) : events;
-
-  const grouped = GROUP_ORDER.map((type) => ({
-    type,
-    items: visibleEvents.filter((e) => e.type === type),
-  })).filter((g) => g.items.length > 0);
 
   if (loading) {
     return (
@@ -542,123 +516,78 @@ function CalendarPage() {
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
-          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-            <div key={d} className="py-1">
-              {d}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {gridDays.map((day) => {
-            const iso = format(day, "yyyy-MM-dd");
-            const dayEvents = eventsByDate.get(iso) ?? [];
-            const inMonth = isSameMonth(day, month);
-            const selected = selectedDate === iso;
-            // Property addresses shown directly on the grid now, not just on
-            // hover — up to 3 visible, the rest folded into a "+N more" line
-            // (still hoverable for the full list) so a day with a lot on it
-            // doesn't blow out every row's height.
-            const VISIBLE = 3;
-            const shown = dayEvents.slice(0, VISIBLE);
-            const overflow = dayEvents.length - shown.length;
-            const dayButton = (
+
+        {/* Only the dates that actually have something on them, each with its items. */}
+        {monthDays.length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            <p>Nothing scheduled in {format(month, "MMMM yyyy")}.</p>
+            {nextMonthWithEvents ? (
               <button
-                key={iso}
-                onClick={() => setSelectedDate(selected ? null : iso)}
-                className={`min-h-20 rounded-md p-1 text-left text-sm transition-colors ${
-                  selected
-                    ? "bg-accent/20 ring-1 ring-accent"
-                    : dayEvents.length > 0
-                      ? "hover:bg-secondary/60"
-                      : "hover:bg-secondary/30"
-                } ${!inMonth ? "text-muted-foreground/60" : ""}`}
+                type="button"
+                onClick={() => setMonth(nextMonthWithEvents)}
+                className="mt-2 text-accent hover:underline"
               >
-                <span
-                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${
-                    isToday(day) ? "bg-primary text-primary-foreground" : ""
-                  }`}
-                >
-                  {format(day, "d")}
-                </span>
-                {shown.length > 0 && (
-                  <div className="mt-1 grid gap-0.5">
-                    {shown.map((e) => (
-                      <div key={e.id} className="flex items-center gap-1 min-w-0">
-                        <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${EVENT_TYPE_COLOR[e.type]}`}
-                        />
-                        <span className="truncate text-[10px] leading-tight text-muted-foreground">
-                          {e.propertyLabel}
-                        </span>
-                      </div>
-                    ))}
-                    {overflow > 0 && (
-                      <span className="text-[10px] leading-tight text-muted-foreground pl-2.5">
-                        +{overflow} more
-                      </span>
-                    )}
-                  </div>
-                )}
+                Go to {format(nextMonthWithEvents, "MMMM yyyy")}, the next month with dates →
               </button>
-            );
-            // Hover still gives the full list with event type included (the
-            // grid itself only has room for the property address) — a
-            // supplement, not the only way to see what's there anymore.
-            if (dayEvents.length === 0) return dayButton;
-            return (
-              <Tooltip key={iso}>
-                <TooltipTrigger asChild>{dayButton}</TooltipTrigger>
-                <TooltipContent side="top" className="max-w-xs">
-                  <div className="grid gap-0.5">
-                    {dayEvents.map((e) => (
-                      <span key={e.id}>{e.title}</span>
+            ) : (
+              <p className="mt-1">
+                Add a property, protest, or tax bill and its dates will show up here.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-5">
+            {monthDays.map(([iso, dayEvents]) => {
+              const day = new Date(iso + "T00:00:00");
+              const days = daysUntil(iso);
+              return (
+                <section key={iso} aria-label={format(day, "EEEE, MMMM d")}>
+                  <div className="flex items-baseline gap-3 border-b border-border pb-1.5">
+                    <div
+                      className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-center leading-none ${
+                        isToday(day)
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      <span>
+                        <span className="block text-lg font-semibold">{format(day, "d")}</span>
+                        <span className="block text-[10px] uppercase tracking-wide opacity-80">
+                          {format(day, "EEE")}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold">{format(day, "EEEE, MMMM d")}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {days < 0
+                          ? `${-days} day${days === -1 ? "" : "s"} ago`
+                          : days === 0
+                            ? "Today"
+                            : days === 1
+                              ? "Tomorrow"
+                              : `In ${days} days`}
+                        {" · "}
+                        {dayEvents.length} item{dayEvents.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3">
+                    {dayEvents.map((event) => (
+                      <EventRow
+                        key={event.id}
+                        event={event}
+                        onMarkPaid={handleMarkPaid}
+                        markingPaid={markingPaidId === event.propertyId}
+                      />
                     ))}
                   </div>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </div>
-
-      {selectedDate && (
-        <div className="-mt-4 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {format(new Date(selectedDate + "T00:00:00"), "MMMM d, yyyy")}
-          </p>
-          <button
-            onClick={() => setSelectedDate(null)}
-            className="text-sm text-accent hover:underline"
-          >
-            Clear filter — show all
-          </button>
-        </div>
-      )}
-
-      {grouped.length === 0 ? (
-        <div className="card-elev p-6 text-center text-sm text-muted-foreground">
-          {selectedDate
-            ? "Nothing on this day."
-            : "No dates tracked yet. Add a property, protest, or tax bill and its dates will show up here."}
-        </div>
-      ) : (
-        grouped.map(({ type, items }) => (
-          <section key={type}>
-            <h2 className="font-semibold">{EVENT_TYPE_LABEL[type]}</h2>
-            <div className="mt-3 grid gap-3">
-              {items.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  onMarkPaid={handleMarkPaid}
-                  markingPaid={markingPaidId === event.propertyId}
-                />
-              ))}
-            </div>
-          </section>
-        ))
-      )}
     </div>
   );
 }
