@@ -19,6 +19,9 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+// Bump when the stored shape changes, so older readings are re-read once.
+const SCHEMA_VERSION = 2;
+
 const KINDS = [
   "independent_appraisal",
   "income_statement",
@@ -27,6 +30,8 @@ const KINDS = [
   "condition_photos",
   "lease_or_rent_roll",
   "market_report",
+  "zoning_or_land_use",
+  "site_survey_environmental",
   "other_relevant",
   "not_valuation_evidence",
 ] as const;
@@ -36,7 +41,7 @@ const SYSTEM = `You read ONE document a Texas commercial property owner uploaded
 
 Return ONLY a JSON object with this exact shape:
 {
-  "kind": "<one of: independent_appraisal | income_statement | repair_estimate | comparable_sales | condition_photos | lease_or_rent_roll | market_report | other_relevant | not_valuation_evidence>",
+  "kind": "<one of: independent_appraisal | income_statement | repair_estimate | comparable_sales | condition_photos | lease_or_rent_roll | market_report | zoning_or_land_use | site_survey_environmental | other_relevant | not_valuation_evidence>",
   "valuationDate": <"YYYY-MM-DD" | "YYYY" | null>,
   "indicatedValue": <number|null>,
   "costToCure": <number|null>,
@@ -46,7 +51,17 @@ Return ONLY a JSON object with this exact shape:
   "sales": [ { "address": <string|null>, "price": <number>, "date": <string|null>, "sqft": <number|null> } ],
   "conditionIssues": [<"short plain description of a physical defect or deferred-maintenance problem that is visible or stated">],
   "confidence": "<high | medium | low>",
-  "summary": "<one plain sentence saying what this document is and what it shows about value>"
+  "summary": "<one plain sentence saying what this document is and what it shows about value>",
+  "assessment": {
+    "relevance": <integer 0-100>,
+    "quality": <integer 0-100>,
+    "independence": "<third_party_licensed | third_party | owner_prepared | unknown>",
+    "currentness": "<current | recent | stale | undated>",
+    "supports": "<protest | county_value | neutral>",
+    "modules": [<any of: "comps" | "site" | "improvement" | "income" | "zoning">],
+    "importance": "<critical | strong | moderate | minor | negligible>",
+    "rationale": "<one plain sentence explaining the importance level>"
+  }
 }
 
 Rules:
@@ -56,6 +71,14 @@ Rules:
 - "sales": comparable properties that SOLD, each with its real sale price. [] if none.
 - "confidence": high = the number is clearly printed, for this property, current; medium = plausible but partly unclear; low = illegible, stale, for another property, or you are unsure.
 - If the file is not evidence about value (a form, a receipt, an unrelated photo), use kind "not_valuation_evidence" and leave every number null.
+- "assessment" judges how much this document should matter to a Texas commercial property tax protest for THIS property:
+  - relevance: is it clearly about this property and this tax year? 0 = unrelated, 100 = squarely about this property.
+  - quality: how trustworthy and complete? A signed report by a licensed appraiser, a contractor bid, or a certified statement scores high; an unsigned, undated, partial, blurry or self-written note scores low.
+  - independence: third_party_licensed (licensed professional), third_party (an outside company or agency), owner_prepared (written by the owner or their staff), unknown.
+  - currentness: current = about the current tax year; recent = within about 2 years; stale = older; undated = no date.
+  - supports: protest if it indicates the county value is too high or the property is worth less; county_value if it supports the county value; neutral otherwise.
+  - modules: which analyses it informs: comps (sales/market values), site (flood, access, land, environmental), improvement (building condition, age, repairs), income (rent, expenses, NOI), zoning (zoning, permitted use, restrictions).
+  - importance: critical = an independent conclusion of value for this property; strong = hard numbers that directly move the value (a contractor bid, an income statement with NOI, several closed sales); moderate = useful support (rent roll, condition photos with visible defects); minor = weak or indirect; negligible = barely relevant.
 - Plain prose, no markdown.`;
 
 const num = (v: unknown, lo = 0, hi = 1e12): number | null => {
@@ -140,7 +163,8 @@ Deno.serve(async (req: Request) => {
       }
     }
     // Already read: serve the stored result. Same file => same answer, every time.
-    if (doc.value_signal && !force) {
+    const stored = doc.value_signal as { schemaVersion?: number } | null;
+    if (stored && stored.schemaVersion === SCHEMA_VERSION && !force) {
       return new Response(JSON.stringify({ documentId, signal: doc.value_signal, cached: true }), {
         status: 200,
         headers: corsHeaders,
@@ -282,7 +306,30 @@ Deno.serve(async (req: Request) => {
       .filter((x): x is string => !!x)
       .slice(0, 8);
 
+    // ---- The model's judgement of how much this document should matter ---------------------
+    const a = (parsed.assessment ?? {}) as Record<string, unknown>;
+    const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+      (allowed as readonly string[]).includes(v as string) ? (v as T) : fallback;
+    const int = (v: unknown, fallback: number) => {
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : fallback;
+    };
+    const MODS = ["comps", "site", "improvement", "income", "zoning"] as const;
+    const assessment = {
+      relevance: int(a.relevance, 50),
+      quality: int(a.quality, 50),
+      independence: pick(a.independence, ["third_party_licensed", "third_party", "owner_prepared", "unknown"] as const, "unknown"),
+      currentness: pick(a.currentness, ["current", "recent", "stale", "undated"] as const, "undated"),
+      supports: pick(a.supports, ["protest", "county_value", "neutral"] as const, "neutral"),
+      modules: (Array.isArray(a.modules) ? a.modules : [])
+        .filter((m): m is (typeof MODS)[number] => (MODS as readonly string[]).includes(m as string))
+        .slice(0, 5),
+      importance: pick(a.importance, ["critical", "strong", "moderate", "minor", "negligible"] as const, "minor"),
+      rationale: str(a.rationale, 240) ?? "",
+    };
+
     const signal = {
+      schemaVersion: SCHEMA_VERSION,
       kind,
       valuationDate: str(parsed.valuationDate, 12),
       indicatedValue,
@@ -293,6 +340,7 @@ Deno.serve(async (req: Request) => {
       sales,
       conditionIssues,
       confidence,
+      assessment,
       summary: str(parsed.summary, 300) ?? "Evidence document.",
       notes,
       readAt: new Date().toISOString(),

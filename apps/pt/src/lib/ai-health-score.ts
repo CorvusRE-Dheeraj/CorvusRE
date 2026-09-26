@@ -21,7 +21,7 @@ export type HealthScoreInput = {
   valueHistory?: { year: number; total: number }[];
   evidenceFileNames?: string[];
   // Deterministic reading of what the uploaded evidence says about value (evidence-value.ts).
-  evidence?: { valueGapPct: number | null; strength: number } | null;
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
   // The % gap between the CAD value and the comps' (adjusted) indicated value,
   // straight from computeComparableStats — fed to the deterministic score
   // formula (see computeHealthScore). Null / absent when there are no comps.

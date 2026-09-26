@@ -30,7 +30,7 @@ export type HealthScoreSignals = {
   // What that evidence says about value (see evidence-value.ts). valueGapPct > 0 means the
   // evidence says the county value is too high; < 0 means it supports the county value.
   // strength is 0..1 (how much confident, usable evidence there is). Absent = none read yet.
-  evidence?: { valueGapPct: number | null; strength: number } | null;
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
 };
 
 export type HealthScoreComputed = {
@@ -83,10 +83,14 @@ export function computeHealthScore(s: HealthScoreSignals): HealthScoreComputed {
   // the score, evidence that supports the county's value lowers it, and more confident evidence
   // moves it further. Deterministic: it only changes when the stored evidence readings change.
   const ev = s.evidence;
+  if (ev && ev.otherNet) {
+    // Condition / site / zoning evidence: nudges the score by how important it is.
+    score += ev.otherNet * 8;
+  }
   if (ev && ev.strength > 0 && ev.valueGapPct != null) {
     const pts =
       ev.valueGapPct > 0 ? Math.min(22, ev.valueGapPct * 1.6) : Math.max(-18, ev.valueGapPct * 1.2);
-    score += pts * (0.4 + 0.6 * ev.strength);
+    score += pts * (0.35 + 0.65 * ev.strength);
   }
 
   score = clamp(15, 90, Math.round(score));

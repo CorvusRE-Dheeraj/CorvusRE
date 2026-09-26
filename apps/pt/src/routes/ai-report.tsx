@@ -133,6 +133,7 @@ import {
   applyEvidenceToEstimate,
   baseIndicatedValue,
   computeEvidenceAdjustment,
+  VALUE_SIGNAL_SCHEMA_VERSION,
   type ValueSignal,
 } from "@/lib/evidence-value";
 import {
@@ -349,7 +350,7 @@ function Report() {
   // only when the user clicks "Unlock preview" on that specific module, via
   // loadModule() below — rather than all up front, so tokens are only spent on
   // modules the user actually opens.
-  const [moduleData, setModuleData] = useState<Record<string, ModuleAsyncState>>({});
+  const [rawModuleData, setModuleData] = useState<Record<string, ModuleAsyncState>>({});
   // Separate from moduleData since it's not an AI call and has its own real/empty
   // result shape (CompsResult, not the free-text ModuleResultMap) — only fetched
   // when the Comps module (module 3) is opened.
@@ -755,7 +756,11 @@ function Report() {
 
   useEffect(() => {
     if (!evidenceDocsLoaded) return;
-    const pending = evidenceDocs.filter((d) => !d.valueSignal && !signalAttempts.current.has(d.id));
+    const pending = evidenceDocs.filter(
+      (d) =>
+        d.valueSignal?.schemaVersion !== VALUE_SIGNAL_SCHEMA_VERSION &&
+        !signalAttempts.current.has(d.id),
+    );
     if (pending.length === 0) {
       setValueSignalsSettled(true);
       return;
@@ -1029,7 +1034,7 @@ function Report() {
     status: new Map(),
   });
   useEffect(() => {
-    const items = (moduleData.evidence?.data as ModuleResultMap["evidence"] | undefined)?.items;
+    const items = (rawModuleData.evidence?.data as ModuleResultMap["evidence"] | undefined)?.items;
     if (!items || !resolvedProperty) return;
     if (evidenceStatusSeenRef.current.propertyId !== resolvedProperty.id) {
       evidenceStatusSeenRef.current = { propertyId: resolvedProperty.id, status: new Map() };
@@ -1050,7 +1055,7 @@ function Report() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleData.evidence?.data, resolvedProperty?.id]);
+  }, [rawModuleData.evidence?.data, resolvedProperty?.id]);
 
   // Save owner-confirmed income figures. Optimistic; the effect above then
   // re-runs Module 7 with the fresh numbers. The form always sends the
@@ -1773,7 +1778,9 @@ function Report() {
         );
       }
       for (const c of evidenceAdj.contributions) {
-        facts.push("Owner-uploaded evidence (read by AI): " + c.label + " — " + c.detail);
+        facts.push(
+          `Owner-uploaded evidence (read by AI, ${c.importance} importance, ${c.direction}): ${c.label} — ${c.detail}`,
+        );
       }
       if (facts.length > 0) input.authoritativeFacts = facts;
     }
@@ -1818,7 +1825,11 @@ function Report() {
         );
         input.compsGapPct = hStats.valuationGapPct;
         if (evidenceAdj.applied) {
-          input.evidence = { valueGapPct: evidenceAdj.valueGapPct, strength: evidenceAdj.strength };
+          input.evidence = {
+            valueGapPct: evidenceAdj.valueGapPct,
+            strength: evidenceAdj.strength,
+            otherNet: evidenceAdj.otherNet,
+          };
         }
       }
       input.evidenceFileNames = evidenceDocs.map((d) => d.fileName);
@@ -2111,7 +2122,7 @@ function Report() {
   const AUTO_RETRY_MAX = 3;
   const AUTO_RETRY_DELAY_MS = 6000;
   useEffect(() => {
-    for (const [id, entry] of Object.entries(moduleData)) {
+    for (const [id, entry] of Object.entries(rawModuleData)) {
       const tracked = autoRetryRef.current[id];
       // A retry attempt itself sets {data: null, loading: true, error: null}
       // — indistinguishable from "never failed" by entry.error alone, which
@@ -2146,7 +2157,7 @@ function Report() {
     // fetch guard and would otherwise re-fire this effect on every load it
     // itself triggers).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleData]);
+  }, [rawModuleData]);
   // Cleanup only, run once — cancels any still-pending auto-retry timers if
   // the user navigates away mid-retry rather than letting them fire (and
   // call setModuleData) against an unmounted page. Deliberately reads
@@ -2398,11 +2409,11 @@ function Report() {
   // What the owner's uploaded evidence says about value (each file is read once by
   // extract-evidence-value and stored). Everything below is deterministic from those stored
   // readings, so the score and the savings only change when evidence is added or removed.
-  const evidenceSignals = useMemo(
+  const evidenceItems = useMemo(
     () =>
       evidenceDocs
-        .map((d) => d.valueSignal)
-        .filter((v): v is ValueSignal => !!v && v.kind !== "not_valuation_evidence"),
+        .filter((d) => !!d.valueSignal && d.valueSignal.kind !== "not_valuation_evidence")
+        .map((d) => ({ docId: d.id, fileName: d.fileName, signal: d.valueSignal as ValueSignal })),
     [evidenceDocs],
   );
   const evidenceAdj = useMemo(
@@ -2412,9 +2423,9 @@ function Report() {
         baseIndicated: baseIndicatedValue(rawSavingsEstimate, state.totalValue ?? 0),
         baseBasis: rawSavingsEstimate?.basis ?? null,
         subjectSqft: baseData?.snapshot.cad?.buildingSqft ?? null,
-        signals: evidenceSignals,
+        items: evidenceItems,
       }),
-    [evidenceSignals, rawSavingsEstimate, state.totalValue, baseData],
+    [evidenceItems, rawSavingsEstimate, state.totalValue, baseData],
   );
   const savingsEstimate = useMemo(() => {
     if (!state.totalValue) return rawSavingsEstimate;
@@ -2423,6 +2434,30 @@ function Report() {
       Math.round(getEffectiveTaxRate(state.cad) * 1000) / 10;
     return applyEvidenceToEstimate(rawSavingsEstimate, state.totalValue, ratePct, evidenceAdj);
   }, [rawSavingsEstimate, state.totalValue, state.cad, evidenceAdj]);
+  // The per-analysis scores (Comparable Sales, Site, Improvement, Income, Zoning) come from the
+  // Module 2 strategy ranking. Layer the evidence's importance-weighted effect on top at read
+  // time, so a critical file raises them a lot, a minor one a little, and evidence that backs the
+  // county lowers them. Nothing is written back to the cached results.
+  const moduleData = useMemo(() => {
+    const st = rawModuleData.strategy;
+    const d = st?.data as ModuleResultMap["strategy"] | undefined;
+    if (!st || !d || !evidenceAdj.applied) return rawModuleData;
+    const uplift = evidenceAdj.moduleUplift as Record<string, number>;
+    const strategies = d.strategies
+      .map((s, i) => {
+        const pts = s.relatedModules.reduce(
+          (best, m) => (Math.abs(uplift[m] ?? 0) > Math.abs(best) ? (uplift[m] ?? 0) : best),
+          0,
+        );
+        return {
+          s: pts ? { ...s, strengthScore: Math.max(5, Math.min(98, s.strengthScore + pts)) } : s,
+          i,
+        };
+      })
+      .sort((a, b) => b.s.strengthScore - a.s.strengthScore || a.i - b.i)
+      .map((x) => x.s);
+    return { ...rawModuleData, strategy: { ...st, data: { ...d, strategies } } };
+  }, [rawModuleData, evidenceAdj]);
   const evidenceImpact = useMemo(
     () => ({
       adjustment: evidenceAdj,
