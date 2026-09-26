@@ -36,6 +36,8 @@ export type ModuleAnalysisInput = {
   // "health" only — the comps valuation gap % (from computeComparableStats),
   // fed to the deterministic health-score formula.
   compsGapPct?: number | null;
+  // What the owner's uploaded evidence says about value (evidence-value.ts) — moves the Module 1 score.
+  evidence?: { valueGapPct: number | null; strength: number } | null;
   // Module 8 (evidence) only — what the app can already verify before asking
   // the user for anything. evidenceOnFile: the protest-evidence documents
   // actually uploaded (+ their analyze-document read). authoritativeFacts:

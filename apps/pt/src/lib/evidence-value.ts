@@ -95,6 +95,7 @@ export function computeEvidenceAdjustment(args: {
   const contributions: EvidenceContribution[] = [];
   const ignored: string[] = [];
 
+  const repairCandidates: { cost: number; applied: number; confidence: string }[] = [];
   for (const s of args.signals) {
     if (s.kind === "not_valuation_evidence") continue;
     const cw = CONF_WEIGHT[s.confidence] ?? CONF_WEIGHT.low;
@@ -154,18 +155,35 @@ export function computeEvidenceAdjustment(args: {
 
     if (s.costToCure != null && s.costToCure > 0) {
       const applied = Math.min(s.costToCure, V * 0.2) * cw;
-      repairs += applied;
-      contributions.push({
-        label: "Repair estimate",
-        detail: `${money(s.costToCure)} to repair (${s.confidence} confidence) reduces value by ${money(applied)}.`,
-        value: null,
-      });
+      repairCandidates.push({ cost: s.costToCure, applied, confidence: s.confidence });
     }
 
     for (const n of s.notes ?? []) ignored.push(n);
   }
 
-  if (candidates.length === 0 && repairs === 0) return { ...NONE, ignored };
+  // An independent appraisal already values the property in its current condition, so a repair
+  // estimate is not deducted again on top of it (that would count the same defects twice).
+  const hasAppraisal = args.signals.some(
+    (s) => s.kind === "independent_appraisal" && s.indicatedValue != null,
+  );
+  for (const r of repairCandidates) {
+    if (hasAppraisal) {
+      contributions.push({
+        label: "Repair estimate",
+        detail: `${money(r.cost)} noted. The appraisal already reflects the property's condition, so it is not deducted again.`,
+        value: null,
+      });
+    } else {
+      repairs += r.applied;
+      contributions.push({
+        label: "Repair estimate",
+        detail: `${money(r.cost)} to repair (${r.confidence} confidence) reduces value by ${money(r.applied)}.`,
+        value: null,
+      });
+    }
+  }
+
+  if (candidates.length === 0 && repairs === 0) return { ...NONE, contributions, ignored };
 
   const evidenceWeight = candidates.reduce((a, c) => a + c.weight, 0);
   const evidenceAvg =

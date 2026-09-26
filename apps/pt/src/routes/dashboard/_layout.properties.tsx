@@ -1729,9 +1729,11 @@ function AiScoreBadge({ score }: { score: PropertyAiScore | undefined }) {
   // inline bold/code parser, used directly (no block wrapper) to keep this
   // as one line, matching the label it's appended to.
   return (
-    <p className="mt-1 text-sm text-accent">
-      Quick AI score: {score.score}/100 (from county values only; the AI Report has the full
-      analysis) — {renderMarkdownInline(score.summary, "ai-score-summary")}
+    <p
+      className="mt-1 text-sm text-accent"
+      title="Recalculated in the AI Report whenever you upload or remove evidence."
+    >
+      AI score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
     </p>
   );
 }

@@ -133,3 +133,25 @@ describe("evidence-value", () => {
     expect(lo.indicatedValue).toBe(400_000);
   });
 });
+
+describe("evidence-value — repairs alongside an appraisal", () => {
+  it("does not deduct repairs again when an appraisal is present", () => {
+    const withBoth = computeEvidenceAdjustment({
+      cadValue: V,
+      baseIndicated: null,
+      baseBasis: null,
+      signals: [
+        sig({ indicatedValue: 700_000 }),
+        sig({ kind: "repair_estimate", costToCure: 50_000 }),
+      ],
+    });
+    const appraisalOnly = computeEvidenceAdjustment({
+      cadValue: V,
+      baseIndicated: null,
+      baseBasis: null,
+      signals: [sig({ indicatedValue: 700_000 })],
+    });
+    expect(withBoth.indicatedValue).toBe(appraisalOnly.indicatedValue);
+    expect(withBoth.contributions.some((c) => c.label === "Repair estimate")).toBe(true);
+  });
+});

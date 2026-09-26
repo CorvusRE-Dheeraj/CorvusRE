@@ -1,3 +1,4 @@
+import { syncHealthScore } from "@/lib/property-scores";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -124,14 +125,23 @@ import {
   classifyPropertyCategory,
   getAssessmentRatioInfo,
   applyValueTrendAdjustment,
+  getEffectiveTaxRate,
 } from "@/lib/texas-tax-rates";
 import { CompsMap, useLeaflet } from "@/components/CompsMap";
+import { EvidenceImpactCard, EvidenceImpactContext } from "@/components/EvidenceImpactCard";
+import {
+  applyEvidenceToEstimate,
+  baseIndicatedValue,
+  computeEvidenceAdjustment,
+  type ValueSignal,
+} from "@/lib/evidence-value";
 import {
   findExistingProperty,
   addProperty,
   listProperties,
   buildAiReportIntakePatch,
   updatePropertyIdentity,
+  updatePropertySavings,
   type PropertyRecord,
 } from "@/lib/properties";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
@@ -151,6 +161,8 @@ import {
   EVIDENCE_DOCUMENT_TYPE,
   PROTEST_EVIDENCE_DOCUMENT_TYPE,
   type DocumentRecord,
+  extractEvidenceValue,
+  notifyDocumentsChanged,
 } from "@/lib/documents";
 import { tagUploadedDocument, setDocumentModules, MODULE_TAG_LABEL } from "@/lib/document-modules";
 import {
@@ -698,6 +710,11 @@ function Report() {
   // hash), so they must not fire until this list has settled, or a reload
   // races it and a cached result misses just because the docs weren't in yet.
   const [evidenceDocsLoaded, setEvidenceDocsLoaded] = useState(false);
+  // True once every evidence file has been read for what it says about value (or we gave up on a
+  // file), so the score and savings are computed from the full picture once, not repeatedly as
+  // each file finishes.
+  const [valueSignalsSettled, setValueSignalsSettled] = useState(false);
+  const signalAttempts = useRef<Set<string>>(new Set());
   // Every non-deleted document for this property — used by Module 10's Full
   // Case Report (case-report.ts) for the Key Documents section. evidenceDocs
   // above is the evidence-only subset the cache hash folds in.
@@ -735,6 +752,33 @@ function Report() {
       .finally(() => setEvidenceDocsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, resolvedProperty, docsVersion]);
+
+  useEffect(() => {
+    if (!evidenceDocsLoaded) return;
+    const pending = evidenceDocs.filter((d) => !d.valueSignal && !signalAttempts.current.has(d.id));
+    if (pending.length === 0) {
+      setValueSignalsSettled(true);
+      return;
+    }
+    setValueSignalsSettled(false);
+    let cancelled = false;
+    void (async () => {
+      for (const d of pending) {
+        signalAttempts.current.add(d.id);
+        try {
+          await extractEvidenceValue(d.id);
+        } catch (err) {
+          console.error("Could not read this evidence file for value:", err);
+        }
+        if (cancelled) return;
+      }
+      // Pull the stored readings back in; the effect re-runs and settles.
+      notifyDocumentsChanged();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceDocs, evidenceDocsLoaded]);
 
   // Address → AI-fetched property base data. Loads the stored copy so the
   // "Property Base Data" strip renders immediately; auto-fetches once per
@@ -1728,6 +1772,9 @@ function Report() {
           `Comparable sales (Module 3): ${cs.count} comps, median $${cs.median.toLocaleString()} (range $${cs.min.toLocaleString()}–$${cs.max.toLocaleString()}).`,
         );
       }
+      for (const c of evidenceAdj.contributions) {
+        facts.push("Owner-uploaded evidence (read by AI): " + c.label + " — " + c.detail);
+      }
       if (facts.length > 0) input.authoritativeFacts = facts;
     }
 
@@ -1770,6 +1817,9 @@ function Report() {
           state.totalValue,
         );
         input.compsGapPct = hStats.valuationGapPct;
+        if (evidenceAdj.applied) {
+          input.evidence = { valueGapPct: evidenceAdj.valueGapPct, strength: evidenceAdj.strength };
+        }
       }
       input.evidenceFileNames = evidenceDocs.map((d) => d.fileName);
     }
@@ -2316,7 +2366,7 @@ function Report() {
   // depending on which page you were on. Calling the one real function here
   // instead means this page and the intake flow always agree for the same
   // property, and the number never depends on an AI call.
-  const [savingsEstimate, setSavingsEstimate] =
+  const [rawSavingsEstimate, setSavingsEstimate] =
     useState<Awaited<ReturnType<typeof estimateSavings>>>(null);
   useEffect(() => {
     if (!state.totalValue) return;
@@ -2344,6 +2394,74 @@ function Report() {
     state.taxYear,
     state.valueHistory,
   ]);
+
+  // What the owner's uploaded evidence says about value (each file is read once by
+  // extract-evidence-value and stored). Everything below is deterministic from those stored
+  // readings, so the score and the savings only change when evidence is added or removed.
+  const evidenceSignals = useMemo(
+    () =>
+      evidenceDocs
+        .map((d) => d.valueSignal)
+        .filter((v): v is ValueSignal => !!v && v.kind !== "not_valuation_evidence"),
+    [evidenceDocs],
+  );
+  const evidenceAdj = useMemo(
+    () =>
+      computeEvidenceAdjustment({
+        cadValue: state.totalValue ?? null,
+        baseIndicated: baseIndicatedValue(rawSavingsEstimate, state.totalValue ?? 0),
+        baseBasis: rawSavingsEstimate?.basis ?? null,
+        subjectSqft: baseData?.snapshot.cad?.buildingSqft ?? null,
+        signals: evidenceSignals,
+      }),
+    [evidenceSignals, rawSavingsEstimate, state.totalValue, baseData],
+  );
+  const savingsEstimate = useMemo(() => {
+    if (!state.totalValue) return rawSavingsEstimate;
+    const ratePct =
+      rawSavingsEstimate?.effectiveTaxRatePct ??
+      Math.round(getEffectiveTaxRate(state.cad) * 1000) / 10;
+    return applyEvidenceToEstimate(rawSavingsEstimate, state.totalValue, ratePct, evidenceAdj);
+  }, [rawSavingsEstimate, state.totalValue, state.cad, evidenceAdj]);
+  const evidenceImpact = useMemo(
+    () => ({
+      adjustment: evidenceAdj,
+      beforeAmount: rawSavingsEstimate?.amount ?? 0,
+      afterAmount: savingsEstimate?.amount ?? 0,
+      reading: !valueSignalsSettled,
+      evidenceCount: evidenceDocs.length,
+    }),
+    [evidenceAdj, rawSavingsEstimate, savingsEstimate, valueSignalsSettled, evidenceDocs.length],
+  );
+
+  // Keep the saved estimate on the property (shown on the Properties page and dashboard) in step
+  // with the evidence-adjusted figure, so the amount the owner sees saved everywhere moves when
+  // they upload or remove evidence.
+  const healthResult = moduleData.health?.data as HealthScoreResult | undefined;
+  const lastSyncedScore = useRef<number | null>(null);
+  useEffect(() => {
+    if (!resolvedProperty || !valueSignalsSettled || !healthResult) return;
+    if (lastSyncedScore.current === healthResult.score) return;
+    lastSyncedScore.current = healthResult.score;
+    syncHealthScore(resolvedProperty.id, {
+      score: healthResult.score,
+      summary: healthResult.executiveConclusion,
+      factors: healthResult.factorsIncreasing,
+    }).catch((err) => console.error("Could not save the updated score:", err));
+  }, [resolvedProperty, valueSignalsSettled, healthResult]);
+
+  const lastSavedSavings = useRef<number | null>(null);
+  useEffect(() => {
+    if (!resolvedProperty || !valueSignalsSettled || !savingsEstimate) return;
+    const amount = savingsEstimate.amount;
+    if (lastSavedSavings.current === amount) return;
+    lastSavedSavings.current = amount;
+    if (resolvedProperty.estimatedSavings === amount) return;
+    updatePropertySavings(resolvedProperty.id, {
+      estimatedSavings: amount,
+      savingsBasis: savingsEstimate.basis,
+    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
+  }, [resolvedProperty, valueSignalsSettled, savingsEstimate]);
 
   const estimated = useMemo(() => {
     // `hasEstimate: false` means "no assessed value to estimate from at all"
@@ -2550,6 +2668,7 @@ function Report() {
       !auxDataLoaded ||
       !compsMap.attempted ||
       compsMap.loading ||
+      !valueSignalsSettled ||
       (!!user && !!resolvedProperty && !baseDataChecked)
     )
       return;
@@ -2582,6 +2701,7 @@ function Report() {
     compsMap.attempted,
     compsMap.loading,
     baseDataChecked,
+    valueSignalsSettled,
   ]);
 
   // comps/site/improvement/zoning wait for Module 2 (Strategy) to resolve —
@@ -2720,47 +2840,48 @@ function Report() {
   const openModel = MODULES.find((m) => m.id === openId) ?? null;
 
   return (
-    <div className="container-page py-10">
-      {/* Summary */}
-      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="card-elev p-6">
-          <div className="flex items-center gap-2">
-            <span className="badge-soft">Property Summary</span>
-            <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
+    <EvidenceImpactContext.Provider value={evidenceImpact}>
+      <div className="container-page py-10">
+        {/* Summary */}
+        <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="card-elev p-6">
+            <div className="flex items-center gap-2">
+              <span className="badge-soft">Property Summary</span>
+              <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
+            </div>
+            <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
+            <p className="text-muted-foreground text-sm">{state.cad}</p>
+            <dl className="mt-5 grid gap-3 sm:grid-cols-3 text-sm">
+              <Field label="Owner" value={state.ownerName} />
+              <Field label="Account #" value={state.accountNumber} />
+              <Field label="Type" value={state.propertyType} />
+              <Field label="Land" value={currency(state.landValue)} />
+              <Field label="Improvement" value={currency(state.improvementValue)} />
+              <Field label="Total" value={currency(state.totalValue)} bold />
+            </dl>
+            <ValueHistorySection history={state.valueHistory ?? []} />
+            {user && (
+              <button
+                type="button"
+                onClick={handleGeneratePropertySummary}
+                disabled={generatingPropertySummary}
+                className="btn-outline mt-4 text-sm disabled:opacity-60"
+              >
+                {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
+              </button>
+            )}
           </div>
-          <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
-          <p className="text-muted-foreground text-sm">{state.cad}</p>
-          <dl className="mt-5 grid gap-3 sm:grid-cols-3 text-sm">
-            <Field label="Owner" value={state.ownerName} />
-            <Field label="Account #" value={state.accountNumber} />
-            <Field label="Type" value={state.propertyType} />
-            <Field label="Land" value={currency(state.landValue)} />
-            <Field label="Improvement" value={currency(state.improvementValue)} />
-            <Field label="Total" value={currency(state.totalValue)} bold />
-          </dl>
-          <ValueHistorySection history={state.valueHistory ?? []} />
-          {user && (
-            <button
-              type="button"
-              onClick={handleGeneratePropertySummary}
-              disabled={generatingPropertySummary}
-              className="btn-outline mt-4 text-sm disabled:opacity-60"
-            >
-              {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
-            </button>
-          )}
-        </div>
-        <div className="card-elev overflow-hidden">
-          <iframe
-            title="Property Map"
-            className="w-full h-64 lg:h-full min-h-[240px]"
-            src={`https://www.google.com/maps?q=${encodeURIComponent(state.address ?? "Texas")}&output=embed`}
-            loading="lazy"
-          />
-        </div>
-      </section>
+          <div className="card-elev overflow-hidden">
+            <iframe
+              title="Property Map"
+              className="w-full h-64 lg:h-full min-h-[240px]"
+              src={`https://www.google.com/maps?q=${encodeURIComponent(state.address ?? "Texas")}&output=embed`}
+              loading="lazy"
+            />
+          </div>
+        </section>
 
-      {/* Analysis banner — the savings figure is the whole point of this page for
+        {/* Analysis banner — the savings figure is the whole point of this page for
           most visitors, so it gets a hero-scale treatment (was the same text-lg
           size as the "AI analysis completed" label above it, easy to skim past)
           rather than reading as one more line of body copy. Previously had
@@ -2768,607 +2889,612 @@ function Report() {
           it read as cartoonish for what's otherwise a professional tax-filing
           tool — the gradient/glow/sheen surface below carries the "this is a
           good moment" read on its own, without particle animation. */}
-      <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
-        {/* Richer than a flat bg-primary fill — a diagonal gradient with a
+        <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
+          {/* Richer than a flat bg-primary fill — a diagonal gradient with a
             faint accent-green undertone, so the banner reads as an
             intentionally celebratory surface even before any motion kicks in. */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(135deg, var(--primary) 0%, color-mix(in oklch, var(--primary) 82%, var(--accent) 18%) 50%, var(--primary) 100%)",
-          }}
-        />
-        {/* Two ambient glow blobs — a flat solid-navy card read as plain/
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--primary) 0%, color-mix(in oklch, var(--primary) 82%, var(--accent) 18%) 50%, var(--primary) 100%)",
+            }}
+          />
+          {/* Two ambient glow blobs — a flat solid-navy card read as plain/
             static for what's meant to be the page's one exciting moment.
             Emerald top-left near the number, warm gold bottom-right (offset
             pulse timing via the CSS itself), both z-0'd behind the real
             content below. */}
-        {!analyzing && (
-          <>
-            <div
-              className="savings-glow pointer-events-none absolute -left-24 -top-24 z-0 h-96 w-96 rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, color-mix(in oklch, var(--accent) 55%, transparent) 0%, transparent 70%)",
-              }}
-            />
-            <div
-              className="savings-glow-warm pointer-events-none absolute -bottom-24 -right-24 z-0 h-96 w-96 rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, color-mix(in oklch, var(--warning) 50%, transparent) 0%, transparent 70%)",
-              }}
-            />
-            {/* Slow diagonal light sweep across the whole banner surface —
+          {!analyzing && (
+            <>
+              <div
+                className="savings-glow pointer-events-none absolute -left-24 -top-24 z-0 h-96 w-96 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle, color-mix(in oklch, var(--accent) 55%, transparent) 0%, transparent 70%)",
+                }}
+              />
+              <div
+                className="savings-glow-warm pointer-events-none absolute -bottom-24 -right-24 z-0 h-96 w-96 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle, color-mix(in oklch, var(--warning) 50%, transparent) 0%, transparent 70%)",
+                }}
+              />
+              {/* Slow diagonal light sweep across the whole banner surface —
                 see the savings-sheen-sweep keyframe in styles.css. */}
-            <div className="savings-sheen pointer-events-none absolute -inset-y-12 left-0 z-0 w-1/3 bg-white/10" />
-          </>
-        )}
-        <div className="relative z-10 flex flex-wrap items-start justify-between gap-6 p-5 sm:p-8">
-          <div className="min-w-0">
-            <p className="text-sm text-primary-foreground/80">
-              {analyzing ? "AI is analyzing your property..." : "AI analysis completed."}
-            </p>
-            {analyzing ? (
-              <p className="mt-1 font-serif text-lg sm:text-xl">
-                Preparing your property valuation review...
+              <div className="savings-sheen pointer-events-none absolute -inset-y-12 left-0 z-0 w-1/3 bg-white/10" />
+            </>
+          )}
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-6 p-5 sm:p-8">
+            <div className="min-w-0">
+              <p className="text-sm text-primary-foreground/80">
+                {analyzing ? "AI is analyzing your property..." : "AI analysis completed."}
               </p>
-            ) : estimated.savings >= 1 ? (
-              <>
-                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary-foreground/70">
-                  {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
-                    ? buildCaseOutcome(resolvedProperty, existingProtest)
-                    : null
-                  )?.taxSavings != null
-                    ? "Actual tax savings from your protest"
-                    : "Estimated tax savings this year"}
+              {analyzing ? (
+                <p className="mt-1 font-serif text-lg sm:text-xl">
+                  Preparing your property valuation review...
                 </p>
-                {/* Sized off the actual formatted string's length, not just the
+              ) : estimated.savings >= 1 ? (
+                <>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary-foreground/70">
+                    {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                      ? buildCaseOutcome(resolvedProperty, existingProtest)
+                      : null
+                    )?.taxSavings != null
+                      ? "Actual tax savings from your protest"
+                      : "Estimated tax savings this year"}
+                  </p>
+                  {/* Sized off the actual formatted string's length, not just the
                     viewport — a fixed text-6xl/7xl/8xl scale (confirmed live)
                     clips off-card on a narrow phone once a large property's
                     savings run to 6+ digits ("$135,675" and up), since a wider
                     viewport can't be assumed to always mean a shorter number.
                     Common case (the vast majority of real properties) still
                     gets the full hero size below. */}
-                <p
-                  className={`mt-1 flex w-fit items-center gap-2 font-serif font-bold leading-none text-accent ${
-                    savingsDigits <= 7
-                      ? "text-6xl sm:text-7xl lg:text-8xl"
-                      : savingsDigits <= 9
-                        ? "text-5xl sm:text-6xl lg:text-7xl"
-                        : "text-4xl sm:text-5xl lg:text-6xl"
-                  }`}
-                >
-                  <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
-                  <AnimatedNumber
-                    value={
-                      (existingProtest && resolvedProperty && existingProtest.status === "resolved"
-                        ? buildCaseOutcome(resolvedProperty, existingProtest)
-                        : null
-                      )?.taxSavings ?? estimated.savings
-                    }
-                    format={currency}
-                    duration={900}
-                  />
-                </p>
-              </>
-            ) : !estimated.hasEstimate ? (
-              // No estimate at all — the CAD record carried no assessed value
-              // (a brand-new/unassessed parcel, or a county feed that hasn't
-              // synced this year's values yet). estimateSavings() returns null
-              // for exactly this case rather than computing 0 * anything = 0,
-              // and intake.tsx skips its whole Savings step when it does. This
-              // banner used to fall straight through to the "fairly assessed"
-              // branch below and tell the owner, confidently and wrongly, that
-              // there was no savings opportunity — when the truth is we have
-              // no value to judge from. Say that instead.
-              <>
-                <p className="mt-2 font-serif text-2xl font-bold sm:text-3xl">
-                  We need this year's value.
-                </p>
-                <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
-                  The county record for this property doesn't carry an assessed value yet, so we
-                  can't estimate a savings opportunity. Upload your appraisal notice, or check back
-                  once the county publishes this year's value.
-                </p>
-              </>
-            ) : (
-              // Same reasoning as intake.tsx's Savings step — a real analysis
-              // that lands on (near-)$0 isn't a failure, it means this
-              // property's own assessed value already looks in line with real
-              // comps/protest-outcome data. >= 1, not > 0: currency() rounds
-              // to whole dollars, so a positive-but-sub-$1 amount would
-              // otherwise still render as a bare, confusing "$0" hero.
-              <>
-                <p className="mt-2 font-serif text-2xl font-bold text-accent sm:text-3xl">
-                  Good news!
-                </p>
-                <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
-                  Your property appears to be fairly assessed. We found little or no opportunity for
-                  additional tax savings this year.
-                </p>
-              </>
-            )}
-          </div>
-          <div className="print:hidden shrink-0 text-right text-sm">
-            {hasFullAccess ? (
-              <div className="text-primary-foreground/70 text-xs">
-                AI Report subscription active
-              </div>
-            ) : (
-              <>
-                <div>
-                  {FREE_MODULE_COUNT} of {MODULES.length} modules free
-                </div>
+                  <p
+                    className={`mt-1 flex w-fit items-center gap-2 font-serif font-bold leading-none text-accent ${
+                      savingsDigits <= 7
+                        ? "text-6xl sm:text-7xl lg:text-8xl"
+                        : savingsDigits <= 9
+                          ? "text-5xl sm:text-6xl lg:text-7xl"
+                          : "text-4xl sm:text-5xl lg:text-6xl"
+                    }`}
+                  >
+                    <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
+                    <AnimatedNumber
+                      value={
+                        (existingProtest &&
+                        resolvedProperty &&
+                        existingProtest.status === "resolved"
+                          ? buildCaseOutcome(resolvedProperty, existingProtest)
+                          : null
+                        )?.taxSavings ?? estimated.savings
+                      }
+                      format={currency}
+                      duration={900}
+                    />
+                  </p>
+                </>
+              ) : !estimated.hasEstimate ? (
+                // No estimate at all — the CAD record carried no assessed value
+                // (a brand-new/unassessed parcel, or a county feed that hasn't
+                // synced this year's values yet). estimateSavings() returns null
+                // for exactly this case rather than computing 0 * anything = 0,
+                // and intake.tsx skips its whole Savings step when it does. This
+                // banner used to fall straight through to the "fairly assessed"
+                // branch below and tell the owner, confidently and wrongly, that
+                // there was no savings opportunity — when the truth is we have
+                // no value to judge from. Say that instead.
+                <>
+                  <p className="mt-2 font-serif text-2xl font-bold sm:text-3xl">
+                    We need this year's value.
+                  </p>
+                  <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
+                    The county record for this property doesn't carry an assessed value yet, so we
+                    can't estimate a savings opportunity. Upload your appraisal notice, or check
+                    back once the county publishes this year's value.
+                  </p>
+                </>
+              ) : (
+                // Same reasoning as intake.tsx's Savings step — a real analysis
+                // that lands on (near-)$0 isn't a failure, it means this
+                // property's own assessed value already looks in line with real
+                // comps/protest-outcome data. >= 1, not > 0: currency() rounds
+                // to whole dollars, so a positive-but-sub-$1 amount would
+                // otherwise still render as a bare, confusing "$0" hero.
+                <>
+                  <p className="mt-2 font-serif text-2xl font-bold text-accent sm:text-3xl">
+                    Good news!
+                  </p>
+                  <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
+                    Your property appears to be fairly assessed. We found little or no opportunity
+                    for additional tax savings this year.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="print:hidden shrink-0 text-right text-sm">
+              {hasFullAccess ? (
                 <div className="text-primary-foreground/70 text-xs">
-                  Subscribe to unlock the rest
+                  AI Report subscription active
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  <div>
+                    {FREE_MODULE_COUNT} of {MODULES.length} modules free
+                  </div>
+                  <div className="text-primary-foreground/70 text-xs">
+                    Subscribe to unlock the rest
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-        {user && (
-          <div className="relative z-10 border-t border-primary-foreground/20 px-5 pb-5 pt-3 print:hidden sm:px-8 sm:pb-8">
-            {existingProtest ? (
-              // Case Progress / Next Action — the stages shown, their labels,
-              // and which one is "current" all come from case-next-action.ts,
-              // the same rules View Case's own Prepare & File tab and Corvus
-              // AI Guidance panel are built on, so this can never say
-              // something View Case itself would disagree with. View Case
-              // stays the prominent, filled action (it's where the whole
-              // case actually gets managed); the dynamic button beside it
-              // just answers "what do I need to do next," using View Case's
-              // own terminology for whichever stage that is.
-              <div className="grid gap-3">
-                {nextAction ? (
-                  <>
-                    <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-xs">
-                      {nextAction.timeline.map((stage, i) => (
-                        <li key={stage.id} className="flex items-center gap-1.5">
-                          {i > 0 && (
-                            <span aria-hidden className="text-primary-foreground/30">
-                              →
+          {user && (
+            <div className="relative z-10 border-t border-primary-foreground/20 px-5 pb-5 pt-3 print:hidden sm:px-8 sm:pb-8">
+              {existingProtest ? (
+                // Case Progress / Next Action — the stages shown, their labels,
+                // and which one is "current" all come from case-next-action.ts,
+                // the same rules View Case's own Prepare & File tab and Corvus
+                // AI Guidance panel are built on, so this can never say
+                // something View Case itself would disagree with. View Case
+                // stays the prominent, filled action (it's where the whole
+                // case actually gets managed); the dynamic button beside it
+                // just answers "what do I need to do next," using View Case's
+                // own terminology for whichever stage that is.
+                <div className="grid gap-3">
+                  {nextAction ? (
+                    <>
+                      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-xs">
+                        {nextAction.timeline.map((stage, i) => (
+                          <li key={stage.id} className="flex items-center gap-1.5">
+                            {i > 0 && (
+                              <span aria-hidden className="text-primary-foreground/30">
+                                →
+                              </span>
+                            )}
+                            <span
+                              className={`whitespace-nowrap rounded-full px-2.5 py-1 font-medium ${
+                                stage.status === "current"
+                                  ? "bg-accent text-accent-foreground"
+                                  : stage.status === "done"
+                                    ? "bg-white/10 text-primary-foreground/70"
+                                    : "text-primary-foreground/40"
+                              }`}
+                            >
+                              {stage.status === "done" ? "✓ " : ""}
+                              {stage.label}
                             </span>
-                          )}
-                          <span
-                            className={`whitespace-nowrap rounded-full px-2.5 py-1 font-medium ${
-                              stage.status === "current"
-                                ? "bg-accent text-accent-foreground"
-                                : stage.status === "done"
-                                  ? "bg-white/10 text-primary-foreground/70"
-                                  : "text-primary-foreground/40"
-                            }`}
-                          >
-                            {stage.status === "done" ? "✓ " : ""}
-                            {stage.label}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="max-w-xl text-sm text-primary-foreground/80">
-                      {nextAction.summary}
-                    </p>
-                  </>
-                ) : (
-                  <div className="h-4 w-56 animate-pulse rounded bg-white/10" aria-hidden />
-                )}
-                <div className="flex flex-wrap items-center gap-3">
-                  {resolvedProperty && (
-                    <Link
-                      to="/dashboard/case"
-                      search={{ propertyId: resolvedProperty.id }}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-accent text-sm py-1.5 font-semibold"
-                    >
-                      View Case
-                    </Link>
+                          </li>
+                        ))}
+                      </ol>
+                      <p className="max-w-xl text-sm text-primary-foreground/80">
+                        {nextAction.summary}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="h-4 w-56 animate-pulse rounded bg-white/10" aria-hidden />
                   )}
-                  {nextAction?.action &&
-                    resolvedProperty &&
-                    (nextAction.action.kind === "external" ? (
-                      <a
-                        href={nextAction.action.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                      >
-                        {nextAction.action.label}
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    {resolvedProperty && (
                       <Link
                         to="/dashboard/case"
                         search={{ propertyId: resolvedProperty.id }}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        className="btn-accent text-sm py-1.5 font-semibold"
                       >
-                        {nextAction.action.label}
+                        View Case
                       </Link>
-                    ))}
+                    )}
+                    {nextAction?.action &&
+                      resolvedProperty &&
+                      (nextAction.action.kind === "external" ? (
+                        <a
+                          href={nextAction.action.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        >
+                          {nextAction.action.label}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        <Link
+                          to="/dashboard/case"
+                          search={{ propertyId: resolvedProperty.id }}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        >
+                          {nextAction.action.label}
+                        </Link>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            ) : hasFullAccess ? (
-              <button onClick={startProtest} className="btn-accent text-sm py-1.5">
-                {myPlan === "owner_managed" ? "File Protest" : "Request Protest Filing"}
-              </button>
-            ) : (
-              // Real payment gate (see startProtest's own check) reflected
-              // honestly here — real, one-click checkout for THIS property
-              // right in the banner, not a dead-end link to go find it again
-              // on the Properties list. The bracket is already known from
-              // the property's own value; only the tier is a real choice,
-              // so both real prices are shown.
-              <div className="flex flex-wrap gap-2">
-                {(["owner_managed", "corvusrf_managed"] as const).map((tier) => {
-                  const bracket = bracketForValue(resolvedProperty?.totalValue ?? state.totalValue);
-                  return (
-                    <button
-                      key={tier}
-                      disabled={!!subscribingTier}
-                      onClick={() => handleSubscribeToProperty(tier)}
-                      className="btn-accent text-sm py-1.5 disabled:opacity-60"
-                    >
-                      {subscribingTier === tier
-                        ? "Redirecting…"
-                        : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo`}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* The selected property's own journey — follows the property picked at the top. */}
-      {resolvedProperty && (
-        <div className="mt-8 print:hidden">
-          <JourneyTracker propertyId={resolvedProperty.id} />
-        </div>
-      )}
-
-      {/* Modules */}
-      <section className="mt-8 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
-          <button onClick={() => window.print()} className="btn-outline text-sm py-2">
-            Export Report
-          </button>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          {hasFullAccess
-            ? "All modules unlocked with your AI Report subscription."
-            : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
-        </p>
-
-        {hasFullAccess && resolvedProperty && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
-            <div className="min-w-0">
-              <span className="font-semibold text-foreground">Property Base Data</span>
-              {baseData ? (
-                <span className="text-muted-foreground">
-                  {" — "}AI-fetched from{" "}
-                  {baseData.snapshot.sources.length > 0
-                    ? baseData.snapshot.sources.join(", ")
-                    : "the address (no live county source)"}{" "}
-                  · {new Date(baseData.fetchedAt).toLocaleDateString()}
-                  {baseData.lastChangeNote ? ` · last change: ${baseData.lastChangeNote}` : ""}
-                </span>
+              ) : hasFullAccess ? (
+                <button onClick={startProtest} className="btn-accent text-sm py-1.5">
+                  {myPlan === "owner_managed" ? "File Protest" : "Request Protest Filing"}
+                </button>
               ) : (
-                <span className="text-muted-foreground">
-                  {" — "}
-                  {baseDataBusy ? "fetching from county + federal sources…" : "not fetched yet"}
-                </span>
+                // Real payment gate (see startProtest's own check) reflected
+                // honestly here — real, one-click checkout for THIS property
+                // right in the banner, not a dead-end link to go find it again
+                // on the Properties list. The bracket is already known from
+                // the property's own value; only the tier is a real choice,
+                // so both real prices are shown.
+                <div className="flex flex-wrap gap-2">
+                  {(["owner_managed", "corvusrf_managed"] as const).map((tier) => {
+                    const bracket = bracketForValue(
+                      resolvedProperty?.totalValue ?? state.totalValue,
+                    );
+                    return (
+                      <button
+                        key={tier}
+                        disabled={!!subscribingTier}
+                        onClick={() => handleSubscribeToProperty(tier)}
+                        className="btn-accent text-sm py-1.5 disabled:opacity-60"
+                      >
+                        {subscribingTier === tier
+                          ? "Redirecting…"
+                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo`}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              {baseData?.documentId && (
-                <Link
-                  to="/dashboard/documents"
-                  search={{ propertyId: resolvedProperty?.id }}
-                  className="text-accent hover:underline"
-                >
-                  View in Documents
-                </Link>
-              )}
-              <button
-                type="button"
-                onClick={() => void refreshBaseData()}
-                disabled={baseDataBusy}
-                className="btn-outline text-xs py-1 disabled:opacity-60"
-              >
-                {baseDataBusy ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
+          )}
+        </section>
+
+        {/* The selected property's own journey — follows the property picked at the top. */}
+        {resolvedProperty && (
+          <div className="mt-8 print:hidden">
+            <JourneyTracker propertyId={resolvedProperty.id} />
           </div>
         )}
 
-        <CaseResultContext.Provider
-          value={
-            existingProtest && resolvedProperty && existingProtest.status === "resolved"
-              ? buildCaseOutcome(resolvedProperty, existingProtest)
-              : null
-          }
-        >
-          <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {MODULES.map((m) => (
-              <ModuleCard
-                key={m.id}
-                m={m}
-                unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
-                hasFullAccess={hasFullAccess}
-                moduleState={moduleData[m.id]}
-                moduleData={moduleData}
-                compsMap={compsMap}
-                siteGisMap={siteGisMap}
-                siteCoords={siteCoords}
-                estimated={estimated}
-                propertyType={state.propertyType}
-                address={resolvedProperty?.address || state.address}
-                totalValue={state.totalValue}
-                improvementValue={state.improvementValue}
-                overrides={overrides}
-                incomeComputed={incomeComputed}
-                incomeAnalysis={incomeAnalysis}
-                savingsAnalysis={savingsAnalysis}
-                uploadingEvidence={uploadingEvidence}
-                onUploadEvidence={handleUploadEvidence}
-                onSaveIncomeAnalysis={saveIncomeAnalysis}
-                onOpen={() => openModule(m)}
-                onForceReload={() => loadModule(m.id, { recheck: true })}
-              />
-            ))}
+        {/* Modules */}
+        <section className="mt-8 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
+            <button onClick={() => window.print()} className="btn-outline text-sm py-2">
+              Export Report
+            </button>
           </div>
-        </CaseResultContext.Provider>
-      </section>
+          <p className="text-muted-foreground text-sm">
+            {hasFullAccess
+              ? "All modules unlocked with your AI Report subscription."
+              : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
+          </p>
 
-      {/* Print-only linear report — reuses the exact same module-rendering logic as
+          {hasFullAccess && resolvedProperty && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
+              <div className="min-w-0">
+                <span className="font-semibold text-foreground">Property Base Data</span>
+                {baseData ? (
+                  <span className="text-muted-foreground">
+                    {" — "}AI-fetched from{" "}
+                    {baseData.snapshot.sources.length > 0
+                      ? baseData.snapshot.sources.join(", ")
+                      : "the address (no live county source)"}{" "}
+                    · {new Date(baseData.fetchedAt).toLocaleDateString()}
+                    {baseData.lastChangeNote ? ` · last change: ${baseData.lastChangeNote}` : ""}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {" — "}
+                    {baseDataBusy ? "fetching from county + federal sources…" : "not fetched yet"}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                {baseData?.documentId && (
+                  <Link
+                    to="/dashboard/documents"
+                    search={{ propertyId: resolvedProperty?.id }}
+                    className="text-accent hover:underline"
+                  >
+                    View in Documents
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void refreshBaseData()}
+                  disabled={baseDataBusy}
+                  className="btn-outline text-xs py-1 disabled:opacity-60"
+                >
+                  {baseDataBusy ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <CaseResultContext.Provider
+            value={
+              existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                ? buildCaseOutcome(resolvedProperty, existingProtest)
+                : null
+            }
+          >
+            <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {MODULES.map((m) => (
+                <ModuleCard
+                  key={m.id}
+                  m={m}
+                  unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
+                  hasFullAccess={hasFullAccess}
+                  moduleState={moduleData[m.id]}
+                  moduleData={moduleData}
+                  compsMap={compsMap}
+                  siteGisMap={siteGisMap}
+                  siteCoords={siteCoords}
+                  estimated={estimated}
+                  propertyType={state.propertyType}
+                  address={resolvedProperty?.address || state.address}
+                  totalValue={state.totalValue}
+                  improvementValue={state.improvementValue}
+                  overrides={overrides}
+                  incomeComputed={incomeComputed}
+                  incomeAnalysis={incomeAnalysis}
+                  savingsAnalysis={savingsAnalysis}
+                  uploadingEvidence={uploadingEvidence}
+                  onUploadEvidence={handleUploadEvidence}
+                  onSaveIncomeAnalysis={saveIncomeAnalysis}
+                  onOpen={() => openModule(m)}
+                  onForceReload={() => loadModule(m.id, { recheck: true })}
+                />
+              ))}
+            </div>
+          </CaseResultContext.Provider>
+        </section>
+
+        {/* Print-only linear report — reuses the exact same module-rendering logic as
           the modal above (ModulePreviewBody), stacking every module the user has
           already unlocked and viewed into one printable document. Deliberately
           does NOT trigger new AI calls at export time (no re-fetch here) — export
           captures "your report so far," the same content already shown on screen,
           rather than firing up to 9 fresh AI calls the moment someone clicks print. */}
-      <section className="hidden print:block mt-8">
-        <h2 className="font-serif text-2xl font-semibold">AI Property Tax Report</h2>
-        <p className="text-sm text-muted-foreground">
-          {state.address} · {state.cad} · Generated {new Date().toLocaleDateString()}
-        </p>
-        {(() => {
-          const printable = MODULES.filter(
-            (m) => moduleData[m.id]?.data != null || (m.id === "comps" && compsMap.data),
-          );
-          if (printable.length === 0) {
-            return (
-              <p className="mt-4 text-sm text-muted-foreground">
-                Open a module above, then use Export Report again to include it here.
-              </p>
+        <section className="hidden print:block mt-8">
+          <h2 className="font-serif text-2xl font-semibold">AI Property Tax Report</h2>
+          <p className="text-sm text-muted-foreground">
+            {state.address} · {state.cad} · Generated {new Date().toLocaleDateString()}
+          </p>
+          {(() => {
+            const printable = MODULES.filter(
+              (m) => moduleData[m.id]?.data != null || (m.id === "comps" && compsMap.data),
             );
-          }
-          return printable.map((m) => (
-            <div key={m.id} className="mt-6" style={{ breakInside: "avoid" }}>
-              <h3 className="font-serif text-lg font-semibold">{m.shortName}</h3>
-              <div className="text-xs font-medium text-muted-foreground">{m.title}</div>
-              <p className="text-sm text-muted-foreground">{m.question}</p>
-              <ModulePreviewBody
-                m={m}
-                estimated={estimated}
-                state={state}
-                moduleState={moduleData[m.id]}
-                moduleData={moduleData}
-                compsMap={compsMap}
-                siteGisMap={siteGisMap}
-                siteCoords={siteCoords}
-                siteCoordsSettled={siteCoordsSettled}
-                onRetry={() => {}}
-                allowEvidenceUpload={false}
-                evidenceDocs={evidenceDocs}
-                uploadingEvidence={false}
-                onUploadEvidence={() => {}}
-                onForceReload={() => {}}
-                onReloadModule={() => {}}
-                onFetchCadDetails={() => {}}
-                onRefreshSiteGis={() => {}}
-                siteGisRefreshing={false}
-                cadFetching={false}
-                onAutoSourceEvidence={() => {}}
-                autoSourcingEvidence={false}
-                onFetchPublicData={() => {}}
-                fetchingPublicData={false}
-                onAnswerStrategy={() => {}}
-                onAskQuestion={() => Promise.resolve("")}
-                onGenerateDataSheet={() => Promise.resolve(null)}
-                existingProtest={null}
-                resolvedProperty={null}
-                caseDocuments={[]}
-                noticeSignedAt={null}
-                onOpenModule={() => {}}
-                onStartProtest={() => {}}
-                onViewCase={() => {}}
-                overrides={overrides}
-                onMarkNotApplicable={() => {}}
-                onClearNotApplicable={() => {}}
-                compSelections={compSelections}
-                onSaveCompSelection={() => {}}
-                onRemoveCompSelection={() => {}}
-                onExtractCompSale={async () => null}
-                incomeAnalysis={incomeAnalysis}
-                incomeComputed={incomeComputed}
-                onSaveIncomeAnalysis={() => {}}
-                onExtractIncome={extractIncome}
-                savingsAnalysis={savingsAnalysis}
-                savingsTaxInputs={savingsTaxInputs}
-                onSaveSavingsTaxInputs={() => {}}
-              />
-            </div>
-          ));
-        })()}
-      </section>
+            if (printable.length === 0) {
+              return (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Open a module above, then use Export Report again to include it here.
+                </p>
+              );
+            }
+            return printable.map((m) => (
+              <div key={m.id} className="mt-6" style={{ breakInside: "avoid" }}>
+                <h3 className="font-serif text-lg font-semibold">{m.shortName}</h3>
+                <div className="text-xs font-medium text-muted-foreground">{m.title}</div>
+                <p className="text-sm text-muted-foreground">{m.question}</p>
+                <ModulePreviewBody
+                  m={m}
+                  estimated={estimated}
+                  state={state}
+                  moduleState={moduleData[m.id]}
+                  moduleData={moduleData}
+                  compsMap={compsMap}
+                  siteGisMap={siteGisMap}
+                  siteCoords={siteCoords}
+                  siteCoordsSettled={siteCoordsSettled}
+                  onRetry={() => {}}
+                  allowEvidenceUpload={false}
+                  evidenceDocs={evidenceDocs}
+                  uploadingEvidence={false}
+                  onUploadEvidence={() => {}}
+                  onForceReload={() => {}}
+                  onReloadModule={() => {}}
+                  onFetchCadDetails={() => {}}
+                  onRefreshSiteGis={() => {}}
+                  siteGisRefreshing={false}
+                  cadFetching={false}
+                  onAutoSourceEvidence={() => {}}
+                  autoSourcingEvidence={false}
+                  onFetchPublicData={() => {}}
+                  fetchingPublicData={false}
+                  onAnswerStrategy={() => {}}
+                  onAskQuestion={() => Promise.resolve("")}
+                  onGenerateDataSheet={() => Promise.resolve(null)}
+                  existingProtest={null}
+                  resolvedProperty={null}
+                  caseDocuments={[]}
+                  noticeSignedAt={null}
+                  onOpenModule={() => {}}
+                  onStartProtest={() => {}}
+                  onViewCase={() => {}}
+                  overrides={overrides}
+                  onMarkNotApplicable={() => {}}
+                  onClearNotApplicable={() => {}}
+                  compSelections={compSelections}
+                  onSaveCompSelection={() => {}}
+                  onRemoveCompSelection={() => {}}
+                  onExtractCompSale={async () => null}
+                  incomeAnalysis={incomeAnalysis}
+                  incomeComputed={incomeComputed}
+                  onSaveIncomeAnalysis={() => {}}
+                  onExtractIncome={extractIncome}
+                  savingsAnalysis={savingsAnalysis}
+                  savingsTaxInputs={savingsTaxInputs}
+                  onSaveSavingsTaxInputs={() => {}}
+                />
+              </div>
+            ));
+          })()}
+        </section>
 
-      {/* Preview modal */}
-      {openModel && (
-        <Modal onClose={() => setOpenId(null)} wide>
-          <span className="badge-soft">{hasFullAccess ? "Unlocked" : "Free Preview"}</span>
-          <div className="mt-2 flex items-center gap-2">
-            <NumberBadge n={openModel.n} color={openModel.color} size="lg" />
-            <h3 className="font-serif text-2xl font-semibold">{openModel.shortName}</h3>
-          </div>
-          <div className="text-sm font-medium text-muted-foreground">{openModel.title}</div>
-          <p className="text-muted-foreground">{openModel.question}</p>
-          {!!moduleData[openModel.id]?.data && (
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                {moduleData[openModel.id]?.cachedAt
-                  ? `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
-                  : "Updated just now"}
-              </span>
-              {openModel.id !== "savings" && (
-                <>
-                  {/* Refresh re-checks the cache: identical inputs → the exact
+        {/* Preview modal */}
+        {openModel && (
+          <Modal onClose={() => setOpenId(null)} wide>
+            <span className="badge-soft">{hasFullAccess ? "Unlocked" : "Free Preview"}</span>
+            <div className="mt-2 flex items-center gap-2">
+              <NumberBadge n={openModel.n} color={openModel.color} size="lg" />
+              <h3 className="font-serif text-2xl font-semibold">{openModel.shortName}</h3>
+            </div>
+            <div className="text-sm font-medium text-muted-foreground">{openModel.title}</div>
+            <p className="text-muted-foreground">{openModel.question}</p>
+            {!!moduleData[openModel.id]?.data && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>
+                  {moduleData[openModel.id]?.cachedAt
+                    ? `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
+                    : "Updated just now"}
+                </span>
+                {openModel.id !== "savings" && (
+                  <>
+                    {/* Refresh re-checks the cache: identical inputs → the exact
                       same stored result, no AI call. Only a real input change
                       re-runs the analysis. */}
-                  <button
-                    type="button"
-                    onClick={() => loadModule(openModel.id, { recheck: true })}
-                    disabled={moduleData[openModel.id]?.loading}
-                    className="inline-flex items-center gap-1 font-medium text-accent hover:underline disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      className={`h-3 w-3 ${moduleData[openModel.id]?.loading ? "animate-spin" : ""}`}
-                    />
-                    Refresh
-                  </button>
-                  <span aria-hidden>·</span>
-                  {/* Force a fresh AI pass — for re-wording an answer that reads
+                    <button
+                      type="button"
+                      onClick={() => loadModule(openModel.id, { recheck: true })}
+                      disabled={moduleData[openModel.id]?.loading}
+                      className="inline-flex items-center gap-1 font-medium text-accent hover:underline disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={`h-3 w-3 ${moduleData[openModel.id]?.loading ? "animate-spin" : ""}`}
+                      />
+                      Refresh
+                    </button>
+                    <span aria-hidden>·</span>
+                    {/* Force a fresh AI pass — for re-wording an answer that reads
                       oddly. The figures are computed from CAD data, so they
                       barely move. */}
-                  <button
-                    type="button"
-                    onClick={() => loadModule(openModel.id, { force: true })}
-                    disabled={moduleData[openModel.id]?.loading}
-                    title="Ask the AI to re-write the wording. Figures are computed from CAD data and won't move."
-                    className="hover:underline disabled:opacity-50"
-                  >
-                    Regenerate with AI
-                  </button>
-                </>
+                    <button
+                      type="button"
+                      onClick={() => loadModule(openModel.id, { force: true })}
+                      disabled={moduleData[openModel.id]?.loading}
+                      title="Ask the AI to re-write the wording. Figures are computed from CAD data and won't move."
+                      className="hover:underline disabled:opacity-50"
+                    >
+                      Regenerate with AI
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            <ModulePreviewBody
+              m={openModel}
+              estimated={estimated}
+              state={state}
+              moduleState={moduleData[openModel.id]}
+              moduleData={moduleData}
+              compsMap={compsMap}
+              siteGisMap={siteGisMap}
+              siteCoords={siteCoords}
+              siteCoordsSettled={siteCoordsSettled}
+              onRetry={() => loadModule(openModel.id)}
+              allowEvidenceUpload
+              evidenceDocs={evidenceDocs}
+              uploadingEvidence={uploadingEvidence}
+              onUploadEvidence={handleUploadEvidence}
+              onForceReload={() => loadModule(openModel.id, { recheck: true })}
+              onFetchCadDetails={handleFetchCadDetails}
+              onRefreshSiteGis={handleRefreshSiteGis}
+              siteGisRefreshing={siteGisRefreshing}
+              cadFetching={cadFetching}
+              onAutoSourceEvidence={handleAutoSourceEvidence}
+              autoSourcingEvidence={autoSourcingEvidence}
+              onFetchPublicData={handleFetchPublicData}
+              fetchingPublicData={baseDataBusy}
+              onAnswerStrategy={answerStrategy}
+              onAskQuestion={askQuestion}
+              onGenerateDataSheet={handleGenerateDataSheet}
+              existingProtest={existingProtest}
+              resolvedProperty={resolvedProperty}
+              caseDocuments={caseDocuments}
+              noticeSignedAt={null}
+              onOpenModule={(id) => {
+                const target = MODULES.find((mm) => mm.id === id);
+                if (target) openModule(target);
+              }}
+              onStartProtest={startProtest}
+              onReloadModule={(id) => loadModule(id, { force: true })}
+              onViewCase={() => {
+                if (!resolvedProperty) return;
+                // Same-window navigation (per product direction) — opening it
+                // in a new tab left two tabs that each reloaded on focus.
+                nav({ to: "/dashboard/case", search: { propertyId: resolvedProperty.id } });
+              }}
+              overrides={overrides}
+              onMarkNotApplicable={markNotApplicable}
+              onClearNotApplicable={clearNotApplicable}
+              compSelections={compSelections}
+              onSaveCompSelection={saveCompSelection}
+              onRemoveCompSelection={removeCompSelection}
+              onExtractCompSale={extractCompSaleFromFile}
+              incomeAnalysis={incomeAnalysis}
+              incomeComputed={incomeComputed}
+              onSaveIncomeAnalysis={saveIncomeAnalysis}
+              onExtractIncome={extractIncome}
+              savingsAnalysis={savingsAnalysis}
+              savingsTaxInputs={savingsTaxInputs}
+              onSaveSavingsTaxInputs={saveSavingsTaxInputs}
+            />
+            <div className="mt-6 flex gap-2 justify-end">
+              <button onClick={() => setOpenId(null)} className="btn-outline">
+                Return to Property Summary
+              </button>
+              {!hasFullAccess && (
+                <Link to="/pricing" className="btn-accent">
+                  Subscribe & Unlock Full Report
+                </Link>
               )}
             </div>
-          )}
-          <ModulePreviewBody
-            m={openModel}
-            estimated={estimated}
-            state={state}
-            moduleState={moduleData[openModel.id]}
-            moduleData={moduleData}
-            compsMap={compsMap}
-            siteGisMap={siteGisMap}
-            siteCoords={siteCoords}
-            siteCoordsSettled={siteCoordsSettled}
-            onRetry={() => loadModule(openModel.id)}
-            allowEvidenceUpload
-            evidenceDocs={evidenceDocs}
-            uploadingEvidence={uploadingEvidence}
-            onUploadEvidence={handleUploadEvidence}
-            onForceReload={() => loadModule(openModel.id, { recheck: true })}
-            onFetchCadDetails={handleFetchCadDetails}
-            onRefreshSiteGis={handleRefreshSiteGis}
-            siteGisRefreshing={siteGisRefreshing}
-            cadFetching={cadFetching}
-            onAutoSourceEvidence={handleAutoSourceEvidence}
-            autoSourcingEvidence={autoSourcingEvidence}
-            onFetchPublicData={handleFetchPublicData}
-            fetchingPublicData={baseDataBusy}
-            onAnswerStrategy={answerStrategy}
-            onAskQuestion={askQuestion}
-            onGenerateDataSheet={handleGenerateDataSheet}
-            existingProtest={existingProtest}
-            resolvedProperty={resolvedProperty}
-            caseDocuments={caseDocuments}
-            noticeSignedAt={null}
-            onOpenModule={(id) => {
-              const target = MODULES.find((mm) => mm.id === id);
-              if (target) openModule(target);
-            }}
-            onStartProtest={startProtest}
-            onReloadModule={(id) => loadModule(id, { force: true })}
-            onViewCase={() => {
-              if (!resolvedProperty) return;
-              // Same-window navigation (per product direction) — opening it
-              // in a new tab left two tabs that each reloaded on focus.
-              nav({ to: "/dashboard/case", search: { propertyId: resolvedProperty.id } });
-            }}
-            overrides={overrides}
-            onMarkNotApplicable={markNotApplicable}
-            onClearNotApplicable={clearNotApplicable}
-            compSelections={compSelections}
-            onSaveCompSelection={saveCompSelection}
-            onRemoveCompSelection={removeCompSelection}
-            onExtractCompSale={extractCompSaleFromFile}
-            incomeAnalysis={incomeAnalysis}
-            incomeComputed={incomeComputed}
-            onSaveIncomeAnalysis={saveIncomeAnalysis}
-            onExtractIncome={extractIncome}
-            savingsAnalysis={savingsAnalysis}
-            savingsTaxInputs={savingsTaxInputs}
-            onSaveSavingsTaxInputs={saveSavingsTaxInputs}
-          />
-          <div className="mt-6 flex gap-2 justify-end">
-            <button onClick={() => setOpenId(null)} className="btn-outline">
-              Return to Property Summary
-            </button>
-            {!hasFullAccess && (
+          </Modal>
+        )}
+
+        {/* Subscription wall */}
+        {showWall && (
+          <Modal onClose={() => setShowWall(false)}>
+            <h3 className="font-serif text-2xl font-semibold">
+              Unlock Your Complete AI Property Analysis
+            </h3>
+            <p className="text-muted-foreground mt-2">
+              Modules 1-{FREE_MODULE_COUNT} are free to preview. Subscribe to unlock modules{" "}
+              {FREE_MODULE_COUNT + 1}-{MODULES.length} and the complete property analysis.
+            </p>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
               <Link to="/pricing" className="btn-accent">
                 Subscribe & Unlock Full Report
               </Link>
-            )}
-          </div>
-        </Modal>
-      )}
+              <Link to="/pricing" className="btn-outline">
+                Compare Plans
+              </Link>
+              <button onClick={() => setShowWall(false)} className="btn-outline sm:col-span-2">
+                Return to Property Summary
+              </button>
+            </div>
+          </Modal>
+        )}
 
-      {/* Subscription wall */}
-      {showWall && (
-        <Modal onClose={() => setShowWall(false)}>
-          <h3 className="font-serif text-2xl font-semibold">
-            Unlock Your Complete AI Property Analysis
-          </h3>
-          <p className="text-muted-foreground mt-2">
-            Modules 1-{FREE_MODULE_COUNT} are free to preview. Subscribe to unlock modules{" "}
-            {FREE_MODULE_COUNT + 1}-{MODULES.length} and the complete property analysis.
-          </p>
-          <div className="mt-6 grid gap-2 sm:grid-cols-2">
-            <Link to="/pricing" className="btn-accent">
-              Subscribe & Unlock Full Report
-            </Link>
-            <Link to="/pricing" className="btn-outline">
-              Compare Plans
-            </Link>
-            <button onClick={() => setShowWall(false)} className="btn-outline sm:col-span-2">
-              Return to Property Summary
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {authorizing && user && resolvedProperty && (
-        <ProtestAuthorizationFlow
-          userId={user.id}
-          property={resolvedProperty}
-          userEmail={user.email}
-          isPaid={hasFullAccess}
-          open={authorizing}
-          onOpenChange={(open) => setAuthorizing(open)}
-          onDone={(created) => {
-            setExistingProtest(created);
-            generateCasePrep(created.id, user.id, resolvedProperty).catch((err) =>
-              console.error("Case prep generation failed:", err),
-            );
-          }}
-        />
-      )}
-    </div>
+        {authorizing && user && resolvedProperty && (
+          <ProtestAuthorizationFlow
+            userId={user.id}
+            property={resolvedProperty}
+            userEmail={user.email}
+            isPaid={hasFullAccess}
+            open={authorizing}
+            onOpenChange={(open) => setAuthorizing(open)}
+            onDone={(created) => {
+              setExistingProtest(created);
+              generateCasePrep(created.id, user.id, resolvedProperty).catch((err) =>
+                console.error("Case prep generation failed:", err),
+              );
+            }}
+          />
+        )}
+      </div>
+    </EvidenceImpactContext.Provider>
   );
 }
 
@@ -3987,6 +4113,7 @@ function ModuleVisual({
               </div>
             </div>
           )}
+          {!caseResult && <EvidenceImpactCard />}
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
@@ -9840,6 +9967,7 @@ function ModulePreviewContent({
             <FinalCaseSummaryPanel summary={finalSummary} />
           </div>
         )}
+        <EvidenceImpactCard />
         <SavingsWorkspace
           analysis={savingsAnalysis}
           taxInputs={savingsTaxInputs}
