@@ -402,6 +402,10 @@ function Report() {
   // src/lib/property-base-data.ts.
   const [baseData, setBaseData] = useState<PropertyBaseData | null>(null);
   const [baseDataBusy, setBaseDataBusy] = useState(false);
+  // True once the stored base data (its value history and building details feed the Module 1
+  // score) has been read, so the score is never computed from a half-loaded page and then
+  // shown differently after a reload.
+  const [baseDataChecked, setBaseDataChecked] = useState(false);
   const baseDataFetchedFor = useRef<string | null>(null);
 
   // "Fetch details" (Module 6) — re-pull this property's CAD record from the
@@ -741,6 +745,7 @@ function Report() {
     if (!user || !resolvedProperty) return;
     if (baseDataFetchedFor.current === resolvedProperty.id) return;
     baseDataFetchedFor.current = resolvedProperty.id;
+    setBaseDataChecked(false);
     getPropertyBaseData(resolvedProperty.id)
       .then((bd) => {
         setBaseData(bd);
@@ -759,7 +764,8 @@ function Report() {
           void refreshBaseData({ silent: true });
         }
       })
-      .catch((err) => console.error("Could not load property base data:", err));
+      .catch((err) => console.error("Could not load property base data:", err))
+      .finally(() => setBaseDataChecked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, resolvedProperty]);
 
@@ -2543,7 +2549,8 @@ function Report() {
       !evidenceDocsLoaded ||
       !auxDataLoaded ||
       !compsMap.attempted ||
-      compsMap.loading
+      compsMap.loading ||
+      (!!user && !!resolvedProperty && !baseDataChecked)
     )
       return;
     for (const m of MODULES) {
@@ -2574,6 +2581,7 @@ function Report() {
     auxDataLoaded,
     compsMap.attempted,
     compsMap.loading,
+    baseDataChecked,
   ]);
 
   // comps/site/improvement/zoning wait for Module 2 (Strategy) to resolve —
@@ -8297,6 +8305,10 @@ function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         ROI Analysis (Base Scenario)
       </div>
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        This fuller model applies exemptions and the standard 25% fee, so its savings figure can
+        differ slightly from the headline estimate. Beta testers do not pay the fee.
+      </p>
       {/* Annual figures only — ROI is defined on the annual net benefit
           (spec §8). The multi-year projection is its own line below. */}
       <div className="flex flex-wrap items-center justify-center gap-1.5">

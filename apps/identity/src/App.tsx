@@ -261,6 +261,13 @@ export function App() {
       email,
       password,
       options: {
+        // The confirmation link brings the person back to this screen, which finishes sign-in
+        // and sends them on to where they were headed.
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}${
+          safeRedirectTarget()
+            ? `?redirect=${encodeURIComponent(safeRedirectTarget() ?? "")}`
+            : ""
+        }`,
         data: {
           ...(firstName.trim() ? { first_name: firstName.trim() } : {}),
           ...(lastName.trim() ? { last_name: lastName.trim() } : {}),

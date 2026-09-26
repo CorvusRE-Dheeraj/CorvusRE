@@ -689,6 +689,23 @@ function Intake() {
               <h3 className="text-sm font-semibold">
                 We didn't find that exact address, but found these nearby:
               </h3>
+              {(() => {
+                // If the address named a city but none of the suggestions are in it, say so, so
+                // nobody picks a same-street record from a different city by mistake.
+                const askedCity = (address.split(",")[1] ?? "").trim();
+                if (!askedCity || /^\d/.test(askedCity)) return null;
+                const anyInCity = nearby.some((r) =>
+                  r.propertyAddress.toLowerCase().includes(askedCity.toLowerCase()),
+                );
+                if (anyInCity) return null;
+                return (
+                  <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                    None of these are in {askedCity}. The county's public records may not list this
+                    address. Try the account number from your appraisal notice, or upload the notice
+                    instead.
+                  </p>
+                );
+              })()}
               <div className="mt-3 grid gap-2">
                 {nearby.map((r, i) => {
                   // The county's own record is authoritative, same check
