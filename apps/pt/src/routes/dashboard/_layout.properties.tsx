@@ -1730,7 +1730,8 @@ function AiScoreBadge({ score }: { score: PropertyAiScore | undefined }) {
   // as one line, matching the label it's appended to.
   return (
     <p className="mt-1 text-sm text-accent">
-      AI Score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
+      Quick AI score: {score.score}/100 (from county values only; the AI Report has the full
+      analysis) — {renderMarkdownInline(score.summary, "ai-score-summary")}
     </p>
   );
 }
