@@ -141,10 +141,15 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  async function proceed() {
+  async function proceed(justSignedUp = false) {
     await applyPendingReferral();
     await applyPendingBeta();
-    const target = safeRedirectTarget();
+    let target = safeRedirectTarget();
+    // A brand-new account that came from a door's marketing home page belongs on that door's
+    // dashboard, not back on the page that made them sign up.
+    const doorHome = target?.match(/^\/(corvuspt|corvusdp)\/?$/);
+    if (justSignedUp && target && doorHome)
+      target = `/${doorHome[1]}/dashboard`;
     if (target) {
       window.location.assign(target);
     } else {
@@ -274,7 +279,7 @@ export function App() {
       setStatus("check-email");
       return;
     }
-    proceed();
+    proceed(true);
   }
 
   // One OAuth path for every social provider -- Supabase calls Microsoft "azure".
