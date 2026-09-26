@@ -32,9 +32,9 @@ export function NotificationsBell() {
       setSeen(new Set());
     }
   }, [seenKey]);
-  function markAllSeen(list: Item[]) {
-    if (!seenKey || list.length === 0) return;
-    const next = new Set([...seen, ...list.map((i) => i.key)]);
+  function markSeen(key: string) {
+    if (!seenKey || seen.has(key)) return;
+    const next = new Set([...seen, key]);
     setSeen(next);
     try {
       localStorage.setItem(seenKey, JSON.stringify([...next].slice(-200)));
@@ -43,11 +43,6 @@ export function NotificationsBell() {
     }
   }
   const unseen = items.filter((i) => !seen.has(i.key));
-  // Items that arrive while the list is already open are seen straight away.
-  useEffect(() => {
-    if (open && items.some((i) => !seen.has(i.key))) markAllSeen(items);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, items]);
 
   useEffect(() => {
     if (!user) return;
@@ -111,14 +106,7 @@ export function NotificationsBell() {
 
   if (!user) return null;
   return (
-    <Popover
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        // Opening the list counts as seeing everything in it.
-        if (o) markAllSeen(items);
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -148,14 +136,25 @@ export function NotificationsBell() {
               <li key={it.key}>
                 <Link
                   to={it.to}
-                  onClick={() => setOpen(false)}
-                  className="block p-3 text-sm hover:bg-secondary"
+                  onClick={() => {
+                    markSeen(it.key);
+                    setOpen(false);
+                  }}
+                  className="flex items-start gap-2 p-3 text-sm hover:bg-secondary"
                 >
-                  <div className="font-medium">{it.text}</div>
-                  <div
-                    className={`text-xs ${it.days <= 3 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
-                  >
-                    {it.when}
+                  <span
+                    aria-hidden
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${seen.has(it.key) ? "bg-transparent" : "bg-rose-700"}`}
+                  />
+                  <div className="min-w-0">
+                    <div className={seen.has(it.key) ? "font-normal" : "font-semibold"}>
+                      {it.text}
+                    </div>
+                    <div
+                      className={`text-xs ${it.days <= 3 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+                    >
+                      {it.when}
+                    </div>
                   </div>
                 </Link>
               </li>
