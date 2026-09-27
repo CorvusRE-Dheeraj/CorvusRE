@@ -1,6 +1,6 @@
 import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import {
   startOfMonth,
@@ -32,7 +32,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { markPropertyPaid, listProperties, type PropertyRecord } from "@/lib/properties";
-import { listProtests } from "@/lib/protests";
+import { listProtests, type ProtestRecord } from "@/lib/protests";
+import { updateIntake } from "@/lib/intake-store";
 import {
   getCalendarEvents,
   googleCalendarAddUrl,
@@ -116,6 +117,7 @@ function EventRow({
   onEditReminder,
   onDeleteReminder,
   onToggleReminderDone,
+  onOpenProperty,
 }: {
   event: CalendarEvent;
   onMarkPaid?: (propertyId: string) => void;
@@ -123,11 +125,30 @@ function EventRow({
   onEditReminder?: (event: CalendarEvent) => void;
   onDeleteReminder?: (event: CalendarEvent) => void;
   onToggleReminderDone?: (event: CalendarEvent) => void;
+  // Every real county/case fact (a deadline, a hearing, a tax bill — never a personal
+  // reminder, which has its own edit/delete controls) opens straight to that property's case,
+  // resuming wherever it's really at, or starts one if none exists yet.
+  onOpenProperty?: (propertyId: string) => void;
 }) {
   const isPropertySnapshotBill = event.id.startsWith("tax-due:property:");
   const isReminder = event.type === "reminder";
+  const clickable = !isReminder && !!event.propertyId && !!onOpenProperty;
   return (
-    <div className="card-elev p-4 flex items-center justify-between flex-wrap gap-3">
+    <div
+      {...(clickable
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick: () => onOpenProperty?.(event.propertyId as string),
+            onKeyDown: (e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") onOpenProperty?.(event.propertyId as string);
+            },
+          }
+        : {})}
+      className={`card-elev p-4 flex items-center justify-between flex-wrap gap-3 ${
+        clickable ? "cursor-pointer transition-colors hover:bg-secondary/40" : ""
+      }`}
+    >
       <div className="flex items-start gap-2">
         {isReminder && onToggleReminderDone && (
           <input
@@ -153,7 +174,10 @@ function EventRow({
         {isPropertySnapshotBill && !event.resolved && event.propertyId && onMarkPaid && (
           <button
             disabled={markingPaid}
-            onClick={() => onMarkPaid(event.propertyId as string)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkPaid(event.propertyId as string);
+            }}
             className="btn-outline text-sm disabled:opacity-60"
           >
             {markingPaid ? "Saving…" : "Mark as Paid"}
@@ -190,14 +214,22 @@ function EventRow({
               href={googleCalendarAddUrl(event)}
               target="_blank"
               rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="btn-outline text-sm inline-flex items-center gap-1"
               title="Add to Google Calendar"
             >
               <ExternalLink className="h-3.5 w-3.5" /> Google
             </a>
-            <Link to={event.linkTo} className="text-sm text-muted-foreground hover:text-foreground">
-              View
-            </Link>
+            {clickable ? (
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            ) : (
+              <Link
+                to={event.linkTo}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                View
+              </Link>
+            )}
           </>
         )}
       </div>
@@ -641,6 +673,7 @@ function CalendarPage() {
   const search = Route.useSearch();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
+  const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState<ViewMode>(() => {
@@ -689,13 +722,47 @@ function CalendarPage() {
   // Real cross-property hearing-conflict check — only meaningful once a
   // user has more than one hearing on file, so this loads independently of
   // the calendar-event list above (which doesn't carry per-hearing
-  // location/mode, just a folded title string).
+  // location/mode, just a folded title string). Also the one real source of
+  // "does this property already have a case" for openProperty below.
   useEffect(() => {
     if (!user) return;
     Promise.all([listProtests(user.id), listProperties(user.id)])
-      .then(([protests, props]) => setHearingConflicts(findHearingConflicts(protests, props)))
+      .then(([prot, props]) => {
+        setProtests(prot);
+        setHearingConflicts(findHearingConflicts(prot, props));
+      })
       .catch((err) => console.error("Could not check for hearing conflicts:", err));
   }, [user]);
+
+  // Same property, whichever real step it's actually on: a case already exists for it, so
+  // open View Case (which itself resumes on whatever phase the case is really at); otherwise
+  // this property has never had a protest started, so head to the AI report to start one —
+  // the same entry point Quick Actions and the property list use. Every clickable calendar
+  // item that names a real property (a deadline, a hearing, a tax bill — never a personal
+  // reminder, which has its own edit/delete controls instead) goes through this.
+  function openProperty(propertyId: string) {
+    const protest = protests.find((pr) => pr.propertyId === propertyId);
+    if (protest) {
+      nav({ to: "/dashboard/case", search: { propertyId } });
+      return;
+    }
+    const p = properties.find((row) => row.id === propertyId);
+    if (!p) return;
+    updateIntake({
+      address: p.address,
+      cad: p.cad ?? undefined,
+      accountNumber: p.accountNumber ?? undefined,
+      ownerName: p.ownerName ?? undefined,
+      propertyType: p.propertyType ?? undefined,
+      landValue: p.landValue ?? undefined,
+      improvementValue: p.improvementValue ?? undefined,
+      totalValue: p.totalValue ?? undefined,
+      taxYear: p.taxYear ?? undefined,
+      valueHistory: p.valueHistory ?? undefined,
+      confirmed: true,
+    });
+    nav({ to: "/ai-report" });
+  }
 
   // One-time: show the result of a just-completed (or abandoned) Google
   // connect attempt, then strip these params so refreshing doesn't re-show
@@ -942,6 +1009,7 @@ function CalendarPage() {
               onAddReminder={(iso) =>
                 setReminderDraft({ id: null, remindOn: iso, note: "", propertyId: null })
               }
+              onOpenProperty={openProperty}
               dragOverIso={dragOverIso}
               dropProps={dropProps}
             />
@@ -954,6 +1022,7 @@ function CalendarPage() {
               onAddReminder={(iso) =>
                 setReminderDraft({ id: null, remindOn: iso, note: "", propertyId: null })
               }
+              onOpenProperty={openProperty}
               dragOverIso={dragOverIso}
               dropProps={dropProps}
             />
@@ -970,6 +1039,7 @@ function CalendarPage() {
               onAddReminder={(iso) =>
                 setReminderDraft({ id: null, remindOn: iso, note: "", propertyId: null })
               }
+              onOpenProperty={openProperty}
             />
           )}
           {view === "list" && (
@@ -981,6 +1051,7 @@ function CalendarPage() {
               onEditReminder={openEditReminder}
               onDeleteReminder={handleDeleteReminder}
               onToggleReminderDone={handleToggleReminderDone}
+              onOpenProperty={openProperty}
             />
           )}
         </div>
@@ -1014,6 +1085,7 @@ function CalendarPage() {
                     onEditReminder={openEditReminder}
                     onDeleteReminder={handleDeleteReminder}
                     onToggleReminderDone={handleToggleReminderDone}
+                    onOpenProperty={openProperty}
                   />
                 ))
               )}
@@ -1052,6 +1124,7 @@ function MonthView({
   onSelectDay,
   onEditReminder,
   onAddReminder,
+  onOpenProperty,
   dragOverIso,
   dropProps,
 }: {
@@ -1061,6 +1134,7 @@ function MonthView({
   onSelectDay: (iso: string) => void;
   onEditReminder: (event: CalendarEvent) => void;
   onAddReminder: (iso: string) => void;
+  onOpenProperty: (propertyId: string) => void;
   dragOverIso: string | null;
   dropProps: (iso: string) => Record<string, unknown>;
 }) {
@@ -1126,7 +1200,13 @@ function MonthView({
                     <EventChip
                       key={e.id}
                       event={e}
-                      onClick={() => (e.type === "reminder" ? onEditReminder(e) : onSelectDay(iso))}
+                      onClick={() =>
+                        e.type === "reminder"
+                          ? onEditReminder(e)
+                          : e.propertyId
+                            ? onOpenProperty(e.propertyId)
+                            : onSelectDay(iso)
+                      }
                     />
                   ))}
                   {overflow > 0 && (
@@ -1157,6 +1237,7 @@ function WeekView({
   eventsByDate,
   onEditReminder,
   onAddReminder,
+  onOpenProperty,
   dragOverIso,
   dropProps,
 }: {
@@ -1164,6 +1245,7 @@ function WeekView({
   eventsByDate: Map<string, CalendarEvent[]>;
   onEditReminder: (event: CalendarEvent) => void;
   onAddReminder: (iso: string) => void;
+  onOpenProperty: (propertyId: string) => void;
   dragOverIso: string | null;
   dropProps: (iso: string) => Record<string, unknown>;
 }) {
@@ -1210,7 +1292,13 @@ function WeekView({
                   <EventChip
                     key={e.id}
                     event={e}
-                    onClick={() => (e.type === "reminder" ? onEditReminder(e) : undefined)}
+                    onClick={() =>
+                      e.type === "reminder"
+                        ? onEditReminder(e)
+                        : e.propertyId
+                          ? onOpenProperty(e.propertyId)
+                          : undefined
+                    }
                   />
                 ))
               )}
@@ -1233,6 +1321,7 @@ function DayView({
   onDeleteReminder,
   onToggleReminderDone,
   onAddReminder,
+  onOpenProperty,
 }: {
   cursor: Date;
   eventsByDate: Map<string, CalendarEvent[]>;
@@ -1242,6 +1331,7 @@ function DayView({
   onDeleteReminder: (event: CalendarEvent) => void;
   onToggleReminderDone: (event: CalendarEvent) => void;
   onAddReminder: (iso: string) => void;
+  onOpenProperty: (propertyId: string) => void;
 }) {
   const iso = format(cursor, "yyyy-MM-dd");
   const dayEvents = eventsByDate.get(iso) ?? [];
@@ -1274,6 +1364,7 @@ function DayView({
               onEditReminder={onEditReminder}
               onDeleteReminder={onDeleteReminder}
               onToggleReminderDone={onToggleReminderDone}
+              onOpenProperty={onOpenProperty}
             />
           ))
         )}
@@ -1292,6 +1383,7 @@ function ListView({
   onEditReminder,
   onDeleteReminder,
   onToggleReminderDone,
+  onOpenProperty,
 }: {
   cursor: Date;
   eventsByDate: Map<string, CalendarEvent[]>;
@@ -1300,6 +1392,7 @@ function ListView({
   onEditReminder: (event: CalendarEvent) => void;
   onDeleteReminder: (event: CalendarEvent) => void;
   onToggleReminderDone: (event: CalendarEvent) => void;
+  onOpenProperty: (propertyId: string) => void;
 }) {
   const key = format(cursor, "yyyy-MM");
   const monthDays = [...eventsByDate.entries()]
@@ -1361,6 +1454,7 @@ function ListView({
                   onEditReminder={onEditReminder}
                   onDeleteReminder={onDeleteReminder}
                   onToggleReminderDone={onToggleReminderDone}
+                  onOpenProperty={onOpenProperty}
                 />
               ))}
             </div>
