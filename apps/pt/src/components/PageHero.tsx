@@ -107,27 +107,36 @@ export function PageHero({
             {subtitle && <p className="mt-1 max-w-2xl text-sm text-white/85">{subtitle}</p>}
           </div>
         </div>
-        {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+        {/* Stats sit up here on the right, next to the title, instead of their own
+            row below — that second row was making the banner taller than its
+            content needed and leaving the space beside the title empty. On a
+            narrow screen this whole group still wraps below the title (same as
+            before), where the grid keeps the tiles evenly sized. */}
+        {((stats && stats.length > 0) || children) && (
+          <div className="flex w-full flex-wrap items-center justify-end gap-4 sm:w-auto">
+            {stats && stats.length > 0 && (
+              <div
+                className={`grid w-full gap-2 sm:w-auto sm:flex sm:flex-wrap ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+              >
+                {stats.map((st) => (
+                  <div
+                    key={st.label}
+                    className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20 sm:px-4"
+                  >
+                    <div className="text-xl font-semibold tabular-nums sm:text-2xl">
+                      {st.text ?? <CountUp to={st.value} format={st.format} />}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-white/80 sm:text-[11px]">
+                      {st.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+          </div>
+        )}
       </div>
-      {stats && stats.length > 0 && (
-        <div
-          className={`relative mt-4 grid gap-2 sm:flex sm:flex-wrap ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
-        >
-          {stats.map((st) => (
-            <div
-              key={st.label}
-              className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20 sm:px-4"
-            >
-              <div className="text-xl font-semibold tabular-nums sm:text-2xl">
-                {st.text ?? <CountUp to={st.value} format={st.format} />}
-              </div>
-              <div className="text-[10px] uppercase tracking-wide text-white/80 sm:text-[11px]">
-                {st.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
