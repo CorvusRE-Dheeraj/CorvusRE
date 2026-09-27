@@ -53,8 +53,8 @@ const STATUS_TONE: Record<TaxUpdate["status"], string> = {
   notice_guidance: "bg-secondary text-muted-foreground",
 };
 
-// The colour bar and icon tile follow the legal status, so "law" reads different
-// from "proposal" without reading the badge.
+// The top colour bar follows the legal status, so "law" reads different from
+// "proposal" without reading the badge.
 const STATUS_TILE: Record<TaxUpdate["status"], string> = {
   enacted_law: "from-emerald-500 to-teal-600",
   adopted_rule: "from-emerald-500 to-teal-600",
@@ -63,6 +63,21 @@ const STATUS_TILE: Record<TaxUpdate["status"], string> = {
   failed_legislation: "from-rose-400 to-red-500",
   notice_guidance: "from-sky-400 to-indigo-500",
 };
+
+// The icon tile follows the topic instead — most real updates share the same status
+// (notice_guidance), which made every card's icon the same blue regardless of subject.
+// One colour per tag gives a card its identity at a glance before any text is read.
+const TAG_TILE: Record<TaxUpdateTag, string> = {
+  commercial: "from-blue-500 to-indigo-600",
+  protest: "from-orange-500 to-red-600",
+  arb: "from-violet-500 to-purple-600",
+  arbitration: "from-teal-500 to-emerald-600",
+  court: "from-slate-600 to-slate-800",
+  valuation: "from-emerald-500 to-green-600",
+  tax_rate: "from-amber-500 to-yellow-600",
+  deadlines: "from-rose-500 to-pink-600",
+};
+const DEFAULT_TILE = "from-slate-500 to-slate-700";
 
 export function updateAsText(u: TaxUpdate): string {
   return [
@@ -142,6 +157,7 @@ export function TaxUpdateCard({
   }
 
   const Hero = update.tags[0] ? TAG_ICON[update.tags[0]] : Scale;
+  const heroTile = update.tags[0] ? TAG_TILE[update.tags[0]] : DEFAULT_TILE;
 
   return (
     <article
@@ -152,7 +168,7 @@ export function TaxUpdateCard({
       <div className="p-4">
         <div className="flex items-start gap-3">
           <div
-            className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm ${STATUS_TILE[update.status]}`}
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-white shadow-sm ${heroTile}`}
           >
             <Hero className="h-5 w-5" />
           </div>
