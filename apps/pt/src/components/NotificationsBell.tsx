@@ -32,9 +32,9 @@ export function NotificationsBell() {
       setSeen(new Set());
     }
   }, [seenKey]);
-  function markSeen(key: string) {
-    if (!seenKey || seen.has(key)) return;
-    const next = new Set([...seen, key]);
+  function markAllSeen(list: Item[]) {
+    if (!seenKey || list.length === 0) return;
+    const next = new Set([...seen, ...list.map((i) => i.key)]);
     setSeen(next);
     try {
       localStorage.setItem(seenKey, JSON.stringify([...next].slice(-200)));
@@ -106,7 +106,14 @@ export function NotificationsBell() {
 
   if (!user) return null;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        // Opening the list counts as seeing everything in it.
+        if (o) markAllSeen(items);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -136,10 +143,7 @@ export function NotificationsBell() {
               <li key={it.key}>
                 <Link
                   to={it.to}
-                  onClick={() => {
-                    markSeen(it.key);
-                    setOpen(false);
-                  }}
+                  onClick={() => setOpen(false)}
                   className="flex items-start gap-2 p-3 text-sm hover:bg-secondary"
                 >
                   <span
