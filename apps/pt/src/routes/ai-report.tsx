@@ -103,6 +103,7 @@ import {
   EMPTY_TAX_INPUTS,
   type SavingsAnalysis,
   type SavingsTaxInputs,
+  type ModuleIndication,
 } from "@/lib/savings-analysis";
 import {
   getSavingsTaxInputs,
@@ -2523,19 +2524,6 @@ function Report() {
     }).catch((err) => console.error("Could not save the updated score:", err));
   }, [resolvedProperty, valueSignalsSettled, healthResult]);
 
-  const lastSavedSavings = useRef<number | null>(null);
-  useEffect(() => {
-    if (!resolvedProperty || !valueSignalsSettled || !savingsEstimate) return;
-    const amount = savingsEstimate.amount;
-    if (lastSavedSavings.current === amount) return;
-    lastSavedSavings.current = amount;
-    if (resolvedProperty.estimatedSavings === amount) return;
-    updatePropertySavings(resolvedProperty.id, {
-      estimatedSavings: amount,
-      savingsBasis: savingsEstimate.basis,
-    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
-  }, [resolvedProperty, valueSignalsSettled, savingsEstimate]);
-
   const estimated = useMemo(() => {
     // `hasEstimate: false` means "no assessed value to estimate from at all"
     // (estimateSavings() returns null for that case on purpose — see its own
@@ -2599,6 +2587,46 @@ function Report() {
       .catch((err) => console.error("Could not load savings tax inputs:", err));
   }, [resolvedProperty]);
 
+  // Module 7 (Income Approach) and Module 5 (Improvement Condition) each
+  // sometimes compute their own real indicated value for this property —
+  // see computeSavingsAnalysis's own doc comment for why these only ever
+  // pull the estimate's indicated value DOWN, never up. Both are gated on
+  // the module's own "this is real, not a guess" signal: Income on
+  // dataComplete (the owner-confirmed P&L figures), Improvement on
+  // effectiveAgeYears being non-null (server-enforced null with zero real
+  // photo evidence — see ai-report-modules.ts).
+  const moduleImprovementData = moduleData.improvement?.data as
+    | ModuleResultMap["improvement"]
+    | undefined;
+  const moduleIndications = useMemo<ModuleIndication[]>(() => {
+    const out: ModuleIndication[] = [];
+    if (incomeComputed.dataComplete && incomeComputed.indicatedValue != null) {
+      out.push({ source: "income", value: incomeComputed.indicatedValue });
+    }
+    if (moduleImprovementData?.effectiveAgeYears != null && state.improvementValue != null) {
+      const dep = computeDepreciation(
+        moduleImprovementData.effectiveAgeYears,
+        getTypicalEconomicLife(state.propertyType),
+        moduleImprovementData.functionalObsolescencePct,
+        moduleImprovementData.externalObsolescencePct,
+        state.improvementValue,
+      );
+      if (dep.conditionAdjustedValue != null && state.totalValue != null) {
+        const adjustedTotal =
+          state.totalValue - state.improvementValue + dep.conditionAdjustedValue;
+        out.push({ source: "improvement", value: Math.round(adjustedTotal) });
+      }
+    }
+    return out;
+  }, [
+    incomeComputed.dataComplete,
+    incomeComputed.indicatedValue,
+    moduleImprovementData,
+    state.improvementValue,
+    state.totalValue,
+    state.propertyType,
+  ]);
+
   const savingsAnalysis = useMemo<SavingsAnalysis>(() => {
     const cs = computeComparableStats(
       compsMap.data?.subject ?? null,
@@ -2614,6 +2642,7 @@ function Report() {
         ? { min: cs.indicated.min, median: cs.indicated.median, max: cs.indicated.max }
         : null,
       taxInputs: savingsTaxInputs ?? EMPTY_TAX_INPUTS,
+      moduleIndications,
     });
   }, [
     savingsEstimate,
@@ -2622,7 +2651,35 @@ function Report() {
     state.totalValue,
     state.taxYear,
     state.cad,
+    moduleIndications,
   ]);
+
+  // Persists savingsAnalysis's own annualSavings (not the raw savingsEstimate
+  // amount) — the same module-aware number Module 9 shows, including any
+  // Income/Improvement adjustment (see moduleIndications above). Before this,
+  // this synced the pre-module baseline only, so uploading evidence or
+  // saving income figures could visibly move Module 9's own number while the
+  // dashboard/Properties-page total (read from this saved column) silently
+  // stayed put — the actual bug behind "I added values but I don't see any
+  // change in the protest amount I am saving."
+  const lastSavedSavings = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !resolvedProperty ||
+      !valueSignalsSettled ||
+      !savingsEstimate ||
+      !savingsAnalysis.sufficient
+    )
+      return;
+    const amount = savingsAnalysis.annualSavings;
+    if (lastSavedSavings.current === amount) return;
+    lastSavedSavings.current = amount;
+    if (resolvedProperty.estimatedSavings === amount) return;
+    updatePropertySavings(resolvedProperty.id, {
+      estimatedSavings: amount,
+      savingsBasis: savingsEstimate.basis,
+    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
+  }, [resolvedProperty, valueSignalsSettled, savingsEstimate, savingsAnalysis]);
 
   async function saveSavingsTaxInputs(input: SavingsTaxInputsInput) {
     if (!user || !resolvedProperty) return;
@@ -7533,6 +7590,17 @@ function IncomeLadderPreview({
     });
   }
 
+  // Same non-blocking sanity check as the full income form (a real
+  // commercial cap rate is usually ~5-10%; well outside that, NOI ÷ cap
+  // rate swings the indicated value 5-10x) — this compact card is the more
+  // commonly used entry point, so it needs the same warning, not just the
+  // "More options" modal.
+  const capRateNum = parse(f.cap);
+  const capRateHint =
+    editable && capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving.`
+      : null;
+
   return (
     <div className="grid gap-2">
       <div
@@ -7545,6 +7613,9 @@ function IncomeLadderPreview({
               {r.cell}
             </div>
           ))}
+          {capRateHint && (
+            <p className="text-[10px] leading-tight text-warning-foreground">{capRateHint}</p>
+          )}
           <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-1.5 text-sm font-semibold text-foreground">
             <span>Indicated Value</span>
             <span className={`${VALUE_COL} pr-2.5 text-right tabular-nums`}>
@@ -8023,7 +8094,7 @@ function IncomeFiguresForm({
   const field = (
     label: string,
     k: keyof IncomeFormState,
-    opts?: { prefix?: string; suffix?: string },
+    opts?: { prefix?: string; suffix?: string; hint?: string },
   ) => (
     <label className="grid gap-1 text-xs">
       <span className="font-medium text-muted-foreground">{label}</span>
@@ -8038,8 +8109,21 @@ function IncomeFiguresForm({
         />
         {opts?.suffix && <span className="text-muted-foreground">{opts.suffix}</span>}
       </span>
+      {opts?.hint && <span className="text-[11px] text-warning-foreground">{opts.hint}</span>}
     </label>
   );
+
+  // A real commercial cap rate is usually ~5-10% — well outside that, NOI ÷
+  // cap rate swings wildly (e.g. a 1% entry meant to be a placeholder or a
+  // typo can produce an indicated value 5-10x too high), so this flags it
+  // right where it's entered instead of only showing up as a confusing
+  // Income Value number later. Non-blocking: still saves either way, in case
+  // the property genuinely has an unusual rate.
+  const capRateNum = numOrNull(form.capRatePct);
+  const capRateHint =
+    capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving; it has a big effect on the indicated value.`
+      : undefined;
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -8071,7 +8155,7 @@ function IncomeFiguresForm({
         {field("Operating expenses (annual)", "operatingExpenses", { prefix: "$" })}
         {field("Stated NOI (optional, from a doc)", "noiStated", { prefix: "$" })}
         {field("Rentable area (optional)", "rentableSqft", { suffix: "SF" })}
-        {field("Capitalization rate", "capRatePct", { suffix: "%" })}
+        {field("Capitalization rate", "capRatePct", { suffix: "%", hint: capRateHint })}
         <label className="grid gap-1 text-xs">
           <span className="font-medium text-muted-foreground">Cap rate source</span>
           <select
