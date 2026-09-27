@@ -498,8 +498,8 @@ export function SiteFooter() {
     <footer className="bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 text-white">
       {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
           bottom-right corner: extra bottom room on phones, right room above. */}
-      <div className="container-page pt-6 pb-24 sm:pb-6 sm:pr-24">
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <div className="container-page pt-4 pb-20 sm:pb-4 sm:pr-24">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 ring-1 ring-white/25">
               <svg
@@ -535,7 +535,7 @@ export function SiteFooter() {
           </nav>
         </div>
 
-        <div className="mt-5 border-t border-white/15 pt-4">
+        <div className="mt-3 border-t border-white/15 pt-3">
           <p className="flex items-center gap-2 text-xs font-semibold text-white">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
             Serving {SERVED_COUNTIES.length} Texas counties
@@ -543,7 +543,7 @@ export function SiteFooter() {
               Beta
             </span>
           </p>
-          <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Counties served">
+          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Counties served">
             {SERVED_COUNTIES.map((county) => (
               <li
                 key={county}
@@ -553,7 +553,7 @@ export function SiteFooter() {
               </li>
             ))}
           </ul>
-          <p className="mt-4 text-xs text-white/70">
+          <p className="mt-2.5 text-xs text-white/70">
             © {new Date().getFullYear()} CorvusPT — Texas Property Tax AI. All rights reserved.
           </p>
         </div>
