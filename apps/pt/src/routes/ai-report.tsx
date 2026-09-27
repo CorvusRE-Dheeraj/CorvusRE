@@ -60,7 +60,7 @@ import {
   type IntakeState,
 } from "@/lib/intake-store";
 import { MODULES, type Module } from "@/lib/modules";
-import type { IconColor } from "@/lib/icon-colors";
+import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import {
   getMyBilling,
@@ -103,6 +103,7 @@ import {
   EMPTY_TAX_INPUTS,
   type SavingsAnalysis,
   type SavingsTaxInputs,
+  type ModuleIndication,
 } from "@/lib/savings-analysis";
 import {
   getSavingsTaxInputs,
@@ -2523,19 +2524,6 @@ function Report() {
     }).catch((err) => console.error("Could not save the updated score:", err));
   }, [resolvedProperty, valueSignalsSettled, healthResult]);
 
-  const lastSavedSavings = useRef<number | null>(null);
-  useEffect(() => {
-    if (!resolvedProperty || !valueSignalsSettled || !savingsEstimate) return;
-    const amount = savingsEstimate.amount;
-    if (lastSavedSavings.current === amount) return;
-    lastSavedSavings.current = amount;
-    if (resolvedProperty.estimatedSavings === amount) return;
-    updatePropertySavings(resolvedProperty.id, {
-      estimatedSavings: amount,
-      savingsBasis: savingsEstimate.basis,
-    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
-  }, [resolvedProperty, valueSignalsSettled, savingsEstimate]);
-
   const estimated = useMemo(() => {
     // `hasEstimate: false` means "no assessed value to estimate from at all"
     // (estimateSavings() returns null for that case on purpose — see its own
@@ -2599,6 +2587,46 @@ function Report() {
       .catch((err) => console.error("Could not load savings tax inputs:", err));
   }, [resolvedProperty]);
 
+  // Module 7 (Income Approach) and Module 5 (Improvement Condition) each
+  // sometimes compute their own real indicated value for this property —
+  // see computeSavingsAnalysis's own doc comment for why these only ever
+  // pull the estimate's indicated value DOWN, never up. Both are gated on
+  // the module's own "this is real, not a guess" signal: Income on
+  // dataComplete (the owner-confirmed P&L figures), Improvement on
+  // effectiveAgeYears being non-null (server-enforced null with zero real
+  // photo evidence — see ai-report-modules.ts).
+  const moduleImprovementData = moduleData.improvement?.data as
+    | ModuleResultMap["improvement"]
+    | undefined;
+  const moduleIndications = useMemo<ModuleIndication[]>(() => {
+    const out: ModuleIndication[] = [];
+    if (incomeComputed.dataComplete && incomeComputed.indicatedValue != null) {
+      out.push({ source: "income", value: incomeComputed.indicatedValue });
+    }
+    if (moduleImprovementData?.effectiveAgeYears != null && state.improvementValue != null) {
+      const dep = computeDepreciation(
+        moduleImprovementData.effectiveAgeYears,
+        getTypicalEconomicLife(state.propertyType),
+        moduleImprovementData.functionalObsolescencePct,
+        moduleImprovementData.externalObsolescencePct,
+        state.improvementValue,
+      );
+      if (dep.conditionAdjustedValue != null && state.totalValue != null) {
+        const adjustedTotal =
+          state.totalValue - state.improvementValue + dep.conditionAdjustedValue;
+        out.push({ source: "improvement", value: Math.round(adjustedTotal) });
+      }
+    }
+    return out;
+  }, [
+    incomeComputed.dataComplete,
+    incomeComputed.indicatedValue,
+    moduleImprovementData,
+    state.improvementValue,
+    state.totalValue,
+    state.propertyType,
+  ]);
+
   const savingsAnalysis = useMemo<SavingsAnalysis>(() => {
     const cs = computeComparableStats(
       compsMap.data?.subject ?? null,
@@ -2614,6 +2642,7 @@ function Report() {
         ? { min: cs.indicated.min, median: cs.indicated.median, max: cs.indicated.max }
         : null,
       taxInputs: savingsTaxInputs ?? EMPTY_TAX_INPUTS,
+      moduleIndications,
     });
   }, [
     savingsEstimate,
@@ -2622,7 +2651,35 @@ function Report() {
     state.totalValue,
     state.taxYear,
     state.cad,
+    moduleIndications,
   ]);
+
+  // Persists savingsAnalysis's own annualSavings (not the raw savingsEstimate
+  // amount) — the same module-aware number Module 9 shows, including any
+  // Income/Improvement adjustment (see moduleIndications above). Before this,
+  // this synced the pre-module baseline only, so uploading evidence or
+  // saving income figures could visibly move Module 9's own number while the
+  // dashboard/Properties-page total (read from this saved column) silently
+  // stayed put — the actual bug behind "I added values but I don't see any
+  // change in the protest amount I am saving."
+  const lastSavedSavings = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !resolvedProperty ||
+      !valueSignalsSettled ||
+      !savingsEstimate ||
+      !savingsAnalysis.sufficient
+    )
+      return;
+    const amount = savingsAnalysis.annualSavings;
+    if (lastSavedSavings.current === amount) return;
+    lastSavedSavings.current = amount;
+    if (resolvedProperty.estimatedSavings === amount) return;
+    updatePropertySavings(resolvedProperty.id, {
+      estimatedSavings: amount,
+      savingsBasis: savingsEstimate.basis,
+    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
+  }, [resolvedProperty, valueSignalsSettled, savingsEstimate, savingsAnalysis]);
 
   async function saveSavingsTaxInputs(input: SavingsTaxInputsInput) {
     if (!user || !resolvedProperty) return;
@@ -4044,6 +4101,12 @@ function ModuleVisual({
 
   if (m.id === "comps" && compsMap.data?.comps.length) {
     const stats = computeComparableStats(compsMap.data.subject, compsMap.data.comps, totalValue);
+    // The single most-similar comp (ranked[0] once excluded ones are skipped —
+    // `ranked` is already sorted highest-similarity-first, see comps-analysis.ts) —
+    // a real, named nearby property instead of just an aggregate range, so the
+    // card's otherwise-empty space below the chart shows something concrete
+    // and specific to this property rather than being wasted.
+    const topComp = stats.ranked.find((c) => !c.excluded) ?? null;
     return (
       <div>
         <div className="flex items-baseline gap-1.5">
@@ -4057,6 +4120,22 @@ function ModuleVisual({
             comps={stats.ranked}
           />
         </div>
+        {topComp && (
+          <div className={`mt-3 rounded-lg px-2.5 py-2 ${m.color.bg}`}>
+            <div
+              className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}
+            >
+              Closest match — {Math.round(topComp.similarity)}% similar
+            </div>
+            <div className="mt-0.5 truncate text-xs font-medium text-foreground">
+              {topComp.address}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {topComp.distanceMi.toFixed(1)} mi away
+              {topComp.marketValue != null && ` · ${compactCurrency(topComp.marketValue)}`}
+            </div>
+          </div>
+        )}
         {stats.limitedData ? (
           <div className="mt-3 rounded-md bg-warning/15 px-2 py-1 text-[11px] text-warning-foreground">
             Limited Comparable Data
@@ -4202,10 +4281,30 @@ function ModuleVisual({
     case "strategy": {
       const d = moduleState.data as ModuleResultMap["strategy"];
       if (d.strategies.length === 0) return null;
-      // No per-row upload chips — the card shows one "Upload data" control at
-      // the bottom (see cardDataGap's "strategy" case). Rows that still need
-      // evidence show a plain "Data Needed" pill instead.
-      return <StrategyRankList strategies={d.strategies} color={m.color} max={5} />;
+      // The AI's own one-line reason for its top-ranked argument — already
+      // computed for the modal's StrategyDetail, just not shown here, so this
+      // reuses it instead of adding anything new. Real and specific to this
+      // property (not a generic "here's how scoring works" blurb), which is
+      // what makes the otherwise-empty space above the bars worth filling.
+      const top = d.strategies.reduce((best, s) =>
+        s.strengthScore > best.strengthScore ? s : best,
+      );
+      return (
+        <div>
+          {top.primaryReason && (
+            <div className={`mb-3 rounded-lg px-3 py-2 ${m.color.bg}`}>
+              <div className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}>
+                Strongest argument — {top.name}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{top.primaryReason}</p>
+            </div>
+          )}
+          {/* No per-row upload chips — the card shows one "Upload data" control at
+              the bottom (see cardDataGap's "strategy" case). Rows that still need
+              evidence show a plain "Data Needed" pill instead. */}
+          <StrategyRankList strategies={d.strategies} color={m.color} max={5} />
+        </div>
+      );
     }
     case "comps": {
       const d = moduleState.data as ModuleResultMap["comps"];
@@ -6998,6 +7097,17 @@ const ZONING_ASPECT_ICON: Record<string, LucideIcon> = {
   "Permitted Use": CheckCircle2,
 };
 
+// Each aspect tile gets its own color from the app's shared icon palette
+// (icon-colors.ts) instead of all four sharing one flat muted gray — Permitted
+// Use gets the same success green the checkmark already uses a few lines down
+// for a "Matches" outcome, so approval reads the same color everywhere.
+const ZONING_ASPECT_COLOR: Record<string, IconColor> = {
+  "CAD Classification": ICON_COLORS[6], // sky — official record/paperwork
+  "Actual Use": ICON_COLORS[2], // teal — the building itself
+  "Zoning District": ICON_COLORS[1], // violet — location/district
+  "Permitted Use": ICON_COLORS[5], // success green — approval
+};
+
 // The 4-column classification line-up from the spec's screenshot: the four
 // aspects are the columns, one value row, then a muted source / upload row.
 // The Permitted Use column also carries the overall consistent/mismatch mark.
@@ -7169,9 +7279,14 @@ function ZoningAspectTiles({
         {aspects.map((a) => {
           const st = ZONING_ASPECT_STATUS[a.status];
           const Icon = ZONING_ASPECT_ICON[a.label] ?? FileText;
+          const color = ZONING_ASPECT_COLOR[a.label] ?? ICON_COLORS[5];
           return (
             <div key={a.label} className="rounded-lg bg-secondary/50 p-2 text-center">
-              <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
+              <span
+                className={`mx-auto grid h-6 w-6 place-items-center rounded-full ${color.bg} ${color.text}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
               <div className="mt-1 text-[8px] uppercase leading-tight tracking-wide text-muted-foreground">
                 {a.label}
               </div>
@@ -7475,6 +7590,17 @@ function IncomeLadderPreview({
     });
   }
 
+  // Same non-blocking sanity check as the full income form (a real
+  // commercial cap rate is usually ~5-10%; well outside that, NOI ÷ cap
+  // rate swings the indicated value 5-10x) — this compact card is the more
+  // commonly used entry point, so it needs the same warning, not just the
+  // "More options" modal.
+  const capRateNum = parse(f.cap);
+  const capRateHint =
+    editable && capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving.`
+      : null;
+
   return (
     <div className="grid gap-2">
       <div
@@ -7487,6 +7613,9 @@ function IncomeLadderPreview({
               {r.cell}
             </div>
           ))}
+          {capRateHint && (
+            <p className="text-[10px] leading-tight text-warning-foreground">{capRateHint}</p>
+          )}
           <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-1.5 text-sm font-semibold text-foreground">
             <span>Indicated Value</span>
             <span className={`${VALUE_COL} pr-2.5 text-right tabular-nums`}>
@@ -7965,7 +8094,7 @@ function IncomeFiguresForm({
   const field = (
     label: string,
     k: keyof IncomeFormState,
-    opts?: { prefix?: string; suffix?: string },
+    opts?: { prefix?: string; suffix?: string; hint?: string },
   ) => (
     <label className="grid gap-1 text-xs">
       <span className="font-medium text-muted-foreground">{label}</span>
@@ -7980,8 +8109,21 @@ function IncomeFiguresForm({
         />
         {opts?.suffix && <span className="text-muted-foreground">{opts.suffix}</span>}
       </span>
+      {opts?.hint && <span className="text-[11px] text-warning-foreground">{opts.hint}</span>}
     </label>
   );
+
+  // A real commercial cap rate is usually ~5-10% — well outside that, NOI ÷
+  // cap rate swings wildly (e.g. a 1% entry meant to be a placeholder or a
+  // typo can produce an indicated value 5-10x too high), so this flags it
+  // right where it's entered instead of only showing up as a confusing
+  // Income Value number later. Non-blocking: still saves either way, in case
+  // the property genuinely has an unusual rate.
+  const capRateNum = numOrNull(form.capRatePct);
+  const capRateHint =
+    capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving; it has a big effect on the indicated value.`
+      : undefined;
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -8013,7 +8155,7 @@ function IncomeFiguresForm({
         {field("Operating expenses (annual)", "operatingExpenses", { prefix: "$" })}
         {field("Stated NOI (optional, from a doc)", "noiStated", { prefix: "$" })}
         {field("Rentable area (optional)", "rentableSqft", { suffix: "SF" })}
-        {field("Capitalization rate", "capRatePct", { suffix: "%" })}
+        {field("Capitalization rate", "capRatePct", { suffix: "%", hint: capRateHint })}
         <label className="grid gap-1 text-xs">
           <span className="font-medium text-muted-foreground">Cap rate source</span>
           <select

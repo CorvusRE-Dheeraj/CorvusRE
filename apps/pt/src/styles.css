@@ -266,8 +266,12 @@
 /* The header's own .container-page spans the full window edge-to-edge instead of
    staying centered at 80rem — otherwise on wide screens the logo sits stranded well
    inside the actual left corner instead of flush against it (same technique as the
-   CorvusRE hub's header, hub/hub.css). */
-header .container-page {
+   CorvusRE hub's header, hub/hub.css). The footer gets the same treatment: at 80rem
+   its content wraps into extra rows while a big empty margin sits unused on both
+   sides — letting it use the full width instead gives the same content more room
+   per row, so it wraps less and the footer is shorter. */
+header .container-page,
+footer .container-page {
   max-width: none;
   margin-inline: 0;
 }
