@@ -60,7 +60,7 @@ import {
   type IntakeState,
 } from "@/lib/intake-store";
 import { MODULES, type Module } from "@/lib/modules";
-import type { IconColor } from "@/lib/icon-colors";
+import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import {
   getMyBilling,
@@ -4044,6 +4044,12 @@ function ModuleVisual({
 
   if (m.id === "comps" && compsMap.data?.comps.length) {
     const stats = computeComparableStats(compsMap.data.subject, compsMap.data.comps, totalValue);
+    // The single most-similar comp (ranked[0] once excluded ones are skipped —
+    // `ranked` is already sorted highest-similarity-first, see comps-analysis.ts) —
+    // a real, named nearby property instead of just an aggregate range, so the
+    // card's otherwise-empty space below the chart shows something concrete
+    // and specific to this property rather than being wasted.
+    const topComp = stats.ranked.find((c) => !c.excluded) ?? null;
     return (
       <div>
         <div className="flex items-baseline gap-1.5">
@@ -4057,6 +4063,22 @@ function ModuleVisual({
             comps={stats.ranked}
           />
         </div>
+        {topComp && (
+          <div className={`mt-3 rounded-lg px-2.5 py-2 ${m.color.bg}`}>
+            <div
+              className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}
+            >
+              Closest match — {Math.round(topComp.similarity)}% similar
+            </div>
+            <div className="mt-0.5 truncate text-xs font-medium text-foreground">
+              {topComp.address}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {topComp.distanceMi.toFixed(1)} mi away
+              {topComp.marketValue != null && ` · ${compactCurrency(topComp.marketValue)}`}
+            </div>
+          </div>
+        )}
         {stats.limitedData ? (
           <div className="mt-3 rounded-md bg-warning/15 px-2 py-1 text-[11px] text-warning-foreground">
             Limited Comparable Data
@@ -4202,10 +4224,30 @@ function ModuleVisual({
     case "strategy": {
       const d = moduleState.data as ModuleResultMap["strategy"];
       if (d.strategies.length === 0) return null;
-      // No per-row upload chips — the card shows one "Upload data" control at
-      // the bottom (see cardDataGap's "strategy" case). Rows that still need
-      // evidence show a plain "Data Needed" pill instead.
-      return <StrategyRankList strategies={d.strategies} color={m.color} max={5} />;
+      // The AI's own one-line reason for its top-ranked argument — already
+      // computed for the modal's StrategyDetail, just not shown here, so this
+      // reuses it instead of adding anything new. Real and specific to this
+      // property (not a generic "here's how scoring works" blurb), which is
+      // what makes the otherwise-empty space above the bars worth filling.
+      const top = d.strategies.reduce((best, s) =>
+        s.strengthScore > best.strengthScore ? s : best,
+      );
+      return (
+        <div>
+          {top.primaryReason && (
+            <div className={`mb-3 rounded-lg px-3 py-2 ${m.color.bg}`}>
+              <div className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}>
+                Strongest argument — {top.name}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{top.primaryReason}</p>
+            </div>
+          )}
+          {/* No per-row upload chips — the card shows one "Upload data" control at
+              the bottom (see cardDataGap's "strategy" case). Rows that still need
+              evidence show a plain "Data Needed" pill instead. */}
+          <StrategyRankList strategies={d.strategies} color={m.color} max={5} />
+        </div>
+      );
     }
     case "comps": {
       const d = moduleState.data as ModuleResultMap["comps"];
@@ -6998,6 +7040,17 @@ const ZONING_ASPECT_ICON: Record<string, LucideIcon> = {
   "Permitted Use": CheckCircle2,
 };
 
+// Each aspect tile gets its own color from the app's shared icon palette
+// (icon-colors.ts) instead of all four sharing one flat muted gray — Permitted
+// Use gets the same success green the checkmark already uses a few lines down
+// for a "Matches" outcome, so approval reads the same color everywhere.
+const ZONING_ASPECT_COLOR: Record<string, IconColor> = {
+  "CAD Classification": ICON_COLORS[6], // sky — official record/paperwork
+  "Actual Use": ICON_COLORS[2], // teal — the building itself
+  "Zoning District": ICON_COLORS[1], // violet — location/district
+  "Permitted Use": ICON_COLORS[5], // success green — approval
+};
+
 // The 4-column classification line-up from the spec's screenshot: the four
 // aspects are the columns, one value row, then a muted source / upload row.
 // The Permitted Use column also carries the overall consistent/mismatch mark.
@@ -7169,9 +7222,14 @@ function ZoningAspectTiles({
         {aspects.map((a) => {
           const st = ZONING_ASPECT_STATUS[a.status];
           const Icon = ZONING_ASPECT_ICON[a.label] ?? FileText;
+          const color = ZONING_ASPECT_COLOR[a.label] ?? ICON_COLORS[5];
           return (
             <div key={a.label} className="rounded-lg bg-secondary/50 p-2 text-center">
-              <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
+              <span
+                className={`mx-auto grid h-6 w-6 place-items-center rounded-full ${color.bg} ${color.text}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
               <div className="mt-1 text-[8px] uppercase leading-tight tracking-wide text-muted-foreground">
                 {a.label}
               </div>
