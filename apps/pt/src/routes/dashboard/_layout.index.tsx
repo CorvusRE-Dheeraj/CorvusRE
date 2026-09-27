@@ -752,7 +752,7 @@ function Overview() {
             <div className="card-elev p-5 min-w-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold">Deadlines</h3>
-                <Link to="/dashboard/deadlines" className="text-xs text-accent hover:underline">
+                <Link to="/dashboard/calendar" className="text-xs text-accent hover:underline">
                   View all
                 </Link>
               </div>

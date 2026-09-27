@@ -29,7 +29,6 @@ const NAV = [
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
   { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
-  { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
 ] as const;
@@ -53,10 +52,6 @@ const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard/documents": {
     icon: "text-sky-700",
     active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
-  },
-  "/dashboard/deadlines": {
-    icon: "text-amber-700",
-    active: "data-[status=active]:from-amber-600 data-[status=active]:to-rose-700",
   },
   "/dashboard/calendar": {
     icon: "text-violet-700",
