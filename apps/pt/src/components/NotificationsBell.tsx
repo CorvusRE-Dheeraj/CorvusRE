@@ -20,6 +20,29 @@ export function NotificationsBell() {
   const { user } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(false);
+  // Which items this person has already looked at, remembered in this browser. The badge counts
+  // only the ones they haven't seen; a changed date or new item counts as new again.
+  const seenKey = user ? `corvuspt.seenNotifications.${user.id}` : null;
+  const [seen, setSeen] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!seenKey) return;
+    try {
+      setSeen(new Set(JSON.parse(localStorage.getItem(seenKey) ?? "[]") as string[]));
+    } catch {
+      setSeen(new Set());
+    }
+  }, [seenKey]);
+  function markSeen(key: string) {
+    if (!seenKey || seen.has(key)) return;
+    const next = new Set([...seen, key]);
+    setSeen(next);
+    try {
+      localStorage.setItem(seenKey, JSON.stringify([...next].slice(-200)));
+    } catch {
+      // storage blocked — the badge will simply reappear next visit
+    }
+  }
+  const unseen = items.filter((i) => !seen.has(i.key));
 
   useEffect(() => {
     if (!user) return;
@@ -38,7 +61,7 @@ export function NotificationsBell() {
           const d = daysUntil(p.protestDeadline);
           if (d >= 0 && d <= 14)
             out.push({
-              key: `dl-${p.id}`,
+              key: `dl-${p.id}-${p.protestDeadline}`,
               text: `Protest deadline for ${p.address}`,
               when: whenLabel(d),
               to: "/dashboard/deadlines",
@@ -51,7 +74,7 @@ export function NotificationsBell() {
           const addr = props.find((p) => p.id === pr.propertyId)?.address ?? "your property";
           if (d >= 0 && d <= 14)
             out.push({
-              key: `hr-${pr.id}`,
+              key: `hr-${pr.id}-${pr.hearingDate}`,
               text: `Hearing for ${addr}`,
               when: whenLabel(d),
               to: "/dashboard/deadlines",
@@ -63,7 +86,7 @@ export function NotificationsBell() {
           const d = daysUntil(r.remindOn);
           if (d <= 7)
             out.push({
-              key: `rm-${r.id}`,
+              key: `rm-${r.id}-${r.remindOn}`,
               text: r.note,
               when: whenLabel(d),
               to: "/dashboard/calendar",
@@ -87,16 +110,14 @@ export function NotificationsBell() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={
-            items.length ? `Notifications, ${items.length} need attention` : "Notifications"
-          }
+          aria-label={unseen.length ? `Notifications, ${unseen.length} new` : "Notifications"}
           title="Notifications"
           className="relative grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
         >
           <Bell className="h-[18px] w-[18px]" />
-          {items.length > 0 && (
+          {unseen.length > 0 && (
             <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose-700 px-1 text-[10px] font-bold text-white">
-              {items.length}
+              {unseen.length}
             </span>
           )}
         </button>
@@ -115,14 +136,25 @@ export function NotificationsBell() {
               <li key={it.key}>
                 <Link
                   to={it.to}
-                  onClick={() => setOpen(false)}
-                  className="block p-3 text-sm hover:bg-secondary"
+                  onClick={() => {
+                    markSeen(it.key);
+                    setOpen(false);
+                  }}
+                  className="flex items-start gap-2 p-3 text-sm hover:bg-secondary"
                 >
-                  <div className="font-medium">{it.text}</div>
-                  <div
-                    className={`text-xs ${it.days <= 3 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
-                  >
-                    {it.when}
+                  <span
+                    aria-hidden
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${seen.has(it.key) ? "bg-transparent" : "bg-rose-700"}`}
+                  />
+                  <div className="min-w-0">
+                    <div className={seen.has(it.key) ? "font-normal" : "font-semibold"}>
+                      {it.text}
+                    </div>
+                    <div
+                      className={`text-xs ${it.days <= 3 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+                    >
+                      {it.when}
+                    </div>
                   </div>
                 </Link>
               </li>
