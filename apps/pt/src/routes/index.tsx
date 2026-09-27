@@ -30,7 +30,7 @@ import { AnimatedSteps } from "@/components/AnimatedSteps";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { ProductPreview } from "@/components/ProductPreview";
 import { HouseIllustration } from "@/assets/illustrations/house";
-import { WavingBearIllustration } from "@/assets/illustrations/waving-bear";
+import { WavingRobotIllustration } from "@/assets/illustrations/waving-robot";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
@@ -189,11 +189,11 @@ function Home() {
             </div>
 
             <div className="relative mt-3">
-              {/* Teddy pops up out of the search box's own top-left corner (the
+              {/* AI robot pops up out of the search box's own top-left corner (the
               box is the "doorway" now, not a separate graphic beside it) —
               same one-time emerge animation as before, reused as-is. */}
               <div className="hidden sm:block absolute -top-16 -left-14 z-10" aria-hidden="true">
-                <WavingBearIllustration className="h-24 w-auto hero-bear-emerge" />
+                <WavingRobotIllustration className="h-24 w-auto hero-mascot-emerge" />
                 <div className="hero-bubble absolute -top-4 left-[105%] w-36 text-left">
                   Hi! 👋 Type your address, or upload.
                 </div>

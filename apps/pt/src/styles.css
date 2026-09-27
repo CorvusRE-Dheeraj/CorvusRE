@@ -103,11 +103,7 @@
      signature move across pages rather than a different gradient per
      section. A soft (low-alpha) variant works as a section wash; the solid
      one is for a real focal band (a banner, a highlighted plan's header). */
-  --gradient-brand: linear-gradient(
-    135deg,
-    oklch(0.29 0.08 255),
-    oklch(0.5 0.16 163)
-  );
+  --gradient-brand: linear-gradient(135deg, oklch(0.29 0.08 255), oklch(0.5 0.16 163));
   --gradient-brand-soft: linear-gradient(
     135deg,
     oklch(0.29 0.08 255 / 0.08),
@@ -649,7 +645,7 @@ header .container-page {
    the speech bubble once he's arrived — separate elements from the
    continuously-waving arm, so none of these ever fight over the same
    element's transform (see the CorvusRE doors work for why that matters). */
-@keyframes bear-emerge {
+@keyframes mascot-emerge {
   from {
     opacity: 0;
     transform: translateY(18px) scale(0.7);
@@ -683,15 +679,15 @@ header .container-page {
   .hero-wave-arm {
     animation: wave-arm 1.8s ease-in-out infinite;
   }
-  .hero-bear-emerge {
-    animation: bear-emerge 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  .hero-mascot-emerge {
+    animation: mascot-emerge 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
   }
   .hero-bubble {
     animation: bubble-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both;
   }
 }
 
-/* Speech bubble greeting beside the hero's waving bear — visible
+/* Speech bubble greeting beside the hero's waving robot — visible
    immediately (unconditionally) even for reduced-motion users; only the
    pop-in motion above is gated. */
 .hero-bubble {
@@ -1111,8 +1107,18 @@ h3 {
 
 /* Small coloured labels use the -700 shade for contrast on light surfaces; in dark mode
    they switch to the lighter -400 shade so they stay readable. */
-.dark .text-emerald-700 { color: var(--color-emerald-400); }
-.dark .text-sky-700 { color: var(--color-sky-400); }
-.dark .text-amber-700 { color: var(--color-amber-400); }
-.dark .text-violet-700 { color: var(--color-violet-400); }
-.dark .text-rose-700 { color: var(--color-rose-400); }
+.dark .text-emerald-700 {
+  color: var(--color-emerald-400);
+}
+.dark .text-sky-700 {
+  color: var(--color-sky-400);
+}
+.dark .text-amber-700 {
+  color: var(--color-amber-400);
+}
+.dark .text-violet-700 {
+  color: var(--color-violet-400);
+}
+.dark .text-rose-700 {
+  color: var(--color-rose-400);
+}
