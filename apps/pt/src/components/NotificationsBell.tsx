@@ -64,7 +64,7 @@ export function NotificationsBell() {
               key: `dl-${p.id}-${p.protestDeadline}`,
               text: `Protest deadline for ${p.address}`,
               when: whenLabel(d),
-              to: "/dashboard/deadlines",
+              to: "/dashboard/calendar",
               days: d,
             });
         }
@@ -77,7 +77,7 @@ export function NotificationsBell() {
               key: `hr-${pr.id}-${pr.hearingDate}`,
               text: `Hearing for ${addr}`,
               when: whenLabel(d),
-              to: "/dashboard/deadlines",
+              to: "/dashboard/calendar",
               days: d,
             });
         }

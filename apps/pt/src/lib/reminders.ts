@@ -76,6 +76,21 @@ export async function setReminderDone(id: string, done: boolean): Promise<void> 
   if (error) throw error;
 }
 
+// Edits a reminder the owner already added — the Calendar page's edit form, and its
+// drag-to-reschedule (only ever a reminder; every other calendar entry is a real county/case
+// fact and stays read-only there).
+export async function updateReminder(
+  id: string,
+  patch: { remindOn?: string; note?: string; propertyId?: string | null },
+): Promise<void> {
+  const update: Record<string, string | null> = {};
+  if (patch.remindOn !== undefined) update.remind_on = patch.remindOn;
+  if (patch.note !== undefined) update.note = patch.note.trim();
+  if (patch.propertyId !== undefined) update.property_id = patch.propertyId;
+  const { error } = await supabase.from("user_reminders").update(update).eq("id", id);
+  if (error) throw error;
+}
+
 export async function deleteReminder(id: string): Promise<void> {
   const { error } = await supabase.from("user_reminders").delete().eq("id", id);
   if (error) throw error;
