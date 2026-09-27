@@ -139,6 +139,17 @@ function Documents() {
     });
   }
   const selectedDocs = documents.filter((d) => selectedIds.has(d.id));
+  // Select (or clear) every document in one group at once — the header's "Select all".
+  function setGroupSelected(ids: string[], value: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (value) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
 
   async function handleDownload(doc: DocumentRecord) {
     try {
@@ -641,6 +652,7 @@ function Documents() {
                 dupDismissed={dupDismissed}
                 selectedIds={selectedIds}
                 onToggleSelected={toggleSelected}
+                onSelectAll={setGroupSelected}
                 onView={setViewDoc}
                 onReview={handleReviewOpen}
                 onEdit={setEditDoc}
@@ -1001,6 +1013,7 @@ function PropertyDocGroup({
   dupDismissed,
   selectedIds,
   onToggleSelected,
+  onSelectAll,
   onView,
   onReview,
   onEdit,
@@ -1021,6 +1034,7 @@ function PropertyDocGroup({
   dupDismissed: Set<string>;
   selectedIds: Set<string>;
   onToggleSelected: (id: string) => void;
+  onSelectAll: (ids: string[], value: boolean) => void;
   onView: (doc: DocumentRecord) => void;
   onReview: (doc: DocumentRecord) => void;
   onEdit: (doc: DocumentRecord) => void;
@@ -1045,6 +1059,7 @@ function PropertyDocGroup({
   const checked = group.docs.filter((d) => d.aiCheckedAt);
   const issues = group.docs.filter((d) => d.aiVerdict === "issues" || d.aiVerdict === "invalid");
   const unchecked = group.docs.filter((d) => !d.aiCheckedAt);
+  const allSelected = hasDocs && group.docs.every((d) => selectedIds.has(d.id));
   const anyAnalyzing = group.docs.some((d) => analyzingIds.has(d.id));
   const summary = hasDocs
     ? [
@@ -1075,6 +1090,23 @@ function PropertyDocGroup({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-3">
+          {hasDocs && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => {
+                  setExpanded(true);
+                  onSelectAll(
+                    group.docs.map((d) => d.id),
+                    e.target.checked,
+                  );
+                }}
+                className="h-3.5 w-3.5"
+              />
+              Select all
+            </label>
+          )}
           {hasDocs && unchecked.length > 0 && (
             <button
               type="button"

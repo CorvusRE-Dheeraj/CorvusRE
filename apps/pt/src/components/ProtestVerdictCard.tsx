@@ -86,25 +86,31 @@ export function ProtestVerdictCard({
           Our quick answer for each property. Open it for the full reasons.
         </p>
       </div>
-      <ul className="grid gap-3">
+      <ul className="grid gap-1.5">
         {shown.map(({ p, v }) => {
           const t = TONE[v.tone];
           const Icon = t.Icon;
-          const btn = "btn-primary shrink-0 text-sm";
+          const btn =
+            "btn-primary shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs w-full justify-center sm:w-auto";
           return (
             <li
               key={p.id}
-              className={`flex flex-wrap items-center gap-3 rounded-2xl border p-4 ${t.box}`}
+              title={v.detail}
+              className={`flex min-w-0 flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:gap-2.5 ${t.box}`}
             >
-              <span
-                className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-white ${t.icon}`}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1 basis-56">
-                <div className="truncate text-xs text-muted-foreground">{p.address}</div>
-                <div className="font-serif text-base font-semibold">{v.headline}</div>
-                <p className="text-sm text-muted-foreground">{v.detail}</p>
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                <span
+                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-white ${t.icon}`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm sm:truncate">
+                    <span className="font-semibold">{v.headline}</span>
+                    <span className="text-muted-foreground"> — {p.address}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground sm:truncate">{v.detail}</p>
+                </div>
               </div>
               {v.action === "case" && (
                 <Link to="/dashboard/case" search={{ propertyId: p.id }} className={btn}>

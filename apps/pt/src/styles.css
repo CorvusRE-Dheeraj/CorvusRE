@@ -182,7 +182,12 @@
   --destructive: oklch(0.66 0.21 27);
   --success: oklch(0.72 0.17 155);
   --warning: oklch(0.82 0.16 80);
-  --warning-foreground: oklch(0.2 0.04 60);
+  /* Unlike every other -foreground token, this was left dark in both themes — every real
+     usage sitewide is amber text on a low-opacity warning tint (badges, banners), so in dark
+     mode that tint sits over the near-black page background and dark-on-dark text disappeared
+     (reported live: the tax-updates banner was unreadable in dark mode). Flipped light here,
+     matching how accent/success/destructive-foreground already flip per theme. */
+  --warning-foreground: oklch(0.92 0.1 80);
   --border: oklch(0.32 0.03 255);
   --input: oklch(0.3 0.03 255);
   --ring: oklch(0.7 0.15 163);

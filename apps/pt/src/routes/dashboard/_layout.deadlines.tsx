@@ -1,10 +1,11 @@
 import { Term } from "@/components/Term";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { currency } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
 import { listProperties, markPropertyPaid, type PropertyRecord } from "@/lib/properties";
+import { updateIntake } from "@/lib/intake-store";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHero } from "@/components/PageHero";
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/dashboard/_layout/deadlines")({
 });
 
 function Deadlines() {
+  const nav = useNavigate();
   const { user } = useAuth();
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
@@ -33,6 +35,33 @@ function Deadlines() {
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, [user]);
+
+  // Same property, whichever real step it's actually on: a case already exists, so open it;
+  // otherwise this is the property's first protest, so head to the AI report to start one — the
+  // same entry point Quick Actions and the dashboard's own property list use.
+  function openProperty(propertyId: string) {
+    const protest = protests.find((pr) => pr.propertyId === propertyId);
+    if (protest) {
+      nav({ to: "/dashboard/case", search: { propertyId } });
+      return;
+    }
+    const p = properties.find((row) => row.id === propertyId);
+    if (!p) return;
+    updateIntake({
+      address: p.address,
+      cad: p.cad ?? undefined,
+      accountNumber: p.accountNumber ?? undefined,
+      ownerName: p.ownerName ?? undefined,
+      propertyType: p.propertyType ?? undefined,
+      landValue: p.landValue ?? undefined,
+      improvementValue: p.improvementValue ?? undefined,
+      totalValue: p.totalValue ?? undefined,
+      taxYear: p.taxYear ?? undefined,
+      valueHistory: p.valueHistory ?? undefined,
+      confirmed: true,
+    });
+    nav({ to: "/ai-report" });
+  }
 
   async function handleMarkPaid(propertyId: string) {
     setMarkingPaidId(propertyId);
@@ -143,9 +172,11 @@ function Deadlines() {
           {deadlines.length > 0 ? (
             <div className="grid gap-3">
               {deadlines.map(({ property, deadline, daysLeft }) => (
-                <div
+                <button
+                  type="button"
                   key={property.id}
-                  className="card-elev p-4 flex items-center justify-between flex-wrap gap-2"
+                  onClick={() => openProperty(property.id)}
+                  className="card-elev w-full p-4 flex items-center justify-between flex-wrap gap-2 text-left transition-colors hover:bg-secondary/40"
                 >
                   <div>
                     <div className="font-medium">{property.address}</div>
@@ -160,7 +191,7 @@ function Deadlines() {
                         ? "Due today"
                         : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -177,9 +208,11 @@ function Deadlines() {
           {hearings.length > 0 ? (
             <div className="grid gap-3">
               {hearings.map(({ property, hearingDate, daysLeft }) => (
-                <div
+                <button
+                  type="button"
                   key={property.id}
-                  className="card-elev p-4 flex items-center justify-between flex-wrap gap-2"
+                  onClick={() => openProperty(property.id)}
+                  className="card-elev w-full p-4 flex items-center justify-between flex-wrap gap-2 text-left transition-colors hover:bg-secondary/40"
                 >
                   <div>
                     <div className="font-medium">{property.address}</div>
@@ -194,7 +227,7 @@ function Deadlines() {
                         ? "Today"
                         : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -213,7 +246,13 @@ function Deadlines() {
               {bills.map(({ property, dueDate, daysLeft, isPaid }) => (
                 <div
                   key={property.id}
-                  className="card-elev p-4 flex items-center justify-between flex-wrap gap-2"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openProperty(property.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") openProperty(property.id);
+                  }}
+                  className="card-elev p-4 flex items-center justify-between flex-wrap gap-2 cursor-pointer transition-colors hover:bg-secondary/40"
                 >
                   <div>
                     <div className="font-medium">{property.address}</div>
@@ -236,7 +275,10 @@ function Deadlines() {
                         </span>
                         <button
                           disabled={markingPaidId === property.id}
-                          onClick={() => handleMarkPaid(property.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkPaid(property.id);
+                          }}
                           className="btn-outline text-sm disabled:opacity-60"
                         >
                           {markingPaidId === property.id ? "Saving…" : "Mark as Paid"}
