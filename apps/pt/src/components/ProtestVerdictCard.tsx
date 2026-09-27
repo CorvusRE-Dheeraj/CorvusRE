@@ -75,7 +75,7 @@ export function ProtestVerdictCard({
   const shown = properties
     .map((p) => ({ p, v: verdictFor(p, protests, healthScores[p.id]) }))
     .sort((a, b) => order.indexOf(a.v.tone) - order.indexOf(b.v.tone))
-    .slice(0, 5);
+    .slice(0, 6);
   return (
     <section aria-labelledby="verdict-heading" className="grid gap-3">
       <div>
@@ -86,7 +86,11 @@ export function ProtestVerdictCard({
           Our quick answer for each property. Open it for the full reasons.
         </p>
       </div>
-      <ul className="grid gap-1.5">
+      {/* Each row is compact by design (see the compaction pass this replaced a taller
+          card layout with) — on a wide screen a single column just leaves the right half
+          empty, so this fills that space with a second column instead of stretching one
+          row across it. */}
+      <ul className="grid gap-1.5 lg:grid-cols-2 lg:gap-x-4">
         {shown.map(({ p, v }) => {
           const t = TONE[v.tone];
           const Icon = t.Icon;
