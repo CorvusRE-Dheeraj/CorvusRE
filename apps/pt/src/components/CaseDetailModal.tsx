@@ -601,7 +601,10 @@ export function CaseDetailView({
       </button>
       {(() => {
         const outcome = current.status === "resolved" ? buildCaseOutcome(property, current) : null;
-        const original = current.originalValue ?? property.totalValue ?? 0;
+        // Some counties (Dallas among them) publish no assessed-value field at all — genuinely
+        // null, not zero. Falling back to 0 would show "$0" as if the county assessed it at
+        // nothing, so this shows "Not on file" instead of a fabricated figure.
+        const original = current.originalValue ?? property.totalValue ?? null;
         return (
           <PageHero
             icon={Scale}
@@ -614,7 +617,12 @@ export function CaseDetailView({
               </span>
             }
             stats={[
-              { label: "Original value", value: original, format: (n) => compactCurrency(n) },
+              {
+                label: "Original value",
+                value: original ?? 0,
+                format: (n) => compactCurrency(n),
+                ...(original == null ? { text: "Not on file" } : {}),
+              },
               ...(outcome && outcome.finalValue != null
                 ? [
                     {

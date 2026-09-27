@@ -1,7 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
 import { CountUp } from "@/components/CountUp";
 
-export type HeroStat = { label: string; value: number; format?: (n: number) => string };
+// `text`, when set, replaces the animated number entirely — for a stat that has no real
+// figure to show yet (e.g. a county that hasn't published an assessed value), so the tile
+// reads "Not on file" instead of a fabricated $0 that looks like a real, zero-dollar answer.
+export type HeroStat = {
+  label: string;
+  value: number;
+  format?: (n: number) => string;
+  text?: string;
+};
 
 export type HeroTone =
   "emerald" | "sky" | "violet" | "amber" | "teal" | "rose" | "indigo" | "slate";
@@ -111,7 +119,7 @@ export function PageHero({
               className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20 sm:px-4"
             >
               <div className="text-xl font-semibold tabular-nums sm:text-2xl">
-                <CountUp to={st.value} format={st.format} />
+                {st.text ?? <CountUp to={st.value} format={st.format} />}
               </div>
               <div className="text-[10px] uppercase tracking-wide text-white/80 sm:text-[11px]">
                 {st.label}
