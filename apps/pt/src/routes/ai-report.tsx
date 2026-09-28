@@ -6896,6 +6896,8 @@ function StrategyDetail({
   onAnswerStrategy,
   onRefresh,
   refreshing,
+  onOpenModule,
+  onAskQuestion,
 }: {
   s: StrategyEntry;
   rank: number;
@@ -6910,12 +6912,43 @@ function StrategyDetail({
   // uploading evidence for this one. Same handler as the card's header spinner.
   onRefresh?: () => void;
   refreshing?: boolean;
+  // "Recommended investigation" is now a real action, not just a sentence to
+  // read: when this strategy maps to one of the 5 fixed modules
+  // (relatedModules), clicking it opens that module — same navigation the
+  // rest of the report already uses. For an "Other: ..." strategy with no
+  // fixed module to point at, it asks the AI directly instead (same Q&A the
+  // module's own "Ask AI" box answers with) and shows the answer inline.
+  onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
 }) {
   const Icon = strategyIcon(s);
   const slug = strategySlug(s.name);
   const uploaded = evidenceDocs.filter((d) => d.documentType === `Strategy Evidence: ${slug}`);
   const [draft, setDraft] = useState(answer ?? "");
   const hasAnyEvidence = uploaded.length > 0 || !!answer?.trim();
+  const [investigationAnswer, setInvestigationAnswer] = useState<string | null>(null);
+  const [askingInvestigation, setAskingInvestigation] = useState(false);
+  const relatedModuleId = s.relatedModules[0];
+
+  async function handleInvestigationClick() {
+    if (relatedModuleId) {
+      onOpenModule(relatedModuleId);
+      return;
+    }
+    if (askingInvestigation || !s.recommendedInvestigation) return;
+    setAskingInvestigation(true);
+    try {
+      const a = await onAskQuestion(
+        "strategy",
+        `For the "${s.name}" strategy, walk me through this recommended investigation step: ${s.recommendedInvestigation}`,
+      );
+      setInvestigationAnswer(a);
+    } catch {
+      setInvestigationAnswer("Couldn't get an answer — please retry.");
+    } finally {
+      setAskingInvestigation(false);
+    }
+  }
 
   return (
     <div className="card-elev min-w-0 p-4">
@@ -6980,7 +7013,25 @@ function StrategyDetail({
         {s.recommendedInvestigation && (
           <div>
             <div className="font-semibold text-foreground">Recommended investigation</div>
-            <p className="break-words text-muted-foreground">{s.recommendedInvestigation}</p>
+            <button
+              type="button"
+              onClick={handleInvestigationClick}
+              disabled={askingInvestigation}
+              title={
+                relatedModuleId
+                  ? `Open ${MODULES.find((mm) => mm.id === relatedModuleId)?.shortName ?? relatedModuleId}`
+                  : "Ask AI about this"
+              }
+              className="mt-0.5 flex items-start gap-1 break-words text-left text-muted-foreground hover:text-accent hover:underline disabled:cursor-default disabled:opacity-60"
+            >
+              <span>
+                {askingInvestigation ? "Asking…" : s.recommendedInvestigation}
+              </span>
+              <ArrowRight className="mt-0.5 h-3 w-3 shrink-0" />
+            </button>
+            {investigationAnswer && (
+              <MarkdownLite className="mt-1.5 text-foreground" text={investigationAnswer} />
+            )}
           </div>
         )}
       </div>
@@ -9658,6 +9709,7 @@ function Module2Content({
   onAnswerStrategy,
   onForceReload,
   onOpenModule,
+  onAskQuestion,
   refreshing,
 }: {
   d: ModuleResultMap["strategy"];
@@ -9669,6 +9721,7 @@ function Module2Content({
   onAnswerStrategy: (strategyId: string, answer: string) => void;
   onForceReload: () => void;
   onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
   refreshing: boolean;
 }) {
   const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
@@ -9784,6 +9837,8 @@ function Module2Content({
                 onAnswerStrategy={onAnswerStrategy}
                 onRefresh={onForceReload}
                 refreshing={refreshing}
+                onOpenModule={onOpenModule}
+                onAskQuestion={onAskQuestion}
               />
             ))}
           </div>
@@ -10049,6 +10104,7 @@ function ModulePreviewContent({
   onStartProtest,
   onReloadModule,
   onViewCase,
+  onAskQuestion,
   overrides,
   onMarkNotApplicable,
   onClearNotApplicable,
@@ -10765,6 +10821,7 @@ function ModulePreviewContent({
           onAnswerStrategy={onAnswerStrategy}
           onForceReload={onForceReload}
           onOpenModule={onOpenModule}
+          onAskQuestion={onAskQuestion}
           refreshing={!!moduleState?.loading}
         />
       );
