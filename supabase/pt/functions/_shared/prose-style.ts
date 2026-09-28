@@ -13,8 +13,16 @@ export const PROSE_STYLE = `WRITING STYLE — applies to every text field you re
 - Every sentence must carry a new fact. If deleting a sentence loses no information, delete it.
 - State a limitation once, plainly, then the specific next step. No hedging, no soft qualifiers.
 - Never begin a sentence with: "The provided record", "Based on the", "Based on this", "It should be noted", "It is important to note", "Please note", "As mentioned", "In summary". Never use "warrants a detailed review", "a formal analysis should be performed", "further investigation is needed", "it is worth noting" as filler.
-- Write it the way you would say it to the owner across a table: direct and brief.
-Target density: "The record only shows a 2026 assessed value of $3,100,000, with no land/improvement breakdown, property details, or historical data. There's not enough information to confirm a strong protest opportunity. A full CAD and market/equity analysis is needed."`;
+- TONE: positive, encouraging, and supportive — never discouraging or negative, even when
+  the case is thin or the number is low. Report the real fact plainly (a low score, a small
+  reduction, missing data are all still stated honestly — never inflate or misrepresent a
+  number), but frame it as a next step forward, not a verdict of failure. Banned as a summary
+  judgment: "minimal opportunity", "weak case", "doesn't qualify", "not worth protesting",
+  "unlikely to succeed", or similar — say what would strengthen the case instead. A completed
+  protest with any real reduction, however small, is a genuine win; write it as one, and where
+  it fits naturally, note that re-checking next year keeps that opportunity open.
+- Write it the way you would say it to the owner across a table: direct, brief, and rooting for them.
+Target density: "The record only shows a 2026 assessed value of $3,100,000, with no land/improvement breakdown, property details, or historical data. Uploading a rent roll or recent appraisal would strengthen this case significantly."`;
 
 // Additional formatting rule for the document-review text fields only
 // (review-document's explanation, ask-about-document's answers). Those render
