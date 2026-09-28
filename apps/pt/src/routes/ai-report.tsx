@@ -238,6 +238,7 @@ import { Modal } from "@/components/Modal";
 import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBanner";
 import { ProgressRing } from "@/components/ProgressRing";
 import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
+import { protestOutcome } from "@/lib/protest-outcome";
 
 type ModuleAsyncState = {
   data: unknown;
@@ -4193,14 +4194,64 @@ function ModuleVisual({
   switch (m.id) {
     case "health": {
       const d = moduleState.data as HealthScoreResult;
-      const label = caseResult
-        ? "Protest completed"
-        : d.score >= 70
-          ? "Strong Opportunity"
-          : d.score >= 40
-            ? "Moderate Opportunity"
-            : "Limited Opportunity";
       const top3 = d.scoreBreakdown.slice(0, 3);
+      // Once the case is closed, Module 1's own score/gauge is the wrong
+      // number to show — it measures pre-protest OPPORTUNITY ("is this worth
+      // protesting"), not how the actual, completed protest went, and kept
+      // showing a low, red "weak" score plus the old pre-protest narrative
+      // even after a real, sizeable reduction. Grade the real outcome
+      // instead, from the product-specified bands (protest-outcome.ts).
+      if (caseResult) {
+        const outcome = protestOutcome(caseResult.valueReductionPct);
+        const outcomeColor =
+          outcome.tone === "success" ? "var(--success)" : "var(--muted-foreground)";
+        return (
+          <div>
+            <div className="text-center">
+              <div className="font-serif text-xl font-bold" style={{ color: outcomeColor }}>
+                {outcome.label}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{outcome.message}</p>
+            </div>
+            {top3.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+                {top3.map((b) => {
+                  const Icon = breakdownIcon(b.label);
+                  return (
+                    <div key={b.label} className="flex flex-col items-center gap-1">
+                      <span
+                        className={`grid h-8 w-8 place-items-center rounded-full ${m.color.bg} ${m.color.text}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="text-[9px] leading-tight text-muted-foreground">
+                        {b.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {caseResult.taxSavings != null && (
+              <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
+                <div className="font-serif text-2xl font-bold leading-none text-success">
+                  {currency(caseResult.taxSavings)}
+                </div>
+                {caseResult.valueReductionPct != null ? (
+                  <div className="mt-1 text-base font-bold text-success/90">
+                    {Math.round(caseResult.valueReductionPct)}% lower assessed value
+                  </div>
+                ) : null}
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  actual tax savings from your completed protest
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+      const label =
+        d.score >= 70 ? "Strong Opportunity" : d.score >= 40 ? "Moderate Opportunity" : "Limited Opportunity";
       return (
         <div>
           <SpeedometerGauge value={d.score} size="sm" />
@@ -4231,22 +4282,7 @@ function ModuleVisual({
               })}
             </div>
           )}
-          {caseResult && caseResult.taxSavings != null && (
-            <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
-              <div className="font-serif text-2xl font-bold leading-none text-success">
-                {currency(caseResult.taxSavings)}
-              </div>
-              {caseResult.valueReductionPct != null ? (
-                <div className="mt-1 text-base font-bold text-success/90">
-                  {Math.round(caseResult.valueReductionPct)}% lower assessed value
-                </div>
-              ) : null}
-              <div className="mt-1 text-[10px] text-muted-foreground">
-                actual tax savings from your completed protest
-              </div>
-            </div>
-          )}
-          {!caseResult && estimated.savings > 0 && (
+          {estimated.savings > 0 && (
             <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
               <div className="font-serif text-2xl font-bold leading-none text-success">
                 {currency(estimated.savings)}
@@ -4265,7 +4301,7 @@ function ModuleVisual({
               </div>
             </div>
           )}
-          {!caseResult && <EvidenceImpactCard />}
+          <EvidenceImpactCard />
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
@@ -5012,10 +5048,13 @@ function ComparableValueChart({
   );
 }
 
-// The appraisal-style normalization behind the size-adjusted indicated
-// value — each top comp reduced to $/acre (or $/SF), restated at the
-// subject's own size, then time-adjusted only if it has a real dated sale
-// (see computeComparableStats). All deterministic, never AI-written.
+// The equal-and-uniform rate range behind the indicated value: every comp
+// priced BELOW the subject's own $/acre, restated at the subject's actual
+// size — what the subject would be worth at that comp's rate (see
+// computeComparableStats's own "Rate-based indicated range" comment).
+// Product-specified 2026-09: no size or time adjustment, and only comps that
+// argue for a lower value are shown here at all. All deterministic, never
+// AI-written.
 function CompsAdjustmentGrid({
   perCompAdjustment,
   ranked,
@@ -5030,53 +5069,46 @@ function CompsAdjustmentGrid({
     const c = ranked.find((r) => r.key === key);
     return c?.address || `Property #${c?.pid ?? "?"}`;
   };
-  const unitLabel = (b: "acre" | "sqft" | "raw") =>
-    b === "acre" ? "$/acre" : b === "sqft" ? "$/SF" : "raw";
   return (
     <div>
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Size &amp; Time Adjustments → Indicated Value
+        Comps Below Subject Rate → Indicated Target Range
       </div>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[560px] text-left text-xs">
+        <table className="w-full min-w-[480px] text-left text-xs">
           <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-semibold">Comp</th>
-              <th className="px-3 py-2 font-semibold">Basis</th>
-              <th className="px-3 py-2 font-semibold">$ / Unit</th>
-              <th className="px-3 py-2 font-semibold">Size-Adjusted</th>
-              <th className="px-3 py-2 font-semibold">Time Adj.</th>
-              <th className="px-3 py-2 font-semibold">Adjusted Value</th>
+              <th className="px-3 py-2 font-semibold">Comp Property</th>
+              <th className="px-3 py-2 font-semibold">Unit ($/acre)</th>
+              <th className="px-3 py-2 font-semibold">Comp Value / Acre</th>
+              <th className="px-3 py-2 font-semibold">Subject Value at Comp Rate</th>
             </tr>
           </thead>
           <tbody>
             {perCompAdjustment.map((a) => (
               <tr key={a.key} className="border-t border-border/60">
                 <td className="px-3 py-2 text-muted-foreground">{addrOf(a.key)}</td>
-                <td className="px-3 py-2 text-muted-foreground">{unitLabel(a.unitBasis)}</td>
+                <td className="px-3 py-2 text-muted-foreground">$/acre</td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {a.unitBasis === "raw" ? "—" : compactCurrency(a.unitRate)}
+                  {compactCurrency(a.compPerAcre)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {compactCurrency(a.sizeAdjValue)}
+                <td className="px-3 py-2 font-semibold">
+                  {compactCurrency(a.subjectValueAtCompRate)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {a.timeAdjPct === 0 ? "—" : `${a.timeAdjPct > 0 ? "+" : ""}${a.timeAdjPct}%`}
-                </td>
-                <td className="px-3 py-2 font-semibold">{compactCurrency(a.adjustedValue)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Similarity-weighted reconciliation:{" "}
+        Indicated target:{" "}
         <span className="font-semibold text-foreground">
           {compactCurrency(adjustedIndicated.value)}
         </span>{" "}
-        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Time
-        adjustments apply only to comps with a real dated sale — a CAD deed date isn&apos;t a
-        verified sale.
+        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Each
+        comp&apos;s own $/acre applied to the subject&apos;s actual size — only comps priced below
+        the subject&apos;s own $/acre are shown; a comp priced at or above it doesn&apos;t argue
+        for a lower value.
       </p>
     </div>
   );
@@ -5158,6 +5190,8 @@ function ComparableTable({
   recommendedKeys,
   onToggleExclude,
   onRemove,
+  subjectValue,
+  subjectAcres,
 }: {
   ranked: RankedComp[];
   cad?: string;
@@ -5165,14 +5199,32 @@ function ComparableTable({
   recommendedKeys?: Set<string>;
   onToggleExclude?: (comp: RankedComp, exclude: boolean) => void;
   onRemove?: (comp: RankedComp) => void;
+  // The subject's own assessed value / land size — same valuePerAcre() basis
+  // every comp row already uses, so "$ / Acre" and "vs Subject" below are a
+  // fair apples-to-apples read, not assessed value skewed by lot size.
+  subjectValue?: number | null;
+  subjectAcres?: number | null;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   if (ranked.length === 0) return null;
   const interactive = !!onToggleExclude;
   const showAi = !!perComp && perComp.size > 0;
-  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0);
+  const subjectPerAcre = valuePerAcre(subjectValue, subjectAcres);
+  const showVsSubject = subjectPerAcre != null;
+  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0) + (showVsSubject ? 1 : 0);
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+      {subjectPerAcre != null && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-secondary/30 px-3 py-2 text-xs">
+          <span className="font-semibold text-foreground">Subject Property</span>
+          <span className="text-muted-foreground">
+            {subjectAcres != null && `${formatAcres(subjectAcres)} · `}
+            {subjectValue != null && `${compactCurrency(subjectValue)} · `}
+            <span className="font-semibold text-foreground">{compactCurrency(subjectPerAcre)}</span>
+            /acre
+          </span>
+        </div>
+      )}
       <table className="w-full min-w-[640px] text-left text-xs">
         <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -5183,6 +5235,7 @@ function ComparableTable({
             <th className="px-3 py-2 font-semibold">Land Size</th>
             <th className="px-3 py-2 font-semibold">Assessed Value</th>
             <th className="px-3 py-2 font-semibold">$ / Acre</th>
+            {showVsSubject && <th className="px-3 py-2 font-semibold">vs Subject</th>}
             <th className="px-3 py-2 font-semibold">Distance</th>
             <th className="px-3 py-2 font-semibold">Similarity</th>
           </tr>
@@ -5272,6 +5325,18 @@ function ComparableTable({
                   <td className="px-3 py-2 text-muted-foreground">
                     {perAcre != null ? compactCurrency(perAcre) : "—"}
                   </td>
+                  {showVsSubject && (
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {perAcre != null && subjectPerAcre != null
+                        ? (() => {
+                            const deltaPct = Math.round(
+                              ((perAcre - subjectPerAcre) / subjectPerAcre) * 100,
+                            );
+                            return `${deltaPct > 0 ? "+" : ""}${deltaPct}%`;
+                          })()
+                        : "—"}
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-muted-foreground">{c.distanceMi.toFixed(2)} mi</td>
                   <td
                     className="px-3 py-2 font-semibold"
@@ -6831,6 +6896,8 @@ function StrategyDetail({
   onAnswerStrategy,
   onRefresh,
   refreshing,
+  onOpenModule,
+  onAskQuestion,
 }: {
   s: StrategyEntry;
   rank: number;
@@ -6845,12 +6912,43 @@ function StrategyDetail({
   // uploading evidence for this one. Same handler as the card's header spinner.
   onRefresh?: () => void;
   refreshing?: boolean;
+  // "Recommended investigation" is now a real action, not just a sentence to
+  // read: when this strategy maps to one of the 5 fixed modules
+  // (relatedModules), clicking it opens that module — same navigation the
+  // rest of the report already uses. For an "Other: ..." strategy with no
+  // fixed module to point at, it asks the AI directly instead (same Q&A the
+  // module's own "Ask AI" box answers with) and shows the answer inline.
+  onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
 }) {
   const Icon = strategyIcon(s);
   const slug = strategySlug(s.name);
   const uploaded = evidenceDocs.filter((d) => d.documentType === `Strategy Evidence: ${slug}`);
   const [draft, setDraft] = useState(answer ?? "");
   const hasAnyEvidence = uploaded.length > 0 || !!answer?.trim();
+  const [investigationAnswer, setInvestigationAnswer] = useState<string | null>(null);
+  const [askingInvestigation, setAskingInvestigation] = useState(false);
+  const relatedModuleId = s.relatedModules[0];
+
+  async function handleInvestigationClick() {
+    if (relatedModuleId) {
+      onOpenModule(relatedModuleId);
+      return;
+    }
+    if (askingInvestigation || !s.recommendedInvestigation) return;
+    setAskingInvestigation(true);
+    try {
+      const a = await onAskQuestion(
+        "strategy",
+        `For the "${s.name}" strategy, walk me through this recommended investigation step: ${s.recommendedInvestigation}`,
+      );
+      setInvestigationAnswer(a);
+    } catch {
+      setInvestigationAnswer("Couldn't get an answer — please retry.");
+    } finally {
+      setAskingInvestigation(false);
+    }
+  }
 
   return (
     <div className="card-elev min-w-0 p-4">
@@ -6915,7 +7013,25 @@ function StrategyDetail({
         {s.recommendedInvestigation && (
           <div>
             <div className="font-semibold text-foreground">Recommended investigation</div>
-            <p className="break-words text-muted-foreground">{s.recommendedInvestigation}</p>
+            <button
+              type="button"
+              onClick={handleInvestigationClick}
+              disabled={askingInvestigation}
+              title={
+                relatedModuleId
+                  ? `Open ${MODULES.find((mm) => mm.id === relatedModuleId)?.shortName ?? relatedModuleId}`
+                  : "Ask AI about this"
+              }
+              className="mt-0.5 flex items-start gap-1 break-words text-left text-muted-foreground hover:text-accent hover:underline disabled:cursor-default disabled:opacity-60"
+            >
+              <span>
+                {askingInvestigation ? "Asking…" : s.recommendedInvestigation}
+              </span>
+              <ArrowRight className="mt-0.5 h-3 w-3 shrink-0" />
+            </button>
+            {investigationAnswer && (
+              <MarkdownLite className="mt-1.5 text-foreground" text={investigationAnswer} />
+            )}
           </div>
         )}
       </div>
@@ -6957,7 +7073,19 @@ function StrategyDetail({
         <div className="mt-2 flex flex-wrap gap-1">
           {s.relatedModules.map((id) => {
             const relatedModule = MODULES.find((mm) => mm.id === id);
-            return relatedModule ? <Chip key={id}>Related: {relatedModule.shortName}</Chip> : null;
+            if (!relatedModule) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onOpenModule(id)}
+                title={`Open ${relatedModule.shortName}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/15 hover:text-accent"
+              >
+                Related: {relatedModule.shortName}
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            );
           })}
         </div>
       )}
@@ -9284,6 +9412,16 @@ function Module1Content({
   const caseOutcome = protest && property ? buildCaseOutcome(property, protest) : null;
   const caseDone = !!protest && protest.status === "resolved" && !!caseOutcome;
   const caseOpen = !!protest && protest.status !== "requested" && protest.status !== "resolved";
+  // Same reasoning as the compact card (ModuleVisual's "health" case): once
+  // the case is closed, the pre-protest opportunity score/gauge and its
+  // pre-protest narrative are the wrong things to show — grade the real,
+  // completed outcome instead (protest-outcome.ts).
+  const outcome = caseDone && caseOutcome ? protestOutcome(caseOutcome.valueReductionPct) : null;
+  const outcomeColor = outcome
+    ? outcome.tone === "success"
+      ? "var(--success)"
+      : "var(--muted-foreground)"
+    : null;
 
   return (
     <div className="mt-4 grid gap-5">
@@ -9292,13 +9430,28 @@ function Module1Content({
           string: a dollar amount and a percentage are two different numbers
           and reading them as one implies a relationship that isn't real. */}
       <div>
-        {data.executiveConclusion && (
-          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+        {outcome ? (
+          <AiVerdictLine icon={m.icon} text={outcome.message} color={m.color} />
+        ) : (
+          data.executiveConclusion && (
+            <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+          )
         )}
         <div className="mt-3 grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
           <div className="text-center">
-            <SpeedometerGauge value={data.score} size="lg" />
-            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
+            {outcome ? (
+              <div className="grid h-[132px] place-items-center">
+                <div className="font-serif text-2xl font-bold" style={{ color: outcomeColor! }}>
+                  {outcome.label}
+                </div>
+              </div>
+            ) : (
+              <SpeedometerGauge value={data.score} size="lg" />
+            )}
+            <div
+              className="mt-1 text-sm font-semibold"
+              style={{ color: outcome ? outcomeColor! : scoreColor(data.score) }}
+            >
               {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
@@ -9568,6 +9721,7 @@ function Module2Content({
   onAnswerStrategy,
   onForceReload,
   onOpenModule,
+  onAskQuestion,
   refreshing,
 }: {
   d: ModuleResultMap["strategy"];
@@ -9579,6 +9733,7 @@ function Module2Content({
   onAnswerStrategy: (strategyId: string, answer: string) => void;
   onForceReload: () => void;
   onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
   refreshing: boolean;
 }) {
   const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
@@ -9667,7 +9822,18 @@ function Module2Content({
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Ranked Strategies
             </div>
-            <StrategyRankList strategies={d.strategies} color={m.color} />
+            {/* Unlike the compact card's own StrategyRankList (one consolidated
+                "Upload data" button instead), this detail-view list has room for
+                each row's own "Data Needed" pill to actually DO something — same
+                per-strategy upload StrategyDetail's own card below already
+                offers, just reachable straight from the summary row instead of
+                only after scrolling to find the matching detail card. */}
+            <StrategyRankList
+              strategies={d.strategies}
+              color={m.color}
+              onUploadFor={(s, files) => onUploadEvidence(files, strategySlug(s.name))}
+              uploading={uploadingEvidence}
+            />
           </div>
           <div className="grid gap-3 [&>*]:min-w-0">
             {d.strategies.map((s, i) => (
@@ -9683,6 +9849,8 @@ function Module2Content({
                 onAnswerStrategy={onAnswerStrategy}
                 onRefresh={onForceReload}
                 refreshing={refreshing}
+                onOpenModule={onOpenModule}
+                onAskQuestion={onAskQuestion}
               />
             ))}
           </div>
@@ -9948,6 +10116,7 @@ function ModulePreviewContent({
   onStartProtest,
   onReloadModule,
   onViewCase,
+  onAskQuestion,
   overrides,
   onMarkNotApplicable,
   onClearNotApplicable,
@@ -10362,6 +10531,8 @@ function ModulePreviewContent({
               recommendedKeys={recommendedKeys}
               onToggleExclude={compsInteractive ? handleToggleExclude : undefined}
               onRemove={compsInteractive ? (c) => onRemoveCompSelection(c.key) : undefined}
+              subjectValue={stats.subjectValue}
+              subjectAcres={map?.subject?.legalAcreage ?? null}
             />
             {excludedCount > 0 && (
               <p className="-mt-2 text-[11px] text-muted-foreground">
@@ -10402,16 +10573,14 @@ function ModulePreviewContent({
               </div>
             )}
 
-            {/* 6. Indicated Value / CAD Value / Gap. Prefers the size-
-                adjusted reconciliation when there were enough size-bearing
-                comps to adjust; otherwise the raw top-5 range. */}
+            {/* 6. Indicated Value / CAD Value / Gap. Prefers the rate-based
+                target range (comps priced below the subject's own $/acre)
+                when at least one qualifies; otherwise the raw top-5 range. */}
             {stats.indicated && (
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg bg-success/10 p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
-                    {stats.adjustedIndicated
-                      ? "Indicated Value (adjusted)"
-                      : "Indicated Value Range"}
+                    {stats.adjustedIndicated ? "Indicated Target Range" : "Indicated Value Range"}
                   </div>
                   <div className="mt-0.5 text-lg font-bold text-success">
                     {stats.adjustedIndicated
@@ -10664,6 +10833,7 @@ function ModulePreviewContent({
           onAnswerStrategy={onAnswerStrategy}
           onForceReload={onForceReload}
           onOpenModule={onOpenModule}
+          onAskQuestion={onAskQuestion}
           refreshing={!!moduleState?.loading}
         />
       );
@@ -12064,6 +12234,7 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
         <ModuleDataSheetButton
           moduleId={props.m.id}
           moduleLabel={props.m.title}
+          shortLabel={props.m.shortName}
           moduleResult={props.moduleState?.data}
           onGenerate={props.onGenerateDataSheet}
         />
@@ -12080,11 +12251,18 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
 function ModuleDataSheetButton({
   moduleId,
   moduleLabel,
+  shortLabel,
   moduleResult,
   onGenerate,
 }: {
   moduleId: string;
   moduleLabel: string;
+  // The module's short display name (e.g. "Site Condition", "Income Value")
+  // — used only for the button's own text, so it reads "Generate Site
+  // Condition Overview" instead of the generic "Generate Property Summary"
+  // every module used to share. `moduleLabel` (the longer title) still goes
+  // into the generated file's own name/tagging, unchanged.
+  shortLabel: string;
   moduleResult: unknown;
   onGenerate: (
     moduleId: string,
@@ -12115,7 +12293,7 @@ function ModuleDataSheetButton({
         }}
         className="btn-outline mt-2 text-sm disabled:opacity-50"
       >
-        {busy ? "Drafting…" : "Generate Property summary"}
+        {busy ? "Drafting…" : `Generate ${shortLabel} Overview`}
       </button>
       {madeFile && (
         <p className="mt-1.5 text-xs text-success">Added “{madeFile}” to your documents.</p>

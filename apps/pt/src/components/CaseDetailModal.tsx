@@ -1108,7 +1108,16 @@ function CaseTabBar({
         const pathDone = escalationDone(t.id, protest);
         // The shared step 5 badge ticks once either path has been carried out.
         const groupDone = (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
-        const done = !isHub && !locked && (i < currentIdx || groupDone);
+        // Every other step only reads "done" once you've moved PAST it
+        // (i < currentIdx) — right, mid-case, since "current" means "still in
+        // progress". But Final Outcome IS the current step once the case is
+        // closed (there's nothing after it to move on to), so that same rule
+        // left it permanently stuck on its plain step number instead of a
+        // checkmark even with the case fully resolved.
+        const done =
+          !isHub &&
+          !locked &&
+          (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
         const isCurrent =
           !isHub &&
           (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
@@ -1231,7 +1240,13 @@ function CaseRoadmap({
           const pathDone = escalationDone(t.id, protest);
           const groupDone =
             (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
-          const done = !isHub && unlocked && (i < currentIdx || groupDone);
+          // See CaseTabBar's own version of this same fix above — Final
+          // Outcome is the current step once the case closes, so the plain
+          // "i < currentIdx" rule alone left it on a bare step number.
+          const done =
+            !isHub &&
+            unlocked &&
+            (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
           const here = i === currentIdx;
           const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(stepNumber(i));
           return (
