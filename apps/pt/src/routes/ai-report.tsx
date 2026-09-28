@@ -9320,6 +9320,16 @@ function Module1Content({
   const caseOutcome = protest && property ? buildCaseOutcome(property, protest) : null;
   const caseDone = !!protest && protest.status === "resolved" && !!caseOutcome;
   const caseOpen = !!protest && protest.status !== "requested" && protest.status !== "resolved";
+  // Same reasoning as the compact card (ModuleVisual's "health" case): once
+  // the case is closed, the pre-protest opportunity score/gauge and its
+  // pre-protest narrative are the wrong things to show — grade the real,
+  // completed outcome instead (protest-outcome.ts).
+  const outcome = caseDone && caseOutcome ? protestOutcome(caseOutcome.valueReductionPct) : null;
+  const outcomeColor = outcome
+    ? outcome.tone === "success"
+      ? "var(--success)"
+      : "var(--muted-foreground)"
+    : null;
 
   return (
     <div className="mt-4 grid gap-5">
@@ -9328,13 +9338,28 @@ function Module1Content({
           string: a dollar amount and a percentage are two different numbers
           and reading them as one implies a relationship that isn't real. */}
       <div>
-        {data.executiveConclusion && (
-          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+        {outcome ? (
+          <AiVerdictLine icon={m.icon} text={outcome.message} color={m.color} />
+        ) : (
+          data.executiveConclusion && (
+            <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+          )
         )}
         <div className="mt-3 grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
           <div className="text-center">
-            <SpeedometerGauge value={data.score} size="lg" />
-            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
+            {outcome ? (
+              <div className="grid h-[132px] place-items-center">
+                <div className="font-serif text-2xl font-bold" style={{ color: outcomeColor! }}>
+                  {outcome.label}
+                </div>
+              </div>
+            ) : (
+              <SpeedometerGauge value={data.score} size="lg" />
+            )}
+            <div
+              className="mt-1 text-sm font-semibold"
+              style={{ color: outcome ? outcomeColor! : scoreColor(data.score) }}
+            >
               {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
