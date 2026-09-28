@@ -12,12 +12,14 @@ import {
   openStationWindow,
   useTrainTrack,
 } from "@/components/train-track";
+import { TrainJourney } from "@/components/train-journey";
 import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
   ROUTES,
   getStation,
   parallelTrackStop,
+  wagonCargo,
   type Availability,
   type Station,
   type TrainLocation,
@@ -33,7 +35,7 @@ type Filter = "all" | "stations" | "modules";
 
 function TrackMap() {
   const navigate = useNavigate();
-  const { loading, hasProject, project, bundle, location } = useTrainTrack();
+  const { loading, hasProject, project, bundle, comments, location } = useTrainTrack();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   // Only used when the browser blocks the popup window.
@@ -47,6 +49,15 @@ function TrackMap() {
   };
 
   const here = location ? getStation(location.station) : undefined;
+  const wagons = location
+    ? wagonCargo({
+        trainAt: location.station,
+        analysis: project.analysis,
+        permits: bundle?.permits ?? [],
+        checklist: bundle?.checklist ?? [],
+        comments,
+      })
+    : [];
   const q = query.trim().toLowerCase();
   const matches = (s: Station, text: string) =>
     !q || text.toLowerCase().includes(q) || String(s.n) === q;
@@ -93,6 +104,8 @@ function TrackMap() {
           ))}
         </div>
       </header>
+
+      {location && <TrainJourney location={location} wagons={wagons} onOpenStation={open} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-full border border-border bg-card p-1" role="group" aria-label="Show">

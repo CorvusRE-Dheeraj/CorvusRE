@@ -38,7 +38,10 @@ export type Station = {
   availabilityNote?: string;
 };
 
-export type TrackRoute = { name: string; color: RouteColor; stations: number[] };
+/** Route (line) colours — red is only ever a station colour, inside the review loop. */
+export type LineColor = Exclude<RouteColor, "red">;
+
+export type TrackRoute = { name: string; color: LineColor; stations: number[] };
 
 export const AVAILABILITY_LABEL: Record<Availability, string> = {
   live: "Live in CorvusDP",
@@ -955,3 +958,93 @@ export function parallelTrackStop(status: string): number {
 }
 
 export const PARALLEL_STOPS = ["Submitted", "Under review", "Comments / response", "Approved"];
+
+// ---------------------------------------------------------------------------
+// Bogies: the data the train has collected so far.
+//
+// One wagon per route the train has reached. Each carries "crates" — short
+// labels of real data that route produced for this project (the analysis,
+// the checklist, permit rows, review comments). Routes ahead of the train
+// have no wagon yet: the train grows as the project moves down the line.
+
+export type Wagon = {
+  route: string;
+  color: LineColor;
+  crates: string[];
+  /** The train is still on this route — its wagon is mid-load. */
+  loading: boolean;
+};
+
+type CargoAnalysis = {
+  jurisdiction: { authority: string };
+  zoning: { code: string; label: string };
+  permits: unknown[];
+  fees: { totalLow: number; totalHigh: number };
+  constraints: { utilities: unknown[]; criticalWarnings: string[] };
+};
+
+function compactUsd(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+export function wagonCargo(input: {
+  trainAt: number;
+  analysis: CargoAnalysis | null;
+  permits: Pick<PermitRow, "status">[];
+  checklist: Pick<ChecklistRow, "kind" | "required" | "done">[];
+  comments: Pick<ReviewCommentRow, "status">[];
+}): Wagon[] {
+  const { trainAt, analysis, permits, checklist, comments } = input;
+  if (!analysis) return [];
+
+  const count = (kind: string) => {
+    const req = checklist.filter((c) => c.kind === kind && c.required);
+    return `${req.filter((c) => c.done).length}/${req.length}`;
+  };
+  const progress = (s: string) => PERMIT_PROGRESS[s] ?? 0;
+  const filed = permits.filter((p) => progress(p.status) >= PERMIT_PROGRESS.submitted).length;
+  const inReview = permits.filter((p) =>
+    ["under_review", "comments", "resubmitted"].includes(p.status),
+  ).length;
+  const approved = permits.filter((p) => p.status === "approved").length;
+  const openComments = comments.filter(OPEN_COMMENT).length;
+
+  const cargo: Record<LineColor, string[]> = {
+    blue: [
+      analysis.jurisdiction.authority,
+      analysis.zoning.code
+        ? `Zoning ${analysis.zoning.code}`
+        : `Zoning: ${(analysis.zoning.label || "checked").toLowerCase()}`,
+      plural(analysis.permits.length, "permit") + " found",
+    ],
+    purple: [
+      plural(checklist.filter((c) => c.kind === "submission").length, "checklist item"),
+      plural(analysis.constraints.utilities.length, "utility", "utilities") + " checked",
+      plural(analysis.constraints.criticalWarnings.length, "site warning"),
+    ],
+    orange: [
+      `Pre-app ${count("pre_app")}`,
+      `Fees ${compactUsd(analysis.fees.totalLow)}–${compactUsd(analysis.fees.totalHigh)}`,
+      `Package ${count("submission")}`,
+    ],
+    teal: [`${filed} of ${plural(permits.length, "permit")} filed`],
+    green: [`${inReview} in review`, plural(comments.length, "comment"), `${openComments} open`],
+    gray: [`${approved} of ${permits.length} approved`],
+  };
+
+  return ROUTES.filter((r) => r.stations[0] <= trainAt).map((r) => ({
+    route: r.name,
+    color: r.color,
+    crates: cargo[r.color],
+    loading: trainAt <= r.stations[r.stations.length - 1],
+  }));
+}
+
+/** 0-100: how far down the whole line the train is (station 1 = 0). */
+export function lineProgress(station: number): number {
+  return Math.round(((station - 1) / (STATIONS.length - 1)) * 100);
+}

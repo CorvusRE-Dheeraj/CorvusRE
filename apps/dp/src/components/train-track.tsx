@@ -154,6 +154,7 @@ export function useTrainTrack() {
     hasProject,
     project,
     bundle,
+    comments: comments.data ?? [],
     location,
   };
 }
