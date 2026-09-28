@@ -104,7 +104,8 @@ function daysUntil(iso: string): number {
 }
 
 function DaysLeftBadge({ event }: { event: CalendarEvent }) {
-  if (event.resolved) return <span className="badge-soft text-success">Done</span>;
+  if (event.resolved)
+    return <span className="badge-soft text-success">{event.resolvedLabel ?? "Done"}</span>;
   if (event.missed) return <span className="badge-soft text-destructive">Missed</span>;
   const daysLeft = daysUntil(event.date);
   return (
@@ -184,6 +185,9 @@ function EventRow({
               <span className="ml-1 font-medium text-destructive">
                 {daysUntil(event.date) < 0 ? "— passed without being marked done" : "— marked missed"}
               </span>
+            )}
+            {!isReminder && event.resolved && event.resolvedNote && (
+              <span className="ml-1 font-medium text-success">— {event.resolvedNote}</span>
             )}
           </div>
         </div>
