@@ -1097,8 +1097,6 @@ function Properties() {
                             <Link
                               to="/dashboard/case"
                               search={{ propertyId: p.id }}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="btn-outline whitespace-nowrap px-2.5 py-1 text-xs"
                             >
                               View Case
@@ -1429,8 +1427,6 @@ function PropertyActionsMenu({
             <Link
               to="/dashboard/case"
               search={{ propertyId: p.id }}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <Gavel className="mr-2 h-4 w-4" /> View Case
             </Link>

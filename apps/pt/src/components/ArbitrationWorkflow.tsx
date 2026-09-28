@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { MarkdownLite } from "@/components/MarkdownLite";
@@ -196,9 +196,11 @@ export function ArbitrationWorkflow({
     }
   }
 
+  // Same tab, not a new one per click (see CaseDetailModal's goToModule8).
+  const navigate = useNavigate();
   function uploadMoreEvidence() {
     updateIntake(buildAiReportIntakePatch(property));
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
   }
 
   async function confirmFiled() {
