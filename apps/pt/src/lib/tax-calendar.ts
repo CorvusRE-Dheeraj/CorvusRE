@@ -39,6 +39,11 @@ export type CalendarEvent = {
   linkTo: string;
   /** True once the event is behind us in a way that no longer needs action (paid, closed, past). */
   resolved: boolean;
+  // Reminders only: explicitly acknowledged as missed, or past its date and
+  // never marked done — see fromReminder() below. Undefined for every other
+  // event type (a real county/case fact just shows "Past due" instead, via
+  // DaysLeftBadge's plain days-left branch).
+  missed?: boolean;
   // The property address (or BPP business name) alone, no event-type prefix
   // — same value title's already built from, kept separate so the
   // month-grid can show it directly under each event without parsing it
@@ -315,18 +320,28 @@ function fromBppAccount(account: BppAccountRecord, now: Date): CalendarEvent[] {
   return events;
 }
 
-function fromReminder(r: Reminder, properties: PropertyRecord[]): CalendarEvent {
+export function fromReminder(r: Reminder, properties: PropertyRecord[]): CalendarEvent {
   const property = r.propertyId ? properties.find((p) => p.id === r.propertyId) : undefined;
   const propertyLabel = property?.address ?? "Personal reminder";
+  // `resolved` means "done" ONLY here — it used to also fold in "past its
+  // date", which made an ignored, never-addressed reminder display exactly
+  // the same as one the owner actually completed (strikethrough + a green
+  // "Done" pill either way). `missed` is the real, separate state: either
+  // explicitly acknowledged (missedAt) or, failing that, past its date and
+  // never marked done — see DaysLeftBadge/EventRow in the Calendar page for
+  // how the two now render differently.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dateIso = r.remindOn.slice(0, 10);
   return {
     id: `reminder-${r.id}`,
-    date: r.remindOn.slice(0, 10),
+    date: dateIso,
     type: "reminder",
     title: `Reminder — ${r.note}`,
     amount: null,
     propertyId: r.propertyId,
     linkTo: property ? `/dashboard/case?propertyId=${property.id}` : "/dashboard/calendar",
-    resolved: r.done || r.remindOn.slice(0, 10) < new Date().toISOString().slice(0, 10),
+    resolved: r.done,
+    missed: !r.done && (r.missedAt != null || dateIso < todayIso),
     propertyLabel,
   };
 }
