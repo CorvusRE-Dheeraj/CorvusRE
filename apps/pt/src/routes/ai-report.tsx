@@ -12570,7 +12570,10 @@ function ChecklistSteps({ items, color }: { items: string[]; color: IconColor })
 // for the generic bulk upload button, which doesn't know the category up
 // front). Already-uploaded documents tagged to this category are listed
 // too, so the user can see at a glance what's covered vs. still needed.
-function EvidenceCategoryRow({
+// Exported so CaseDetailModal's EvidenceChecklistPanel (View Case's inline
+// Module 8 embed) can render the exact same per-item row — one real
+// component, two places it shows up, instead of a second copy drifting.
+export function EvidenceCategoryRow({
   it,
   uploadedDocs,
   categories,

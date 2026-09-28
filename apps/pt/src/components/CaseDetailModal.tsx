@@ -4,12 +4,13 @@ import { GLOSSARY_MAP } from "@/lib/glossary";
 import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
 import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
+import { EvidenceChecklistPanel } from "@/components/EvidenceChecklistPanel";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
 import { CourtAppealWorkflow } from "@/components/CourtAppealWorkflow";
@@ -17,7 +18,6 @@ import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import {
   updatePropertyIdentity,
-  buildAiReportIntakePatch,
   setAutoRefile,
   type PropertyRecord,
 } from "@/lib/properties";
@@ -29,7 +29,7 @@ import {
   type InformalStatus,
   type AttendanceType,
 } from "@/lib/protests";
-import { compactCurrency, currency, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency } from "@/lib/intake-store";
 import {
   getCase,
   generateCasePrep,
@@ -1926,22 +1926,12 @@ export function CasePlanSection({
     }
   }
 
-  // Evidence upload lives in exactly one place now — Module 8 on the AI
-  // Report page — rather than duplicated here too. Sets this property as
-  // the report's subject the same real way "View AI Report" already does
-  // from the Properties dashboard (buildAiReportIntakePatch), then deep
-  // links straight into the Evidence module (ai-report.tsx's own
-  // ?openModule=evidence handling, built for exactly this button). Navigates
-  // in the SAME tab (router navigate, not window.open "_blank") — a new tab
-  // per click piled up one AI Report tab per step. Same tab also means the
-  // sessionStorage intake patch is always the one the report reads (a reused
-  // named tab would keep its own stale copy). The router applies the
-  // "/corvuspt/" basepath itself, so no BASE_URL prefix is needed.
-  const navigate = useNavigate();
-  function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
-  }
+  // Evidence upload used to navigate away to Module 8 on the AI Report page
+  // and back — explicit product direction 2026-09: it's embedded inline here
+  // instead (EvidenceChecklistPanel, the same real Module 8 checklist/AI-
+  // categorized upload, reused as a component rather than duplicated by
+  // hand), so uploading no longer costs the user their place in the case.
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
 
   const hasAnyPlan = !!caseData?.strategyRecommendation;
 
@@ -1991,10 +1981,16 @@ export function CasePlanSection({
       </section>
 
       {allowEvidenceUpload && (
-        <section id="case-upload-evidence">
-          <button onClick={goToModule8} className="btn-outline w-fit text-sm">
-            {evidenceCount > 0 ? "Upload Additional Evidence" : "Upload Evidence"} — Go to Module 8
+        <section id="case-upload-evidence" className="grid gap-2">
+          <button
+            onClick={() => setShowEvidencePanel((v) => !v)}
+            className="btn-outline w-fit text-sm"
+          >
+            {evidenceCount > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
           </button>
+          {showEvidencePanel && (
+            <EvidenceChecklistPanel property={property} userId={userId} />
+          )}
         </section>
       )}
     </div>
@@ -3042,13 +3038,10 @@ function EvidenceStatusCard({
     }
   }
 
-  // Evidence upload lives in exactly one place — Module 8 on the AI Report
-  // page — same real deep link CasePlanSection/DocumentsSection already use,
-  // in the same tab.
-  const navigate = useNavigate();
+  // Same inline-embed treatment as CasePlanSection's own — see its comment.
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
+    setShowEvidencePanel((v) => !v);
   }
 
   const status = loading
@@ -3182,6 +3175,11 @@ function EvidenceStatusCard({
               </>
             )}
           </div>
+          {showEvidencePanel && (
+            <div className="mt-3">
+              <EvidenceChecklistPanel property={property} userId={userId} />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -3436,14 +3434,10 @@ export function DocumentsSection({
       .catch((err) => console.error("Could not load saved Evidence Declaration draft:", err));
   }
 
-  // Same real deep link as CasePlanSection's own goToModule8 — evidence
-  // upload lives in exactly one place (Module 8 on the AI Report page), so
-  // this button just gets the user there rather than duplicating an upload
-  // widget in a second location. Same tab, not a new one per click.
-  const navigate = useNavigate();
+  // Same inline-embed treatment as CasePlanSection's own — see its comment.
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
+    setShowEvidencePanel((v) => !v);
   }
 
   // Form 50-162 authorizes an agent for possibly several properties at once —
@@ -3688,10 +3682,11 @@ export function DocumentsSection({
                 onClick={goToModule8}
                 className="btn-outline shrink-0 whitespace-nowrap text-xs py-1.5"
               >
-                Upload Evidence First →
+                Upload Evidence First
               </button>
             </div>
           )}
+          {showEvidencePanel && <EvidenceChecklistPanel property={property} userId={userId} />}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={openProtestEditor} className="btn-accent text-xs py-1.5">
               File Protest
@@ -3820,7 +3815,6 @@ export function DocumentsSection({
           property={property}
           protest={protest}
           countyInfo={countyInfo}
-          onGoToModule8={goToModule8}
           onConfirmed={handleEvidenceFilingConfirmed}
         />
       )}
@@ -4004,7 +3998,6 @@ function FilingEvidenceStep({
   property,
   protest,
   countyInfo,
-  onGoToModule8,
   onConfirmed,
 }: {
   evidenceDocuments: DocumentRecord[];
@@ -4013,7 +4006,6 @@ function FilingEvidenceStep({
   property: PropertyRecord;
   protest: ProtestRecord;
   countyInfo: CountyProtestInfo | null;
-  onGoToModule8: () => void;
   onConfirmed: (at: string) => void;
 }) {
   const withIssues = evidenceDocuments.filter(
@@ -4023,6 +4015,7 @@ function FilingEvidenceStep({
   // FilingSubmissionFlow below (which loaded its own proof list before that
   // existed) picks it up without a full page reload.
   const [refreshToken, setRefreshToken] = useState(0);
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   return (
     <div className="mt-3 grid gap-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4031,10 +4024,14 @@ function FilingEvidenceStep({
           this case
           {withIssues.length > 0 && ` · ${withIssues.length} flagged by AI review`}
         </span>
-        <button onClick={onGoToModule8} className="btn-outline shrink-0 text-xs py-1.5">
-          Add / organize evidence in Module 8 →
+        <button
+          onClick={() => setShowEvidencePanel((v) => !v)}
+          className="btn-outline shrink-0 text-xs py-1.5"
+        >
+          Add / organize evidence
         </button>
       </div>
+      {showEvidencePanel && <EvidenceChecklistPanel property={property} userId={userId} />}
 
       {evidenceDocuments.length === 0 ? (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
