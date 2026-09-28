@@ -238,6 +238,7 @@ import { Modal } from "@/components/Modal";
 import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBanner";
 import { ProgressRing } from "@/components/ProgressRing";
 import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
+import { protestOutcome } from "@/lib/protest-outcome";
 
 type ModuleAsyncState = {
   data: unknown;
@@ -4193,14 +4194,64 @@ function ModuleVisual({
   switch (m.id) {
     case "health": {
       const d = moduleState.data as HealthScoreResult;
-      const label = caseResult
-        ? "Protest completed"
-        : d.score >= 70
-          ? "Strong Opportunity"
-          : d.score >= 40
-            ? "Moderate Opportunity"
-            : "Limited Opportunity";
       const top3 = d.scoreBreakdown.slice(0, 3);
+      // Once the case is closed, Module 1's own score/gauge is the wrong
+      // number to show — it measures pre-protest OPPORTUNITY ("is this worth
+      // protesting"), not how the actual, completed protest went, and kept
+      // showing a low, red "weak" score plus the old pre-protest narrative
+      // even after a real, sizeable reduction. Grade the real outcome
+      // instead, from the product-specified bands (protest-outcome.ts).
+      if (caseResult) {
+        const outcome = protestOutcome(caseResult.valueReductionPct);
+        const outcomeColor =
+          outcome.tone === "success" ? "var(--success)" : "var(--muted-foreground)";
+        return (
+          <div>
+            <div className="text-center">
+              <div className="font-serif text-xl font-bold" style={{ color: outcomeColor }}>
+                {outcome.label}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{outcome.message}</p>
+            </div>
+            {top3.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+                {top3.map((b) => {
+                  const Icon = breakdownIcon(b.label);
+                  return (
+                    <div key={b.label} className="flex flex-col items-center gap-1">
+                      <span
+                        className={`grid h-8 w-8 place-items-center rounded-full ${m.color.bg} ${m.color.text}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="text-[9px] leading-tight text-muted-foreground">
+                        {b.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {caseResult.taxSavings != null && (
+              <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
+                <div className="font-serif text-2xl font-bold leading-none text-success">
+                  {currency(caseResult.taxSavings)}
+                </div>
+                {caseResult.valueReductionPct != null ? (
+                  <div className="mt-1 text-base font-bold text-success/90">
+                    {Math.round(caseResult.valueReductionPct)}% lower assessed value
+                  </div>
+                ) : null}
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  actual tax savings from your completed protest
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+      const label =
+        d.score >= 70 ? "Strong Opportunity" : d.score >= 40 ? "Moderate Opportunity" : "Limited Opportunity";
       return (
         <div>
           <SpeedometerGauge value={d.score} size="sm" />
@@ -4231,22 +4282,7 @@ function ModuleVisual({
               })}
             </div>
           )}
-          {caseResult && caseResult.taxSavings != null && (
-            <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
-              <div className="font-serif text-2xl font-bold leading-none text-success">
-                {currency(caseResult.taxSavings)}
-              </div>
-              {caseResult.valueReductionPct != null ? (
-                <div className="mt-1 text-base font-bold text-success/90">
-                  {Math.round(caseResult.valueReductionPct)}% lower assessed value
-                </div>
-              ) : null}
-              <div className="mt-1 text-[10px] text-muted-foreground">
-                actual tax savings from your completed protest
-              </div>
-            </div>
-          )}
-          {!caseResult && estimated.savings > 0 && (
+          {estimated.savings > 0 && (
             <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
               <div className="font-serif text-2xl font-bold leading-none text-success">
                 {currency(estimated.savings)}
@@ -4265,7 +4301,7 @@ function ModuleVisual({
               </div>
             </div>
           )}
-          {!caseResult && <EvidenceImpactCard />}
+          <EvidenceImpactCard />
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
