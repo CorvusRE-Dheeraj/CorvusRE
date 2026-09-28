@@ -7073,7 +7073,19 @@ function StrategyDetail({
         <div className="mt-2 flex flex-wrap gap-1">
           {s.relatedModules.map((id) => {
             const relatedModule = MODULES.find((mm) => mm.id === id);
-            return relatedModule ? <Chip key={id}>Related: {relatedModule.shortName}</Chip> : null;
+            if (!relatedModule) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onOpenModule(id)}
+                title={`Open ${relatedModule.shortName}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/15 hover:text-accent"
+              >
+                Related: {relatedModule.shortName}
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            );
           })}
         </div>
       )}
@@ -12222,6 +12234,7 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
         <ModuleDataSheetButton
           moduleId={props.m.id}
           moduleLabel={props.m.title}
+          shortLabel={props.m.shortName}
           moduleResult={props.moduleState?.data}
           onGenerate={props.onGenerateDataSheet}
         />
@@ -12238,11 +12251,18 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
 function ModuleDataSheetButton({
   moduleId,
   moduleLabel,
+  shortLabel,
   moduleResult,
   onGenerate,
 }: {
   moduleId: string;
   moduleLabel: string;
+  // The module's short display name (e.g. "Site Condition", "Income Value")
+  // — used only for the button's own text, so it reads "Generate Site
+  // Condition Overview" instead of the generic "Generate Property Summary"
+  // every module used to share. `moduleLabel` (the longer title) still goes
+  // into the generated file's own name/tagging, unchanged.
+  shortLabel: string;
   moduleResult: unknown;
   onGenerate: (
     moduleId: string,
@@ -12273,7 +12293,7 @@ function ModuleDataSheetButton({
         }}
         className="btn-outline mt-2 text-sm disabled:opacity-50"
       >
-        {busy ? "Drafting…" : "Generate Property summary"}
+        {busy ? "Drafting…" : `Generate ${shortLabel} Overview`}
       </button>
       {madeFile && (
         <p className="mt-1.5 text-xs text-success">Added “{madeFile}” to your documents.</p>
