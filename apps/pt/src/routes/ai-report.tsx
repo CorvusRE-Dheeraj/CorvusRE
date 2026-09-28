@@ -6011,11 +6011,16 @@ function SiteFactorRow({
 // a glance (evidenceNeeded is still there as a hover title for anyone who
 // wants it). The same generic icon on every tile, same rationale as
 // ChecklistIconRows: nothing here is a specific categorized finding, so no
-// icon should look like one. Taps straight through to Module 8.
+// icon should look like one. The icon/name still taps through to Module 8
+// for full context; the two real actions — N/A and a direct per-factor
+// Upload (tagged "Site: <factor>", same convention Site's own auto-upload
+// already recognizes) — are both right here, so neither needs that detour.
 function SiteFactorGapTile({
   factor,
   onOpenModule,
   onMarkNotApplicable,
+  onUpload,
+  uploading,
 }: {
   factor: SiteFactor;
   onOpenModule: (moduleId: string) => void;
@@ -6023,6 +6028,8 @@ function SiteFactorGapTile({
   // enforceSiteFactorRealData) — this is the escape hatch so the card
   // isn't a permanent dead end when there's genuinely nothing to upload.
   onMarkNotApplicable: () => void;
+  onUpload: (factor: SiteFactor, files: File[]) => void;
+  uploading?: boolean;
 }) {
   return (
     <div
@@ -6037,13 +6044,37 @@ function SiteFactorGapTile({
         <FileWarning className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="line-clamp-2 text-[10px] font-medium leading-tight">{factor.factor}</span>
       </button>
-      <button
-        type="button"
-        onClick={onMarkNotApplicable}
-        className="text-[9px] font-medium text-muted-foreground underline decoration-dotted hover:text-foreground"
-      >
-        Mark N/A
-      </button>
+      <div className="flex items-center gap-1 text-[9px] font-medium">
+        <button
+          type="button"
+          onClick={onMarkNotApplicable}
+          className="text-muted-foreground underline decoration-dotted hover:text-foreground"
+        >
+          N/A
+        </button>
+        <span aria-hidden className="text-muted-foreground/50">
+          ·
+        </span>
+        <label
+          className={`cursor-pointer text-accent underline decoration-dotted hover:text-accent/80 ${
+            uploading ? "pointer-events-none opacity-60" : ""
+          }`}
+        >
+          {uploading ? "…" : "Upload"}
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            disabled={uploading}
+            className="hidden"
+            onChange={(e) => {
+              const sel = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (sel.length > 0) onUpload(factor, sel);
+            }}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -10970,6 +11001,10 @@ function ModulePreviewContent({
                           factor={f}
                           onOpenModule={onOpenModule}
                           onMarkNotApplicable={() => onMarkNotApplicable("site", f.factor)}
+                          onUpload={(factor, files) =>
+                            onUploadEvidence(files, undefined, `Site: ${factor.factor}`)
+                          }
+                          uploading={uploadingEvidence}
                         />
                       ))}
                     </div>
