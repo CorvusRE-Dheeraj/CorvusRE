@@ -5048,10 +5048,13 @@ function ComparableValueChart({
   );
 }
 
-// The appraisal-style normalization behind the size-adjusted indicated
-// value — each top comp reduced to $/acre (or $/SF), restated at the
-// subject's own size, then time-adjusted only if it has a real dated sale
-// (see computeComparableStats). All deterministic, never AI-written.
+// The equal-and-uniform rate range behind the indicated value: every comp
+// priced BELOW the subject's own $/acre, restated at the subject's actual
+// size — what the subject would be worth at that comp's rate (see
+// computeComparableStats's own "Rate-based indicated range" comment).
+// Product-specified 2026-09: no size or time adjustment, and only comps that
+// argue for a lower value are shown here at all. All deterministic, never
+// AI-written.
 function CompsAdjustmentGrid({
   perCompAdjustment,
   ranked,
@@ -5066,53 +5069,46 @@ function CompsAdjustmentGrid({
     const c = ranked.find((r) => r.key === key);
     return c?.address || `Property #${c?.pid ?? "?"}`;
   };
-  const unitLabel = (b: "acre" | "sqft" | "raw") =>
-    b === "acre" ? "$/acre" : b === "sqft" ? "$/SF" : "raw";
   return (
     <div>
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Size &amp; Time Adjustments → Indicated Value
+        Comps Below Subject Rate → Indicated Target Range
       </div>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[560px] text-left text-xs">
+        <table className="w-full min-w-[480px] text-left text-xs">
           <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-semibold">Comp</th>
-              <th className="px-3 py-2 font-semibold">Basis</th>
-              <th className="px-3 py-2 font-semibold">$ / Unit</th>
-              <th className="px-3 py-2 font-semibold">Size-Adjusted</th>
-              <th className="px-3 py-2 font-semibold">Time Adj.</th>
-              <th className="px-3 py-2 font-semibold">Adjusted Value</th>
+              <th className="px-3 py-2 font-semibold">Comp Property</th>
+              <th className="px-3 py-2 font-semibold">Unit ($/acre)</th>
+              <th className="px-3 py-2 font-semibold">Comp Value / Acre</th>
+              <th className="px-3 py-2 font-semibold">Subject Value at Comp Rate</th>
             </tr>
           </thead>
           <tbody>
             {perCompAdjustment.map((a) => (
               <tr key={a.key} className="border-t border-border/60">
                 <td className="px-3 py-2 text-muted-foreground">{addrOf(a.key)}</td>
-                <td className="px-3 py-2 text-muted-foreground">{unitLabel(a.unitBasis)}</td>
+                <td className="px-3 py-2 text-muted-foreground">$/acre</td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {a.unitBasis === "raw" ? "—" : compactCurrency(a.unitRate)}
+                  {compactCurrency(a.compPerAcre)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {compactCurrency(a.sizeAdjValue)}
+                <td className="px-3 py-2 font-semibold">
+                  {compactCurrency(a.subjectValueAtCompRate)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {a.timeAdjPct === 0 ? "—" : `${a.timeAdjPct > 0 ? "+" : ""}${a.timeAdjPct}%`}
-                </td>
-                <td className="px-3 py-2 font-semibold">{compactCurrency(a.adjustedValue)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Similarity-weighted reconciliation:{" "}
+        Indicated target:{" "}
         <span className="font-semibold text-foreground">
           {compactCurrency(adjustedIndicated.value)}
         </span>{" "}
-        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Time
-        adjustments apply only to comps with a real dated sale — a CAD deed date isn&apos;t a
-        verified sale.
+        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Each
+        comp&apos;s own $/acre applied to the subject&apos;s actual size — only comps priced below
+        the subject&apos;s own $/acre are shown; a comp priced at or above it doesn&apos;t argue
+        for a lower value.
       </p>
     </div>
   );
@@ -5194,6 +5190,8 @@ function ComparableTable({
   recommendedKeys,
   onToggleExclude,
   onRemove,
+  subjectValue,
+  subjectAcres,
 }: {
   ranked: RankedComp[];
   cad?: string;
@@ -5201,14 +5199,32 @@ function ComparableTable({
   recommendedKeys?: Set<string>;
   onToggleExclude?: (comp: RankedComp, exclude: boolean) => void;
   onRemove?: (comp: RankedComp) => void;
+  // The subject's own assessed value / land size — same valuePerAcre() basis
+  // every comp row already uses, so "$ / Acre" and "vs Subject" below are a
+  // fair apples-to-apples read, not assessed value skewed by lot size.
+  subjectValue?: number | null;
+  subjectAcres?: number | null;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   if (ranked.length === 0) return null;
   const interactive = !!onToggleExclude;
   const showAi = !!perComp && perComp.size > 0;
-  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0);
+  const subjectPerAcre = valuePerAcre(subjectValue, subjectAcres);
+  const showVsSubject = subjectPerAcre != null;
+  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0) + (showVsSubject ? 1 : 0);
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+      {subjectPerAcre != null && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-secondary/30 px-3 py-2 text-xs">
+          <span className="font-semibold text-foreground">Subject Property</span>
+          <span className="text-muted-foreground">
+            {subjectAcres != null && `${formatAcres(subjectAcres)} · `}
+            {subjectValue != null && `${compactCurrency(subjectValue)} · `}
+            <span className="font-semibold text-foreground">{compactCurrency(subjectPerAcre)}</span>
+            /acre
+          </span>
+        </div>
+      )}
       <table className="w-full min-w-[640px] text-left text-xs">
         <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -5219,6 +5235,7 @@ function ComparableTable({
             <th className="px-3 py-2 font-semibold">Land Size</th>
             <th className="px-3 py-2 font-semibold">Assessed Value</th>
             <th className="px-3 py-2 font-semibold">$ / Acre</th>
+            {showVsSubject && <th className="px-3 py-2 font-semibold">vs Subject</th>}
             <th className="px-3 py-2 font-semibold">Distance</th>
             <th className="px-3 py-2 font-semibold">Similarity</th>
           </tr>
@@ -5308,6 +5325,18 @@ function ComparableTable({
                   <td className="px-3 py-2 text-muted-foreground">
                     {perAcre != null ? compactCurrency(perAcre) : "—"}
                   </td>
+                  {showVsSubject && (
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {perAcre != null && subjectPerAcre != null
+                        ? (() => {
+                            const deltaPct = Math.round(
+                              ((perAcre - subjectPerAcre) / subjectPerAcre) * 100,
+                            );
+                            return `${deltaPct > 0 ? "+" : ""}${deltaPct}%`;
+                          })()
+                        : "—"}
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-muted-foreground">{c.distanceMi.toFixed(2)} mi</td>
                   <td
                     className="px-3 py-2 font-semibold"
@@ -9728,7 +9757,18 @@ function Module2Content({
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Ranked Strategies
             </div>
-            <StrategyRankList strategies={d.strategies} color={m.color} />
+            {/* Unlike the compact card's own StrategyRankList (one consolidated
+                "Upload data" button instead), this detail-view list has room for
+                each row's own "Data Needed" pill to actually DO something — same
+                per-strategy upload StrategyDetail's own card below already
+                offers, just reachable straight from the summary row instead of
+                only after scrolling to find the matching detail card. */}
+            <StrategyRankList
+              strategies={d.strategies}
+              color={m.color}
+              onUploadFor={(s, files) => onUploadEvidence(files, strategySlug(s.name))}
+              uploading={uploadingEvidence}
+            />
           </div>
           <div className="grid gap-3 [&>*]:min-w-0">
             {d.strategies.map((s, i) => (
@@ -10423,6 +10463,8 @@ function ModulePreviewContent({
               recommendedKeys={recommendedKeys}
               onToggleExclude={compsInteractive ? handleToggleExclude : undefined}
               onRemove={compsInteractive ? (c) => onRemoveCompSelection(c.key) : undefined}
+              subjectValue={stats.subjectValue}
+              subjectAcres={map?.subject?.legalAcreage ?? null}
             />
             {excludedCount > 0 && (
               <p className="-mt-2 text-[11px] text-muted-foreground">
@@ -10463,16 +10505,14 @@ function ModulePreviewContent({
               </div>
             )}
 
-            {/* 6. Indicated Value / CAD Value / Gap. Prefers the size-
-                adjusted reconciliation when there were enough size-bearing
-                comps to adjust; otherwise the raw top-5 range. */}
+            {/* 6. Indicated Value / CAD Value / Gap. Prefers the rate-based
+                target range (comps priced below the subject's own $/acre)
+                when at least one qualifies; otherwise the raw top-5 range. */}
             {stats.indicated && (
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg bg-success/10 p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
-                    {stats.adjustedIndicated
-                      ? "Indicated Value (adjusted)"
-                      : "Indicated Value Range"}
+                    {stats.adjustedIndicated ? "Indicated Target Range" : "Indicated Value Range"}
                   </div>
                   <div className="mt-0.5 text-lg font-bold text-success">
                     {stats.adjustedIndicated

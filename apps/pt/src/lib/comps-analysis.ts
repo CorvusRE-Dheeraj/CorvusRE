@@ -208,31 +208,29 @@ export function compFlags(
   return flags;
 }
 
-// One comp's normalization on the way to the reconciled indicated value.
+// One comp's contribution to the rate-based indicated range — see the
+// "Rate-based indicated range" comment in computeComparableStats for the
+// method. Product-specified 2026-09: only a comp priced BELOW the subject's
+// own $/acre argues for a lower value, so only those comps get one of these;
+// no time or building-SF adjustment.
 export type CompAdjustment = {
   key: string;
-  // "$/acre" | "$/SF" | "raw" — which unit the comp was reduced to.
-  unitBasis: "acre" | "sqft" | "raw";
-  // The comp's own value expressed in that unit ($/acre or $/SF), or the
-  // raw value when there's no size on either side.
-  unitRate: number;
-  // unitRate × the subject's own size — the comp restated at the subject's
-  // scale.
-  sizeAdjValue: number;
-  // Market-trend time adjustment applied (whole-number %), only for a comp
-  // with a real dated sale; 0 for a CAD equity comp (deed date is not a
-  // verified sale).
-  timeAdjPct: number;
-  // sizeAdjValue × (1 + timeAdjPct/100) — the comp's final indicated value.
-  adjustedValue: number;
+  // The comp's own assessed value per acre.
+  compPerAcre: number;
+  // compPerAcre × the subject's own actual acreage — what the subject would
+  // be worth at this comp's rate.
+  subjectValueAtCompRate: number;
 };
 
 export type ComparableStats = {
   indicated: { min: number; median: number; max: number } | null;
-  // The similarity-weighted reconciliation of the per-comp adjusted values
-  // — the headline indicated value once size and time are normalized.
-  // Falls back to null (and the UI uses `indicated`) when there aren't
-  // enough size-bearing comps to adjust.
+  // The rate-based indicated range: each usable comp priced BELOW the
+  // subject's own $/acre, restated at the subject's actual acreage (see
+  // CompAdjustment) — `value` is the median of those, `min`/`max` the full
+  // range. This is the real "target for the protest" range. Null when no
+  // comp actually prices below the subject (the UI falls back to
+  // `indicated`, the plain unadjusted comp range) — see
+  // computeComparableStats.
   adjustedIndicated: { value: number; min: number; max: number } | null;
   perCompAdjustment: CompAdjustment[];
   subjectValue: number | null;
@@ -366,59 +364,42 @@ export function computeComparableStats(
   const max = values[values.length - 1];
   const median = values[Math.floor(values.length / 2)];
 
-  // ── Adjustment layer: normalize each `top` comp to the subject's scale on
-  // size, then time-adjust a real dated sale by the subject's own
-  // assessed-value trend (capped ±15%), then reconcile similarity-weighted.
+  // ── Rate-based indicated range (Texas Tax Code §41.43(b)(3) "equal and
+  // uniform" logic, product-specified 2026-09): every USABLE comp (not just
+  // the top-5-by-similarity slice above) with a real acreage gets its own
+  // $/acre computed, then applied directly to the subject's own actual
+  // acreage — what the subject would be worth at that comp's rate. Only
+  // comps priced BELOW the subject's own $/acre are used: a comp priced at
+  // or above it doesn't argue the subject is overvalued, so including it
+  // would only pull a genuine protest range back toward (or past) the
+  // subject's own value. No time or building-SF adjustment — the rate
+  // applies to the subject's current size and nothing else.
   const subjAcres = subject?.legalAcreage ?? null;
-  const trendPerYear = opts.subjectTrendPctPerYear ?? null;
-  const perCompAdjustment: CompAdjustment[] = top.map((c) => {
-    const raw = c.marketValue as number;
-    let unitBasis: CompAdjustment["unitBasis"] = "raw";
-    let unitRate = raw;
-    let sizeAdjValue = raw;
-    if (subjBuildingSqft && c.userAdded && c.buildingSqft && c.buildingSqft > 0) {
-      unitBasis = "sqft";
-      unitRate = raw / c.buildingSqft;
-      sizeAdjValue = unitRate * subjBuildingSqft;
-    } else if (subjAcres && subjAcres > 0 && c.legalAcreage && c.legalAcreage > 0) {
-      unitBasis = "acre";
-      unitRate = raw / c.legalAcreage;
-      sizeAdjValue = unitRate * subjAcres;
+  const perCompAdjustment: CompAdjustment[] = [];
+  if (subjAcres != null && subjAcres > 0 && subjectValue != null && subjectValue > 0) {
+    const subjectPerAcre = subjectValue / subjAcres;
+    for (const c of usable) {
+      if (!c.legalAcreage || c.legalAcreage <= 0) continue;
+      const compPerAcre = (c.marketValue as number) / c.legalAcreage;
+      if (compPerAcre >= subjectPerAcre) continue;
+      perCompAdjustment.push({
+        key: c.key,
+        compPerAcre: Math.round(compPerAcre),
+        subjectValueAtCompRate: Math.round(compPerAcre * subjAcres),
+      });
     }
-    // Time: only a real dated sale (a user-added comp with a saleDate) gets
-    // adjusted — a CAD comp's deed date is not a verified market sale.
-    let timeAdjPct = 0;
-    if (trendPerYear != null && c.userAdded && c.saleDate) {
-      const yrs = yearsSince(c.saleDate);
-      if (yrs != null) timeAdjPct = Math.max(-15, Math.min(15, Math.round(trendPerYear * yrs)));
-    }
-    const adjustedValue = Math.round(sizeAdjValue * (1 + timeAdjPct / 100));
-    return {
-      key: c.key,
-      unitBasis,
-      unitRate: Math.round(unitRate),
-      sizeAdjValue: Math.round(sizeAdjValue),
-      timeAdjPct,
-      adjustedValue,
-    };
-  });
+    perCompAdjustment.sort((a, b) => b.subjectValueAtCompRate - a.subjectValueAtCompRate);
+  }
 
-  // Only reconcile when at least half the top comps actually got a size
-  // basis (otherwise "adjusted" would just echo the raw values).
-  const sizeAdjusted = perCompAdjustment.filter((a) => a.unitBasis !== "raw");
   let adjustedIndicated: ComparableStats["adjustedIndicated"] = null;
-  if (sizeAdjusted.length >= Math.max(2, Math.ceil(top.length / 2))) {
-    const wSum = top.reduce((s, c) => s + Math.max(1, c.similarity), 0);
-    const weighted =
-      top.reduce(
-        (s, c, i) => s + perCompAdjustment[i].adjustedValue * Math.max(1, c.similarity),
-        0,
-      ) / wSum;
-    const adjValues = perCompAdjustment.map((a) => a.adjustedValue).sort((x, y) => x - y);
+  if (perCompAdjustment.length > 0) {
+    const targets = perCompAdjustment
+      .map((a) => a.subjectValueAtCompRate)
+      .sort((x, y) => x - y);
     adjustedIndicated = {
-      value: Math.round(weighted),
-      min: adjValues[0],
-      max: adjValues[adjValues.length - 1],
+      value: targets[Math.floor(targets.length / 2)],
+      min: targets[0],
+      max: targets[targets.length - 1],
     };
   }
 
