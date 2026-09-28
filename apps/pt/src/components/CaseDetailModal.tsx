@@ -1983,13 +1983,15 @@ export function CasePlanSection({
       {allowEvidenceUpload && (
         <section id="case-upload-evidence" className="grid gap-2">
           <button
-            onClick={() => setShowEvidencePanel((v) => !v)}
+            onClick={() => setShowEvidencePanel(true)}
             className="btn-outline w-fit text-sm"
           >
             {evidenceCount > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
           </button>
           {showEvidencePanel && (
-            <EvidenceChecklistPanel property={property} userId={userId} />
+            <Modal onClose={() => setShowEvidencePanel(false)} wide>
+              <EvidenceChecklistPanel property={property} userId={userId} />
+            </Modal>
           )}
         </section>
       )}
@@ -3038,10 +3040,10 @@ function EvidenceStatusCard({
     }
   }
 
-  // Same inline-embed treatment as CasePlanSection's own — see its comment.
+  // Same popup-embed treatment as CasePlanSection's own — see its comment.
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    setShowEvidencePanel((v) => !v);
+    setShowEvidencePanel(true);
   }
 
   const status = loading
@@ -3176,9 +3178,9 @@ function EvidenceStatusCard({
             )}
           </div>
           {showEvidencePanel && (
-            <div className="mt-3">
+            <Modal onClose={() => setShowEvidencePanel(false)} wide>
               <EvidenceChecklistPanel property={property} userId={userId} />
-            </div>
+            </Modal>
           )}
         </>
       )}
@@ -3434,10 +3436,10 @@ export function DocumentsSection({
       .catch((err) => console.error("Could not load saved Evidence Declaration draft:", err));
   }
 
-  // Same inline-embed treatment as CasePlanSection's own — see its comment.
+  // Same popup-embed treatment as CasePlanSection's own — see its comment.
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    setShowEvidencePanel((v) => !v);
+    setShowEvidencePanel(true);
   }
 
   // Form 50-162 authorizes an agent for possibly several properties at once —
@@ -3686,7 +3688,11 @@ export function DocumentsSection({
               </button>
             </div>
           )}
-          {showEvidencePanel && <EvidenceChecklistPanel property={property} userId={userId} />}
+          {showEvidencePanel && (
+            <Modal onClose={() => setShowEvidencePanel(false)} wide>
+              <EvidenceChecklistPanel property={property} userId={userId} />
+            </Modal>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={openProtestEditor} className="btn-accent text-xs py-1.5">
               File Protest
@@ -4025,13 +4031,17 @@ function FilingEvidenceStep({
           {withIssues.length > 0 && ` · ${withIssues.length} flagged by AI review`}
         </span>
         <button
-          onClick={() => setShowEvidencePanel((v) => !v)}
+          onClick={() => setShowEvidencePanel(true)}
           className="btn-outline shrink-0 text-xs py-1.5"
         >
           Add / organize evidence
         </button>
       </div>
-      {showEvidencePanel && <EvidenceChecklistPanel property={property} userId={userId} />}
+      {showEvidencePanel && (
+        <Modal onClose={() => setShowEvidencePanel(false)} wide>
+          <EvidenceChecklistPanel property={property} userId={userId} />
+        </Modal>
+      )}
 
       {evidenceDocuments.length === 0 ? (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
