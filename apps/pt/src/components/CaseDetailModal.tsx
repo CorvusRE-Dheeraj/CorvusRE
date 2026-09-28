@@ -833,7 +833,6 @@ export function CaseDetailView({
                 protestId={protest.id}
                 caseData={caseData}
                 onReload={load}
-                evidenceCount={evidenceDocuments.length}
               />
               {/* Journey tracker is otherwise root-level, Properties-page-only
                   (see SignedInJourney in routes/__root.tsx) — kept here too
@@ -1894,23 +1893,12 @@ export function CasePlanSection({
   protestId,
   caseData,
   onReload,
-  // Module 8 lives on the customer's own /ai-report page, keyed to
-  // whoever is currently signed in — for staff (AdminCaseProgressModal),
-  // that's the admin, not the customer, so navigating there would try to
-  // resolve/create this property under the ADMIN's account instead.
-  // Customer view leaves this at its default (true); admin passes false.
-  allowEvidenceUpload = true,
-  // How many evidence files are already on the case — only changes the
-  // button wording (Upload Evidence vs Upload Additional Evidence).
-  evidenceCount = 0,
 }: {
   userId: string;
   property: PropertyRecord;
   protestId: string;
   caseData: ProtestCase | null;
   onReload: () => void;
-  allowEvidenceUpload?: boolean;
-  evidenceCount?: number;
 }) {
   const [generating, setGenerating] = useState(false);
 
@@ -1925,13 +1913,6 @@ export function CasePlanSection({
       setGenerating(false);
     }
   }
-
-  // Evidence upload used to navigate away to Module 8 on the AI Report page
-  // and back — explicit product direction 2026-09: it's embedded inline here
-  // instead (EvidenceChecklistPanel, the same real Module 8 checklist/AI-
-  // categorized upload, reused as a component rather than duplicated by
-  // hand), so uploading no longer costs the user their place in the case.
-  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
 
   const hasAnyPlan = !!caseData?.strategyRecommendation;
 
@@ -1979,22 +1960,12 @@ export function CasePlanSection({
           </div>
         )}
       </section>
-
-      {allowEvidenceUpload && (
-        <section id="case-upload-evidence" className="grid gap-2">
-          <button
-            onClick={() => setShowEvidencePanel(true)}
-            className="btn-outline w-fit text-sm"
-          >
-            {evidenceCount > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
-          </button>
-          {showEvidencePanel && (
-            <Modal onClose={() => setShowEvidencePanel(false)} wide>
-              <EvidenceChecklistPanel property={property} userId={userId} />
-            </Modal>
-          )}
-        </section>
-      )}
+      {/* Evidence upload lives in exactly one place on this tab now — the
+          Evidence card above (EvidenceStatusCard), which has the richer
+          context (score, critical-missing count) this section didn't. A
+          second identical button here was pure duplication — see
+          EvidenceStatusCard's own id="case-upload-evidence" for where
+          getCaseGuidance's "Go to Upload Evidence" step now lands. */}
     </div>
   );
 }
@@ -3058,7 +3029,7 @@ function EvidenceStatusCard({
     !["not_started", "evidence_required", "being_prepared", "ready_to_submit"].includes(status);
 
   return (
-    <div className="mt-4 card-elev p-4">
+    <div id="case-upload-evidence" className="mt-4 card-elev p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-base font-semibold">Evidence</h2>
         {status && (
