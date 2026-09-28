@@ -47,6 +47,8 @@ import { Route as DashboardLayoutRfisRouteImport } from './routes/dashboard/_lay
 import { Route as DashboardLayoutRoadmapRouteImport } from './routes/dashboard/_layout.roadmap'
 import { Route as DashboardLayoutSettingsRouteImport } from './routes/dashboard/_layout.settings'
 import { Route as DashboardLayoutTimelineRouteImport } from './routes/dashboard/_layout.timeline'
+import { Route as DashboardLayoutTrackMapRouteImport } from './routes/dashboard/_layout.track-map'
+import { Route as DashboardLayoutTrackStationRouteImport } from './routes/dashboard/_layout.track-station'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -245,6 +247,17 @@ const DashboardLayoutTimelineRoute = DashboardLayoutTimelineRouteImport.update({
   path: '/timeline',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutTrackMapRoute = DashboardLayoutTrackMapRouteImport.update({
+  id: '/track-map',
+  path: '/track-map',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
+const DashboardLayoutTrackStationRoute =
+  DashboardLayoutTrackStationRouteImport.update({
+    id: '/track-station',
+    path: '/track-station',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -284,6 +297,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/timeline': typeof DashboardLayoutTimelineRoute
+  '/dashboard/track-map': typeof DashboardLayoutTrackMapRoute
+  '/dashboard/track-station': typeof DashboardLayoutTrackStationRoute
   '/dashboard/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -323,6 +338,8 @@ export interface FileRoutesByTo {
   '/dashboard/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/timeline': typeof DashboardLayoutTimelineRoute
+  '/dashboard/track-map': typeof DashboardLayoutTrackMapRoute
+  '/dashboard/track-station': typeof DashboardLayoutTrackStationRoute
   '/dashboard': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -364,6 +381,8 @@ export interface FileRoutesById {
   '/dashboard/_layout/roadmap': typeof DashboardLayoutRoadmapRoute
   '/dashboard/_layout/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/_layout/timeline': typeof DashboardLayoutTimelineRoute
+  '/dashboard/_layout/track-map': typeof DashboardLayoutTrackMapRoute
+  '/dashboard/_layout/track-station': typeof DashboardLayoutTrackStationRoute
   '/dashboard/_layout/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -406,6 +425,8 @@ export interface FileRouteTypes {
     | '/dashboard/roadmap'
     | '/dashboard/settings'
     | '/dashboard/timeline'
+    | '/dashboard/track-map'
+    | '/dashboard/track-station'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -445,6 +466,8 @@ export interface FileRouteTypes {
     | '/dashboard/roadmap'
     | '/dashboard/settings'
     | '/dashboard/timeline'
+    | '/dashboard/track-map'
+    | '/dashboard/track-station'
     | '/dashboard'
   id:
     | '__root__'
@@ -485,6 +508,8 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/roadmap'
     | '/dashboard/_layout/settings'
     | '/dashboard/_layout/timeline'
+    | '/dashboard/_layout/track-map'
+    | '/dashboard/_layout/track-station'
     | '/dashboard/_layout/'
   fileRoutesById: FileRoutesById
 }
@@ -778,6 +803,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutTimelineRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/track-map': {
+      id: '/dashboard/_layout/track-map'
+      path: '/track-map'
+      fullPath: '/dashboard/track-map'
+      preLoaderRoute: typeof DashboardLayoutTrackMapRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
+    '/dashboard/_layout/track-station': {
+      id: '/dashboard/_layout/track-station'
+      path: '/track-station'
+      fullPath: '/dashboard/track-station'
+      preLoaderRoute: typeof DashboardLayoutTrackStationRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
   }
 }
 
@@ -800,6 +839,8 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutRoadmapRoute: typeof DashboardLayoutRoadmapRoute
   DashboardLayoutSettingsRoute: typeof DashboardLayoutSettingsRoute
   DashboardLayoutTimelineRoute: typeof DashboardLayoutTimelineRoute
+  DashboardLayoutTrackMapRoute: typeof DashboardLayoutTrackMapRoute
+  DashboardLayoutTrackStationRoute: typeof DashboardLayoutTrackStationRoute
   DashboardLayoutIndexRoute: typeof DashboardLayoutIndexRoute
 }
 
@@ -822,6 +863,8 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutRoadmapRoute: DashboardLayoutRoadmapRoute,
   DashboardLayoutSettingsRoute: DashboardLayoutSettingsRoute,
   DashboardLayoutTimelineRoute: DashboardLayoutTimelineRoute,
+  DashboardLayoutTrackMapRoute: DashboardLayoutTrackMapRoute,
+  DashboardLayoutTrackStationRoute: DashboardLayoutTrackStationRoute,
   DashboardLayoutIndexRoute: DashboardLayoutIndexRoute,
 }
 
