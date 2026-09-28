@@ -4,7 +4,7 @@ import { GLOSSARY_MAP } from "@/lib/glossary";
 import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
@@ -1931,16 +1931,16 @@ export function CasePlanSection({
   // the report's subject the same real way "View AI Report" already does
   // from the Properties dashboard (buildAiReportIntakePatch), then deep
   // links straight into the Evidence module (ai-report.tsx's own
-  // ?openModule=evidence handling, built for exactly this button). Opens in
-  // a new tab (window.open, not router navigate) so the case modal stays
-  // open behind it — the sessionStorage write above happens synchronously
-  // before the tab opens, so the new same-origin tab inherits it.
+  // ?openModule=evidence handling, built for exactly this button). Navigates
+  // in the SAME tab (router navigate, not window.open "_blank") — a new tab
+  // per click piled up one AI Report tab per step. Same tab also means the
+  // sessionStorage intake patch is always the one the report reads (a reused
+  // named tab would keep its own stale copy). The router applies the
+  // "/corvuspt/" basepath itself, so no BASE_URL prefix is needed.
+  const navigate = useNavigate();
   function goToModule8() {
     updateIntake(buildAiReportIntakePatch(property));
-    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
-    // Pages build — a raw "/ai-report" absolute path skips that prefix and
-    // 404s in production. Always build the URL from BASE_URL.
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
   }
 
   const hasAnyPlan = !!caseData?.strategyRecommendation;
@@ -3043,10 +3043,12 @@ function EvidenceStatusCard({
   }
 
   // Evidence upload lives in exactly one place — Module 8 on the AI Report
-  // page — same real deep link CasePlanSection/DocumentsSection already use.
+  // page — same real deep link CasePlanSection/DocumentsSection already use,
+  // in the same tab.
+  const navigate = useNavigate();
   function goToModule8() {
     updateIntake(buildAiReportIntakePatch(property));
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
   }
 
   const status = loading
@@ -3437,14 +3439,11 @@ export function DocumentsSection({
   // Same real deep link as CasePlanSection's own goToModule8 — evidence
   // upload lives in exactly one place (Module 8 on the AI Report page), so
   // this button just gets the user there rather than duplicating an upload
-  // widget in a second location. Opens in a new tab so the case modal
-  // stays open behind it.
+  // widget in a second location. Same tab, not a new one per click.
+  const navigate = useNavigate();
   function goToModule8() {
     updateIntake(buildAiReportIntakePatch(property));
-    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
-    // Pages build — a raw "/ai-report" absolute path skips that prefix and
-    // 404s in production. Always build the URL from BASE_URL.
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    navigate({ to: "/ai-report", search: { openModule: "evidence" } });
   }
 
   // Form 50-162 authorizes an agent for possibly several properties at once —
