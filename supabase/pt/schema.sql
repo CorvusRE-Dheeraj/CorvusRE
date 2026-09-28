@@ -2027,6 +2027,12 @@ create table if not exists public.user_reminders (
   source text not null default 'manual',
   created_at timestamptz not null default now()
 );
+-- Explicitly acknowledged as missed (distinct from "not done yet" — a
+-- reminder past its date with this still null is auto-treated as missed for
+-- display too, see fromReminder() in tax-calendar.ts, but this lets the
+-- owner mark one missed before its date, or a past one as intentionally
+-- skipped, without touching `done`). Cleared whenever `done` is set true.
+alter table public.user_reminders add column if not exists missed_at timestamptz;
 alter table public.user_reminders drop constraint if exists user_reminders_source_check;
 alter table public.user_reminders add constraint user_reminders_source_check
   check (source in ('manual', 'assistant', 'system'));

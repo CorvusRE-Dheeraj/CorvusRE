@@ -29,6 +29,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  CircleX,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { markPropertyPaid, listProperties, type PropertyRecord } from "@/lib/properties";
@@ -40,7 +41,13 @@ import {
   type CalendarEvent,
   type CalendarEventType,
 } from "@/lib/tax-calendar";
-import { addReminder, updateReminder, setReminderDone, deleteReminder } from "@/lib/reminders";
+import {
+  addReminder,
+  updateReminder,
+  setReminderDone,
+  setReminderMissed,
+  deleteReminder,
+} from "@/lib/reminders";
 import { findHearingConflicts, type HearingConflictGroup } from "@/lib/hearing-conflicts";
 import { downloadIcs } from "@/lib/ics";
 import {
@@ -97,7 +104,9 @@ function daysUntil(iso: string): number {
 }
 
 function DaysLeftBadge({ event }: { event: CalendarEvent }) {
-  if (event.resolved) return <span className="badge-soft text-success">Done</span>;
+  if (event.resolved)
+    return <span className="badge-soft text-success">{event.resolvedLabel ?? "Done"}</span>;
+  if (event.missed) return <span className="badge-soft text-destructive">Missed</span>;
   const daysLeft = daysUntil(event.date);
   return (
     <span className={`badge-soft ${daysLeft <= 7 ? "text-destructive" : ""}`}>
@@ -117,6 +126,7 @@ function EventRow({
   onEditReminder,
   onDeleteReminder,
   onToggleReminderDone,
+  onToggleReminderMissed,
   onOpenProperty,
 }: {
   event: CalendarEvent;
@@ -125,6 +135,7 @@ function EventRow({
   onEditReminder?: (event: CalendarEvent) => void;
   onDeleteReminder?: (event: CalendarEvent) => void;
   onToggleReminderDone?: (event: CalendarEvent) => void;
+  onToggleReminderMissed?: (event: CalendarEvent) => void;
   // Every real county/case fact (a deadline, a hearing, a tax bill — never a personal
   // reminder, which has its own edit/delete controls) opens straight to that property's case,
   // resuming wherever it's really at, or starts one if none exists yet.
@@ -160,12 +171,24 @@ function EventRow({
           />
         )}
         <div>
-          <div className={`font-medium ${isReminder && event.resolved ? "line-through" : ""}`}>
+          <div
+            className={`font-medium ${isReminder && event.resolved ? "line-through" : ""} ${
+              isReminder && event.missed ? "text-destructive" : ""
+            }`}
+          >
             {event.title}
           </div>
           <div className="text-xs text-muted-foreground">
             {format(new Date(event.date + "T00:00:00"), "MMM d, yyyy")}
             {event.amount != null ? ` • $${event.amount.toLocaleString()}` : ""}
+            {isReminder && event.missed && !event.resolved && (
+              <span className="ml-1 font-medium text-destructive">
+                {daysUntil(event.date) < 0 ? "— passed without being marked done" : "— marked missed"}
+              </span>
+            )}
+            {!isReminder && event.resolved && event.resolvedNote && (
+              <span className="ml-1 font-medium text-success">— {event.resolvedNote}</span>
+            )}
           </div>
         </div>
       </div>
@@ -185,6 +208,19 @@ function EventRow({
         )}
         {isReminder ? (
           <>
+            {onToggleReminderMissed && !event.resolved && (
+              <button
+                type="button"
+                onClick={() => onToggleReminderMissed(event)}
+                aria-label={event.missed ? "Undo missed" : "Mark missed"}
+                title={event.missed ? "Undo missed" : "Mark missed"}
+                className={`grid h-8 w-8 place-items-center rounded-md hover:bg-destructive/10 hover:text-destructive ${
+                  event.missed ? "text-destructive" : "text-muted-foreground"
+                }`}
+              >
+                <CircleX className="h-3.5 w-3.5" />
+              </button>
+            )}
             {onEditReminder && (
               <button
                 type="button"
@@ -517,12 +553,18 @@ function EventChip({ event, onClick }: { event: CalendarEvent; onClick: () => vo
       {...dragProps(event)}
       className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-secondary/70 ${
         isReminder ? "cursor-grab active:cursor-grabbing" : ""
-      } ${event.resolved ? "opacity-50 line-through" : ""}`}
-      title={event.title}
+      } ${event.resolved ? "opacity-50 line-through" : ""} ${
+        isReminder && event.missed ? "text-destructive" : ""
+      }`}
+      title={isReminder && event.missed ? `${event.title} — Missed` : event.title}
     >
       <span
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          isReminder ? "bg-fuchsia-500" : "bg-accent"
+          isReminder && event.missed
+            ? "bg-destructive"
+            : isReminder
+              ? "bg-fuchsia-500"
+              : "bg-accent"
         }`}
       />
       <span className="truncate">{event.propertyLabel || event.title}</span>
@@ -817,6 +859,21 @@ function CalendarPage() {
     }
   }
 
+  // Explicitly marks a reminder missed (or un-marks it, back to a plain
+  // pending state) — separate from the done toggle above, so "Completed" and
+  // "Missed" are two distinct actions rather than one done/not-done checkbox
+  // standing in for both.
+  async function handleToggleReminderMissed(event: CalendarEvent) {
+    const id = reminderIdOf(event);
+    if (!id) return;
+    try {
+      await setReminderMissed(id, !event.missed);
+      reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update this reminder.");
+    }
+  }
+
   function openEditReminder(event: CalendarEvent) {
     const id = reminderIdOf(event);
     if (!id) return;
@@ -1036,6 +1093,7 @@ function CalendarPage() {
               onEditReminder={openEditReminder}
               onDeleteReminder={handleDeleteReminder}
               onToggleReminderDone={handleToggleReminderDone}
+              onToggleReminderMissed={handleToggleReminderMissed}
               onAddReminder={(iso) =>
                 setReminderDraft({ id: null, remindOn: iso, note: "", propertyId: null })
               }
@@ -1051,6 +1109,7 @@ function CalendarPage() {
               onEditReminder={openEditReminder}
               onDeleteReminder={handleDeleteReminder}
               onToggleReminderDone={handleToggleReminderDone}
+              onToggleReminderMissed={handleToggleReminderMissed}
               onOpenProperty={openProperty}
             />
           )}
@@ -1085,6 +1144,7 @@ function CalendarPage() {
                     onEditReminder={openEditReminder}
                     onDeleteReminder={handleDeleteReminder}
                     onToggleReminderDone={handleToggleReminderDone}
+              onToggleReminderMissed={handleToggleReminderMissed}
                     onOpenProperty={openProperty}
                   />
                 ))
@@ -1320,6 +1380,7 @@ function DayView({
   onEditReminder,
   onDeleteReminder,
   onToggleReminderDone,
+  onToggleReminderMissed,
   onAddReminder,
   onOpenProperty,
 }: {
@@ -1330,6 +1391,7 @@ function DayView({
   onEditReminder: (event: CalendarEvent) => void;
   onDeleteReminder: (event: CalendarEvent) => void;
   onToggleReminderDone: (event: CalendarEvent) => void;
+  onToggleReminderMissed: (event: CalendarEvent) => void;
   onAddReminder: (iso: string) => void;
   onOpenProperty: (propertyId: string) => void;
 }) {
@@ -1364,6 +1426,7 @@ function DayView({
               onEditReminder={onEditReminder}
               onDeleteReminder={onDeleteReminder}
               onToggleReminderDone={onToggleReminderDone}
+              onToggleReminderMissed={onToggleReminderMissed}
               onOpenProperty={onOpenProperty}
             />
           ))
@@ -1383,6 +1446,7 @@ function ListView({
   onEditReminder,
   onDeleteReminder,
   onToggleReminderDone,
+  onToggleReminderMissed,
   onOpenProperty,
 }: {
   cursor: Date;
@@ -1392,6 +1456,7 @@ function ListView({
   onEditReminder: (event: CalendarEvent) => void;
   onDeleteReminder: (event: CalendarEvent) => void;
   onToggleReminderDone: (event: CalendarEvent) => void;
+  onToggleReminderMissed: (event: CalendarEvent) => void;
   onOpenProperty: (propertyId: string) => void;
 }) {
   const key = format(cursor, "yyyy-MM");
@@ -1454,6 +1519,7 @@ function ListView({
                   onEditReminder={onEditReminder}
                   onDeleteReminder={onDeleteReminder}
                   onToggleReminderDone={onToggleReminderDone}
+                  onToggleReminderMissed={onToggleReminderMissed}
                   onOpenProperty={onOpenProperty}
                 />
               ))}
