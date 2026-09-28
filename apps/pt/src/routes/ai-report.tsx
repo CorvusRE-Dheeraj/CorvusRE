@@ -3212,8 +3212,6 @@ function Report() {
                       <Link
                         to="/dashboard/case"
                         search={{ propertyId: resolvedProperty.id }}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="btn-accent text-sm py-1.5 font-semibold"
                       >
                         View Case
@@ -3235,8 +3233,6 @@ function Report() {
                         <Link
                           to="/dashboard/case"
                           search={{ propertyId: resolvedProperty.id }}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
                         >
                           {nextAction.action.label}
