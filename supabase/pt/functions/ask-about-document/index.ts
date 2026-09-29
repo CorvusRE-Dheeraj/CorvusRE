@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { question, context, conversational } = await req.json();
+    const { question, context, conversational, personaName } = await req.json();
     if (!question) {
       return new Response(JSON.stringify({ error: "question is required" }), {
         status: 400,
@@ -28,17 +28,26 @@ Deno.serve(async (req: Request) => {
 
     // conversational: the answer is going to be spoken aloud and shown in a
     // chat bubble — reply the way a person talks, not as a bulleted report.
+    // personaName (below) is its own separate, chattier style used only by
+    // the support-bot persona — the two are never combined.
     const styleRule = conversational
       ? `FORMAT — your answer is read aloud and shown in a chat bubble:\n- Reply in 1-4 short, natural sentences, the way you'd say it out loud to the person. Lead with the direct answer.\n- NO bullet points, NO tables, NO markdown symbols (*, #, |, backticks), NO headings, NO numbered lists.\n- When you'd otherwise list several items, say them in a flowing sentence ("You have four properties: the one on Warren Pkwy, ..."). Round long figures for speech ("about 4.2 million dollars").\n- Warm and plain, like a knowledgeable friend — never robotic, never a data dump.`
       : BULLET_STYLE;
 
+    // The Ask AI widget's human-support mode (personaName set) — a friendly
+    // junior support associate having a live chat, not the generic analyst
+    // voice every other caller of this function gets. Everything else about
+    // the function (Gemini call, context handling, response shape) is
+    // unchanged, so every other caller behaves exactly as before.
+    const SUPPORT_STYLE = `FORMAT — you're chatting live with someone in a support widget:\n- Talk like a genuinely helpful person, not a formal report. Contractions are fine ("you'll", "that's", "let's").\n- If you're walking them through fixing something, short numbered steps (1. 2. 3.) are fine — the one exception to keeping everything in plain sentences.\n- Keep it tight: a few sentences or steps, never a wall of text.\n- No headings, no tables, no bullet-point dumps of unrelated facts.\n- Never say "As an AI" or "I don't have access to your account" flatly — if something needs a real look, say so warmly and that you can get a person to help.`;
+
+    const systemText = personaName
+      ? `You are ${personaName}, a friendly, patient support associate at CorvusPT — a platform that helps Texas commercial property owners protest their property-tax assessments. You're having a live chat with a real user who needs help using the product: answer their questions, walk them through common fixes step by step, and clear up confusion. Sound like a genuinely helpful person, warm and conversational, never robotic or corporate.\n\n${SUPPORT_STYLE}\n\nOnly use the context below for anything about their account, properties, or cases — never invent numbers or details. If the context doesn't cover something, say so honestly rather than guessing.`
+      : `You are CorvusPT's Texas property tax assistant. Answer accurately and concisely. If unsure, say so. Do not invent numbers.\n\n${PROSE_STYLE}\n\n${styleRule}`;
+
     const body = {
       systemInstruction: {
-        parts: [
-          {
-            text: `You are CorvusPT's Texas property tax assistant. Answer accurately and concisely. If unsure, say so. Do not invent numbers.\n\n${PROSE_STYLE}\n\n${styleRule}`,
-          },
-        ],
+        parts: [{ text: systemText }],
       },
       contents: [
         {
