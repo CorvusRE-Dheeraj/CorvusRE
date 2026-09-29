@@ -326,9 +326,17 @@ function TaxUpdates() {
                   value={filter.county}
                   onChange={(e) => setFilter((f) => ({ ...f, county: e.target.value }))}
                   aria-label="County"
-                  className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  disabled={counties.length === 0}
+                  title={
+                    counties.length === 0
+                      ? "No county-specific updates this week — nothing to filter by yet."
+                      : undefined
+                  }
+                  className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">All counties</option>
+                  <option value="">
+                    {counties.length === 0 ? "No counties this week" : "All counties"}
+                  </option>
                   {counties.map((c) => (
                     <option key={c} value={c}>
                       {c}
