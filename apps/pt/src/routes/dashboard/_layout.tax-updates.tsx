@@ -34,7 +34,6 @@ import {
   filterUpdates,
   criticalUpdates,
   deleteSavedReport,
-  leadUpdate,
   listCriticalUpdatesForYear,
   listSavedReports,
   listTaxReports,
@@ -540,51 +539,62 @@ function TaxUpdates() {
       )}
 
       <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white sm:p-7">
-        {(() => {
-          const lead = report ? leadUpdate(report.updates) : null;
-          return (
-            <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
-              <p>
-                <strong className="text-white">A recent change: </strong>
-                {lead ? (
-                  <>
-                    {lead.title}. {lead.whatChanged.replace(/\.$/, "")}.{" "}
-                    <a
-                      href={lead.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2"
-                    >
-                      Read it at {lead.sourceName}
-                    </a>
-                    .
-                  </>
-                ) : (
-                  <>
-                    Texas property-tax rules, notices and deadlines change every year, and this
-                    week&rsquo;s official sources are still being checked.
-                  </>
-                )}
-              </p>
-              <p>
-                <strong className="text-white">What it means for you: </strong>
-                Changes like this arrive as new notices, meetings and deadlines spread across the
-                Comptroller, the Legislature and your appraisal district. Most owners never see them
-                until a deadline has already passed, and the pain points are familiar: confusing
-                valuation notices, hours spent piecing together which rules apply to your property,
-                a protest window that closes without warning, and no clear idea what to do next.
-              </p>
-              <p>
-                <strong className="text-white">How Corvus helps: </strong>
-                CorvusPT reads the official sources every week, tells you which updates may affect
-                your properties, and turns them into next steps &mdash; a protest opportunity
-                analysis, deadline and hearing alerts, evidence and hearing preparation, and every
-                stage of your case in one place. We&rsquo;re partnering with owners to shape it
-                around real needs, and as a beta customer your concerns come first.
-              </p>
-            </div>
-          );
-        })()}
+        <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
+          <p>
+            <strong className="text-white">Critical updates for tax year {currentTaxYear}: </strong>
+            {sortedCriticalItems.length > 0 ? (
+              <>
+                {sortedCriticalItems.length} verified item
+                {sortedCriticalItems.length === 1 ? "" : "s"} found so far this year from official
+                Texas sources.
+              </>
+            ) : (
+              <>
+                Texas property-tax rules, notices and deadlines change every year, and no enacted
+                laws or adopted rules have been verified yet this tax year.
+              </>
+            )}
+          </p>
+          {sortedCriticalItems.length > 0 && (
+            <ul className="grid gap-3">
+              {sortedCriticalItems.slice(0, 5).map((u) => (
+                <li key={u.id} className="rounded-xl bg-white/10 p-3 ring-1 ring-white/15">
+                  <div className="font-semibold text-white">{u.title}</div>
+                  <p className="mt-1">
+                    <strong className="text-white">How it affects you: </strong>
+                    {u.whyItMatters}
+                  </p>
+                  <p className="mt-1">
+                    <strong className="text-white">What to do: </strong>
+                    {u.actionNeeded}
+                  </p>
+                  <a
+                    href={u.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block underline underline-offset-2"
+                  >
+                    Read it at {u.sourceName}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {sortedCriticalItems.length > 5 && (
+            <p className="text-xs text-white/80">
+              +{sortedCriticalItems.length - 5} more critical update
+              {sortedCriticalItems.length - 5 === 1 ? "" : "s"} in the tile above.
+            </p>
+          )}
+          <p>
+            <strong className="text-white">How Corvus helps: </strong>
+            CorvusPT reads the official sources every week, tells you which updates may affect
+            your properties, and turns them into next steps &mdash; a protest opportunity
+            analysis, deadline and hearing alerts, evidence and hearing preparation, and every
+            stage of your case in one place. We&rsquo;re partnering with owners to shape it
+            around real needs, and as a beta customer your concerns come first.
+          </p>
+        </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <ScheduleAppointment trigger="button" buttonLabel="Schedule a Google Meet" />
           <span className="text-xs text-white/80">
