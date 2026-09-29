@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState, type CSSProperties } from "react";
-import { Check, LocateFixed, Search } from "lucide-react";
+import { Fragment, useState, type CSSProperties } from "react";
+import { Check, ChevronDown, LocateFixed, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyProject, Loading, Pill, humanize, permitStatusTone } from "@/components/dp-ui";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -9,6 +9,7 @@ import {
   ROUTE_STYLE,
   StationDetail,
   TrainIcon,
+  TrainWithCars,
   openStationWindow,
   useTrainTrack,
 } from "@/components/train-track";
@@ -21,6 +22,7 @@ import {
   parallelTrackStop,
   wagonCargo,
   type Availability,
+  type RouteColor,
   type Station,
   type TrainLocation,
 } from "@/lib/train-track";
@@ -149,88 +151,94 @@ function TrackMap() {
       </div>
 
       {ROUTES.map((route) => {
-        const style = ROUTE_STYLE[route.color];
         const stations = route.stations.map((n) => getStation(n)!);
         const shownStations = stations.filter((s) => matches(s, `${s.title} ${s.purpose} ${s.module}`));
         const shownModules = stations.filter((s) => matches(s, s.module));
         const showStations = filter !== "modules" && shownStations.length > 0;
         const showModules = filter !== "stations" && shownModules.length > 0;
-        if (!showStations && !showModules) return null;
+        return { route, shownStations, shownModules, showStations, showModules };
+      })
+        .filter((r) => r.showStations || r.showModules)
+        .map(({ route, shownStations, shownModules, showStations, showModules }, i) => {
+        const style = ROUTE_STYLE[route.color];
 
         return (
-          <section key={route.name} className="relative mt-3 rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
-            <h2
-              className={cn(
-                "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
-                style.solid,
-              )}
-            >
-              {route.name}
-            </h2>
-
-            {showStations && (
-              // One row per route on wide screens (like a single line of
-              // track); narrower screens wrap, and the rail through each slot
-              // keeps every row reading as track. Min 4 columns so the
-              // one-station Submission route doesn't stretch into a banner.
-              <ol
-                className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
-                style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
+          <Fragment key={route.name}>
+            {i > 0 && <RouteConnector color={route.color} />}
+            <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
+              <h2
+                className={cn(
+                  "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
+                  style.solid,
+                )}
               >
-                {shownStations.map((s) => (
-                  <StationSlot
-                    key={s.n}
-                    station={s}
-                    state={
-                      !location
-                        ? "ahead"
-                        : s.n === location.station
-                          ? "current"
-                          : s.n < location.station
-                            ? "passed"
-                            : "ahead"
-                    }
-                    onOpen={open}
-                  />
-                ))}
-              </ol>
-            )}
+                {route.name}
+              </h2>
 
-            {route.color === "teal" && filter !== "modules" && !q && (
-              <ParallelTracks permits={bundle?.permits ?? []} />
-            )}
+              {showStations && (
+                // One row per route on wide screens (like a single line of
+                // track); narrower screens wrap, and the rail through each slot
+                // keeps every row reading as track. Min 4 columns so the
+                // one-station Submission route doesn't stretch into a banner.
+                <ol
+                  className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+                  style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
+                >
+                  {shownStations.map((s) => (
+                    <StationSlot
+                      key={s.n}
+                      station={s}
+                      state={
+                        !location
+                          ? "ahead"
+                          : s.n === location.station
+                            ? "current"
+                            : s.n < location.station
+                              ? "passed"
+                              : "ahead"
+                      }
+                      onOpen={open}
+                    />
+                  ))}
+                </ol>
+              )}
 
-            {showModules && (
-              <div className={cn("flex flex-wrap gap-2", showStations && "mt-4")}>
-                {shownModules.map((s) => (
-                  <button
-                    key={s.n}
-                    type="button"
-                    onClick={() => open(s.n, "module")}
-                    className="inline-flex items-center gap-2 rounded-full border-2 border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                  >
-                    <span className="rounded-md bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
-                      AI
-                    </span>
-                    {s.module}
-                    <AvailabilityDot availability={s.availability} />
-                  </button>
-                ))}
-              </div>
-            )}
+              {route.color === "teal" && filter !== "modules" && !q && (
+                <ParallelTracks permits={bundle?.permits ?? []} />
+              )}
 
-            {route.color === "green" && !q && (
-              <p className="mt-4 rounded-full border-2 border-dashed border-red-300 bg-red-50 px-4 py-2 text-center text-sm font-semibold text-red-800">
-                Loop: comments assigned to design team → compliance check → resubmit to city
-              </p>
-            )}
-            {route.color === "gray" && !q && (
-              <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
-                Outcome: faster submissions · clearer accountability · central permit review visibility ·
-                reduced permit aging risk
-              </p>
-            )}
-          </section>
+              {showModules && (
+                <div className={cn("flex flex-wrap gap-2", showStations && "mt-4")}>
+                  {shownModules.map((s) => (
+                    <button
+                      key={s.n}
+                      type="button"
+                      onClick={() => open(s.n, "module")}
+                      className="inline-flex items-center gap-2 rounded-full border-2 border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                    >
+                      <span className="rounded-md bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
+                        AI
+                      </span>
+                      {s.module}
+                      <AvailabilityDot availability={s.availability} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {route.color === "green" && !q && (
+                <p className="mt-4 rounded-full border-2 border-dashed border-red-300 bg-red-50 px-4 py-2 text-center text-sm font-semibold text-red-800">
+                  Loop: comments assigned to design team → compliance check → resubmit to city
+                </p>
+              )}
+              {route.color === "gray" && !q && (
+                <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
+                  Outcome: faster submissions · clearer accountability · central permit review visibility ·
+                  reduced permit aging risk
+                </p>
+              )}
+            </section>
+          </Fragment>
         );
       })}
 
@@ -288,6 +296,24 @@ function CurrentLocation({
   );
 }
 
+// Bridges the gap between one route section and the next so the whole page
+// reads as one continuous line, not a separate disconnected track per route
+// card. Coloured to the route it leads into.
+function RouteConnector({ color }: { color: RouteColor }) {
+  return (
+    <div className="relative -my-5 flex h-10 justify-start pl-9 sm:pl-11" aria-hidden>
+      <span className="track-link relative h-full">
+        <ChevronDown
+          className={cn(
+            "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
+            ROUTE_STYLE[color].text,
+          )}
+        />
+      </span>
+    </div>
+  );
+}
+
 function StationSlot({
   station,
   state,
@@ -312,7 +338,7 @@ function StationSlot({
       </span>
       {state === "current" && (
         <span id="track-train" className="track-train absolute left-1/2 top-[-0.35rem] z-20 -translate-x-1/2">
-          <TrainIcon className="h-9 w-14 drop-shadow" />
+          <TrainWithCars color={station.color} />
         </span>
       )}
       <button
