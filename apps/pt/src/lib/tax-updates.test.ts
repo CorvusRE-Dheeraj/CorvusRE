@@ -7,6 +7,7 @@ import {
   countiesIn,
   leadUpdate,
   criticalUpdates,
+  criticalYearLines,
   filterUpdates,
   NO_FILTER,
   propertiesAffected,
@@ -185,6 +186,20 @@ describe("criticalUpdates", () => {
     ];
     expect(criticalUpdates(list).map((x) => x.id)).toEqual(["dl", "law", "rule"]);
     expect(criticalUpdates(list, 1)).toHaveLength(1);
+  });
+});
+
+describe("criticalYearLines", () => {
+  it("never caps at 5, unlike criticalUpdates' own default", () => {
+    const list = Array.from({ length: 8 }, (_, i) =>
+      u({ id: `law-${i}`, status: "enacted_law", title: `Law ${i}` }),
+    );
+    const lines = criticalYearLines(list);
+    for (let i = 0; i < 8; i++) expect(lines.some((l) => l.includes(`Law ${i}`))).toBe(true);
+  });
+
+  it("says nothing found yet this tax year when the ledger is empty", () => {
+    expect(criticalYearLines([])[0]).toMatch(/no enacted laws or adopted rules found yet/i);
   });
 });
 

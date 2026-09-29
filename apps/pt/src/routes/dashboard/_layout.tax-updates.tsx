@@ -32,9 +32,10 @@ import {
   buildReportPdf,
   countiesIn,
   filterUpdates,
-  criticalLines,
+  criticalUpdates,
   deleteSavedReport,
   leadUpdate,
+  listCriticalUpdatesForYear,
   listSavedReports,
   listTaxReports,
   MAX_SAVED_REPORTS,
@@ -43,6 +44,7 @@ import {
   type PropertyContext,
   type SavedTaxReport,
   type TaxReport,
+  type TaxUpdate,
   type TaxUpdateTag,
   type UpdateFilter,
 } from "@/lib/tax-updates";
@@ -80,6 +82,8 @@ const chip = (active: boolean) =>
       : "border-input bg-background text-muted-foreground hover:bg-secondary/60"
   }`;
 
+const currentTaxYear = new Date().getFullYear();
+
 function TaxUpdates() {
   const { user } = useAuth();
   const [reports, setReports] = useState<TaxReport[]>([]);
@@ -93,6 +97,10 @@ function TaxUpdates() {
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
+  // The whole tax year's critical items (enacted law / adopted rule /
+  // deadlines) — separate from `reports`, which is only the newest 5 WEEKS.
+  // See tax_update_critical_items: this never gets pruned within the year.
+  const [criticalItems, setCriticalItems] = useState<TaxUpdate[]>([]);
 
   function load() {
     return listTaxReports()
@@ -107,6 +115,9 @@ function TaxUpdates() {
     void load().finally(() => setLoading(false));
     listSavedReports()
       .then(setSaved)
+      .catch(() => {});
+    listCriticalUpdatesForYear(currentTaxYear)
+      .then(setCriticalItems)
       .catch(() => {});
     Promise.all([listProperties(user.id), listProtests(user.id)])
       .then(([props, prots]) =>
@@ -127,6 +138,12 @@ function TaxUpdates() {
   );
   const counties = useMemo(() => (report ? countiesIn(report.updates) : []), [report]);
   const filtering = filter.scope !== "all" || filter.tags.length > 0 || filter.query.trim() !== "";
+  // The year's critical items, ranked (deadlines/enacted law first) — the
+  // whole ledger, never capped, unlike the weekly chapters above.
+  const sortedCriticalItems = useMemo(
+    () => criticalUpdates(criticalItems, criticalItems.length),
+    [criticalItems],
+  );
 
   // A plain-text summary of the reader's properties and cases, for the AI.
   const myContext = contexts
@@ -182,8 +199,11 @@ function TaxUpdates() {
   async function downloadSaved(r: SavedTaxReport) {
     setDownloadingId(r.id);
     try {
+      // Best-effort — a saved report from an earlier tax year, or a failed
+      // fetch, still downloads fine with that section reading "nothing found".
+      const yearItems = await listCriticalUpdatesForYear(r.taxYear).catch(() => []);
       downloadPdf(
-        await buildReportPdf(r.report, r.taxYear),
+        await buildReportPdf(r.report, r.taxYear, yearItems),
         `Texas-Tax-Updates-${r.report.weekStart}.pdf`,
       );
     } catch (err) {
@@ -471,15 +491,50 @@ function TaxUpdates() {
 
           <section className="mt-8 rounded-md border border-border bg-card p-4">
             <h2 className="font-serif text-lg font-semibold">
-              Critical updates for tax year {new Date().getFullYear()}
+              Critical updates for tax year {currentTaxYear}
             </h2>
-            <ul className="mt-2 grid gap-1 text-sm">
-              {criticalLines(report.updates).map((l) => (
-                <li key={l} className="text-muted-foreground">
-                  {l.replace(/^- /, "")}
-                </li>
-              ))}
-            </ul>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Enacted laws, adopted rules, and deadlines for the whole tax year — every one found
+              in any weekly check so far, not just this week's report above.
+            </p>
+            {sortedCriticalItems.length > 0 ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {sortedCriticalItems.map((u, i) => (
+                  <TaxUpdateCard
+                    key={u.id}
+                    index={i}
+                    update={u}
+                    affected={propertiesAffected(u, contexts)}
+                    myContext={myContext}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No enacted laws or adopted rules found yet this tax year.
+              </p>
+            )}
+            <div className="mt-4 rounded-md border border-dashed border-border p-4 text-xs">
+              <div className="font-semibold uppercase tracking-wide text-muted-foreground">
+                Standing deadlines (for reference — not new)
+              </div>
+              <ul className="mt-2 grid gap-1">
+                {STANDING_DEADLINES.map((d) => (
+                  <li key={d.label}>
+                    <span className="font-medium">{d.label}:</span>{" "}
+                    <span className="text-muted-foreground">{d.detail}</span>
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={STANDING_SOURCE.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-accent hover:underline"
+              >
+                {STANDING_SOURCE.name} →
+              </a>
+            </div>
           </section>
         </>
       )}

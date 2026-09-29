@@ -366,6 +366,32 @@ Deno.serve(async (req: Request) => {
 
     const readCount = results.filter((r) => r.ok).length;
     const weekStart = mondayOf(new Date());
+
+    // Append this week's critical items (enacted law / adopted rule /
+    // deadline-tagged) to the year-long ledger — tax_update_reports only
+    // keeps the newest KEEP_REPORTS weeks, so this is the only place a
+    // critical item survives once its own week's report ages out. Keyed by
+    // (tax_year, dedup_key); an item that resurfaces unchanged in a later
+    // week is skipped (ON CONFLICT DO NOTHING), not re-added. Best-effort —
+    // a ledger-write failure must never fail the weekly report itself.
+    const critical = updates.filter(
+      (u) =>
+        u.status !== "failed_legislation" &&
+        (u.status === "enacted_law" || u.status === "adopted_rule" || u.tags.includes("deadlines")),
+    );
+    if (critical.length > 0) {
+      const taxYear = new Date(weekStart).getUTCFullYear();
+      const { error: critErr } = await admin.from("tax_update_critical_items").upsert(
+        critical.map((u) => ({
+          tax_year: taxYear,
+          dedup_key: `${norm(u.title)}|${u.counties.join(",")}`,
+          first_seen_week: weekStart,
+          update: u,
+        })),
+        { onConflict: "tax_year,dedup_key", ignoreDuplicates: true },
+      );
+      if (critErr) console.error("tax_update_critical_items upsert failed:", critErr);
+    }
     const summary =
       updates.length > 0
         ? `${updates.length} verified update${updates.length === 1 ? "" : "s"} (${updates.filter((u) => u.isNew).length} new this week) from ${readCount} of ${sources.length} official sources.`
