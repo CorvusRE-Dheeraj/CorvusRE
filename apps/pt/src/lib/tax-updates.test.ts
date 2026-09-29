@@ -5,8 +5,8 @@ import type { ProtestRecord } from "./protests";
 import {
   buildReportPdf,
   countiesIn,
-  leadUpdate,
   criticalUpdates,
+  criticalYearLines,
   filterUpdates,
   NO_FILTER,
   propertiesAffected,
@@ -188,6 +188,20 @@ describe("criticalUpdates", () => {
   });
 });
 
+describe("criticalYearLines", () => {
+  it("never caps at 5, unlike criticalUpdates' own default", () => {
+    const list = Array.from({ length: 8 }, (_, i) =>
+      u({ id: `law-${i}`, status: "enacted_law", title: `Law ${i}` }),
+    );
+    const lines = criticalYearLines(list);
+    for (let i = 0; i < 8; i++) expect(lines.some((l) => l.includes(`Law ${i}`))).toBe(true);
+  });
+
+  it("says nothing found yet this tax year when the ledger is empty", () => {
+    expect(criticalYearLines([])[0]).toMatch(/no enacted laws or adopted rules found yet/i);
+  });
+});
+
 describe("toBullets", () => {
   it("splits sentences into short bullets and caps the count and length", () => {
     expect(toBullets("First thing. Second thing! Third? Fourth one.")).toEqual([
@@ -197,24 +211,5 @@ describe("toBullets", () => {
     ]);
     expect(toBullets("x".repeat(300), 3, 20)[0]).toHaveLength(20);
     expect(toBullets("")).toEqual([]);
-  });
-});
-
-describe("leadUpdate", () => {
-  it("prefers enacted law, then statewide, then an actionable topic", () => {
-    const list = [
-      u({ id: "notice", status: "notice_guidance", tags: ["protest"] }),
-      u({
-        id: "county-law",
-        status: "enacted_law",
-        counties: ["Dallas County"],
-        tags: ["tax_rate"],
-      }),
-      u({ id: "state-law", status: "enacted_law", tags: ["tax_rate"] }),
-      u({ id: "failed", status: "failed_legislation", tags: ["tax_rate"] }),
-    ];
-    expect(leadUpdate(list)?.id).toBe("state-law");
-    expect(leadUpdate([u({ id: "only", status: "failed_legislation" })])).toBeNull();
-    expect(leadUpdate([])).toBeNull();
   });
 });

@@ -1072,6 +1072,19 @@ header .container-page {
     repeating-linear-gradient(90deg, #b9c4ce 0 3px, transparent 3px 14px);
   opacity: 0.85;
 }
+/* The vertical bridge between two route sections — same rail/sleeper
+   language as .track-rail, rotated, so the line reads as continuing from
+   one route's box down into the next rather than stopping at the border. */
+.track-link {
+  position: relative;
+  width: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #566777, #566777) left / 3px 100% no-repeat,
+    linear-gradient(90deg, #566777, #566777) right / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, #b9c4ce 0 3px, transparent 3px 14px);
+  opacity: 0.85;
+}
 @media (prefers-reduced-motion: no-preference) {
   .track-train {
     animation: track-chug 1.6s ease-in-out infinite;

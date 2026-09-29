@@ -126,6 +126,40 @@ export function TrainIcon({ className }: { className?: string }) {
   );
 }
 
+/** A small side-on wagon, proportioned (frame line, wheel size and baseline)
+ *  to sit on the same rail as TrainIcon when placed right beside it. Body
+ *  colour comes from the route it belongs to via `currentColor`. */
+export function TrainCar({ className, color }: { className?: string; color: RouteColor }) {
+  return (
+    <svg viewBox="0 0 40 40" className={cn(ROUTE_STYLE[color].text, className)} aria-hidden>
+      <rect x="3" y="11" width="34" height="16" rx="3" fill="currentColor" />
+      <rect x="3" y="15" width="34" height="2.5" fill="#fff" fillOpacity="0.35" />
+      <rect x="1" y="27" width="38" height="3" rx="1.5" fill="#1e293b" />
+      {[10, 30].map((cx) => (
+        <g key={cx}>
+          <circle cx={cx} cy="33" r="5" fill="#1e293b" />
+          <circle cx={cx} cy="33" r="1.8" fill="#e2e8f0" />
+        </g>
+      ))}
+      {/* coupling toward the engine */}
+      <rect x="36" y="17" width="4" height="3" rx="1" fill="#1e293b" />
+    </svg>
+  );
+}
+
+/** The engine plus a couple of bogies, composed as one marker — used to show
+ *  the whole train (not just the locomotive) at the project's current
+ *  station on the track-map grid. */
+export function TrainWithCars({ className, color }: { className?: string; color: RouteColor }) {
+  return (
+    <span className={cn("flex items-end", className)} aria-hidden>
+      <TrainCar color={color} className="h-7 w-8 shrink-0" />
+      <TrainCar color={color} className="-ml-1 h-7 w-8 shrink-0" />
+      <TrainIcon className="-ml-1 h-9 w-14 shrink-0 drop-shadow" />
+    </span>
+  );
+}
+
 /**
  * The active project plus everything the train's position depends on.
  * Review comments share the Reviews page's query key, so logging a comment

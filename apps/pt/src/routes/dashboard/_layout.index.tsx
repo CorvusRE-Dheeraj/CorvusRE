@@ -21,6 +21,7 @@ import {
   VolumeX,
   MessageSquareHeart,
   X,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -54,6 +55,7 @@ import {
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { listDocuments, type DocumentRecord } from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
 import { askRouter } from "@/lib/ask-router";
@@ -249,19 +251,36 @@ function Overview() {
     [protests, properties, bppAccounts],
   );
 
+  // Same "already settled" signal getCalendarEvents/fromProperty use for the
+  // full Calendar page — without it, a protest deadline kept showing here as
+  // a plain pending date forever, even after the case actually resolved,
+  // since the county's deadline date itself never moves once a case closes.
+  const propertiesWithResolvedCurrentProtest = new Set(
+    protests
+      .filter(
+        (pr) =>
+          pr.status === "resolved" && pr.taxYear != null && pr.taxYear >= CURRENT_TAX_YEAR && pr.propertyId,
+      )
+      .map((pr) => pr.propertyId as string),
+  );
   const deadlines = properties
     .filter((p) => !!p.protestDeadline)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.protestDeadline as string),
-      label: "Protest deadline",
-    }));
+    .map((p) => {
+      const settled = propertiesWithResolvedCurrentProtest.has(p.id);
+      return {
+        property: p,
+        when: new Date(p.protestDeadline as string),
+        label: settled ? "Protest settled" : "Protest deadline",
+        resolved: settled || new Date(p.protestDeadline as string) < new Date(),
+      };
+    });
   const bills = properties
     .filter((p) => !!p.paymentDueDate && !p.paidAt)
     .map((p) => ({
       property: p,
       when: new Date(p.paymentDueDate as string),
       label: "Tax bill due",
+      resolved: false,
     }));
   const hearingDates = protests
     .filter((pr) => pr.status === "hearing_scheduled" && !!pr.hearingDate)
@@ -269,8 +288,12 @@ function Overview() {
       property: properties.find((p) => p.id === pr.propertyId),
       when: new Date(pr.hearingDate as string),
       label: "ARB hearing",
+      resolved: false,
     }))
-    .filter((h): h is { property: PropertyRecord; when: Date; label: string } => !!h.property);
+    .filter(
+      (h): h is { property: PropertyRecord; when: Date; label: string; resolved: boolean } =>
+        !!h.property,
+    );
   const upcoming = [...deadlines, ...bills, ...hearingDates]
     .sort((a, b) => a.when.getTime() - b.when.getTime())
     .slice(0, 4);
@@ -766,9 +789,16 @@ function Overview() {
                       <span className="truncate min-w-0">
                         {u.label} — {u.property.address}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {u.when.toLocaleDateString()}
-                      </span>
+                      {u.resolved ? (
+                        <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-success">
+                          <Check className="h-3.5 w-3.5" aria-hidden />
+                          Completed
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {u.when.toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

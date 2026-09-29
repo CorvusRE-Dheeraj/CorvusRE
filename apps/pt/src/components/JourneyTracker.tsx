@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { readIntake, classifyAndStoreDocument, type IntakeState } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
@@ -44,7 +44,16 @@ const STATUS_RANK: Record<ProtestStatus, number> = {
   resolved: 5,
 };
 
-type Action = { label: string; to?: string; upload?: boolean; protestLaunch?: boolean };
+// `locked` disables the action entirely and shows why on hover/focus — used
+// for a service that isn't open yet, as opposed to `protestLaunch`'s paid
+// gate, which is a real click that leads to an authorization flow.
+type Action = {
+  label: string;
+  to?: string;
+  upload?: boolean;
+  protestLaunch?: boolean;
+  locked?: string;
+};
 type StepMessage = { title: string; actions?: Action[] };
 
 // `state` reflects only the CURRENT browser session's intake flow, which resets
@@ -175,7 +184,11 @@ function getMessage(currentStep: number, allDone: boolean): StepMessage | null {
         title: "Ready to save on your property taxes? Choose a service to get started.",
         actions: [
           { label: "Protest My Property", to: "/property-protest", protestLaunch: true },
-          { label: "File BPP Rendition", to: "/bpp-rendition" },
+          {
+            label: "File BPP Rendition",
+            to: "/bpp-rendition",
+            locked: "Coming soon — BPP rendition filing isn't open yet.",
+          },
         ],
       };
     case 7:
@@ -583,7 +596,18 @@ export function JourneyBlock({
           {visibleActions.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {visibleActions.map((a) =>
-                a.protestLaunch && onProtestClick ? (
+                a.locked ? (
+                  <button
+                    key={a.label}
+                    type="button"
+                    disabled
+                    title={a.locked}
+                    aria-label={`${a.label} — ${a.locked}`}
+                    className="btn-outline text-sm py-2 cursor-not-allowed opacity-60"
+                  >
+                    <Lock className="h-3.5 w-3.5" aria-hidden /> {a.label}
+                  </button>
+                ) : a.protestLaunch && onProtestClick ? (
                   <button
                     key={a.label}
                     type="button"

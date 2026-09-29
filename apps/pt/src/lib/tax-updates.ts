@@ -162,6 +162,23 @@ export async function listTaxReports(): Promise<TaxReport[]> {
   return (data as ReportRow[]).map(fromRow);
 }
 
+type CriticalItemRow = { update: TaxUpdate };
+
+// The persistent, year-long ledger behind "Critical updates for tax year X" —
+// unlike listTaxReports() (only the newest 5 WEEKS, pruned by the server),
+// this never drops anything within a tax year, so an enacted law found in
+// week 3 still shows up in week 30. Oldest first, so a caller that re-sorts
+// (criticalUpdates) or just displays as-is both read sensibly.
+export async function listCriticalUpdatesForYear(year: number): Promise<TaxUpdate[]> {
+  const { data, error } = await supabase
+    .from("tax_update_critical_items")
+    .select("update")
+    .eq("tax_year", year)
+    .order("first_seen_week", { ascending: true });
+  if (error) throw error;
+  return (data as CriticalItemRow[]).map((r) => r.update);
+}
+
 // ── Generated reports (per person) ───────────────────────────────────────
 export const MAX_SAVED_REPORTS = 10;
 
@@ -237,12 +254,15 @@ export function criticalUpdates(updates: TaxUpdate[], max = 5): TaxUpdate[] {
 
 const oneLine = (s: string, n = 150) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-export function criticalLines(updates: TaxUpdate[]): string[] {
-  const items = criticalUpdates(updates);
+// Text form of "Critical updates for tax year X" — the whole year-long
+// ledger (listCriticalUpdatesForYear), not just one week's report, so pass
+// `items.length` through as criticalUpdates' own max to leave nothing capped.
+export function criticalYearLines(items: TaxUpdate[]): string[] {
+  const sorted = criticalUpdates(items, items.length);
   return [
-    ...(items.length
-      ? items.map((u) => `- ${u.title} (${STATUS_LABEL[u.status]}): ${oneLine(u.actionNeeded)}`)
-      : ["- No enacted laws or adopted rules in this week's report."]),
+    ...(sorted.length
+      ? sorted.map((u) => `- ${u.title} (${STATUS_LABEL[u.status]}): ${oneLine(u.actionNeeded)}`)
+      : ["- No enacted laws or adopted rules found yet this tax year."]),
     ...STANDING_DEADLINES.filter((d) =>
       ["Protest deadline", "Taxes delinquent"].includes(d.label),
     ).map((d) => `- ${d.label}: ${d.detail}`),
@@ -337,6 +357,10 @@ export function updatesForProperty(
 export async function buildReportPdf(
   report: TaxReport,
   taxYear = new Date().getFullYear(),
+  // The year's critical-updates ledger (listCriticalUpdatesForYear) — a
+  // caller that can't fetch it (or a report from a year with none yet) just
+  // gets that section's "nothing found" line, never a hard failure.
+  criticalItems: TaxUpdate[] = [],
 ): Promise<Uint8Array> {
   const sections: PackageSection[] = [{ heading: "Summary", lines: [report.summary] }];
   for (const ch of CHAPTERS) {
@@ -370,7 +394,7 @@ export async function buildReportPdf(
   sections.push({
     heading: `Critical updates for tax year ${taxYear}`,
     lines: [
-      ...criticalLines(report.updates),
+      ...criticalYearLines(criticalItems),
       "",
       "Generated from official sources and summarized by AI. Verify every item against its official source. Not legal or tax advice.",
     ],
@@ -398,19 +422,4 @@ export function toBullets(text: string, max = 3, maxLen = 170): string[] {
     const at = cut.lastIndexOf(" ");
     return `${(at > maxLen * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
   });
-}
-
-// The one update to open the "what this means for you" story with: a real change,
-// not just something posted — enacted law first, then an adopted rule, then any
-// other; among those, statewide beats a single county, and a topic owners act on
-// (tax rate, valuation, protest, deadlines) beats the rest. Deterministic, so the
-// same report always leads with the same item.
-export function leadUpdate(updates: TaxUpdate[]): TaxUpdate | null {
-  const usable = updates.filter((u) => u.status !== "failed_legislation");
-  const rank = (u: TaxUpdate) =>
-    (u.status === "enacted_law" ? 0 : u.status === "adopted_rule" ? 4 : 8) +
-    (u.counties.length === 0 ? 0 : 2) +
-    (u.tags.some((t) => ["tax_rate", "valuation", "protest", "deadlines"].includes(t)) ? 0 : 1) +
-    (u.isNew ? -1 : 0);
-  return [...usable].sort((a, b) => rank(a) - rank(b))[0] ?? null;
 }

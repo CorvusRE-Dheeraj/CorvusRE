@@ -32,9 +32,9 @@ import {
   buildReportPdf,
   countiesIn,
   filterUpdates,
-  criticalLines,
+  criticalUpdates,
   deleteSavedReport,
-  leadUpdate,
+  listCriticalUpdatesForYear,
   listSavedReports,
   listTaxReports,
   MAX_SAVED_REPORTS,
@@ -43,6 +43,7 @@ import {
   type PropertyContext,
   type SavedTaxReport,
   type TaxReport,
+  type TaxUpdate,
   type TaxUpdateTag,
   type UpdateFilter,
 } from "@/lib/tax-updates";
@@ -80,6 +81,8 @@ const chip = (active: boolean) =>
       : "border-input bg-background text-muted-foreground hover:bg-secondary/60"
   }`;
 
+const currentTaxYear = new Date().getFullYear();
+
 function TaxUpdates() {
   const { user } = useAuth();
   const [reports, setReports] = useState<TaxReport[]>([]);
@@ -93,6 +96,10 @@ function TaxUpdates() {
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
+  // The whole tax year's critical items (enacted law / adopted rule /
+  // deadlines) — separate from `reports`, which is only the newest 5 WEEKS.
+  // See tax_update_critical_items: this never gets pruned within the year.
+  const [criticalItems, setCriticalItems] = useState<TaxUpdate[]>([]);
 
   function load() {
     return listTaxReports()
@@ -107,6 +114,9 @@ function TaxUpdates() {
     void load().finally(() => setLoading(false));
     listSavedReports()
       .then(setSaved)
+      .catch(() => {});
+    listCriticalUpdatesForYear(currentTaxYear)
+      .then(setCriticalItems)
       .catch(() => {});
     Promise.all([listProperties(user.id), listProtests(user.id)])
       .then(([props, prots]) =>
@@ -127,6 +137,12 @@ function TaxUpdates() {
   );
   const counties = useMemo(() => (report ? countiesIn(report.updates) : []), [report]);
   const filtering = filter.scope !== "all" || filter.tags.length > 0 || filter.query.trim() !== "";
+  // The year's critical items, ranked (deadlines/enacted law first) — the
+  // whole ledger, never capped, unlike the weekly chapters above.
+  const sortedCriticalItems = useMemo(
+    () => criticalUpdates(criticalItems, criticalItems.length),
+    [criticalItems],
+  );
 
   // A plain-text summary of the reader's properties and cases, for the AI.
   const myContext = contexts
@@ -182,8 +198,11 @@ function TaxUpdates() {
   async function downloadSaved(r: SavedTaxReport) {
     setDownloadingId(r.id);
     try {
+      // Best-effort — a saved report from an earlier tax year, or a failed
+      // fetch, still downloads fine with that section reading "nothing found".
+      const yearItems = await listCriticalUpdatesForYear(r.taxYear).catch(() => []);
       downloadPdf(
-        await buildReportPdf(r.report, r.taxYear),
+        await buildReportPdf(r.report, r.taxYear, yearItems),
         `Texas-Tax-Updates-${r.report.weekStart}.pdf`,
       );
     } catch (err) {
@@ -326,9 +345,17 @@ function TaxUpdates() {
                   value={filter.county}
                   onChange={(e) => setFilter((f) => ({ ...f, county: e.target.value }))}
                   aria-label="County"
-                  className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+                  disabled={counties.length === 0}
+                  title={
+                    counties.length === 0
+                      ? "No county-specific updates this week — nothing to filter by yet."
+                      : undefined
+                  }
+                  className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">All counties</option>
+                  <option value="">
+                    {counties.length === 0 ? "No counties this week" : "All counties"}
+                  </option>
                   {counties.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -463,65 +490,111 @@ function TaxUpdates() {
 
           <section className="mt-8 rounded-md border border-border bg-card p-4">
             <h2 className="font-serif text-lg font-semibold">
-              Critical updates for tax year {new Date().getFullYear()}
+              Critical updates for tax year {currentTaxYear}
             </h2>
-            <ul className="mt-2 grid gap-1 text-sm">
-              {criticalLines(report.updates).map((l) => (
-                <li key={l} className="text-muted-foreground">
-                  {l.replace(/^- /, "")}
-                </li>
-              ))}
-            </ul>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Enacted laws, adopted rules, and deadlines for the whole tax year — every one found
+              in any weekly check so far, not just this week's report above.
+            </p>
+            {sortedCriticalItems.length > 0 ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {sortedCriticalItems.map((u, i) => (
+                  <TaxUpdateCard
+                    key={u.id}
+                    index={i}
+                    update={u}
+                    affected={propertiesAffected(u, contexts)}
+                    myContext={myContext}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                No enacted laws or adopted rules found yet this tax year.
+              </p>
+            )}
+            <div className="mt-4 rounded-md border border-dashed border-border p-4 text-xs">
+              <div className="font-semibold uppercase tracking-wide text-muted-foreground">
+                Standing deadlines (for reference — not new)
+              </div>
+              <ul className="mt-2 grid gap-1">
+                {STANDING_DEADLINES.map((d) => (
+                  <li key={d.label}>
+                    <span className="font-medium">{d.label}:</span>{" "}
+                    <span className="text-muted-foreground">{d.detail}</span>
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={STANDING_SOURCE.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-accent hover:underline"
+              >
+                {STANDING_SOURCE.name} →
+              </a>
+            </div>
           </section>
         </>
       )}
 
       <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white sm:p-7">
-        {(() => {
-          const lead = report ? leadUpdate(report.updates) : null;
-          return (
-            <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
-              <p>
-                <strong className="text-white">A recent change: </strong>
-                {lead ? (
-                  <>
-                    {lead.title}. {lead.whatChanged.replace(/\.$/, "")}.{" "}
-                    <a
-                      href={lead.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2"
-                    >
-                      Read it at {lead.sourceName}
-                    </a>
-                    .
-                  </>
-                ) : (
-                  <>
-                    Texas property-tax rules, notices and deadlines change every year, and this
-                    week&rsquo;s official sources are still being checked.
-                  </>
-                )}
-              </p>
-              <p>
-                <strong className="text-white">What it means for you: </strong>
-                Changes like this arrive as new notices, meetings and deadlines spread across the
-                Comptroller, the Legislature and your appraisal district. Most owners never see them
-                until a deadline has already passed, and the pain points are familiar: confusing
-                valuation notices, hours spent piecing together which rules apply to your property,
-                a protest window that closes without warning, and no clear idea what to do next.
-              </p>
-              <p>
-                <strong className="text-white">How Corvus helps: </strong>
-                CorvusPT reads the official sources every week, tells you which updates may affect
-                your properties, and turns them into next steps &mdash; a protest opportunity
-                analysis, deadline and hearing alerts, evidence and hearing preparation, and every
-                stage of your case in one place. We&rsquo;re partnering with owners to shape it
-                around real needs, and as a beta customer your concerns come first.
-              </p>
-            </div>
-          );
-        })()}
+        <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
+          <p>
+            <strong className="text-white">Critical updates for tax year {currentTaxYear}: </strong>
+            {sortedCriticalItems.length > 0 ? (
+              <>
+                {sortedCriticalItems.length} verified item
+                {sortedCriticalItems.length === 1 ? "" : "s"} found so far this year from official
+                Texas sources.
+              </>
+            ) : (
+              <>
+                Texas property-tax rules, notices and deadlines change every year, and no enacted
+                laws or adopted rules have been verified yet this tax year.
+              </>
+            )}
+          </p>
+          {sortedCriticalItems.length > 0 && (
+            <ul className="grid gap-3">
+              {sortedCriticalItems.slice(0, 5).map((u) => (
+                <li key={u.id} className="rounded-xl bg-white/10 p-3 ring-1 ring-white/15">
+                  <div className="font-semibold text-white">{u.title}</div>
+                  <p className="mt-1">
+                    <strong className="text-white">How it affects you: </strong>
+                    {u.whyItMatters}
+                  </p>
+                  <p className="mt-1">
+                    <strong className="text-white">What to do: </strong>
+                    {u.actionNeeded}
+                  </p>
+                  <a
+                    href={u.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block underline underline-offset-2"
+                  >
+                    Read it at {u.sourceName}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {sortedCriticalItems.length > 5 && (
+            <p className="text-xs text-white/80">
+              +{sortedCriticalItems.length - 5} more critical update
+              {sortedCriticalItems.length - 5 === 1 ? "" : "s"} in the tile above.
+            </p>
+          )}
+          <p>
+            <strong className="text-white">How Corvus helps: </strong>
+            CorvusPT reads the official sources every week, tells you which updates may affect
+            your properties, and turns them into next steps &mdash; a protest opportunity
+            analysis, deadline and hearing alerts, evidence and hearing preparation, and every
+            stage of your case in one place. We&rsquo;re partnering with owners to shape it
+            around real needs, and as a beta customer your concerns come first.
+          </p>
+        </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <ScheduleAppointment trigger="button" buttonLabel="Schedule a Google Meet" />
           <span className="text-xs text-white/80">

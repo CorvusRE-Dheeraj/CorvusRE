@@ -52,6 +52,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminBetaFeedback } from "@/components/AdminBetaFeedback";
 import { AdminAppointments } from "@/components/AdminAppointments";
+import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
 import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/CopyButton";
@@ -76,6 +77,7 @@ type AdminTab =
   | "beta"
   | "beta_feedback"
   | "appointments"
+  | "support"
   | "activity"
   | "settings";
 
@@ -556,6 +558,7 @@ function AdminPanel() {
     { key: "beta", label: "Beta Signups", count: betaLeadsLoading ? null : betaLeads.length },
     { key: "beta_feedback", label: "Beta Feedback", count: null },
     { key: "appointments", label: "Appointments", count: null },
+    { key: "support", label: "Support", count: null },
     { key: "activity", label: "Activity Log", count: auditLogLoading ? null : auditLog.length },
     { key: "settings", label: "Settings", count: null },
   ];
@@ -796,6 +799,7 @@ function AdminPanel() {
       {activeTab === "beta_feedback" && <AdminBetaFeedback />}
 
       {activeTab === "appointments" && <AdminAppointments />}
+      {activeTab === "support" && <AdminSupportEscalations />}
 
       {activeTab === "activity" && (
         <section className="mt-8">

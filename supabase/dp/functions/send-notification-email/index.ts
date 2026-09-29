@@ -73,7 +73,12 @@ Deno.serve(async (req: Request) => {
 
     const prefs = (profile.notification_prefs ?? {}) as NotificationPrefs;
     const emailOn = prefs.email !== false;
-    const permitStatusOn = notification.kind !== "permit_status" || prefs.permit_status !== false;
+    // Defaults OFF (2026-09) — several status changes in quick succession
+    // (a demo, a bulk city update, testing) each fired its own immediate
+    // email with no batching, a real flood. Requires an explicit opt-in now
+    // (prefs.permit_status === true), not just "not explicitly turned off".
+    // Keep in sync with DEFAULT_NOTIFICATION_PREFS in src/lib/profile.ts.
+    const permitStatusOn = notification.kind !== "permit_status" || prefs.permit_status === true;
     const eligible = emailOn && permitStatusOn;
 
     // Claim regardless of eligibility — an opted-out user's notifications

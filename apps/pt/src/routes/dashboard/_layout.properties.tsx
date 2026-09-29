@@ -119,8 +119,8 @@ const STATUS_FILTER_OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "protested", label: "Protested" },
   { key: "not_protested", label: "Not protested" },
   { key: "needs_action", label: "Needs action" },
-  { key: "paid", label: "Paid" },
-  { key: "unpaid", label: "Not paid" },
+  { key: "paid", label: "Subscribed" },
+  { key: "unpaid", label: "Free" },
 ];
 
 const LS_VIEW = "corvus.properties.view";

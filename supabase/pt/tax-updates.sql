@@ -84,6 +84,41 @@ insert into public.tax_update_sources (name, url, kind, county, enabled, note) v
   ('Collin Central Appraisal District', 'https://www.collincad.org/', 'county', 'Collin County', false, 'Blocks automated requests (HTTP 403).')
 on conflict (url) do nothing;
 
+-- The persistent "Critical updates for tax year X" ledger — enacted laws,
+-- adopted rules, and deadline-tagged items found by ANY weekly run this tax
+-- year. tax_update_reports only keeps the newest KEEP_REPORTS (5) weeks, so
+-- a critical item found in week 3 would silently vanish from the page by
+-- week 9 if this tile were built from it; this table is never pruned within
+-- a tax year, so it stays the definitive year-to-date list. Appended to by
+-- generate-tax-updates every run; an item that resurfaces unchanged in a
+-- later week is skipped (same tax_year + dedup_key), not re-added.
+create table if not exists public.tax_update_critical_items (
+  id uuid primary key default gen_random_uuid(),
+  tax_year integer not null,
+  -- normalized title + counties — the natural key an unchanged item keeps
+  -- across weekly re-runs, matching the same-week dedup key in the edge
+  -- function.
+  dedup_key text not null,
+  first_seen_week date not null,
+  -- The full update object, unchanged — see TaxUpdate in src/lib/tax-updates.ts.
+  update jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (tax_year, dedup_key)
+);
+create index if not exists tax_update_critical_items_year_idx
+  on public.tax_update_critical_items (tax_year, first_seen_week);
+
+alter table public.tax_update_critical_items enable row level security;
+
+drop policy if exists "Signed-in users read critical tax updates" on public.tax_update_critical_items;
+create policy "Signed-in users read critical tax updates"
+  on public.tax_update_critical_items for select
+  to authenticated
+  using (true);
+
+grant select on public.tax_update_critical_items to authenticated;
+grant select, insert, update, delete on public.tax_update_critical_items to service_role;
+
 -- Reports a person generates from the tab ("Generate update report"): a snapshot
 -- of that week's report, kept per user, newest 10 (pruned by the client).
 create table if not exists public.tax_update_user_reports (
