@@ -539,8 +539,8 @@ function TaxUpdates() {
       )}
 
       <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white sm:p-7">
-        <div className="grid max-w-3xl gap-4 text-sm leading-relaxed text-white/95">
-          <p>
+        <div className="grid gap-4 text-sm leading-relaxed text-white/95">
+          <p className="max-w-3xl">
             <strong className="text-white">Critical updates for tax year {currentTaxYear}: </strong>
             {sortedCriticalItems.length > 0 ? (
               <>
@@ -556,8 +556,10 @@ function TaxUpdates() {
             )}
           </p>
           {sortedCriticalItems.length > 0 && (
-            <ul className="grid gap-3">
-              {sortedCriticalItems.slice(0, 5).map((u) => (
+            // Two columns on wide screens — this panel spans the full card, and a
+            // single narrow stack left most of it empty next to the CTA below.
+            <ul className="grid gap-3 lg:grid-cols-2">
+              {sortedCriticalItems.slice(0, 6).map((u) => (
                 <li key={u.id} className="rounded-xl bg-white/10 p-3 ring-1 ring-white/15">
                   <div className="font-semibold text-white">{u.title}</div>
                   <p className="mt-1">
@@ -580,13 +582,13 @@ function TaxUpdates() {
               ))}
             </ul>
           )}
-          {sortedCriticalItems.length > 5 && (
+          {sortedCriticalItems.length > 6 && (
             <p className="text-xs text-white/80">
-              +{sortedCriticalItems.length - 5} more critical update
-              {sortedCriticalItems.length - 5 === 1 ? "" : "s"} in the tile above.
+              +{sortedCriticalItems.length - 6} more critical update
+              {sortedCriticalItems.length - 6 === 1 ? "" : "s"} in the tile above.
             </p>
           )}
-          <p>
+          <p className="max-w-3xl">
             <strong className="text-white">How Corvus helps: </strong>
             CorvusPT reads the official sources every week, tells you which updates may affect
             your properties, and turns them into next steps &mdash; a protest opportunity
