@@ -220,6 +220,17 @@ export function FeedbackWidget() {
     setAnswers((prev) => ({ ...prev, [id]: value }));
   }
 
+  // Multi-select (checkbox) questions store their answer as a string[] —
+  // toggling adds/removes just that one option, leaving the rest as they were.
+  function toggleMultiOption(id: string, opt: string) {
+    setAnswers((prev) => {
+      const current = prev[id];
+      const list = Array.isArray(current) ? current : [];
+      const next = list.includes(opt) ? list.filter((x) => x !== opt) : [...list, opt];
+      return { ...prev, [id]: next };
+    });
+  }
+
   async function goNext(skip = false) {
     const q = FORM_QUESTIONS[index];
     if (!skip && !isAnswered(q, answers)) return;
@@ -425,6 +436,39 @@ export function FeedbackWidget() {
                     <span>{opt}</span>
                   </label>
                 ))}
+                <input
+                  value={otherValue}
+                  onChange={(e) => setAnswer(`${q.id}__other`, e.target.value)}
+                  placeholder="Other / Comment"
+                  aria-label="Other or comment"
+                  className="rounded-full border border-input bg-background px-3.5 py-2 text-sm"
+                />
+              </div>
+            )}
+
+            {q.type === "multi" && (
+              <div className="mt-3 grid gap-2" role="group" aria-label={q.label}>
+                {q.options?.map((opt) => {
+                  const selected = Array.isArray(answer) && answer.includes(opt);
+                  return (
+                    <label
+                      key={opt}
+                      className={`flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors ${
+                        selected
+                          ? "border-accent bg-accent/10"
+                          : "border-input bg-background hover:bg-secondary/60"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleMultiOption(q.id, opt)}
+                        className="accent-[var(--color-accent)]"
+                      />
+                      <span>{opt}</span>
+                    </label>
+                  );
+                })}
                 <input
                   value={otherValue}
                   onChange={(e) => setAnswer(`${q.id}__other`, e.target.value)}

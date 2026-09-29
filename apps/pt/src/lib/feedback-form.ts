@@ -88,21 +88,31 @@ export const FORM_SECTIONS: Section[] = [
         "Showing comparable properties",
         "All of these",
       ]),
-      choice("g6", "What would you like Corvus to do for you automatically?", [
-        "Find and analyze comparable properties",
-        "Investigate site/property issues",
-        "Analyze building condition",
-        "Analyze income/rental information",
-        "Check zoning/classification",
-        "Research county/CAD information",
-      ]),
-      choice("g7", "How much of the protest process would you want Corvus to handle?", [
-        "Research and preparation",
-        "Evidence and filing",
-        "County communication and tracking",
-        "Hearings and follow-up",
-        "As much of the process as possible",
-      ]),
+      choice(
+        "g6",
+        "What would you like Corvus to do for you automatically?",
+        [
+          "Find and analyze comparable properties",
+          "Investigate site/property issues",
+          "Analyze building condition",
+          "Analyze income/rental information",
+          "Check zoning/classification",
+          "Research county/CAD information",
+        ],
+        { type: "multi", helper: "Select all that apply." },
+      ),
+      choice(
+        "g7",
+        "How much of the protest process would you want Corvus to handle?",
+        [
+          "Research and preparation",
+          "Evidence and filing",
+          "County communication and tracking",
+          "Hearings and follow-up",
+          "As much of the process as possible",
+        ],
+        { type: "multi", helper: "Select all that apply." },
+      ),
     ],
   },
   {
@@ -121,14 +131,19 @@ export const FORM_SECTIONS: Section[] = [
           },
         },
       ),
-      choice("g9", "What is the biggest thing that would make Corvus better for you?", [
-        "More accurate AI analysis",
-        "Better property / county information",
-        "Better valuation analysis",
-        "Better evidence",
-        "Easier filing and case management",
-        "Clearer explanation of the AI",
-      ]),
+      choice(
+        "g9",
+        "What is the biggest thing that would make Corvus better for you?",
+        [
+          "More accurate AI analysis",
+          "Better property / county information",
+          "Better valuation analysis",
+          "Better evidence",
+          "Easier filing and case management",
+          "Clearer explanation of the AI",
+        ],
+        { type: "multi", helper: "Select all that apply." },
+      ),
       open("g10", "If you could tell us to build ONE thing next, what would it be?"),
     ],
   },
@@ -143,13 +158,19 @@ export function sectionKeyOf(questionId: string): string {
   return FORM_SECTIONS.find((s) => s.questions.some((q) => q.id === questionId))?.key ?? "";
 }
 
-// Answered = an option was picked, or text was typed (for a choice question the
-// "Other / Comment" box counts too).
+// Answered = an option was picked (single: a string; multi: a non-empty
+// array), or text was typed (for a choice question the "Other / Comment" box
+// counts too, for either kind of choice).
 export function isAnswered(q: Question, answers: Record<string, Answer>): boolean {
   const v = answers[q.id];
   if (typeof v === "string" && v.trim() !== "") return true;
+  if (Array.isArray(v) && v.length > 0) return true;
   const other = answers[`${q.id}__other`];
-  return q.type === "single" && typeof other === "string" && other.trim() !== "";
+  return (
+    (q.type === "single" || q.type === "multi") &&
+    typeof other === "string" &&
+    other.trim() !== ""
+  );
 }
 
 // Where a returning person resumes: the first question they haven't answered.

@@ -26,8 +26,13 @@ describe("feedback form (v3)", () => {
     expect(FORM_SECTIONS.flatMap((s) => s.questions)).toHaveLength(10);
   });
 
-  it("only the last question is open text; the rest are choices", () => {
+  it("only the last question is open text; g6, g7 and g9 are multi-select, the rest single", () => {
     expect(FORM_QUESTIONS.filter((q) => q.type === "text").map((q) => q.id)).toEqual(["g10"]);
+    expect(FORM_QUESTIONS.filter((q) => q.type === "multi").map((q) => q.id)).toEqual([
+      "g6",
+      "g7",
+      "g9",
+    ]);
   });
 
   it("counts a picked option or a typed comment as answered", () => {
@@ -36,6 +41,14 @@ describe("feedback form (v3)", () => {
     expect(isAnswered(q, { g1: "Makes the protest process easier" })).toBe(true);
     expect(isAnswered(q, { g1__other: "something else" })).toBe(true);
     expect(isAnswered(q, { g1__other: "   " })).toBe(false);
+  });
+
+  it("counts a multi-select question answered by a non-empty array, or a typed comment", () => {
+    const g6 = FORM_QUESTIONS.find((q) => q.id === "g6")!;
+    expect(isAnswered(g6, {})).toBe(false);
+    expect(isAnswered(g6, { g6: [] })).toBe(false);
+    expect(isAnswered(g6, { g6: ["Research county/CAD information"] })).toBe(true);
+    expect(isAnswered(g6, { g6__other: "Something else" })).toBe(true);
   });
 
   it("resumes at the first unanswered question", () => {
