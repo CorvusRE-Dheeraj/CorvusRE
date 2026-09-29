@@ -361,6 +361,23 @@ create policy "project docs: owner rw" on storage.objects for all
 alter table public.profiles add column if not exists notification_prefs jsonb not null default
   '{"email":true,"sms":false,"in_app":true,"weekly":true,"permit_status":true}'::jsonb;
 
+-- permit_status defaults OFF (2026-09) — several status changes in quick
+-- succession (a demo, a bulk city update, testing) each fired its own
+-- immediate email with no batching, a real flood; see
+-- send-notification-email's own matching default. Both the column default
+-- (new signups) and every EXISTING profile's stored value are updated here
+-- — a stored jsonb value doesn't pick up a later column-default change on
+-- its own. Only touches rows that never explicitly chose a value (true,
+-- the old default) or are missing the key; a real, deliberate opt-in
+-- (permit_status already true is indistinguishable from "never touched"
+-- here, which is the correct call — nobody had a way to opt in before this
+-- existed as a real toggle).
+alter table public.profiles alter column notification_prefs set default
+  '{"email":true,"sms":false,"in_app":true,"weekly":true,"permit_status":false}'::jsonb;
+update public.profiles
+  set notification_prefs = jsonb_set(notification_prefs, '{permit_status}', 'false'::jsonb)
+  where coalesce(notification_prefs->>'permit_status', 'true') = 'true';
+
 -- re-grant to include the new self-service column
 revoke update on public.profiles from authenticated;
 grant update (first_name, last_name, phone, company_name, notification_prefs) on public.profiles to authenticated;
