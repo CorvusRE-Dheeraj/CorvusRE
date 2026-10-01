@@ -682,11 +682,20 @@ function Intake() {
 
       {step === "notfound" && (
         <section className="mt-8 card-elev p-6">
+          {/* When there's nothing useful to show, this is a real dead end and
+              says so plainly. When there IS a nearby list, lead with that —
+              the exact house number not being its own county record is
+              common and not actually a failure, so the headline shouldn't
+              read like one right above a list of real, pickable answers. */}
           <h2 className="font-serif text-xl font-semibold capitalize">
-            We couldn't locate this {propertyKind} property.
+            {nearby.length > 0
+              ? "This exact address isn't its own record — here's what's nearby"
+              : `We couldn't locate this ${propertyKind} property.`}
           </h2>
           <p className="mt-1 text-muted-foreground">
-            Please enter a valid property address, or upload your appraisal notice instead.
+            {nearby.length > 0
+              ? "The county doesn't list this exact house number separately. Pick the closest match below, or enter your account number if you have it — some properties (vacant lots, newer parcels) only have an address on file under the account number, never a street search."
+              : "Please enter a valid property address, or upload your appraisal notice instead."}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={() => setStep("address")} className="btn-outline">
@@ -702,9 +711,7 @@ function Intake() {
 
           {nearby.length > 0 && (
             <div className="mt-6 border-t border-border pt-5">
-              <h3 className="text-sm font-semibold">
-                We didn't find that exact address, but found these nearby:
-              </h3>
+              <h3 className="text-sm font-semibold">Closest matches on this street:</h3>
               {(() => {
                 // If the address named a city but none of the suggestions are in it, say so, so
                 // nobody picks a same-street record from a different city by mistake.
@@ -746,6 +753,11 @@ function Intake() {
                       }`}
                     >
                       <div className="min-w-0">
+                        {i === 0 && (
+                          <span className="mb-1 inline-block rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                            Closest match
+                          </span>
+                        )}
                         <div className="truncate text-sm font-semibold">{r.propertyAddress}</div>
                         <div className="text-xs text-muted-foreground">
                           {r.cad}
