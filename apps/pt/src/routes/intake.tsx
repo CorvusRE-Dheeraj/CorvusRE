@@ -104,6 +104,17 @@ function Intake() {
   // the same false "couldn't locate this property" as the abbreviation bug
   // itself, just reachable through timing instead of every time.
   const [resolvingAddress, setResolvingAddress] = useState(false);
+  // Live matches shown in a dropdown under the address box as you type,
+  // instead of making you click "Validate address" and land on a separate
+  // step just to see what the county has on file — same real CAD search
+  // runValidation() uses underneath (cadLookup), just surfaced earlier and
+  // inline. Debounced in the effect below; cleared whenever the typed text
+  // gets too short to be worth a real lookup, or once the user moves past
+  // this step entirely.
+  const [liveMatches, setLiveMatches] = useState<CadRecord[]>([]);
+  const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
+  const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
+  const liveMatchRequestRef = useRef(0);
   const [pickingOnMap, setPickingOnMap] = useState(false);
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
   const [noticeName, setNoticeName] = useState<string | null>(null);
@@ -167,6 +178,69 @@ function Intake() {
       else runValidation(s.address);
     }
   }, []);
+
+  // Live CAD matches under the address box, debounced — fires the exact same
+  // cadLookup() runValidation() uses, just earlier, so a real county match
+  // (with its own account number / parcel ID) can show and be picked before
+  // the user even clicks "Validate address". Only runs on the address step,
+  // with a minimum length so it doesn't fire a real lookup on every
+  // keystroke of a 3-character fragment.
+  const MIN_LIVE_SEARCH_LENGTH = 8;
+  const LIVE_SEARCH_DEBOUNCE_MS = 500;
+  useEffect(() => {
+    if (step !== "address") return;
+    const q = address.trim();
+    if (q.length < MIN_LIVE_SEARCH_LENGTH) {
+      setLiveMatches([]);
+      setLiveMatchesOpen(false);
+      setLiveMatchesLoading(false);
+      return;
+    }
+    const requestId = ++liveMatchRequestRef.current;
+    setLiveMatchesLoading(true);
+    const t = setTimeout(() => {
+      cadLookup(q)
+        .then((res) => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          const results =
+            res.matched === true ? [res.record] : res.matched === "multiple" ? res.options : res.nearby;
+          setLiveMatches(results);
+          setLiveMatchesOpen(results.length > 0);
+        })
+        .catch(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatches([]);
+          setLiveMatchesOpen(false);
+        })
+        .finally(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesLoading(false);
+        });
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, step]);
+
+  // A live-match row was clicked — same handling as a "nearby"/"multiple"
+  // pick (selectCadCandidate), just from the address step instead of the
+  // notfound step, so it needs its own fallback (back to a plain, editable
+  // address box, not a step that was never entered).
+  async function selectLiveMatch(record: CadRecord) {
+    setLiveMatchesOpen(false);
+    const requestId = ++requestIdRef.current;
+    setStep("validating");
+    setError(null);
+    setAlreadySaved(null);
+    try {
+      await applyCadRecord(record, requestId, address.trim());
+    } catch (err) {
+      console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Could not use this property. Please try again.";
+      toast.error(message);
+      setStep("address");
+    }
+  }
 
   // Shared by a real cadLookup() match, by picking one of the "nearby"
   // suggestions on the notfound step, and by the manual account-number
@@ -600,6 +674,53 @@ function Intake() {
               {resolvingAddress ? "Resolving…" : "Validate address"}
             </button>
           </form>
+
+          {liveMatchesLoading && liveMatches.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
+          )}
+
+          {liveMatchesOpen && liveMatches.length > 0 && (
+            <div className="mt-2 grid gap-1.5 rounded-lg border border-border bg-card p-2 shadow-sm">
+              <p className="px-1 text-xs font-medium text-muted-foreground">
+                Matching county records{liveMatchesLoading ? " (updating…)" : ""}:
+              </p>
+              {liveMatches.slice(0, 6).map((r, i) => {
+                // Same commercial-only guard as the notfound step's own list
+                // — shown so it's not a mystery why a real result is
+                // unclickable, not silently hidden.
+                const category = classifyPropertyCategory(r.propertyType);
+                const isResidential = category === "residential";
+                return (
+                  <button
+                    key={`${r.cad}-${r.accountNumber ?? i}`}
+                    type="button"
+                    onClick={() => !isResidential && void selectLiveMatch(r)}
+                    disabled={isResidential}
+                    title={
+                      isResidential
+                        ? "Residential — CorvusPT currently serves commercial properties only"
+                        : undefined
+                    }
+                    className={`row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
+                      isResidential ? "opacity-50 grayscale cursor-not-allowed" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {r.cad}
+                        {r.accountNumber && <> · Acct {r.accountNumber}</>}
+                        {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
+                      </div>
+                    </div>
+                    {!isResidential && (
+                      <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-3 text-center">
             <button
