@@ -155,13 +155,17 @@ export async function unifiedPropertySearch(
     merged.push(m);
   }
 
+  // Filter to the typed city, not just sort it first — found live
+  // ("walmart denton" showing real Denton matches on top, but also real
+  // Plano/Celina ones trailing below): once there ARE matches in the city
+  // actually typed, the rest are noise, not a helpful runner-up, and they
+  // can crowd a real same-city match out of the dropdown's own top-6
+  // display cap. Only falls back to the unfiltered list when the typed
+  // city genuinely has zero matches among everything found.
   const cityGuess = guessCityWord(query);
   if (cityGuess) {
-    merged.sort((a, b) => {
-      const ac = matchesCityGuess(a.record.propertyAddress, cityGuess) ? 0 : 1;
-      const bc = matchesCityGuess(b.record.propertyAddress, cityGuess) ? 0 : 1;
-      return ac - bc;
-    });
+    const inCity = merged.filter((m) => matchesCityGuess(m.record.propertyAddress, cityGuess));
+    if (inCity.length > 0) return inCity.slice(0, MAX_RESULTS);
   }
 
   return merged.slice(0, MAX_RESULTS);

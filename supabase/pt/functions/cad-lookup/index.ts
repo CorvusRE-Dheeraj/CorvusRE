@@ -3019,12 +3019,19 @@ async function findByName(
     seen.add(key);
     deduped.push(c);
   }
+  // Filter to the typed city, not just sort it first — found live ("walmart
+  // denton" showing real Denton matches on top, but also Plano/Celina ones
+  // trailing below them): once there ARE real matches in the city the user
+  // actually typed, the other cities are just noise, not a helpful
+  // runner-up — and they can crowd a real same-city match out of the
+  // dropdown's own top-6 display cap. Only falls back to the full,
+  // unfiltered list when the typed city genuinely has zero matches at all
+  // (same reasoning as the "no matching records" empty state elsewhere:
+  // something real is better than nothing, but only once nothing real
+  // exists for what was actually asked).
   if (cityGuess) {
-    deduped.sort((a, b) => {
-      const ac = nameSearchCityMatches(a.propertyAddress, cityGuess) ? 0 : 1;
-      const bc = nameSearchCityMatches(b.propertyAddress, cityGuess) ? 0 : 1;
-      return ac - bc;
-    });
+    const inCity = deduped.filter((r) => nameSearchCityMatches(r.propertyAddress, cityGuess));
+    if (inCity.length > 0) return inCity.slice(0, 20);
   }
   return deduped.slice(0, 20);
 }
