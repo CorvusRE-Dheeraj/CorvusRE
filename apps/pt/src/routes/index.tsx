@@ -296,30 +296,44 @@ function Home() {
               )}
 
               {liveMatchesOpen && liveMatchesCommercial.length > 0 && (
-                <div className="mt-2 grid gap-1.5 rounded-lg border border-border bg-card p-2 text-left shadow-sm">
-                  <p className="px-1 text-xs font-medium text-muted-foreground">
-                    Matching county records{liveMatchesLoading ? " (updating…)" : ""}:
-                  </p>
-                  {liveMatchesCommercial
-                    .slice(0, 6)
-                    .map((r, i) => (
-                      <button
-                        key={`${r.cad}-${r.accountNumber ?? i}`}
-                        type="button"
-                        onClick={() => selectLiveMatch(r)}
-                        className="row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {r.cad}
-                            {r.accountNumber && <> · Acct {r.accountNumber}</>}
-                            {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
-                      </button>
-                    ))}
+                <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm">
+                  {liveMatchesLoading && (
+                    <p className="border-b border-border px-4 pt-2 pb-1 text-xs text-muted-foreground">
+                      Updating…
+                    </p>
+                  )}
+                  {liveMatchesCommercial.slice(0, 6).map((r, i) => (
+                    <button
+                      key={`${r.cad}-${r.accountNumber ?? i}`}
+                      type="button"
+                      onClick={() => selectLiveMatch(r)}
+                      className={`row-hover block w-full px-4 py-3 text-left ${
+                        i > 0 ? "border-t border-border" : ""
+                      }`}
+                    >
+                      <div className="truncate text-sm font-semibold uppercase tracking-tight">
+                        {r.propertyAddress}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <span className="font-bold text-foreground">
+                          PARCEL: {r.accountNumber ?? "—"}
+                        </span>
+                        {" · "}
+                        {r.cad}
+                        {r.totalValue != null && <> · {currency(r.totalValue)}</>}
+                      </div>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiveMatchesOpen(false);
+                      goToIntake(address);
+                    }}
+                    className="block w-full bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
+                  >
+                    Don't see your address? Click here.
+                  </button>
                 </div>
               )}
             </div>
