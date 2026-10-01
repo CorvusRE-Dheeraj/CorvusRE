@@ -23,7 +23,7 @@ import {
   currency,
   type PropertyKind,
 } from "@/lib/intake-store";
-import { cadLookup, type CadRecord } from "@/lib/cad-lookup";
+import { cadLookupPreview, type CadRecord } from "@/lib/cad-lookup";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
@@ -82,7 +82,7 @@ function Home() {
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [pickingOnMap, setPickingOnMap] = useState(false);
   // Live CAD matches under the address box, debounced — same feature and
-  // same cadLookup() call as intake.tsx's own live dropdown (see its
+  // same cadLookupPreview() call as intake.tsx's own live dropdown (see its
   // comment); this is the OTHER place a user types a property address, and
   // it was missing this entirely until now. Picking a match here skips
   // straight to the Confirm step on /intake instead of re-running the
@@ -111,7 +111,7 @@ function Home() {
     const requestId = ++liveMatchRequestRef.current;
     setLiveMatchesLoading(true);
     const t = setTimeout(() => {
-      cadLookup(q)
+      cadLookupPreview(q)
         .then((res) => {
           if (liveMatchRequestRef.current !== requestId) return;
           const results =

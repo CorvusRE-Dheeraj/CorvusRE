@@ -2576,6 +2576,21 @@ const NEARBY_QUERY_TIMEOUT_MS = 15000;
 // county-specific fix.
 const EXACT_QUERY_TIMEOUT_MS = 15000;
 
+// Used only for the as-you-type live-search dropdown (`body.preview === true`,
+// see Deno.serve below) — NOT the "Validate address"/full-submit flow, which
+// always keeps the generous timeouts above so a real but slow/rate-limited
+// county is never silently missed on the authoritative check. A live preview
+// is a different tradeoff: the user is still typing, waiting the full 15s for
+// one laggard county out of 12 reads as the search being broken, and whatever
+// it shows is never the final answer anyway — hitting "Validate address" (or
+// picking a suggestion) always re-runs the full, un-short-circuited sweep.
+// Some real counties are legitimately slower than this on an ordinary request
+// (Tarrant ran ~5s on a normal, non-pathological query — see
+// EXACT_QUERY_TIMEOUT_MS's own history above), so a preview can genuinely
+// omit a real match that the full validate would still find; that's the
+// accepted cost of a fast typeahead, not a bug.
+const PREVIEW_QUERY_TIMEOUT_MS = 4000;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     promise,
@@ -2587,6 +2602,7 @@ async function findNearby(
   countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
   address: string,
   cityGuess: string,
+  queryTimeoutMs: number = NEARBY_QUERY_TIMEOUT_MS,
 ): Promise<CadRecord[]> {
   // A bare road with no leading house number (e.g. "FM 1957, San Antonio")
   // can't be proximity-sorted by house number below, but it can still be
@@ -2601,7 +2617,7 @@ async function findNearby(
 
   const results = await Promise.allSettled(
     countyQueries.map((query) =>
-      withTimeout(query(address, "nearby"), NEARBY_QUERY_TIMEOUT_MS, [] as CadRecord[]),
+      withTimeout(query(address, "nearby"), queryTimeoutMs, [] as CadRecord[]),
     ),
   );
   const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
@@ -2782,6 +2798,12 @@ Deno.serve(async (req: Request) => {
     }
     const address = normalizeRoadPrefix(rawAddress);
 
+    // Set only by the as-you-type live-search dropdown (never by "Validate
+    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
+    // comment for why a fast, best-effort sweep is the right tradeoff there.
+    const preview = body.preview === true;
+    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+
     // Queries every supported county concurrently (see the comment above) — no
     // city-name filtering on WHICH counties to try. A single county's transient
     // failure (network error, endpoint down) no longer fails the whole lookup;
@@ -2817,7 +2839,7 @@ Deno.serve(async (req: Request) => {
     // needed. If an exact match is found, this promise is simply never
     // awaited — its in-flight requests cost nothing to the response, since
     // nothing here ever reads their result.
-    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess);
+    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
 
     // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
     // seconds): a single slow/rate-limited county source could block the
@@ -2830,7 +2852,7 @@ Deno.serve(async (req: Request) => {
     // answer.
     const results = await Promise.allSettled(
       countyQueriesInOrder.map((query) =>
-        withTimeout(query(address), EXACT_QUERY_TIMEOUT_MS, [] as CadRecord[]),
+        withTimeout(query(address), queryTimeoutMs, [] as CadRecord[]),
       ),
     );
     // Flattened in county-priority order, then row order within each county — each

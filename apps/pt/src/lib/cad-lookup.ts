@@ -79,6 +79,18 @@ export async function cadLookup(address: string): Promise<CadLookupResult> {
   return invokeEdgeFunction<CadLookupResult>("cad-lookup", { address });
 }
 
+// Same lookup, but for the as-you-type live-search dropdown only — never for
+// a direct "Validate address" submit or a picked suggestion's own re-check.
+// Tells the edge function to use its much shorter PREVIEW_QUERY_TIMEOUT_MS
+// instead of waiting up to 15s for every one of the 12 counties (see that
+// constant's own comment): a live preview is best-effort and can genuinely
+// miss a real match a slow county would still have had, which is fine since
+// nothing here is the final answer — only the plain cadLookup() call that
+// "Validate address" makes is.
+export async function cadLookupPreview(address: string): Promise<CadLookupResult> {
+  return invokeEdgeFunction<CadLookupResult>("cad-lookup", { address, preview: true });
+}
+
 // A direct, exact lookup by account/parcel number for a single named county —
 // bypasses address parsing entirely (see queryByAccountNumber's own comment
 // in the edge function). Used by the "Didn't find your property? Enter

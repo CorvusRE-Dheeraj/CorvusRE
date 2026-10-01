@@ -23,7 +23,7 @@ import {
   type IntakeState,
   type PropertyKind,
 } from "@/lib/intake-store";
-import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
+import { cadLookup, cadLookupByAccount, cadLookupPreview, type CadRecord } from "@/lib/cad-lookup";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/lib/auth";
@@ -186,12 +186,15 @@ function Intake() {
     }
   }, []);
 
-  // Live CAD matches under the address box, debounced — fires the exact same
-  // cadLookup() runValidation() uses, just earlier, so a real county match
-  // (with its own account number / parcel ID) can show and be picked before
-  // the user even clicks "Validate address". Only runs on the address step,
-  // with a minimum length so it doesn't fire a real lookup on every
-  // keystroke of a 3-character fragment.
+  // Live CAD matches under the address box, debounced — fires the same
+  // lookup runValidation() uses, just earlier and in its fast "preview" mode
+  // (see cadLookupPreview's own comment: a short per-county timeout instead
+  // of runValidation's generous one, so a slow/rate-limited county can't make
+  // the as-you-type dropdown feel broken), so a real county match (with its
+  // own account number / parcel ID) can show and be picked before the user
+  // even clicks "Validate address". Only runs on the address step, with a
+  // minimum length so it doesn't fire a real lookup on every keystroke of a
+  // 3-character fragment.
   const MIN_LIVE_SEARCH_LENGTH = 8;
   const LIVE_SEARCH_DEBOUNCE_MS = 500;
   useEffect(() => {
@@ -206,7 +209,7 @@ function Intake() {
     const requestId = ++liveMatchRequestRef.current;
     setLiveMatchesLoading(true);
     const t = setTimeout(() => {
-      cadLookup(q)
+      cadLookupPreview(q)
         .then((res) => {
           if (liveMatchRequestRef.current !== requestId) return;
           const results =
