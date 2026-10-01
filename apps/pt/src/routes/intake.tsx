@@ -168,10 +168,26 @@ function Intake() {
     }
   }, []);
 
-  // Shared by a real cadLookup() match and by picking one of the "nearby"
-  // suggestions on the notfound step (which already has a full real CadRecord
-  // in hand — no reason to make a second network round-trip for the same data).
-  async function applyCadRecord(record: CadRecord, requestId: number) {
+  // Shared by a real cadLookup() match, by picking one of the "nearby"
+  // suggestions on the notfound step, and by the manual account-number
+  // lookup (which already has a full real CadRecord in hand — no reason to
+  // make a second network round-trip for the same data).
+  //
+  // `fallbackAddress` covers a real, observed gap: several counties'
+  // underlying records have no usable situs address on file for some
+  // accounts (bare-road-name commercial/vacant parcels especially — see
+  // cad-lookup's own per-county `propertyAddress: ... || ""` fallbacks),
+  // so `record.propertyAddress` can come back an empty string even though
+  // its type says `string`. Before this, an empty address silently landed
+  // in state, and the Confirm step's own `state.address &&` render guard
+  // then rendered nothing at all — step 4 showing as current with a
+  // completely blank page below it, with no error anywhere. Every call site
+  // now resolves to SOME non-empty address.
+  async function applyCadRecord(record: CadRecord, requestId: number, fallbackAddress?: string) {
+    const resolvedAddress =
+      record.propertyAddress.trim() ||
+      fallbackAddress?.trim() ||
+      (record.accountNumber ? `Account #${record.accountNumber} — ${record.cad}` : record.cad);
     // The commercial/residential toggle above is just the user's own guess
     // — the CAD record is authoritative. Block here too (not just at the
     // toggle) since someone can still reach this page with an address that
@@ -184,7 +200,7 @@ function Intake() {
     if (classifyPropertyCategory(record.propertyType) === "residential") {
       setState(
         updateIntake({
-          address: record.propertyAddress,
+          address: resolvedAddress,
           cad: record.cad,
           propertyType: record.propertyType ?? undefined,
         }),
@@ -193,7 +209,7 @@ function Intake() {
       return;
     }
     const next = updateIntake({
-      address: record.propertyAddress,
+      address: resolvedAddress,
       cad: record.cad,
       accountNumber: record.accountNumber ?? undefined,
       ownerName: record.ownerName ?? undefined,
@@ -296,7 +312,7 @@ function Intake() {
         });
         return;
       }
-      await applyCadRecord(res.record, requestId);
+      await applyCadRecord(res.record, requestId, addr);
     } catch (err) {
       if (requestIdRef.current !== requestId) return;
       console.error(err);
@@ -1010,6 +1026,26 @@ function Intake() {
               homestead) you may qualify for.
             </p>
           </div>
+        </section>
+      )}
+
+      {/* Safety net: applyCadRecord now always resolves a non-empty address
+          (see its own comment), but if some future path ever reaches
+          "confirm" without one, show an honest error and a way back instead
+          of a blank page under an active "4 Confirm" step — exactly what
+          used to happen here. */}
+      {step === "confirm" && !state.address && (
+        <section className="mt-8 card-elev p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Something went wrong loading this property's details.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStep("address")}
+            className="btn-outline mt-4 inline-flex"
+          >
+            Back to search
+          </button>
         </section>
       )}
 
