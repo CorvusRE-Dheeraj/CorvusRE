@@ -16,6 +16,7 @@ import { Modal } from "@/components/Modal";
 import {
   readIntake,
   updateIntake,
+  cadRecordToIntakePatch,
   classifyAndStoreDocument,
   currency,
   UPLOAD_LIMITS,
@@ -282,31 +283,7 @@ function Intake() {
       setStep("residential-blocked");
       return;
     }
-    const next = updateIntake({
-      address: resolvedAddress,
-      cad: record.cad,
-      accountNumber: record.accountNumber ?? undefined,
-      ownerName: record.ownerName ?? undefined,
-      propertyType: record.propertyType ?? undefined,
-      landValue: record.landValue ?? undefined,
-      improvementValue: record.improvementValue ?? undefined,
-      totalValue: record.totalValue ?? undefined,
-      // Pinned to 2026 regardless of what the county's own feed reports —
-      // some (e.g. Denton) already publish next year's preliminary tax year
-      // before this year's protest season closes, which surfaced as the
-      // wrong "current" tax year on this screen. See CURRENT_TAX_YEAR in
-      // lib/tax-calendar.ts.
-      taxYear: 2026,
-      legalDescription: record.legalDescription ?? undefined,
-      subdivision: record.subdivision ?? undefined,
-      geoId: record.geoId ?? undefined,
-      mailingAddress: record.mailingAddress ?? undefined,
-      ownershipPct: record.ownershipPct ?? undefined,
-      protestStatus: record.protestStatus ?? undefined,
-      bisPropertyId: record.bisPropertyId ?? undefined,
-      valueHistory: record.valueHistory ?? undefined,
-      deeds: record.deeds ?? undefined,
-    });
+    const next = updateIntake(cadRecordToIntakePatch(record, resolvedAddress));
     setState(next);
 
     // See estimateSavings() for the comps -> formula cascade — both tiers are

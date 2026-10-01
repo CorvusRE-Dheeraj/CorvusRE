@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Upload,
@@ -18,9 +18,13 @@ import {
 import {
   updateIntake,
   resetIntake,
+  cadRecordToIntakePatch,
   classifyAndStoreDocument,
+  currency,
   type PropertyKind,
 } from "@/lib/intake-store";
+import { cadLookup, type CadRecord } from "@/lib/cad-lookup";
+import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { MapPinPicker } from "@/components/MapPinPicker";
@@ -77,6 +81,51 @@ function Home() {
   // much here: this is the address that gets carried forward into /intake.
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [pickingOnMap, setPickingOnMap] = useState(false);
+  // Live CAD matches under the address box, debounced — same feature and
+  // same cadLookup() call as intake.tsx's own live dropdown (see its
+  // comment); this is the OTHER place a user types a property address, and
+  // it was missing this entirely until now. Picking a match here skips
+  // straight to the Confirm step on /intake instead of re-running the
+  // lookup there — see selectLiveMatch below.
+  const [liveMatches, setLiveMatches] = useState<CadRecord[]>([]);
+  const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
+  const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
+  const liveMatchRequestRef = useRef(0);
+
+  const MIN_LIVE_SEARCH_LENGTH = 8;
+  const LIVE_SEARCH_DEBOUNCE_MS = 500;
+  useEffect(() => {
+    const q = address.trim();
+    if (q.length < MIN_LIVE_SEARCH_LENGTH) {
+      setLiveMatches([]);
+      setLiveMatchesOpen(false);
+      setLiveMatchesLoading(false);
+      return;
+    }
+    const requestId = ++liveMatchRequestRef.current;
+    setLiveMatchesLoading(true);
+    const t = setTimeout(() => {
+      cadLookup(q)
+        .then((res) => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          const results =
+            res.matched === true ? [res.record] : res.matched === "multiple" ? res.options : res.nearby;
+          setLiveMatches(results);
+          setLiveMatchesOpen(results.length > 0);
+        })
+        .catch(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatches([]);
+          setLiveMatchesOpen(false);
+        })
+        .finally(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesLoading(false);
+        });
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   // Shared by the form's own submit and by picking an address suggestion
   // directly (see onPlaceSelected below) — takes the address as a parameter
@@ -87,6 +136,20 @@ function Home() {
     if (!addr.trim()) return;
     resetIntake();
     updateIntake({ address: addr.trim(), propertyKind });
+    navigate({ to: "/intake" });
+  }
+
+  // A live match was picked directly — skip the address-validation round
+  // trip entirely: store the full real record (same field mapping
+  // intake.tsx's applyCadRecord uses) and land straight on /intake's
+  // Confirm step, which already resumes there whenever accountNumber+cad
+  // are set (see its own mount effect).
+  function selectLiveMatch(record: CadRecord) {
+    if (classifyPropertyCategory(record.propertyType) === "residential") return;
+    setLiveMatchesOpen(false);
+    resetIntake();
+    updateIntake({ propertyKind });
+    updateIntake(cadRecordToIntakePatch(record, record.propertyAddress.trim() || address.trim()));
     navigate({ to: "/intake" });
   }
 
@@ -220,6 +283,50 @@ function Home() {
                   {resolvingAddress ? "Resolving…" : "Start Free AI Property Review"}
                 </button>
               </form>
+
+              {liveMatchesLoading && liveMatches.length === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
+              )}
+
+              {liveMatchesOpen && liveMatches.length > 0 && (
+                <div className="mt-2 grid gap-1.5 rounded-lg border border-border bg-card p-2 text-left shadow-sm">
+                  <p className="px-1 text-xs font-medium text-muted-foreground">
+                    Matching county records{liveMatchesLoading ? " (updating…)" : ""}:
+                  </p>
+                  {liveMatches.slice(0, 6).map((r, i) => {
+                    const category = classifyPropertyCategory(r.propertyType);
+                    const isResidential = category === "residential";
+                    return (
+                      <button
+                        key={`${r.cad}-${r.accountNumber ?? i}`}
+                        type="button"
+                        onClick={() => selectLiveMatch(r)}
+                        disabled={isResidential}
+                        title={
+                          isResidential
+                            ? "Residential — CorvusPT currently serves commercial properties only"
+                            : undefined
+                        }
+                        className={`row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
+                          isResidential ? "opacity-50 grayscale cursor-not-allowed" : ""
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {r.cad}
+                            {r.accountNumber && <> · Acct {r.accountNumber}</>}
+                            {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
+                          </div>
+                        </div>
+                        {!isResidential && (
+                          <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex flex-wrap justify-center gap-3">
