@@ -2540,16 +2540,32 @@ async function findNearby(
     return true;
   });
 
-  // House-number distance first when we have a real one to compare against,
-  // THEN zip, THEN city — changed 2026-10-01, found live chasing "2514
-  // Parker Rd, Parker, TX": the real closest parcels are on "W Parker Rd" in
-  // Plano (house numbers bracketing 2514 closely), but the OLD zip/city-
-  // first order buried them behind a completely different, much farther
-  // segment of the same-named road in the actual town of Parker, simply
-  // because that segment's city label matched what the user typed. A
-  // county/FM road commonly crosses several small cities under one name —
-  // its own city label is a weaker signal than how close the house number
-  // actually is, so it must not outrank a real, nearby match.
+  // Region (zip's first two digits), THEN house-number distance, THEN exact
+  // zip, THEN city.
+  //
+  // House-number distance was promoted ahead of zip/city on 2026-10-01,
+  // found live chasing "2514 Parker Rd, Parker, TX": the real closest
+  // parcels are on "W Parker Rd" in Plano (house numbers bracketing 2514
+  // closely), but the OLD zip/city-first order buried them behind a
+  // completely different, much farther segment of the same-named road in
+  // the actual town of Parker, simply because that segment's city label
+  // matched what the user typed. A county/FM road commonly crosses several
+  // small cities under one name — its own city label is a weaker signal
+  // than how close the house number actually is, so it must not outrank a
+  // real, nearby match.
+  //
+  // The region tier was added the same day chasing the very next real
+  // report ("6555 Dallas Pkwy"): a bare-text core-street match on a
+  // combined address+city field can collide with an unrelated county 200+
+  // miles away whose CITY happens to contain the same word ("Dallas Dr,
+  // AUSTIN" for a "Dallas Pkwy" search — Williamson CAD, not Collin) —  and
+  // that candidate's house number can coincidentally be numerically closer
+  // to the target than the real, same-metro match, which let house-number
+  // distance alone rank the wrong-region result first. Texas zip-code
+  // prefixes cleanly separate the state's metros (75/76 = DFW, 78 = Austin,
+  // 77 = Houston, 7-prefix San Antonio, ...) and don't require a full
+  // zip-to-county table — cheap and reliable enough to use as a hard tier
+  // ahead of distance, without the fragility a full county guess would add.
   //
   // da/db fall through to Infinity (never finite) whenever either side has
   // no parseable house number, OR the search itself had none (targetHouse
@@ -2560,7 +2576,17 @@ async function findNearby(
   // every candidate ties and the list is really just "whichever order the
   // county API happened to return them in" — a real match with the wrong
   // zip could otherwise silently fall past the slice below.
+  const targetZipPrefix = targetZip ? targetZip.slice(0, 2) : null;
+  const zipPrefixOf = (addr: string) => {
+    const z = extractZip(addr);
+    return z ? z.slice(0, 2) : null;
+  };
   deduped.sort((a, b) => {
+    if (targetZipPrefix) {
+      const ar = zipPrefixOf(a.propertyAddress) === targetZipPrefix ? 0 : 1;
+      const br = zipPrefixOf(b.propertyAddress) === targetZipPrefix ? 0 : 1;
+      if (ar !== br) return ar - br;
+    }
     const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
     const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
     const da =
