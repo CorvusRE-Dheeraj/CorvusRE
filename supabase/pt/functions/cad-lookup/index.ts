@@ -645,18 +645,20 @@ const MULTI_CANDIDATE_LIMIT = 8;
 // in findNearby() below — this is the PER-COUNTY fetch size before that
 // happens, not the final list size.
 //
-// 50, not a smaller number: found live 2026-08-25 chasing a real report ("901
-// Willowwood St" — a genuine, previously-confirmed gap, since 901 isn't its
-// own parcel but 900/924/926/928 are) that ArcGIS has no inherent ordering
-// favoring numerically-close house numbers, and a long street can easily have
-// 50+ real matching parcels (confirmed: Denton's own Willowwood St alone has
-// 53) — the original NEARBY_LIMIT of 12 frequently returned an arbitrary
-// slice of a much longer street that didn't include the actually-closest real
-// candidates at all. Still a real cap, not unbounded — an extremely dense
-// street (100+ real matches) could theoretically still miss the single
-// closest one, same class of residual limitation as MULTI_CANDIDATE_LIMIT
-// above, not chased further without a concrete failing example.
-const NEARBY_LIMIT = 50;
+// 300, not 50: found live 2026-10-01 chasing a real report ("6555 Dallas
+// Pkwy") — the exact "100+ real matches" case this comment already warned
+// was still possible at 50 (itself raised from 12 for "901 Willowwood St",
+// same reasoning: ArcGIS has no inherent ordering favoring numerically-close
+// house numbers). Dallas Pkwy is a long, dense commercial corridor — the 50
+// rows Collin's service happened to return clustered around house numbers
+// 2700-3100 and never included 6555 at all, so no amount of sorting
+// afterward (see findNearby's proximity sort below) could have surfaced it —
+// the real candidate was never fetched in the first place. 300 stays a real,
+// bounded cap (not unbounded), sized to comfortably cover even a long
+// commercial corridor while staying well inside both the per-county
+// NEARBY_QUERY_TIMEOUT_MS budget and typical ArcGIS FeatureServer response
+// limits for this few, narrow outFields.
+const NEARBY_LIMIT = 300;
 type QueryMode = "exact" | "nearby";
 
 function coreClauseOr(field: string, core: string): string {
@@ -2538,24 +2540,40 @@ async function findNearby(
     return true;
   });
 
-  // Real zip match first (found live: a common road can have 40+ real
-  // parcels with no house number to sort by at all, so without this every
-  // candidate ties and the list is really just "whichever order the county
-  // API happened to return them in" — a real match with the wrong zip could
-  // silently fall past the slice below), then city match, THEN house-number
-  // distance.
+  // House-number distance first when we have a real one to compare against,
+  // THEN zip, THEN city — changed 2026-10-01, found live chasing "2514
+  // Parker Rd, Parker, TX": the real closest parcels are on "W Parker Rd" in
+  // Plano (house numbers bracketing 2514 closely), but the OLD zip/city-
+  // first order buried them behind a completely different, much farther
+  // segment of the same-named road in the actual town of Parker, simply
+  // because that segment's city label matched what the user typed. A
+  // county/FM road commonly crosses several small cities under one name —
+  // its own city label is a weaker signal than how close the house number
+  // actually is, so it must not outrank a real, nearby match.
+  //
+  // da/db fall through to Infinity (never finite) whenever either side has
+  // no parseable house number, OR the search itself had none (targetHouse
+  // NaN — a bare road like "FM 1957, San Antonio" with no number to sort
+  // by) — so that case still falls straight through to the zip/city
+  // tiebreak below exactly as before: a common road can have 40+ real
+  // parcels with no house number to sort by at all, so without zip/city
+  // every candidate ties and the list is really just "whichever order the
+  // county API happened to return them in" — a real match with the wrong
+  // zip could otherwise silently fall past the slice below.
   deduped.sort((a, b) => {
+    const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
+    const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
+    const da =
+      Number.isFinite(ha) && Number.isFinite(targetHouse) ? Math.abs(ha - targetHouse) : Infinity;
+    const db =
+      Number.isFinite(hb) && Number.isFinite(targetHouse) ? Math.abs(hb - targetHouse) : Infinity;
+    if (da !== db) return da - db;
     const az = targetZip && extractZip(a.propertyAddress) === targetZip ? 0 : 1;
     const bz = targetZip && extractZip(b.propertyAddress) === targetZip ? 0 : 1;
     if (az !== bz) return az - bz;
     const ac = cityGuess && cityMatches(cityOf(a.propertyAddress), cityGuess) ? 0 : 1;
     const bc = cityGuess && cityMatches(cityOf(b.propertyAddress), cityGuess) ? 0 : 1;
-    if (ac !== bc) return ac - bc;
-    const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
-    const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
-    const da = Number.isFinite(ha) ? Math.abs(ha - targetHouse) : Infinity;
-    const db = Number.isFinite(hb) ? Math.abs(hb - targetHouse) : Infinity;
-    return da - db;
+    return ac - bc;
   });
 
   // Found live 2026-08-28 chasing a real report (a Bexar property on FM 1957,
