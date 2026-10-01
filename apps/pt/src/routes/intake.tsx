@@ -27,6 +27,7 @@ import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup"
 import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { LiveSearchLoader } from "@/components/LiveSearchLoader";
 import { useAuth } from "@/lib/auth";
 import { addProperty, findExistingProperty, type PropertyRecord } from "@/lib/properties";
 import { estimateSavings, type SavingsEstimate } from "@/lib/savings-estimate";
@@ -675,15 +676,15 @@ function Intake() {
           </form>
 
           {liveMatchesLoading && liveMatches.length === 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
+            <LiveSearchLoader className="mt-3 px-1" />
           )}
 
           {liveMatchesOpen && (
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
               {liveMatchesLoading && (
-                <p className="border-b border-border px-4 pt-2 pb-1 text-xs text-muted-foreground">
-                  Updating…
-                </p>
+                <div className="border-b border-border px-4 py-2.5">
+                  <LiveSearchLoader />
+                </div>
               )}
               {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
                 // A settled search that genuinely found nothing — shown
