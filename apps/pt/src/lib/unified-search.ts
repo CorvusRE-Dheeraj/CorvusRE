@@ -45,10 +45,13 @@ export type UnifiedMatch = {
   googleLabel?: string;
 };
 
-function recordsFromResult(res: CadLookupResult): CadRecord[] {
+// includeNearby=false drops the live path's "nearby" fallback (any real
+// parcel sharing a bare street name/core word, any city) entirely, keeping
+// only an exact or "multiple" match — see its one caller below for why.
+function recordsFromResult(res: CadLookupResult, includeNearby: boolean): CadRecord[] {
   if (res.matched === true) return [res.record];
   if (res.matched === "multiple") return res.options;
-  return res.nearby;
+  return includeNearby ? res.nearby : [];
 }
 
 // Fast local index first (milliseconds, once a county's been ingested —
@@ -57,11 +60,25 @@ function recordsFromResult(res: CadLookupResult): CadRecord[] {
 // when the index has nothing — a county not yet backfilled, or a genuinely
 // stale/missing row. Never regresses coverage, only adds speed where the
 // index already has data.
-async function lookupRecords(addressOrName: string): Promise<CadRecord[]> {
+//
+// includeNearby controls whether the live path's generic "nearby" fallback
+// counts as a result at all. Default true for a direct search on the raw
+// typed text, where "no exact hit, here are real nearby options" is
+// legitimate. Passed false when resolving a Google suggestion's address
+// (see unifiedPropertySearch below): found live ("1895 W University Drive,
+// Frisco" resolved via Google, but Denton — where Frisco actually is —
+// isn't in the fast index yet) that the live path's nearby fallback for a
+// bare "University Dr" match pulled in five unrelated Kaufman County
+// parcels on a DIFFERENT University Dr in Forney, and every one of them got
+// stamped with the Google suggestion's own specific label ("1895
+// University Drive, Frisco, TX") even though none of them are actually
+// that address — a nearby guess has no real connection to the one place
+// Google resolved, so it should never borrow that place's name.
+async function lookupRecords(addressOrName: string, includeNearby = true): Promise<CadRecord[]> {
   const indexed = await parcelIndexSearch(addressOrName).catch(() => [] as CadRecord[]);
   if (indexed.length > 0) return indexed;
   return cadLookupPreview(addressOrName)
-    .then(recordsFromResult)
+    .then((res) => recordsFromResult(res, includeNearby))
     .catch(() => [] as CadRecord[]);
 }
 
@@ -114,7 +131,7 @@ export async function unifiedPropertySearch(
             resolved
               .filter((r): r is { label: string; address: string } => Boolean(r.address))
               .map(async ({ label, address }) => {
-                const records = await lookupRecords(address);
+                const records = await lookupRecords(address, false);
                 return records.map((record) => ({ record, googleLabel: label }));
               }),
           );
