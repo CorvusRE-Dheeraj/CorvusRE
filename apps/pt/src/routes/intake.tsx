@@ -23,7 +23,8 @@ import {
   type IntakeState,
   type PropertyKind,
 } from "@/lib/intake-store";
-import { cadLookup, cadLookupByAccount, cadLookupPreview, type CadRecord } from "@/lib/cad-lookup";
+import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
+import { unifiedPropertySearch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/lib/auth";
@@ -186,15 +187,14 @@ function Intake() {
     }
   }, []);
 
-  // Live CAD matches under the address box, debounced — fires the same
-  // lookup runValidation() uses, just earlier and in its fast "preview" mode
-  // (see cadLookupPreview's own comment: a short per-county timeout instead
-  // of runValidation's generous one, so a slow/rate-limited county can't make
-  // the as-you-type dropdown feel broken), so a real county match (with its
-  // own account number / parcel ID) can show and be picked before the user
-  // even clicks "Validate address". Only runs on the address step, with a
-  // minimum length so it doesn't fire a real lookup on every keystroke of a
-  // 3-character fragment.
+  // Live CAD matches under the address box, debounced — unifiedPropertySearch
+  // (lib/unified-search.ts) runs our own fast "preview" CAD search AND
+  // follows Google's own suggestions to a real address, then CAD-checks
+  // those too, so a business name Google resolves but our owner-name search
+  // alone can't (a franchise location titled to an unrelated landlord LLC)
+  // still surfaces a real, parcel-grounded match when one exists. Only runs
+  // on the address step, with a minimum length so it doesn't fire a real
+  // lookup on every keystroke of a 3-character fragment.
   const MIN_LIVE_SEARCH_LENGTH = 8;
   const LIVE_SEARCH_DEBOUNCE_MS = 500;
   useEffect(() => {
@@ -208,26 +208,29 @@ function Intake() {
     }
     const requestId = ++liveMatchRequestRef.current;
     setLiveMatchesLoading(true);
+    const controller = new AbortController();
     const t = setTimeout(() => {
-      cadLookupPreview(q)
-        .then((res) => {
+      unifiedPropertySearch(q, controller.signal)
+        .then((results) => {
           if (liveMatchRequestRef.current !== requestId) return;
-          const results =
-            res.matched === true ? [res.record] : res.matched === "multiple" ? res.options : res.nearby;
           setLiveMatches(results);
-          setLiveMatchesOpen(results.length > 0);
+          // Open regardless of count — see the panel's own comment below.
+          setLiveMatchesOpen(true);
         })
         .catch(() => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatches([]);
-          setLiveMatchesOpen(false);
+          setLiveMatchesOpen(true);
         })
         .finally(() => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatchesLoading(false);
         });
     }, LIVE_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, step]);
 
@@ -651,13 +654,15 @@ function Intake() {
               }}
               placeholder="e.g. 500 Main St, Houston, TX 77002"
               className="rounded-md border border-input bg-background px-4 py-3"
-              // Google's own generic suggestion list is noise now that the
-              // CAD live-match dropdown below is the real, fast,
-              // authoritative suggestion source — always off, not just
-              // while a CAD match happens to be showing (confirmed live:
-              // "3500 n bonn" surfaced five unrelated, scattered "Bonn"
-              // streets across different counties/cities with no house-
-              // number match, before any CAD result had even loaded).
+              // Always on — this component's own plain-text suggestion list
+              // is now fully superseded by the unified live-match panel
+              // below, which already folds Google's own suggestions INTO
+              // its search (see unifiedPropertySearch in
+              // lib/unified-search.ts): each Google candidate is resolved to
+              // a real address and run through CAD lookup, so the one panel
+              // shows real, parcel-grounded results regardless of whether
+              // the match came from the typed text directly or via a
+              // Google-resolved business name.
               suppressSuggestions
             />
             <button
@@ -673,11 +678,22 @@ function Intake() {
             <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
           )}
 
-          {liveMatchesOpen && liveMatchesCommercial.length > 0 && (
+          {liveMatchesOpen && (
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
               {liveMatchesLoading && (
                 <p className="border-b border-border px-4 pt-2 pb-1 text-xs text-muted-foreground">
                   Updating…
+                </p>
+              )}
+              {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
+                // A settled search that genuinely found nothing — shown
+                // instead of rendering nothing at all (confirmed live:
+                // "Braum's Denton"/"Taco Bell Denton" can come back empty
+                // even after unifiedPropertySearch tries Google, since a
+                // franchise location is often titled to a landlord CAD has
+                // no way to tie to the brand name). Still gives a next step.
+                <p className="px-4 py-3 text-sm text-muted-foreground">
+                  No matching county records found for "{address.trim()}".
                 </p>
               )}
               {liveMatchesCommercial.slice(0, 6).map((r, i) => (
@@ -711,7 +727,7 @@ function Intake() {
                   updateIntake({ address: addr, propertyKind });
                   runValidation(addr);
                 }}
-                className="block w-full bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
+                className="block w-full border-t border-border bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
               >
                 Don't see your address? Click here.
               </button>

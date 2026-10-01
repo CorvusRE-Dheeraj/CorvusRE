@@ -23,7 +23,8 @@ import {
   currency,
   type PropertyKind,
 } from "@/lib/intake-store";
-import { cadLookupPreview, type CadRecord } from "@/lib/cad-lookup";
+import type { CadRecord } from "@/lib/cad-lookup";
+import { unifiedPropertySearch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
@@ -110,26 +111,32 @@ function Home() {
     }
     const requestId = ++liveMatchRequestRef.current;
     setLiveMatchesLoading(true);
+    const controller = new AbortController();
     const t = setTimeout(() => {
-      cadLookupPreview(q)
-        .then((res) => {
+      unifiedPropertySearch(q, controller.signal)
+        .then((results) => {
           if (liveMatchRequestRef.current !== requestId) return;
-          const results =
-            res.matched === true ? [res.record] : res.matched === "multiple" ? res.options : res.nearby;
           setLiveMatches(results);
-          setLiveMatchesOpen(results.length > 0);
+          // Open regardless of count — a settled search with zero results
+          // still shows a "no matches" row + the manual-search fallback
+          // button, rather than rendering nothing at all (see the panel's
+          // own comment below for why that silence was itself a bug).
+          setLiveMatchesOpen(true);
         })
         .catch(() => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatches([]);
-          setLiveMatchesOpen(false);
+          setLiveMatchesOpen(true);
         })
         .finally(() => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatchesLoading(false);
         });
     }, LIVE_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
@@ -279,13 +286,15 @@ function Home() {
                   placeholder={`Enter a ${propertyKind} property address in Texas`}
                   className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground px-4 py-3 outline-none rounded-lg"
                   ariaLabel={`${propertyKind === "commercial" ? "Commercial" : "Residential"} property address`}
-                  // Google's own generic suggestion list is noise now that
-                  // the CAD live-match dropdown below is the real, fast,
-                  // authoritative suggestion source — always off, not just
-                  // while a CAD match happens to be showing (confirmed live:
-                  // "3500 n bonn" surfaced five unrelated, scattered "Bonn"
-                  // streets across different counties/cities with no house-
-                  // number match, before any CAD result had even loaded).
+                  // Always on — this component's own plain-text suggestion
+                  // list is now fully superseded by the unified live-match
+                  // panel below, which already folds Google's own
+                  // suggestions INTO its search (see unifiedPropertySearch in
+                  // lib/unified-search.ts): each Google candidate is resolved
+                  // to a real address and run through CAD lookup, so the one
+                  // panel shows real, parcel-grounded results regardless of
+                  // whether the match came from the typed text directly or
+                  // via a Google-resolved business name.
                   suppressSuggestions
                 />
                 <MicButton onResult={setAddress} />
@@ -302,11 +311,24 @@ function Home() {
                 <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
               )}
 
-              {liveMatchesOpen && liveMatchesCommercial.length > 0 && (
+              {liveMatchesOpen && (
                 <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm">
                   {liveMatchesLoading && (
                     <p className="border-b border-border px-4 pt-2 pb-1 text-xs text-muted-foreground">
                       Updating…
+                    </p>
+                  )}
+                  {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
+                    // A settled search that genuinely found nothing — shown
+                    // instead of rendering nothing at all (confirmed live:
+                    // "Braum's Denton"/"Taco Bell Denton" can come back
+                    // empty even after unifiedPropertySearch tries Google,
+                    // since a franchise location is often titled to a
+                    // landlord/franchisee CAD has no way to tie to the
+                    // brand name). Still gives a next step rather than
+                    // silence.
+                    <p className="px-4 py-3 text-sm text-muted-foreground">
+                      No matching county records found for "{address.trim()}".
                     </p>
                   )}
                   {liveMatchesCommercial.slice(0, 6).map((r, i) => (
@@ -337,7 +359,7 @@ function Home() {
                       setLiveMatchesOpen(false);
                       goToIntake(address);
                     }}
-                    className="block w-full bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
+                    className="block w-full border-t border-border bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
                   >
                     Don't see your address? Click here.
                   </button>

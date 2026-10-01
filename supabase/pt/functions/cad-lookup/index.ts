@@ -852,6 +852,10 @@ function coreClauseOr(field: string, core: string): string {
 // mismatch, the same way SUFFIX_CANONICAL grew for street suffixes.
 const NAME_SEARCH_ALIASES: Record<string, string> = {
   WALMART: "WAL-MART",
+  // Confirmed live (Denton): "MCDONALD'S REAL ESTATE COMPANY" — the key is
+  // punctuation/space-stripped before lookup (see nameSearchVariants below),
+  // so "mcdonalds", "Mc Donalds", and "McDonald's" all hit this same entry.
+  MCDONALDS: "MCDONALD'S",
 };
 
 function nameSearchVariants(name: string): string[] {
