@@ -204,6 +204,80 @@ function applyStructureDetail(
 const STREET_SUFFIX_ALT =
   "st|street|rd|road|dr|drive|ln|lane|ave|avenue|blvd|boulevard|ct|court|pl|place|plz|plaza|pkwy|parkway|hwy|highway|fwy|freeway|cir|circle|way|trl|trail|trce|trace|loop|cv|cove|bend|xing|crossing|walk|row|run|mnr|manor|holw|hollow|pt|point|rdg|ridge|grn|green|knl|knoll|pass|path|vlg|village";
 
+// Canonicalizes a suffix word to one short form (PKWY, not "parkway" or
+// "Pkwy") — hand-kept in sync with STREET_SUFFIX_ALT above, same pairs.
+// Used by findNearby's street-match sort tier (below) so two streets that
+// differ only in suffix SPELLING ("Parker Road" vs "PARKER RD") still
+// compare equal, while two that differ in suffix TYPE ("Dallas Pkwy" vs
+// "Dallas Dr" — both genuinely real, different streets that merely share a
+// base word) do not collapse into a false match.
+const SUFFIX_CANONICAL: Record<string, string> = {
+  ST: "ST",
+  STREET: "ST",
+  RD: "RD",
+  ROAD: "RD",
+  DR: "DR",
+  DRIVE: "DR",
+  LN: "LN",
+  LANE: "LN",
+  AVE: "AVE",
+  AVENUE: "AVE",
+  BLVD: "BLVD",
+  BOULEVARD: "BLVD",
+  CT: "CT",
+  COURT: "CT",
+  PL: "PL",
+  PLACE: "PL",
+  PLZ: "PLZ",
+  PLAZA: "PLZ",
+  PKWY: "PKWY",
+  PARKWAY: "PKWY",
+  HWY: "HWY",
+  HIGHWAY: "HWY",
+  FWY: "FWY",
+  FREEWAY: "FWY",
+  CIR: "CIR",
+  CIRCLE: "CIR",
+  WAY: "WAY",
+  TRL: "TRL",
+  TRAIL: "TRL",
+  TRCE: "TRCE",
+  TRACE: "TRCE",
+  LOOP: "LOOP",
+  CV: "CV",
+  COVE: "CV",
+  BEND: "BEND",
+  XING: "XING",
+  CROSSING: "XING",
+  WALK: "WALK",
+  ROW: "ROW",
+  RUN: "RUN",
+  MNR: "MNR",
+  MANOR: "MNR",
+  HOLW: "HOLW",
+  HOLLOW: "HOLW",
+  PT: "PT",
+  POINT: "PT",
+  RDG: "RDG",
+  RIDGE: "RDG",
+  GRN: "GRN",
+  GREEN: "GRN",
+  KNL: "KNL",
+  KNOLL: "KNL",
+  PASS: "PASS",
+  PATH: "PATH",
+  VLG: "VLG",
+  VILLAGE: "VLG",
+};
+
+// The trailing suffix word of a street string (whole street, e.g. "Dallas
+// Pkwy", or just a house-number-stripped portion), canonicalized — null
+// when none is recognized at all (a bare road with no suffix typed).
+function trailingSuffixOf(street: string): string | null {
+  const m = street.match(new RegExp(`\\b(${STREET_SUFFIX_ALT})\\.?$`, "i"));
+  return m ? (SUFFIX_CANONICAL[m[1].toUpperCase()] ?? null) : null;
+}
+
 // A comma DOES exist somewhere in the address but not between the street and
 // the city specifically ("4220 S Preston Rd Celina, TX 75009" — the comma
 // only separates city from state/zip) — found live 2026-09-03 chasing a
@@ -356,6 +430,19 @@ function cityOf(propertyAddress: string): string {
   // not the common case.
   const fallback = propertyAddress.match(/.*[,\s]([A-Za-z][A-Za-z'-]*?)\s*,?\s*(?:TX|Texas)\b/i);
   return fallback ? fallback[1].trim() : "";
+}
+
+// Mirror of cityOf above, same suffix-word anchor (greedy .* so a street
+// whose own name contains a suffix word, e.g. "Market Place Blvd", still
+// anchors on the real trailing suffix, not a false mid-name match) — but
+// capturing what comes BEFORE the suffix instead of after it: the house
+// number + the real street name + its suffix, with the city/state/zip tail
+// dropped. Used by findNearby's street-match sort tier below.
+function streetPortionOf(propertyAddress: string): string {
+  const m = propertyAddress.match(
+    new RegExp(`^\\s*\\d+[A-Za-z]?\\s+(.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?)`, "i"),
+  );
+  return m ? m[1].trim() : "";
 }
 
 // Bidirectional on purpose — real, minor city-naming differences go both
@@ -2581,7 +2668,50 @@ async function findNearby(
     const z = extractZip(addr);
     return z ? z.slice(0, 2) : null;
   };
+
+  // Strongest signal of all, checked ahead of everything else — found live
+  // 2026-10-01, the very next report after the region tier shipped ("6555
+  // Dallas Pkwy" still not surfacing even with a real zip given): a
+  // per-county nearby query's own tight-phrase-first attempt
+  // (nearbyFeaturesWithFallback above) can fall through to its loose,
+  // bare-core-word fallback under load, and that loose query is exactly the
+  // "street core word collides with an unrelated city name" case already
+  // documented there — "DALLAS" being both the searched street's core AND
+  // an extremely common city name in its own right made this far worse than
+  // the "PARKER" case that pattern was first found for. The result: real
+  // "Dallas Pkwy" parcels and "Frankford Rd, DALLAS" parcels (wrong street,
+  // right word only because DALLAS is its CITY) arrived mixed together, and
+  // house-number coincidence alone let the wrong street win.
+  //
+  // This re-checks each candidate's OWN street portion (not city, not the
+  // whole address) against the searched street's core AND suffix —
+  // independent of whatever the upstream query actually matched on, so a
+  // slow/loose backend response can no longer let the wrong street outrank
+  // the right one. Core word alone isn't enough: a first version of this
+  // fix compared only the suffix-stripped core and still let "Dallas Dr" in
+  // Austin pass as a match for "Dallas Pkwy", since both reduce to the bare
+  // core "DALLAS" — genuinely different streets that merely share a base
+  // word. trailingSuffixOf (canonicalized, so "Parker Road" vs. "PARKER RD"
+  // still agree despite the spelling difference) now has to agree too, when
+  // both sides actually have a recognized suffix.
+  const searchedPortion = parsed ? parsed.street.trim() : null;
+  const searchedStreetCore = searchedPortion ? coreStreetName(searchedPortion).toUpperCase() : null;
+  const searchedSuffix = searchedPortion ? trailingSuffixOf(searchedPortion) : null;
+  const matchesSearchedStreet = (addr: string): boolean => {
+    if (!searchedStreetCore) return false;
+    const portion = streetPortionOf(addr);
+    if (!portion || coreStreetName(portion).toUpperCase() !== searchedStreetCore) return false;
+    const candidateSuffix = trailingSuffixOf(portion);
+    if (searchedSuffix && candidateSuffix && searchedSuffix !== candidateSuffix) return false;
+    return true;
+  };
+
   deduped.sort((a, b) => {
+    if (searchedStreetCore) {
+      const as_ = matchesSearchedStreet(a.propertyAddress) ? 0 : 1;
+      const bs_ = matchesSearchedStreet(b.propertyAddress) ? 0 : 1;
+      if (as_ !== bs_) return as_ - bs_;
+    }
     if (targetZipPrefix) {
       const ar = zipPrefixOf(a.propertyAddress) === targetZipPrefix ? 0 : 1;
       const br = zipPrefixOf(b.propertyAddress) === targetZipPrefix ? 0 : 1;
