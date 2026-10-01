@@ -279,7 +279,14 @@ function Home() {
                   placeholder={`Enter a ${propertyKind} property address in Texas`}
                   className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground px-4 py-3 outline-none rounded-lg"
                   ariaLabel={`${propertyKind === "commercial" ? "Commercial" : "Residential"} property address`}
-                  suppressSuggestions={liveMatchesOpen}
+                  // Google's own generic suggestion list is noise now that
+                  // the CAD live-match dropdown below is the real, fast,
+                  // authoritative suggestion source — always off, not just
+                  // while a CAD match happens to be showing (confirmed live:
+                  // "3500 n bonn" surfaced five unrelated, scattered "Bonn"
+                  // streets across different counties/cities with no house-
+                  // number match, before any CAD result had even loaded).
+                  suppressSuggestions
                 />
                 <MicButton onResult={setAddress} />
                 <button

@@ -651,7 +651,14 @@ function Intake() {
               }}
               placeholder="e.g. 500 Main St, Houston, TX 77002"
               className="rounded-md border border-input bg-background px-4 py-3"
-              suppressSuggestions={liveMatchesOpen}
+              // Google's own generic suggestion list is noise now that the
+              // CAD live-match dropdown below is the real, fast,
+              // authoritative suggestion source — always off, not just
+              // while a CAD match happens to be showing (confirmed live:
+              // "3500 n bonn" surfaced five unrelated, scattered "Bonn"
+              // streets across different counties/cities with no house-
+              // number match, before any CAD result had even loaded).
+              suppressSuggestions
             />
             <button
               type="submit"
