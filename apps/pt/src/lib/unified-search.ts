@@ -20,6 +20,7 @@
 // anywhere nearby.
 import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
 import { fetchGoogleSuggestions, fetchGooglePlaceDetails, GOOGLE_API_KEY } from "./google-places";
+import { parcelIndexSearch } from "./parcel-index-search";
 
 // Bounded, not exhaustive — each extra candidate is a real Place Details call
 // plus a real CAD lookup, and the debounce/MIN_LIVE_SEARCH_LENGTH gating in
@@ -48,6 +49,20 @@ function recordsFromResult(res: CadLookupResult): CadRecord[] {
   if (res.matched === true) return [res.record];
   if (res.matched === "multiple") return res.options;
   return res.nearby;
+}
+
+// Fast local index first (milliseconds, once a county's been ingested —
+// see parcel-index-search.ts); only falls back to the slow, live
+// cad-lookup sweep (several seconds, bounded by PREVIEW_QUERY_TIMEOUT_MS)
+// when the index has nothing — a county not yet backfilled, or a genuinely
+// stale/missing row. Never regresses coverage, only adds speed where the
+// index already has data.
+async function lookupRecords(addressOrName: string): Promise<CadRecord[]> {
+  const indexed = await parcelIndexSearch(addressOrName).catch(() => [] as CadRecord[]);
+  if (indexed.length > 0) return indexed;
+  return cadLookupPreview(addressOrName)
+    .then(recordsFromResult)
+    .catch(() => [] as CadRecord[]);
 }
 
 function dedupeKey(r: CadRecord): string {
@@ -83,9 +98,7 @@ export async function unifiedPropertySearch(
   query: string,
   signal?: AbortSignal,
 ): Promise<UnifiedMatch[]> {
-  const direct = cadLookupPreview(query)
-    .then((res) => recordsFromResult(res).map((record) => ({ record })))
-    .catch(() => [] as UnifiedMatch[]);
+  const direct = lookupRecords(query).then((records) => records.map((record) => ({ record })));
 
   const viaGoogle = GOOGLE_API_KEY
     ? fetchGoogleSuggestions(query, signal)
@@ -101,9 +114,7 @@ export async function unifiedPropertySearch(
             resolved
               .filter((r): r is { label: string; address: string } => Boolean(r.address))
               .map(async ({ label, address }) => {
-                const records = await cadLookupPreview(address)
-                  .then(recordsFromResult)
-                  .catch(() => [] as CadRecord[]);
+                const records = await lookupRecords(address);
                 return records.map((record) => ({ record, googleLabel: label }));
               }),
           );
