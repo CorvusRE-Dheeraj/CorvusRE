@@ -116,6 +116,12 @@ function Intake() {
   const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
   const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
   const liveMatchRequestRef = useRef(0);
+  // CorvusPT serves commercial only, and a disabled/grayed residential row in
+  // this list is just noise the user can't act on — drop them rather than
+  // show them unselectably.
+  const liveMatchesCommercial = liveMatches.filter(
+    (r) => classifyPropertyCategory(r.propertyType) !== "residential",
+  );
   const [pickingOnMap, setPickingOnMap] = useState(false);
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
   const [noticeName, setNoticeName] = useState<string | null>(null);
@@ -642,6 +648,7 @@ function Intake() {
               }}
               placeholder="e.g. 500 Main St, Houston, TX 77002"
               className="rounded-md border border-input bg-background px-4 py-3"
+              suppressSuggestions={liveMatchesOpen}
             />
             <button
               type="submit"
@@ -656,46 +663,29 @@ function Intake() {
             <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
           )}
 
-          {liveMatchesOpen && liveMatches.length > 0 && (
+          {liveMatchesOpen && liveMatchesCommercial.length > 0 && (
             <div className="mt-2 grid gap-1.5 rounded-lg border border-border bg-card p-2 shadow-sm">
               <p className="px-1 text-xs font-medium text-muted-foreground">
                 Matching county records{liveMatchesLoading ? " (updating…)" : ""}:
               </p>
-              {liveMatches.slice(0, 6).map((r, i) => {
-                // Same commercial-only guard as the notfound step's own list
-                // — shown so it's not a mystery why a real result is
-                // unclickable, not silently hidden.
-                const category = classifyPropertyCategory(r.propertyType);
-                const isResidential = category === "residential";
-                return (
-                  <button
-                    key={`${r.cad}-${r.accountNumber ?? i}`}
-                    type="button"
-                    onClick={() => !isResidential && void selectLiveMatch(r)}
-                    disabled={isResidential}
-                    title={
-                      isResidential
-                        ? "Residential — CorvusPT currently serves commercial properties only"
-                        : undefined
-                    }
-                    className={`row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
-                      isResidential ? "opacity-50 grayscale cursor-not-allowed" : ""
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {r.cad}
-                        {r.accountNumber && <> · Acct {r.accountNumber}</>}
-                        {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
-                      </div>
+              {liveMatchesCommercial.slice(0, 6).map((r, i) => (
+                <button
+                  key={`${r.cad}-${r.accountNumber ?? i}`}
+                  type="button"
+                  onClick={() => void selectLiveMatch(r)}
+                  className="row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {r.cad}
+                      {r.accountNumber && <> · Acct {r.accountNumber}</>}
+                      {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
                     </div>
-                    {!isResidential && (
-                      <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
-                    )}
-                  </button>
-                );
-              })}
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
+                </button>
+              ))}
             </div>
           )}
 

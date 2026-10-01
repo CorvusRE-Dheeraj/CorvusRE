@@ -91,6 +91,12 @@ function Home() {
   const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
   const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
   const liveMatchRequestRef = useRef(0);
+  // CorvusPT serves commercial only, and a disabled/grayed residential row in
+  // this list is just noise the user can't act on — drop them rather than
+  // show them unselectably.
+  const liveMatchesCommercial = liveMatches.filter(
+    (r) => classifyPropertyCategory(r.propertyType) !== "residential",
+  );
 
   const MIN_LIVE_SEARCH_LENGTH = 8;
   const LIVE_SEARCH_DEBOUNCE_MS = 500;
@@ -273,6 +279,7 @@ function Home() {
                   placeholder={`Enter a ${propertyKind} property address in Texas`}
                   className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground px-4 py-3 outline-none rounded-lg"
                   ariaLabel={`${propertyKind === "commercial" ? "Commercial" : "Residential"} property address`}
+                  suppressSuggestions={liveMatchesOpen}
                 />
                 <MicButton onResult={setAddress} />
                 <button
@@ -288,28 +295,19 @@ function Home() {
                 <p className="mt-2 text-xs text-muted-foreground">Checking county records…</p>
               )}
 
-              {liveMatchesOpen && liveMatches.length > 0 && (
+              {liveMatchesOpen && liveMatchesCommercial.length > 0 && (
                 <div className="mt-2 grid gap-1.5 rounded-lg border border-border bg-card p-2 text-left shadow-sm">
                   <p className="px-1 text-xs font-medium text-muted-foreground">
                     Matching county records{liveMatchesLoading ? " (updating…)" : ""}:
                   </p>
-                  {liveMatches.slice(0, 6).map((r, i) => {
-                    const category = classifyPropertyCategory(r.propertyType);
-                    const isResidential = category === "residential";
-                    return (
+                  {liveMatchesCommercial
+                    .slice(0, 6)
+                    .map((r, i) => (
                       <button
                         key={`${r.cad}-${r.accountNumber ?? i}`}
                         type="button"
                         onClick={() => selectLiveMatch(r)}
-                        disabled={isResidential}
-                        title={
-                          isResidential
-                            ? "Residential — CorvusPT currently serves commercial properties only"
-                            : undefined
-                        }
-                        className={`row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left ${
-                          isResidential ? "opacity-50 grayscale cursor-not-allowed" : ""
-                        }`}
+                        className="row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left"
                       >
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium">{r.propertyAddress}</div>
@@ -319,12 +317,9 @@ function Home() {
                             {r.totalValue != null && <> · Assessed {currency(r.totalValue)}</>}
                           </div>
                         </div>
-                        {!isResidential && (
-                          <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
-                        )}
+                        <span className="shrink-0 text-xs font-semibold text-accent">Select →</span>
                       </button>
-                    );
-                  })}
+                    ))}
                 </div>
               )}
             </div>

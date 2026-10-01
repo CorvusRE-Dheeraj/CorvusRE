@@ -21,6 +21,16 @@ type Props = {
   placeholder?: string;
   className?: string;
   ariaLabel?: string;
+  // When true, this component's own suggestion dropdown never renders —
+  // internal search/debounce/state all still run normally, only the `{open
+  // && ...}` list is suppressed. Added for callers that show a SECOND
+  // dropdown of their own below this input (the live CAD-match list on the
+  // homepage and /intake) — confirmed live: both panels floating open at
+  // once visually overlap (this one is `position: absolute`, so it floats
+  // over whatever comes after it in normal flow, not pushed below it), and
+  // once there's a real, verified county match to show, that's strictly
+  // more useful than a generic "did you mean this address" text guess.
+  suppressSuggestions?: boolean;
 };
 
 type Suggestion = {
@@ -281,6 +291,7 @@ export function AddressAutocomplete({
   placeholder,
   className,
   ariaLabel,
+  suppressSuggestions,
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -465,7 +476,7 @@ export function AddressAutocomplete({
         aria-controls={listboxId}
         autoComplete="off"
       />
-      {open && (
+      {open && !suppressSuggestions && (
         <ul
           id={listboxId}
           role="listbox"
