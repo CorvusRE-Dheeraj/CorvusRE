@@ -24,7 +24,7 @@ import {
   type PropertyKind,
 } from "@/lib/intake-store";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
-import { unifiedPropertySearch } from "@/lib/unified-search";
+import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useAuth } from "@/lib/auth";
@@ -113,7 +113,7 @@ function Intake() {
   // inline. Debounced in the effect below; cleared whenever the typed text
   // gets too short to be worth a real lookup, or once the user moves past
   // this step entirely.
-  const [liveMatches, setLiveMatches] = useState<CadRecord[]>([]);
+  const [liveMatches, setLiveMatches] = useState<UnifiedMatch[]>([]);
   const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
   const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
   const liveMatchRequestRef = useRef(0);
@@ -121,7 +121,7 @@ function Intake() {
   // this list is just noise the user can't act on — drop them rather than
   // show them unselectably.
   const liveMatchesCommercial = liveMatches.filter(
-    (r) => classifyPropertyCategory(r.propertyType) !== "residential",
+    (m) => classifyPropertyCategory(m.record.propertyType) !== "residential",
   );
   const [pickingOnMap, setPickingOnMap] = useState(false);
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
@@ -696,7 +696,7 @@ function Intake() {
                   No matching county records found for "{address.trim()}".
                 </p>
               )}
-              {liveMatchesCommercial.slice(0, 6).map((r, i) => (
+              {liveMatchesCommercial.slice(0, 6).map(({ record: r, googleLabel }, i) => (
                 <button
                   key={`${r.cad}-${r.accountNumber ?? i}`}
                   type="button"
@@ -705,6 +705,15 @@ function Intake() {
                     i > 0 ? "border-t border-border" : ""
                   }`}
                 >
+                  {/* Shown only for a result found by following a Google
+                  suggestion to its real address first (see
+                  unifiedPropertySearch) — ties the store/business name the
+                  user actually searched for back to the CAD record below
+                  it, instead of just a bare address they typed a name to
+                  find. */}
+                  {googleLabel && (
+                    <div className="truncate text-xs font-semibold text-accent">{googleLabel}</div>
+                  )}
                   <div className="truncate text-sm font-semibold uppercase tracking-tight">
                     {r.propertyAddress}
                   </div>

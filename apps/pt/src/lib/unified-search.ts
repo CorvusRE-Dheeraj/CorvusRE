@@ -23,9 +23,26 @@ import { fetchGoogleSuggestions, fetchGooglePlaceDetails, GOOGLE_API_KEY } from 
 
 // Bounded, not exhaustive — each extra candidate is a real Place Details call
 // plus a real CAD lookup, and the debounce/MIN_LIVE_SEARCH_LENGTH gating in
-// the caller already limits how often this runs at all.
-const MAX_GOOGLE_CANDIDATES = 4;
+// the caller already limits how often this runs at all. Raised 4 -> 8 after
+// a real report ("Taco Bell Denton" surfacing only scattered non-Denton
+// matches): Google's own ranking doesn't reliably put the city-matching
+// suggestion in the first few slots, so a narrow cap could drop it before
+// it's ever resolved/checked at all — the city-preference sort below only
+// helps with candidates that were actually fetched.
+const MAX_GOOGLE_CANDIDATES = 8;
 const MAX_RESULTS = 12;
+
+export type UnifiedMatch = {
+  record: CadRecord;
+  // The Google suggestion's own label (e.g. "Taco Bell, 123 N I-35,
+  // Denton, TX") — set only when this record was found by following a
+  // Google suggestion to its real address first, not when it came from
+  // typing/matching the raw text directly. Lets the dropdown show the
+  // business name right next to the CAD-sourced parcel/account info, so a
+  // store-name search doesn't just show a bare address the user has no way
+  // to recognize as the right one.
+  googleLabel?: string;
+};
 
 function recordsFromResult(res: CadLookupResult): CadRecord[] {
   if (res.matched === true) return [res.record];
@@ -37,55 +54,87 @@ function dedupeKey(r: CadRecord): string {
   return `${r.cad}:${r.accountNumber ?? r.propertyAddress}`;
 }
 
+// Best-effort city guess from the tail of the query — just enough to rank
+// "the Denton one" above "a same-named store somewhere else in Texas" when
+// both are among the candidates. Deliberately simple (last word only, same
+// as the edge function's own parseNameQuery fallback): good enough for the
+// overwhelmingly common single-word-city case ("Walmart Denton"), and never
+// worse than no preference at all when it's wrong for a multi-word city.
+function guessCityWord(query: string): string {
+  const words = query.trim().split(/\s+/);
+  return words.length > 1 ? words[words.length - 1] : "";
+}
+
+function matchesCityGuess(address: string, cityGuess: string): boolean {
+  return Boolean(cityGuess) && address.toUpperCase().includes(cityGuess.toUpperCase());
+}
+
 // Resolves whatever the user typed to a merged, deduped list of real CAD
 // records — direct matches from the raw typed text, plus matches found by
-// following Google's own top suggestions to their real address first.
-// Never throws: any individual lookup that fails just contributes nothing,
-// same as a plain no-match, so one slow/broken source can't blank the
-// others.
+// following Google's own top suggestions to their real address first, then
+// sorted so whichever result sits in the city the user actually typed comes
+// first (found live: without this, "Taco Bell Denton" could surface real
+// Taco Bell locations scattered anywhere in Texas with no Denton one
+// visible among them, since Google's own ranking doesn't favor a literal
+// city word in the input as strongly as this app needs). Never throws: any
+// individual lookup that fails just contributes nothing, same as a plain
+// no-match, so one slow/broken source can't blank the others.
 export async function unifiedPropertySearch(
   query: string,
   signal?: AbortSignal,
-): Promise<CadRecord[]> {
+): Promise<UnifiedMatch[]> {
   const direct = cadLookupPreview(query)
-    .then(recordsFromResult)
-    .catch(() => [] as CadRecord[]);
+    .then((res) => recordsFromResult(res).map((record) => ({ record })))
+    .catch(() => [] as UnifiedMatch[]);
 
   const viaGoogle = GOOGLE_API_KEY
     ? fetchGoogleSuggestions(query, signal)
         .then(async (suggestions) => {
           const candidates = suggestions.slice(0, MAX_GOOGLE_CANDIDATES);
-          const addresses = await Promise.all(
-            candidates.map((s) => fetchGooglePlaceDetails(s.placeId, signal).catch(() => null)),
+          const resolved = await Promise.all(
+            candidates.map(async (s) => ({
+              label: s.label,
+              address: await fetchGooglePlaceDetails(s.placeId, signal).catch(() => null),
+            })),
           );
-          const uniqueAddresses = [
-            ...new Set(addresses.filter((a): a is string => Boolean(a))),
-          ];
-          const recordLists = await Promise.all(
-            uniqueAddresses.map((addr) =>
-              cadLookupPreview(addr)
-                .then(recordsFromResult)
-                .catch(() => [] as CadRecord[]),
-            ),
+          const matchLists = await Promise.all(
+            resolved
+              .filter((r): r is { label: string; address: string } => Boolean(r.address))
+              .map(async ({ label, address }) => {
+                const records = await cadLookupPreview(address)
+                  .then(recordsFromResult)
+                  .catch(() => [] as CadRecord[]);
+                return records.map((record) => ({ record, googleLabel: label }));
+              }),
           );
-          return recordLists.flat();
+          return matchLists.flat();
         })
-        .catch(() => [] as CadRecord[])
-    : Promise.resolve([] as CadRecord[]);
+        .catch(() => [] as UnifiedMatch[])
+    : Promise.resolve([] as UnifiedMatch[]);
 
-  const [directRecords, googleRecords] = await Promise.all([direct, viaGoogle]);
+  const [directMatches, googleMatches] = await Promise.all([direct, viaGoogle]);
 
   const seen = new Set<string>();
-  const merged: CadRecord[] = [];
+  const merged: UnifiedMatch[] = [];
   // Direct results first — a match on the raw typed text (a real address, or
   // our own owner-name search) is at least as precise as a Google-mediated
   // one, so it's preferred when both find the same record (dedupe keeps the
   // first occurrence).
-  for (const r of [...directRecords, ...googleRecords]) {
-    const key = dedupeKey(r);
+  for (const m of [...directMatches, ...googleMatches]) {
+    const key = dedupeKey(m.record);
     if (seen.has(key)) continue;
     seen.add(key);
-    merged.push(r);
+    merged.push(m);
   }
+
+  const cityGuess = guessCityWord(query);
+  if (cityGuess) {
+    merged.sort((a, b) => {
+      const ac = matchesCityGuess(a.record.propertyAddress, cityGuess) ? 0 : 1;
+      const bc = matchesCityGuess(b.record.propertyAddress, cityGuess) ? 0 : 1;
+      return ac - bc;
+    });
+  }
+
   return merged.slice(0, MAX_RESULTS);
 }
