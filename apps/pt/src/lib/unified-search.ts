@@ -6,42 +6,50 @@
 // ID, account number, assessed value) in a SINGLE dropdown, not two.
 //
 // How it works: fire our own direct cad-lookup preview search AND Google's
-// Places Autocomplete concurrently. Google resolves things our owner-name
-// search structurally can't (a franchise location titled to an unrelated
+// Text Search concurrently. Google resolves things our owner-name search
+// structurally can't (a franchise location titled to an unrelated
 // landlord/franchisee LLC — confirmed live: "Taco Bell Denton"/"Braum's
 // Denton" have zero Denton parcels under either name, no matter the
 // spelling, because the county's owner-name field is the LEGAL titleholder,
 // not the tenant brand) — Google still knows the real place by its business
-// name, same as Google Maps search does. Each of Google's top few
-// suggestions gets resolved to a real address (Place Details) and THEN run
+// name, same as Google Maps search does. Each of Google's matches is run
 // through the exact same CAD lookup, so a business name search still ends
-// up as a real, parcel-grounded county record whenever one exists, and only
+// up as real, parcel-grounded county records whenever any exist, and only
 // falls back to nothing when the business genuinely isn't a titleholder
 // anywhere nearby.
+//
+// Text Search (not Autocomplete) specifically — found live chasing a real
+// report ("I see 3 Braum's locations in Denton on Google Maps, why does our
+// app only find one?"): Autocomplete returned 5 suggestions for "braums
+// denton" where only 1 was genuinely in Denton city (the rest were Haltom
+// City/Carrollton/Frisco/The Colony); Text Search returned exactly the 2
+// real Denton locations, matching Google Maps' own result set precisely.
+// It's also simpler — one call already returns a usable address per
+// result, no per-candidate Place Details follow-up needed.
+//
+// This file deliberately has NO dependency on any locally-cached parcel
+// table — an earlier version tried pre-indexing county data for speed, but
+// the bulk-ingestion cron jobs behind it caused a real Disk IO budget
+// incident on the production database and were removed entirely (table,
+// ingestion function, and cron jobs). cadLookupPreview below always queries
+// live.
 import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
-import { fetchGoogleSuggestions, fetchGooglePlaceDetails, GOOGLE_API_KEY } from "./google-places";
-import { parcelIndexSearch } from "./parcel-index-search";
+import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 
-// Bounded, not exhaustive — each extra candidate is a real Place Details call
-// plus a real CAD lookup, and the debounce/MIN_LIVE_SEARCH_LENGTH gating in
-// the caller already limits how often this runs at all. Raised 4 -> 8 after
-// a real report ("Taco Bell Denton" surfacing only scattered non-Denton
-// matches): Google's own ranking doesn't reliably put the city-matching
-// suggestion in the first few slots, so a narrow cap could drop it before
-// it's ever resolved/checked at all — the city-preference sort below only
-// helps with candidates that were actually fetched.
+// Bounded, not exhaustive — each extra candidate is a real CAD lookup, and
+// the debounce/MIN_LIVE_SEARCH_LENGTH gating in the caller already limits
+// how often this runs at all.
 const MAX_GOOGLE_CANDIDATES = 8;
 const MAX_RESULTS = 12;
 
 export type UnifiedMatch = {
   record: CadRecord;
-  // The Google suggestion's own label (e.g. "Taco Bell, 123 N I-35,
-  // Denton, TX") — set only when this record was found by following a
-  // Google suggestion to its real address first, not when it came from
-  // typing/matching the raw text directly. Lets the dropdown show the
-  // business name right next to the CAD-sourced parcel/account info, so a
-  // store-name search doesn't just show a bare address the user has no way
-  // to recognize as the right one.
+  // The Google result's own label (e.g. "Taco Bell") — set only when this
+  // record was found by following a Google match to its real address
+  // first, not when it came from typing/matching the raw text directly.
+  // Lets the dropdown show the business name right next to the CAD-sourced
+  // parcel/account info, so a store-name search doesn't just show a bare
+  // address the user has no way to recognize as the right one.
   googleLabel?: string;
 };
 
@@ -54,29 +62,15 @@ function recordsFromResult(res: CadLookupResult, includeNearby: boolean): CadRec
   return includeNearby ? res.nearby : [];
 }
 
-// Fast local index first (milliseconds, once a county's been ingested —
-// see parcel-index-search.ts); only falls back to the slow, live
-// cad-lookup sweep (several seconds, bounded by PREVIEW_QUERY_TIMEOUT_MS)
-// when the index has nothing — a county not yet backfilled, or a genuinely
-// stale/missing row. Never regresses coverage, only adds speed where the
-// index already has data.
-//
 // includeNearby controls whether the live path's generic "nearby" fallback
 // counts as a result at all. Default true for a direct search on the raw
 // typed text, where "no exact hit, here are real nearby options" is
-// legitimate. Passed false when resolving a Google suggestion's address
-// (see unifiedPropertySearch below): found live ("1895 W University Drive,
-// Frisco" resolved via Google, but Denton — where Frisco actually is —
-// isn't in the fast index yet) that the live path's nearby fallback for a
-// bare "University Dr" match pulled in five unrelated Kaufman County
-// parcels on a DIFFERENT University Dr in Forney, and every one of them got
-// stamped with the Google suggestion's own specific label ("1895
-// University Drive, Frisco, TX") even though none of them are actually
-// that address — a nearby guess has no real connection to the one place
-// Google resolved, so it should never borrow that place's name.
+// legitimate. Passed false when resolving a Google result's address (see
+// unifiedPropertySearch below): a nearby guess has no real connection to
+// the one place Google resolved, so it should never borrow that place's
+// name — found live, a bare street-name nearby match from an unrelated
+// city once got mislabeled with a Google suggestion's specific address.
 async function lookupRecords(addressOrName: string, includeNearby = true): Promise<CadRecord[]> {
-  const indexed = await parcelIndexSearch(addressOrName).catch(() => [] as CadRecord[]);
-  if (indexed.length > 0) return indexed;
   return cadLookupPreview(addressOrName)
     .then((res) => recordsFromResult(res, includeNearby))
     .catch(() => [] as CadRecord[]);
@@ -131,14 +125,11 @@ function matchesCityGuess(record: CadRecord, cityGuess: string): boolean {
 
 // Resolves whatever the user typed to a merged, deduped list of real CAD
 // records — direct matches from the raw typed text, plus matches found by
-// following Google's own top suggestions to their real address first, then
-// sorted so whichever result sits in the city the user actually typed comes
-// first (found live: without this, "Taco Bell Denton" could surface real
-// Taco Bell locations scattered anywhere in Texas with no Denton one
-// visible among them, since Google's own ranking doesn't favor a literal
-// city word in the input as strongly as this app needs). Never throws: any
-// individual lookup that fails just contributes nothing, same as a plain
-// no-match, so one slow/broken source can't blank the others.
+// following every one of Google's Text Search results to its real address
+// first, then filtered to the city actually typed (see matchesCityGuess).
+// Never throws: any individual lookup that fails just contributes nothing,
+// same as a plain no-match, so one slow/broken source can't blank the
+// others.
 export async function unifiedPropertySearch(
   query: string,
   signal?: AbortSignal,
@@ -146,22 +137,14 @@ export async function unifiedPropertySearch(
   const direct = lookupRecords(query).then((records) => records.map((record) => ({ record })));
 
   const viaGoogle = GOOGLE_API_KEY
-    ? fetchGoogleSuggestions(query, signal)
-        .then(async (suggestions) => {
-          const candidates = suggestions.slice(0, MAX_GOOGLE_CANDIDATES);
-          const resolved = await Promise.all(
-            candidates.map(async (s) => ({
-              label: s.label,
-              address: await fetchGooglePlaceDetails(s.placeId, signal).catch(() => null),
-            })),
-          );
+    ? fetchGoogleTextSearch(query, signal)
+        .then(async (results) => {
+          const candidates = results.slice(0, MAX_GOOGLE_CANDIDATES);
           const matchLists = await Promise.all(
-            resolved
-              .filter((r): r is { label: string; address: string } => Boolean(r.address))
-              .map(async ({ label, address }) => {
-                const records = await lookupRecords(address, false);
-                return records.map((record) => ({ record, googleLabel: label }));
-              }),
+            candidates.map(async ({ label, address }) => {
+              const records = await lookupRecords(address, false);
+              return records.map((record) => ({ record, googleLabel: label }));
+            }),
           );
           return matchLists.flat();
         })

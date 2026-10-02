@@ -125,3 +125,54 @@ export async function fetchGooglePlaceDetails(
     return null;
   }
 }
+
+export type GoogleTextSearchMatch = {
+  label: string;
+  address: string;
+};
+
+// Text Search (New) — a full free-text search ("braums denton", "taco bell
+// 1010"), much closer to what Google Maps' own search box uses than
+// Autocomplete is. Confirmed live: for "braums denton," Autocomplete
+// returned 5 suggestions where only 1 was genuinely in Denton city (the
+// rest were Haltom City/Carrollton/Frisco/The Colony); Text Search returned
+// exactly the 2 real Denton locations, matching what Google Maps itself
+// shows for the same search. Also simpler than Autocomplete+Place-Details:
+// this one call already returns a usable address per result, no
+// per-candidate follow-up request needed.
+export async function fetchGoogleTextSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<GoogleTextSearchMatch[]> {
+  if (!GOOGLE_API_KEY) return [];
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_API_KEY,
+      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.addressComponents",
+    },
+    body: JSON.stringify({
+      textQuery: normalizeRoadPrefix(query),
+      locationBias: { rectangle: TEXAS_RECTANGLE },
+    }),
+  });
+  if (!res.ok) throw new Error(`Google Text Search request failed: ${res.status}`);
+  const data = (await res.json()) as {
+    places?: Array<{
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      addressComponents?: GoogleAddressComponent[];
+    }>;
+  };
+  return (data.places ?? [])
+    .map((p) => {
+      const label = p.displayName?.text;
+      const address =
+        buildAddressFromComponents(p.addressComponents) ??
+        (p.formattedAddress ? cleanGoogleLabel(p.formattedAddress) : null);
+      return label && address ? { label, address } : null;
+    })
+    .filter((m): m is GoogleTextSearchMatch => m !== null);
+}

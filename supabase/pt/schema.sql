@@ -2746,104 +2746,18 @@ grant select, insert, update, delete on public.support_escalations to authentica
 grant select, insert, update, delete on public.support_escalations to service_role;
 
 -- =========================================================================
--- Parcel search index (2026-10-01) — a local, indexed copy of each
--- supported county's parcel data, built so the live-search dropdown
--- (homepage + /intake address box, unifiedPropertySearch) can answer in
--- milliseconds instead of live-querying up to 12 real government ArcGIS
--- endpoints per keystroke. Found live chasing a real report: a single
--- preview search measured 4.48s end to end, hitting
--- PREVIEW_QUERY_TIMEOUT_MS's 4s ceiling almost every time — a hard floor
--- live-querying can't get under, since it's bounded by how slow the
--- slowest of 12 real government servers happens to be that one moment, not
--- by anything in this app's own code. Ownwell's own search is near-instant
--- because they clearly search their own pre-built index, not a live
--- government server, on every keystroke — this is the same approach.
---
--- ingest-cad-parcels (edge function, per-county, paginated, pg_cron'd)
--- bulk-pulls each county's full parcel layer and upserts it here, reusing
--- the exact same outFields/attribute-mapping as cad-lookup's own per-county
--- query functions. cad-lookup itself (the existing live, per-address
--- queries against each county's own server) stays the authoritative source
--- for the one search that actually matters — a real "Validate address"
--- submit or an exact account-number lookup — so a parcel that changed
--- since the last refresh is never silently stale at the moment a filing
--- decision depends on it. This table is read only by the fast, best-effort
--- live-search preview.
-create extension if not exists pg_trgm;
-
-create table if not exists public.parcel_search_index (
-  cad text not null,
-  account_number text not null,
-  owner_name text,
-  property_address text not null,
-  property_type text,
-  land_value numeric,
-  improvement_value numeric,
-  total_value numeric,
-  tax_year int,
-  building_sqft numeric,
-  year_built int,
-  building_class text,
-  lot_size_acres numeric,
-  lot_size_sqft numeric,
-  updated_at timestamptz not null default now(),
-  primary key (cad, account_number)
-);
-
--- Trigram GIN indexes power ILIKE '%...%' search at interactive speed even
--- across millions of rows (Harris alone has ~1.55M real parcels, confirmed
--- live via HCAD's own returnCountOnly query) — the standard technique for
--- fast partial-text match with no ranking needed.
-create index if not exists parcel_search_address_trgm_idx
-  on public.parcel_search_index using gin (property_address gin_trgm_ops);
-create index if not exists parcel_search_owner_trgm_idx
-  on public.parcel_search_index using gin (owner_name gin_trgm_ops);
-
-alter table public.parcel_search_index enable row level security;
--- Read-only, public — this is the same non-sensitive county-published data
--- cad-lookup's own live queries already expose to any visitor today; no
--- new data is made public that wasn't already reachable live.
-drop policy if exists "Anyone can read the parcel search index" on public.parcel_search_index;
-create policy "Anyone can read the parcel search index"
-  on public.parcel_search_index for select
-  using (true);
--- Writes only via the service-role key (ingest-cad-parcels) — no
--- insert/update/delete policy for anon/authenticated at all.
-grant select on public.parcel_search_index to anon, authenticated;
-grant select, insert, update, delete on public.parcel_search_index to service_role;
-
--- Tracks per-county ingestion progress across multiple ingest-cad-parcels
--- invocations — a single edge function call only has a few minutes of real
--- execution time, nowhere near enough to page through Harris's ~1.55M rows
--- in one shot, so a county's full pull is resumed across repeated pg_cron
--- ticks via next_offset until done_through_at is set, then the next
--- scheduled run starts that county over from offset 0 for a fresh refresh.
-create table if not exists public.parcel_ingest_progress (
-  cad text primary key,
-  next_offset int not null default 0,
-  total_count int,
-  last_run_at timestamptz,
-  done_through_at timestamptz,
-  last_error text
-);
-alter table public.parcel_ingest_progress enable row level security;
-grant select, insert, update, delete on public.parcel_ingest_progress to service_role;
--- No anon/authenticated policy at all — operational state, not customer data.
-
--- Applied to the live database (pg_cron -> net.http_post, same shape as
--- refresh-property-base-data/send-deadline-reminders above), not re-run
--- from this file:
---   ingest-cad-parcels-collin  '*/10 * * * *'  ~30k rows (15 pages/tick)
---   ingest-cad-parcels-harris  '*/2 * * * *'   ~15k rows (15 pages/tick,
---     this service caps resultRecordCount at 1000 — half Collin/Dallas's
---     2000 — so a tighter cron interval during the initial ~1.55M-row
---     backfill; slow down once caught up)
---   ingest-cad-parcels-dallas  '*/2 * * * *'   ~30k rows (15 pages/tick)
--- Each loops back to a fresh pass once a full one completes (see
--- ingest-cad-parcels's own done/next_offset handling). Collin, Harris, and
--- Dallas are wired as of 2026-10-02 — the rest of the 12 supported counties
--- still read live via cad-lookup only; add one cron job per county here as
--- each is wired into ingest-cad-parcels's COUNTIES map. Tarrant needs an
--- OBJECTID-range chunking strategy instead (no pagination support at all);
--- Denton was deferred after its own server started erroring on every
--- request, independent of anything this function does.
+-- Parcel search index — REVERTED 2026-10-02. Briefly existed as a local,
+-- indexed copy of each supported county's parcel data (public
+-- .parcel_search_index + .parcel_ingest_progress, populated by a now-deleted
+-- ingest-cad-parcels edge function, pg_cron'd per county) meant to make the
+-- live-search dropdown answer in milliseconds instead of live-querying
+-- government ArcGIS endpoints per keystroke. The repeated bulk upserts into
+-- two GIN trigram indexes (Collin ~441k rows, Harris ~1.55M, Dallas ~685k,
+-- refreshed every 2-10 minutes) burned through the production database's
+-- Disk IO budget badly enough that Supabase sent a real usage-warning email
+-- and even a plain `select 1` briefly timed out. Both tables were dropped,
+-- the edge function deleted, and all three cron jobs unscheduled the same
+-- day. unified-search.ts now relies only on cad-lookup's own live queries
+-- plus Google's Text Search — see that file's own comment for the current
+-- design. Left this note rather than scrubbing all trace of it, the same
+-- way other reverted features in this codebase stay documented.
