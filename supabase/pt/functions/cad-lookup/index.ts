@@ -2865,7 +2865,14 @@ const EXACT_QUERY_TIMEOUT_MS = 15000;
 // EXACT_QUERY_TIMEOUT_MS's own history above), so a preview can genuinely
 // omit a real match that the full validate would still find; that's the
 // accepted cost of a fast typeahead, not a bug.
-const PREVIEW_QUERY_TIMEOUT_MS = 4000;
+//
+// Bumped 4000 -> 6000 on 2026-10-02 chasing a real report (a genuinely real
+// Denton Braum's location, resolved correctly by Google, silently missing
+// from the live dropdown): Denton's own exact-match query measured 4.4-4.5s
+// repeatedly for this one real address — right at the old 4000ms ceiling,
+// so ordinary timing jitter was enough to drop a real match unpredictably.
+// 6s is still a large win over the un-capped 15s this replaced.
+const PREVIEW_QUERY_TIMEOUT_MS = 6000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
