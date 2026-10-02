@@ -7053,7 +7053,8 @@ function EscalationEvaluationSection({
           "Use only the data below. Do not give legal advice or predict outcomes; remind me to verify deadlines with the county.",
         context:
           `CASE: ${property.address}; ARB decision ${protest.arbDecision ?? "n/a"}; original value ${protest.originalValue ?? "n/a"}; final value ${protest.finalValue ?? "n/a"}.\n` +
-          `HEADLINE: ${evalr.headline}\nOPTIONS:\n${lines.join("\n")}`,
+          `HEADLINE: ${evalr.headline}\nMARKET-DISCONNECT EVIDENCE: ${evalr.marketDisconnectEvidence.narrative}\n` +
+          `OPTIONS:\n${lines.join("\n")}`,
       });
       setComparison(answer);
     } catch (err) {
@@ -7118,6 +7119,31 @@ function EscalationEvaluationSection({
       <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-snug text-warning-foreground">
         {evalr.disclaimer}
       </p>
+
+      {evalr.marketDisconnectEvidence.available && (
+        <div
+          className={`mt-3 rounded-md border px-3 py-2 text-xs leading-relaxed ${
+            evalr.marketDisconnectEvidence.overCeiling
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : "border-border bg-muted/40 text-muted-foreground"
+          }`}
+        >
+          <span className="font-semibold">
+            {evalr.marketDisconnectEvidence.overCeiling
+              ? "Statistical evidence: "
+              : "Countywide ratio study: "}
+          </span>
+          {evalr.marketDisconnectEvidence.narrative}{" "}
+          <a
+            href={evalr.marketDisconnectEvidence.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2"
+          >
+            Source: Texas Comptroller ratio study
+          </a>
+        </div>
+      )}
 
       <label className="mt-3 block text-xs font-medium text-muted-foreground">
         Your opinion of value (optional — enables the savings &amp; ROI columns)

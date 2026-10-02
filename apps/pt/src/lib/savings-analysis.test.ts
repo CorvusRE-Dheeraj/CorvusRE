@@ -112,7 +112,7 @@ describe("computeSavingsAnalysis", () => {
     const a = computeSavingsAnalysis({
       cadValue: 3_100_000,
       taxYear: 2026,
-      cad: "Dallas Central Appraisal District", // not in COUNTY_EFFECTIVE_TAX_RATE
+      cad: "Some Other CAD", // not in COUNTY_EFFECTIVE_TAX_RATE
       estimate: formulaEstimate,
       compsIndicated: null,
       taxInputs: EMPTY_TAX_INPUTS,

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Upload,
@@ -18,10 +18,16 @@ import {
 import {
   updateIntake,
   resetIntake,
+  cadRecordToIntakePatch,
   classifyAndStoreDocument,
+  currency,
   type PropertyKind,
 } from "@/lib/intake-store";
+import type { CadRecord } from "@/lib/cad-lookup";
+import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
+import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { LiveSearchLoader } from "@/components/LiveSearchLoader";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { MapPinPicker } from "@/components/MapPinPicker";
 import { HeroBackground } from "@/components/HeroBackground";
@@ -77,6 +83,63 @@ function Home() {
   // much here: this is the address that gets carried forward into /intake.
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [pickingOnMap, setPickingOnMap] = useState(false);
+  // Live CAD matches under the address box, debounced — same feature and
+  // same cadLookupPreview() call as intake.tsx's own live dropdown (see its
+  // comment); this is the OTHER place a user types a property address, and
+  // it was missing this entirely until now. Picking a match here skips
+  // straight to the Confirm step on /intake instead of re-running the
+  // lookup there — see selectLiveMatch below.
+  const [liveMatches, setLiveMatches] = useState<UnifiedMatch[]>([]);
+  const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
+  const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
+  const liveMatchRequestRef = useRef(0);
+  // CorvusPT serves commercial only, and a disabled/grayed residential row in
+  // this list is just noise the user can't act on — drop them rather than
+  // show them unselectably.
+  const liveMatchesCommercial = liveMatches.filter(
+    (m) => classifyPropertyCategory(m.record.propertyType) !== "residential",
+  );
+
+  const MIN_LIVE_SEARCH_LENGTH = 8;
+  const LIVE_SEARCH_DEBOUNCE_MS = 500;
+  useEffect(() => {
+    const q = address.trim();
+    if (q.length < MIN_LIVE_SEARCH_LENGTH) {
+      setLiveMatches([]);
+      setLiveMatchesOpen(false);
+      setLiveMatchesLoading(false);
+      return;
+    }
+    const requestId = ++liveMatchRequestRef.current;
+    setLiveMatchesLoading(true);
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      unifiedPropertySearch(q, controller.signal)
+        .then((results) => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatches(results);
+          // Open regardless of count — a settled search with zero results
+          // still shows a "no matches" row + the manual-search fallback
+          // button, rather than rendering nothing at all (see the panel's
+          // own comment below for why that silence was itself a bug).
+          setLiveMatchesOpen(true);
+        })
+        .catch(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatches([]);
+          setLiveMatchesOpen(true);
+        })
+        .finally(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesLoading(false);
+        });
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   // Shared by the form's own submit and by picking an address suggestion
   // directly (see onPlaceSelected below) — takes the address as a parameter
@@ -87,6 +150,20 @@ function Home() {
     if (!addr.trim()) return;
     resetIntake();
     updateIntake({ address: addr.trim(), propertyKind });
+    navigate({ to: "/intake" });
+  }
+
+  // A live match was picked directly — skip the address-validation round
+  // trip entirely: store the full real record (same field mapping
+  // intake.tsx's applyCadRecord uses) and land straight on /intake's
+  // Confirm step, which already resumes there whenever accountNumber+cad
+  // are set (see its own mount effect).
+  function selectLiveMatch(record: CadRecord) {
+    if (classifyPropertyCategory(record.propertyType) === "residential") return;
+    setLiveMatchesOpen(false);
+    resetIntake();
+    updateIntake({ propertyKind });
+    updateIntake(cadRecordToIntakePatch(record, record.propertyAddress.trim() || address.trim()));
     navigate({ to: "/intake" });
   }
 
@@ -210,6 +287,16 @@ function Home() {
                   placeholder={`Enter a ${propertyKind} property address in Texas`}
                   className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground px-4 py-3 outline-none rounded-lg"
                   ariaLabel={`${propertyKind === "commercial" ? "Commercial" : "Residential"} property address`}
+                  // Always on — this component's own plain-text suggestion
+                  // list is now fully superseded by the unified live-match
+                  // panel below, which already folds Google's own
+                  // suggestions INTO its search (see unifiedPropertySearch in
+                  // lib/unified-search.ts): each Google candidate is resolved
+                  // to a real address and run through CAD lookup, so the one
+                  // panel shows real, parcel-grounded results regardless of
+                  // whether the match came from the typed text directly or
+                  // via a Google-resolved business name.
+                  suppressSuggestions
                 />
                 <MicButton onResult={setAddress} />
                 <button
@@ -220,6 +307,76 @@ function Home() {
                   {resolvingAddress ? "Resolving…" : "Start Free AI Property Review"}
                 </button>
               </form>
+
+              {liveMatchesLoading && liveMatches.length === 0 && (
+                <LiveSearchLoader className="mt-3 px-1" />
+              )}
+
+              {liveMatchesOpen && (
+                <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm">
+                  {liveMatchesLoading && (
+                    <div className="border-b border-border px-4 py-2.5">
+                      <LiveSearchLoader />
+                    </div>
+                  )}
+                  {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
+                    // A settled search that genuinely found nothing — shown
+                    // instead of rendering nothing at all (confirmed live:
+                    // "Braum's Denton"/"Taco Bell Denton" can come back
+                    // empty even after unifiedPropertySearch tries Google,
+                    // since a franchise location is often titled to a
+                    // landlord/franchisee CAD has no way to tie to the
+                    // brand name). Still gives a next step rather than
+                    // silence.
+                    <p className="px-4 py-3 text-sm text-muted-foreground">
+                      No matching county records found for "{address.trim()}".
+                    </p>
+                  )}
+                  {liveMatchesCommercial.slice(0, 6).map(({ record: r, googleLabel }, i) => (
+                    <button
+                      key={`${r.cad}-${r.accountNumber ?? i}`}
+                      type="button"
+                      onClick={() => selectLiveMatch(r)}
+                      className={`row-hover block w-full px-4 py-3 text-left ${
+                        i > 0 ? "border-t border-border" : ""
+                      }`}
+                    >
+                      {/* Shown only for a result found by following a Google
+                      suggestion to its real address first (see
+                      unifiedPropertySearch) — ties the store/business name
+                      the user actually searched for back to the CAD record
+                      below it, instead of just a bare address they typed a
+                      name to find. */}
+                      {googleLabel && (
+                        <div className="truncate text-xs font-semibold text-accent">
+                          {googleLabel}
+                        </div>
+                      )}
+                      <div className="truncate text-sm font-semibold uppercase tracking-tight">
+                        {r.propertyAddress}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <span className="font-bold text-foreground">
+                          PARCEL: {r.accountNumber ?? "—"}
+                        </span>
+                        {" · "}
+                        {r.cad}
+                        {r.totalValue != null && <> · {currency(r.totalValue)}</>}
+                      </div>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiveMatchesOpen(false);
+                      goToIntake(address);
+                    }}
+                    className="block w-full border-t border-border bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
+                  >
+                    Don't see your address? Click here.
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex flex-wrap justify-center gap-3">

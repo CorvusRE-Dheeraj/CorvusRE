@@ -21,7 +21,6 @@ import {
   VolumeX,
   MessageSquareHeart,
   X,
-  Check,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -263,38 +262,68 @@ function Overview() {
       )
       .map((pr) => pr.propertyId as string),
   );
+  // `resolved` (a real settlement/payment/etc.) drops the row from this
+  // widget entirely once it's true — a closed case doesn't need to keep
+  // occupying a "Deadlines" slot forever, same call as ProtestVerdictCard's
+  // own "done" cases. `missed` is the opposite kind of "not upcoming
+  // anymore": the date passed with NOTHING resolved (never filed, never
+  // paid) — that's worth a red flag, not a quiet green checkmark, since
+  // conflating "passed" with "done" would hide a real missed deadline.
   const deadlines = properties
     .filter((p) => !!p.protestDeadline)
     .map((p) => {
       const settled = propertiesWithResolvedCurrentProtest.has(p.id);
+      const past = new Date(p.protestDeadline as string) < new Date();
       return {
         property: p,
         when: new Date(p.protestDeadline as string),
-        label: settled ? "Protest settled" : "Protest deadline",
-        resolved: settled || new Date(p.protestDeadline as string) < new Date(),
+        label: settled
+          ? "Protest settled"
+          : past
+            ? "Protest deadline passed — no case on file"
+            : "Protest deadline",
+        resolved: settled,
+        missed: !settled && past,
       };
     });
   const bills = properties
     .filter((p) => !!p.paymentDueDate && !p.paidAt)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.paymentDueDate as string),
-      label: "Tax bill due",
-      resolved: false,
-    }));
+    .map((p) => {
+      const past = new Date(p.paymentDueDate as string) < new Date();
+      return {
+        property: p,
+        when: new Date(p.paymentDueDate as string),
+        label: past ? "Tax bill overdue" : "Tax bill due",
+        resolved: false,
+        missed: past,
+      };
+    });
   const hearingDates = protests
     .filter((pr) => pr.status === "hearing_scheduled" && !!pr.hearingDate)
-    .map((pr) => ({
-      property: properties.find((p) => p.id === pr.propertyId),
-      when: new Date(pr.hearingDate as string),
-      label: "ARB hearing",
-      resolved: false,
-    }))
+    .map((pr) => {
+      const when = new Date(pr.hearingDate as string);
+      const past = when < new Date();
+      return {
+        property: properties.find((p) => p.id === pr.propertyId),
+        when,
+        label: past ? "ARB hearing date passed — check status" : "ARB hearing",
+        resolved: false,
+        missed: past,
+      };
+    })
     .filter(
-      (h): h is { property: PropertyRecord; when: Date; label: string; resolved: boolean } =>
-        !!h.property,
+      (
+        h,
+      ): h is {
+        property: PropertyRecord;
+        when: Date;
+        label: string;
+        resolved: boolean;
+        missed: boolean;
+      } => !!h.property,
     );
   const upcoming = [...deadlines, ...bills, ...hearingDates]
+    .filter((u) => !u.resolved)
     .sort((a, b) => a.when.getTime() - b.when.getTime())
     .slice(0, 4);
 
@@ -784,15 +813,17 @@ function Overview() {
                   {upcoming.map((u, i) => (
                     <div
                       key={i}
-                      className="flex items-center justify-between gap-2 text-sm min-w-0"
+                      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm min-w-0 ${
+                        u.missed ? "-mx-2 bg-destructive/10" : ""
+                      }`}
                     >
-                      <span className="truncate min-w-0">
+                      <span className={`truncate min-w-0 ${u.missed ? "text-destructive" : ""}`}>
                         {u.label} — {u.property.address}
                       </span>
-                      {u.resolved ? (
-                        <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-success">
-                          <Check className="h-3.5 w-3.5" aria-hidden />
-                          Completed
+                      {u.missed ? (
+                        <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-destructive">
+                          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                          Passed
                         </span>
                       ) : (
                         <span className="shrink-0 text-xs text-muted-foreground">

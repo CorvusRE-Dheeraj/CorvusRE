@@ -204,6 +204,80 @@ function applyStructureDetail(
 const STREET_SUFFIX_ALT =
   "st|street|rd|road|dr|drive|ln|lane|ave|avenue|blvd|boulevard|ct|court|pl|place|plz|plaza|pkwy|parkway|hwy|highway|fwy|freeway|cir|circle|way|trl|trail|trce|trace|loop|cv|cove|bend|xing|crossing|walk|row|run|mnr|manor|holw|hollow|pt|point|rdg|ridge|grn|green|knl|knoll|pass|path|vlg|village";
 
+// Canonicalizes a suffix word to one short form (PKWY, not "parkway" or
+// "Pkwy") — hand-kept in sync with STREET_SUFFIX_ALT above, same pairs.
+// Used by findNearby's street-match sort tier (below) so two streets that
+// differ only in suffix SPELLING ("Parker Road" vs "PARKER RD") still
+// compare equal, while two that differ in suffix TYPE ("Dallas Pkwy" vs
+// "Dallas Dr" — both genuinely real, different streets that merely share a
+// base word) do not collapse into a false match.
+const SUFFIX_CANONICAL: Record<string, string> = {
+  ST: "ST",
+  STREET: "ST",
+  RD: "RD",
+  ROAD: "RD",
+  DR: "DR",
+  DRIVE: "DR",
+  LN: "LN",
+  LANE: "LN",
+  AVE: "AVE",
+  AVENUE: "AVE",
+  BLVD: "BLVD",
+  BOULEVARD: "BLVD",
+  CT: "CT",
+  COURT: "CT",
+  PL: "PL",
+  PLACE: "PL",
+  PLZ: "PLZ",
+  PLAZA: "PLZ",
+  PKWY: "PKWY",
+  PARKWAY: "PKWY",
+  HWY: "HWY",
+  HIGHWAY: "HWY",
+  FWY: "FWY",
+  FREEWAY: "FWY",
+  CIR: "CIR",
+  CIRCLE: "CIR",
+  WAY: "WAY",
+  TRL: "TRL",
+  TRAIL: "TRL",
+  TRCE: "TRCE",
+  TRACE: "TRCE",
+  LOOP: "LOOP",
+  CV: "CV",
+  COVE: "CV",
+  BEND: "BEND",
+  XING: "XING",
+  CROSSING: "XING",
+  WALK: "WALK",
+  ROW: "ROW",
+  RUN: "RUN",
+  MNR: "MNR",
+  MANOR: "MNR",
+  HOLW: "HOLW",
+  HOLLOW: "HOLW",
+  PT: "PT",
+  POINT: "PT",
+  RDG: "RDG",
+  RIDGE: "RDG",
+  GRN: "GRN",
+  GREEN: "GRN",
+  KNL: "KNL",
+  KNOLL: "KNL",
+  PASS: "PASS",
+  PATH: "PATH",
+  VLG: "VLG",
+  VILLAGE: "VLG",
+};
+
+// The trailing suffix word of a street string (whole street, e.g. "Dallas
+// Pkwy", or just a house-number-stripped portion), canonicalized — null
+// when none is recognized at all (a bare road with no suffix typed).
+function trailingSuffixOf(street: string): string | null {
+  const m = street.match(new RegExp(`\\b(${STREET_SUFFIX_ALT})\\.?$`, "i"));
+  return m ? (SUFFIX_CANONICAL[m[1].toUpperCase()] ?? null) : null;
+}
+
 // A comma DOES exist somewhere in the address but not between the street and
 // the city specifically ("4220 S Preston Rd Celina, TX 75009" — the comma
 // only separates city from state/zip) — found live 2026-09-03 chasing a
@@ -311,6 +385,86 @@ function parseAddressForQuery(
   return { house: "", street: streetOnly.street, cityStateZip: streetOnly.cityStateZip };
 }
 
+type NameQuery = { name: string; city: string };
+
+// Multi-word city names within the 12 counties this app supports — checked
+// longest-first (by trying 3 words, then 2) so "Fort Worth"/"San Antonio"
+// aren't misread as city "Worth"/"Antonio" with "Fort"/"San" stuck onto the
+// business name (found live: "walmart fort worth" and "walmart san antonio"
+// both returned zero results this way, despite real Tarrant/Bexar matches).
+// Not exhaustive — a multi-word city not in this short list still falls back
+// to the single-last-word heuristic below, same as before.
+const MULTI_WORD_CITIES = [
+  "fort worth",
+  "san antonio",
+  "the colony",
+  "flower mound",
+  "round rock",
+  "sugar land",
+  "missouri city",
+  "grand prairie",
+  "little elm",
+  "highland village",
+  "north richland hills",
+  "lake dallas",
+];
+
+// A short, deliberately non-exhaustive allowlist of single-word Texas city
+// names within this app's supported counties — checked against EVERY word
+// in the query, not just the last one, before falling back to the
+// last-word guess. Found live: "Braum's Denton west univ dr" took the last
+// word ("dr") as the city, so the real city ("Denton," in the middle of
+// the query) was never recognized at all — the same class of bug
+// MULTI_WORD_CITIES above already exists to prevent for a multi-word city,
+// just for a single-word one with extra trailing words. Trailing words
+// after a recognized city (here, "west univ dr") are dropped from the name
+// entirely — they read as leftover address fragments the user tacked on,
+// not part of either the business name or a second real city reference.
+const KNOWN_SINGLE_WORD_CITIES = new Set([
+  "denton", "houston", "dallas", "plano", "frisco", "mckinney", "allen",
+  "carrollton", "lewisville", "wylie", "celina", "garland", "mesquite",
+  "irving", "arlington", "austin", "sherman", "denison", "conroe", "katy",
+  "georgetown", "humble", "spring", "stafford", "aubrey", "porter",
+  "crandall", "forney", "montgomery", "euless", "hurst", "bedford",
+  "colleyville", "southlake", "keller", "burleson", "haslet", "roanoke",
+  "grapevine",
+]);
+
+// A bare business/owner name (optionally + city) — "Walmart Denton", "Walmart,
+// Denton, TX", or just "7-Eleven" — rather than a street address. Deliberately
+// simple: prefers an explicit comma ("Name, City, TX") when present (reusing
+// guessCity on the tail, same as a real address's own city extraction);
+// otherwise checks the known multi-word cities above, then any recognized
+// single-word city anywhere in the query, then falls back to treating the
+// LAST word as the city and everything before it as the name, which covers
+// the common "Business City" typed form without a comma.
+function parseNameQuery(address: string): NameQuery | null {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  const withComma = trimmed.match(/^([^,]+),(.*)$/);
+  if (withComma) {
+    const name = withComma[1].trim();
+    if (!name) return null;
+    return { name, city: guessCity(withComma[2].trim()) };
+  }
+  const words = trimmed.split(/\s+/);
+  if (words.length < 2) return { name: trimmed, city: "" };
+  const lower = trimmed.toLowerCase();
+  for (const city of MULTI_WORD_CITIES) {
+    if (lower.endsWith(` ${city}`)) {
+      const name = trimmed.slice(0, trimmed.length - city.length).trim();
+      if (name) return { name, city };
+    }
+  }
+  const cityIndex = words.findIndex((w) =>
+    KNOWN_SINGLE_WORD_CITIES.has(w.replace(/[^a-zA-Z]/g, "").toLowerCase()),
+  );
+  if (cityIndex > 0) {
+    return { name: words.slice(0, cityIndex).join(" "), city: words[cityIndex] };
+  }
+  return { name: words.slice(0, -1).join(" "), city: words[words.length - 1] };
+}
+
 // Best-effort extraction of just the city name from the "city, state, zip" tail —
 // used only as a tiebreaker (see the comment in Deno.serve below), so approximate
 // is fine. Takes everything before the first comma (if any), then strips a
@@ -358,6 +512,19 @@ function cityOf(propertyAddress: string): string {
   return fallback ? fallback[1].trim() : "";
 }
 
+// Mirror of cityOf above, same suffix-word anchor (greedy .* so a street
+// whose own name contains a suffix word, e.g. "Market Place Blvd", still
+// anchors on the real trailing suffix, not a false mid-name match) — but
+// capturing what comes BEFORE the suffix instead of after it: the house
+// number + the real street name + its suffix, with the city/state/zip tail
+// dropped. Used by findNearby's street-match sort tier below.
+function streetPortionOf(propertyAddress: string): string {
+  const m = propertyAddress.match(
+    new RegExp(`^\\s*\\d+[A-Za-z]?\\s+(.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?)`, "i"),
+  );
+  return m ? m[1].trim() : "";
+}
+
 // Bidirectional on purpose — real, minor city-naming differences go both
 // ways: Bexar's own data says "Fair Oaks" for a user-typed "Fair Oaks
 // Ranch" (the county's name is a SUBSET of what the user typed), but the
@@ -371,6 +538,30 @@ function cityMatches(extractedCity: string, cityGuess: string): boolean {
   const a = extractedCity.toUpperCase();
   const b = cityGuess.toUpperCase();
   return a.includes(b) || b.includes(a);
+}
+
+// cityOf() above anchors on a trailing "TX"/"Texas" to find the city group —
+// but some counties' own constructed propertyAddress strings never include a
+// state at all (Harris, Tarrant, Grayson: e.g. "11242 GESSNER, HOUSTON", no
+// ", TX" after it), so cityOf() silently returns "" for them, and the plain
+// cityMatches(cityOf(...), ...) call always treats those as "no match" even
+// when the real city is sitting right there in the string. Found live
+// chasing a real report ("Walmart Houston" never surfacing any of Harris's
+// 50 real Houston matches). Only used by findByName's city tiebreak below —
+// findNearby's own tiebreak keeps the stricter cityOf()-only check, since a
+// name search has no house number to fall back on and the city signal
+// matters far more there.
+// Address-only on purpose — NOT the record's CAD/county name. Tried
+// matching the county too (treating "Denton" as matching any city inside
+// Denton County, e.g. Frisco), but direct user correction: typing a city
+// name in this search means that city, not its whole county — a real
+// Denton, TX resident expects "Denton" to mean the city of Denton, not
+// Frisco or The Colony just because they share a CAD.
+function nameSearchCityMatches(propertyAddress: string, cityGuess: string): boolean {
+  if (!cityGuess) return false;
+  const extracted = cityOf(propertyAddress);
+  if (extracted) return cityMatches(extracted, cityGuess);
+  return propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
 }
 
 // Extracts a leading directional word (N/S/E/W or spelled out) immediately
@@ -645,19 +836,30 @@ const MULTI_CANDIDATE_LIMIT = 8;
 // in findNearby() below — this is the PER-COUNTY fetch size before that
 // happens, not the final list size.
 //
-// 50, not a smaller number: found live 2026-08-25 chasing a real report ("901
-// Willowwood St" — a genuine, previously-confirmed gap, since 901 isn't its
-// own parcel but 900/924/926/928 are) that ArcGIS has no inherent ordering
-// favoring numerically-close house numbers, and a long street can easily have
-// 50+ real matching parcels (confirmed: Denton's own Willowwood St alone has
-// 53) — the original NEARBY_LIMIT of 12 frequently returned an arbitrary
-// slice of a much longer street that didn't include the actually-closest real
-// candidates at all. Still a real cap, not unbounded — an extremely dense
-// street (100+ real matches) could theoretically still miss the single
-// closest one, same class of residual limitation as MULTI_CANDIDATE_LIMIT
-// above, not chased further without a concrete failing example.
-const NEARBY_LIMIT = 50;
-type QueryMode = "exact" | "nearby";
+// 300, not 50: found live 2026-10-01 chasing a real report ("6555 Dallas
+// Pkwy") — the exact "100+ real matches" case this comment already warned
+// was still possible at 50 (itself raised from 12 for "901 Willowwood St",
+// same reasoning: ArcGIS has no inherent ordering favoring numerically-close
+// house numbers). Dallas Pkwy is a long, dense commercial corridor — the 50
+// rows Collin's service happened to return clustered around house numbers
+// 2700-3100 and never included 6555 at all, so no amount of sorting
+// afterward (see findNearby's proximity sort below) could have surfaced it —
+// the real candidate was never fetched in the first place. 300 stays a real,
+// bounded cap (not unbounded), sized to comfortably cover even a long
+// commercial corridor while staying well inside both the per-county
+// NEARBY_QUERY_TIMEOUT_MS budget and typical ArcGIS FeatureServer response
+// limits for this few, narrow outFields.
+const NEARBY_LIMIT = 300;
+// "name" — a business/owner-name search (e.g. "Walmart Denton"), added
+// 2026-10-01 chasing a real report that typing a business name + city
+// returned literally nothing: parseHouseAndStreet/parseStreetOnly both
+// require either a leading house number or a trailing street-suffix word,
+// so a bare name+city never parsed as ANY kind of address and every county
+// query bailed out before ever making a request. See parseNameQuery and
+// ownerNameFeatures below — a new, separate code path that only ever
+// activates when the existing address parsing already failed, so it can't
+// regress any address-matching behavior above.
+type QueryMode = "exact" | "nearby" | "name";
 
 function coreClauseOr(field: string, core: string): string {
   // Same word-boundary reasoning as singleFieldWhere — these fields hold ONLY the
@@ -672,6 +874,30 @@ function coreClauseOr(field: string, core: string): string {
     .join(" OR ");
 }
 
+// A short, deliberately small seed list of common business names Texas CAD
+// systems record with internal punctuation a user would never type — found
+// live chasing a real report ("Walmart Denton" returning zero matches
+// despite two real Denton Walmart parcels): Denton's own owner-name field
+// has it as "WAL-MART REAL ESTATE BUSINESS TRUST", not "WALMART". Not an
+// attempt at general fuzzy business-name matching against messy government
+// ownership records (a genuinely open-ended problem) — just this one
+// confirmed case, tried as an additional OR'd alternate alongside whatever
+// the user actually typed. Extend as more real reports surface a specific
+// mismatch, the same way SUFFIX_CANONICAL grew for street suffixes.
+const NAME_SEARCH_ALIASES: Record<string, string> = {
+  WALMART: "WAL-MART",
+  // Confirmed live (Denton): "MCDONALD'S REAL ESTATE COMPANY" — the key is
+  // punctuation/space-stripped before lookup (see nameSearchVariants below),
+  // so "mcdonalds", "Mc Donalds", and "McDonald's" all hit this same entry.
+  MCDONALDS: "MCDONALD'S",
+};
+
+function nameSearchVariants(name: string): string[] {
+  const key = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const alias = NAME_SEARCH_ALIASES[key];
+  return alias && alias.toUpperCase() !== name.toUpperCase() ? [name, alias] : [name];
+}
+
 // Plain fetch+parse used by nearbyFeaturesWithFallback below — every ArcGIS
 // county's response shares this exact `{features: [{attributes}]}` shape.
 async function fetchFeatures(
@@ -683,6 +909,33 @@ async function fetchFeatures(
     features?: Array<{ attributes: Record<string, string | number | null> }>;
   };
   return json.features ?? [];
+}
+
+// Owner/business-name search (mode "name" — see parseNameQuery above).
+// Deliberately NOT city-filtered in the WHERE clause itself — found live
+// chasing a real report ("Walmart Denton"): a naive `city LIKE '%DENTON%'`
+// AND-clause against a combined address field also matched "4025 OLD DENTON
+// RD, CARROLLTON, TX" purely because the STREET name contains "Denton", the
+// exact same city/street-word-collision class this file already fixed for
+// address search (see the Parker Rd/Parker, Lucas Rd/Lucas comments on
+// findNearby). Same fix here: fetch by name alone, then sort by city as a
+// tiebreak in JS afterward (see findByName below), reusing cityOf/
+// cityMatches — the same city-is-a-preference-not-a-filter approach that
+// already works correctly for address search.
+function ownerNameFeatures(
+  url: string,
+  ownerField: string,
+  outFields: string,
+  name: string,
+  limit: number | null,
+): Promise<Array<{ attributes: Record<string, string | number | null> }>> {
+  const where = nameSearchVariants(name)
+    .map((v) => `UPPER(${ownerField}) LIKE UPPER('%${escapeSqlString(v)}%')`)
+    .join(" OR ");
+  const limitParam = limit != null ? `&resultRecordCount=${limit}` : "";
+  return fetchFeatures(
+    `${url}?where=${encodeURIComponent(where)}&outFields=${outFields}${limitParam}&returnGeometry=false&f=json`,
+  );
 }
 
 // A failed tight nearby match can take as long as a real one on some
@@ -774,22 +1027,29 @@ const COLLIN_OUT_FIELDS =
   "ownerName,situsConcat,currValLand,currValImprv,currValAppraised,currValYear,prevValLand,prevValImprv,prevValAppraised,prevValYear,PROP_ID,propType,propSubType,propCategoryCode,propYear,imprvMainArea,imprvYearBuilt,imprvClassCd,landSizeAcres,landSizeSqft";
 
 async function queryCollin(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          COLLIN_URL,
-          "situsConcat",
-          parsed.street,
-          COLLIN_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${COLLIN_URL}?where=${encodeURIComponent(singleFieldWhere("situsConcat", parsed.house, core))}` +
-            `&outFields=${COLLIN_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(COLLIN_URL, "ownerName", COLLIN_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            COLLIN_URL,
+            "situsConcat",
+            parsed.street,
+            COLLIN_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${COLLIN_URL}?where=${encodeURIComponent(singleFieldWhere("situsConcat", parsed.house, core))}` +
+              `&outFields=${COLLIN_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) =>
     applyStructureDetail(
       {
@@ -840,22 +1100,35 @@ const MONTGOMERY_OUT_FIELDS =
   "ownerName,situs,legalDescription,PIN,imprvMainArea,imprvActualYearBuilt";
 
 async function queryMontgomery(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          MONTGOMERY_URL,
-          "situs",
-          parsed.street,
-          MONTGOMERY_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${MONTGOMERY_URL}?where=${encodeURIComponent(singleFieldWhere("situs", parsed.house, core))}` +
-            `&outFields=${MONTGOMERY_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      MONTGOMERY_URL,
+      "ownerName",
+      MONTGOMERY_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            MONTGOMERY_URL,
+            "situs",
+            parsed.street,
+            MONTGOMERY_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${MONTGOMERY_URL}?where=${encodeURIComponent(singleFieldWhere("situs", parsed.house, core))}` +
+              `&outFields=${MONTGOMERY_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) =>
     applyStructureDetail(
       {
@@ -901,27 +1174,34 @@ const DENTON_OUT_FIELDS =
   "name,situs_full_address,landHSValue,landNHSValue,improvementValue,ownerMarketValue,pid,pYear,propType,stateCodes,imprvMainArea,imprvActualYearBuilt,imprvClasses,legalAcreage,land_sqft";
 
 async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
   // Denton County's own GIS (gis.dentoncounty.gov) — full ~382k-parcel countywide
   // dataset, not the earlier "TAD_Parcels" service this used to point at, which
   // turned out (discovered 2026-07-24, chasing a "not found" report for a real
   // Denton address) to be a single ~234-parcel subdivision extract, not county-wide
   // coverage. See texas-cad-data-sources memory for the full story.
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          DENTON_URL,
-          "situs_full_address",
-          parsed.street,
-          DENTON_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${DENTON_URL}?where=${encodeURIComponent(singleFieldWhere("situs_full_address", parsed.house, core))}` +
-            `&outFields=${DENTON_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(DENTON_URL, "name", DENTON_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            DENTON_URL,
+            "situs_full_address",
+            parsed.street,
+            DENTON_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${DENTON_URL}?where=${encodeURIComponent(singleFieldWhere("situs_full_address", parsed.house, core))}` +
+              `&outFields=${DENTON_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) => {
     const situsAddr = (attrs.situs_full_address as string | null)?.trim();
     return applyStructureDetail(
@@ -951,33 +1231,38 @@ async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<
   });
 }
 
-async function queryHarris(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const streetClause = coreClauseOr("site_str_name", core);
-  const where =
-    mode === "nearby"
-      ? `(${streetClause})`
-      : `site_str_num = ${parsed.house} AND (${streetClause})`;
-  const url =
-    "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query" +
-    `?where=${encodeURIComponent(where)}` +
-    "&outFields=owner_name_1,site_str_num,site_str_pfx,site_str_name,site_str_sfx,site_city,land_value,bld_value,total_appraised_val,acct_num,tax_year,land_sqft,acreage_1" +
-    `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
-    "&returnGeometry=false&f=json";
+const HARRIS_URL = "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query";
+const HARRIS_OUT_FIELDS =
+  "owner_name_1,site_str_num,site_str_pfx,site_str_name,site_str_sfx,site_city,land_value,bld_value,total_appraised_val,acct_num,tax_year,land_sqft,acreage_1";
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Harris CAD query failed: ${res.status}`);
-  const json = (await res.json()) as {
-    features?: Array<{ attributes: Record<string, string | number | null> }>;
-  };
+async function queryHarris(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(HARRIS_URL, "owner_name_1", HARRIS_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    const streetClause = coreClauseOr("site_str_name", core);
+    const where =
+      mode === "nearby"
+        ? `(${streetClause})`
+        : `site_str_num = ${parsed.house} AND (${streetClause})`;
+    const url =
+      `${HARRIS_URL}?where=${encodeURIComponent(where)}` +
+      `&outFields=${HARRIS_OUT_FIELDS}` +
+      `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
+      "&returnGeometry=false&f=json";
+    features = await fetchFeatures(url);
+  }
   // site_str_pfx (the directional — "S ", "N ", etc.) was silently missing from the
   // returned address entirely until 2026-07-26 — found sampling real Harris
   // addresses (4036 S Braeswood Blvd came back as "4036 Braeswood Blvd", dropping
   // the "S"). The match itself was never broken (the WHERE clause never filtered on
   // prefix), only the displayed address was wrong.
-  return (json.features ?? []).map(({ attributes: attrs }) => {
+  return features.map(({ attributes: attrs }) => {
     const streetParts = [
       attrs.site_str_num,
       attrs.site_str_pfx,
@@ -1076,26 +1361,37 @@ const TARRANT_OUT_FIELDS =
   "Owner_Name,Situs_Addr,City,Land_Value,Improvemen,Total_Valu,Appraised_,Account_Nu,Property_C,Living_Are,Year_Built,Land_Acres,Land_SqFt";
 
 async function queryTarrant(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
   // This endpoint doesn't support resultRecordCount ("Pagination is not
   // supported") — always returns every matching row unbounded, sliced
-  // client-side below (limit: null tells nearbyFeaturesWithFallback the
-  // same — omit the param rather than send one this backend rejects).
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          TARRANT_URL,
-          "Situs_Addr",
-          parsed.street,
-          TARRANT_OUT_FIELDS,
-          null,
-        )
-      : await fetchFeatures(
-          `${TARRANT_URL}?where=${encodeURIComponent(singleFieldWhere("Situs_Addr", parsed.house, core))}` +
-            `&outFields=${TARRANT_OUT_FIELDS}&returnGeometry=false&f=json`,
-        );
+  // client-side below (limit: null tells nearbyFeaturesWithFallback/
+  // ownerNameFeatures the same — omit the param rather than send one this
+  // backend rejects). Tarrant's own city is a numeric jurisdiction code (see
+  // TARRANT_CITY_CODES), decoded for display below AFTER fetching — not
+  // usable as a SQL text filter, same reason it's never one for address
+  // search's own nearby/exact modes either.
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(TARRANT_URL, "Owner_Name", TARRANT_OUT_FIELDS, nq.name, null);
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            TARRANT_URL,
+            "Situs_Addr",
+            parsed.street,
+            TARRANT_OUT_FIELDS,
+            null,
+          )
+        : await fetchFeatures(
+            `${TARRANT_URL}?where=${encodeURIComponent(singleFieldWhere("Situs_Addr", parsed.house, core))}` +
+              `&outFields=${TARRANT_OUT_FIELDS}&returnGeometry=false&f=json`,
+          );
+  }
   return features
     .slice(0, mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT)
     .map(({ attributes: attrs }) => {
@@ -1128,22 +1424,35 @@ const FORT_BEND_OUT_FIELDS =
   "OWNERNAME,SITUS,LANDVALUE,IMPVALUE,TOTALVALUE,PROPNUMBER,Building_Class,TOTSQFTLVG,YEARBUILT,LANDSIZEAC,LANDSIZEFT";
 
 async function queryFortBend(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          FORT_BEND_URL,
-          "SITUS",
-          parsed.street,
-          FORT_BEND_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${FORT_BEND_URL}?where=${encodeURIComponent(singleFieldWhere("SITUS", parsed.house, core))}` +
-            `&outFields=${FORT_BEND_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      FORT_BEND_URL,
+      "OWNERNAME",
+      FORT_BEND_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            FORT_BEND_URL,
+            "SITUS",
+            parsed.street,
+            FORT_BEND_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${FORT_BEND_URL}?where=${encodeURIComponent(singleFieldWhere("SITUS", parsed.house, core))}` +
+              `&outFields=${FORT_BEND_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) =>
     applyStructureDetail(
       {
@@ -1168,22 +1477,35 @@ const WILLIAMSON_OUT_FIELDS =
   "OWNERNME1,SITEADDRESS,LNDVALUE,CNTASSDVAL,PARCELID,CLASSDSCRP,BLDGAREA,RESYRBLT,STRCLASS,TotAcreDeed";
 
 async function queryWilliamson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          WILLIAMSON_URL,
-          "SITEADDRESS",
-          parsed.street,
-          WILLIAMSON_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${WILLIAMSON_URL}?where=${encodeURIComponent(singleFieldWhere("SITEADDRESS", parsed.house, core))}` +
-            `&outFields=${WILLIAMSON_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      WILLIAMSON_URL,
+      "OWNERNME1",
+      WILLIAMSON_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            WILLIAMSON_URL,
+            "SITEADDRESS",
+            parsed.street,
+            WILLIAMSON_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${WILLIAMSON_URL}?where=${encodeURIComponent(singleFieldWhere("SITEADDRESS", parsed.house, core))}` +
+              `&outFields=${WILLIAMSON_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) =>
     applyStructureDetail(
       {
@@ -1202,30 +1524,42 @@ async function queryWilliamson(address: string, mode: QueryMode = "exact"): Prom
   );
 }
 
-async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const streetClause = coreClauseOr("SitusStreet", core);
-  const where =
-    mode === "nearby"
-      ? `(${streetClause})`
-      : `SitusNumber = '${parsed.house}' AND (${streetClause})`;
-  const url =
-    "https://services1.arcgis.com/EVxyUkKpll765a5X/arcgis/rest/services/Grayson_Appraisal_Parcel_Map_WFL1/FeatureServer/13/query" +
-    `?where=${encodeURIComponent(where)}` +
-    "&outFields=OwnerName,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,LandValue,ImprovementValue,MarketValue,PropertyNumber,Year,LegalAcreage" +
-    `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
-    "&returnGeometry=false&f=json";
+const GRAYSON_URL =
+  "https://services1.arcgis.com/EVxyUkKpll765a5X/arcgis/rest/services/Grayson_Appraisal_Parcel_Map_WFL1/FeatureServer/13/query";
+const GRAYSON_OUT_FIELDS =
+  "OwnerName,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,LandValue,ImprovementValue,MarketValue,PropertyNumber,Year,LegalAcreage";
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Grayson CAD query failed: ${res.status}`);
-  const json = (await res.json()) as {
-    features?: Array<{ attributes: Record<string, string | number | null> }>;
-  };
+async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      GRAYSON_URL,
+      "OwnerName",
+      GRAYSON_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    const streetClause = coreClauseOr("SitusStreet", core);
+    const where =
+      mode === "nearby"
+        ? `(${streetClause})`
+        : `SitusNumber = '${parsed.house}' AND (${streetClause})`;
+    const url =
+      `${GRAYSON_URL}?where=${encodeURIComponent(where)}` +
+      `&outFields=${GRAYSON_OUT_FIELDS}` +
+      `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
+      "&returnGeometry=false&f=json";
+    features = await fetchFeatures(url);
+  }
   // SitusStreetPrefix (the directional) was missing from outFields the same way
   // Harris's site_str_pfx was — see the comment in queryHarris.
-  return (json.features ?? []).map(({ attributes: attrs }) => {
+  return features.map(({ attributes: attrs }) => {
     const streetParts = [
       attrs.SitusNumber,
       attrs.SitusStreetPrefix,
@@ -1343,22 +1677,35 @@ const BEXAR_URL = "https://maps.bcad.org/arcgis/rest/services/PAMapSearch/MapSer
 const BEXAR_OUT_FIELDS = Object.values(BCAD_FIELDS).join(",");
 
 async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const features =
-    mode === "nearby"
-      ? await nearbyFeaturesWithFallback(
-          BEXAR_URL,
-          BCAD_FIELDS.situs,
-          parsed.street,
-          BEXAR_OUT_FIELDS,
-          NEARBY_LIMIT,
-        )
-      : await fetchFeatures(
-          `${BEXAR_URL}?where=${encodeURIComponent(singleFieldWhere(BCAD_FIELDS.situs, parsed.house, core))}` +
-            `&outFields=${BEXAR_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
-        );
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      BEXAR_URL,
+      BCAD_FIELDS.owner,
+      BEXAR_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    features =
+      mode === "nearby"
+        ? await nearbyFeaturesWithFallback(
+            BEXAR_URL,
+            BCAD_FIELDS.situs,
+            parsed.street,
+            BEXAR_OUT_FIELDS,
+            NEARBY_LIMIT,
+          )
+        : await fetchFeatures(
+            `${BEXAR_URL}?where=${encodeURIComponent(singleFieldWhere(BCAD_FIELDS.situs, parsed.house, core))}` +
+              `&outFields=${BEXAR_OUT_FIELDS}&resultRecordCount=${MULTI_CANDIDATE_LIMIT}&returnGeometry=false&f=json`,
+          );
+  }
   return features.map(({ attributes: attrs }) => ({
     ownerName: (attrs[BCAD_FIELDS.owner] as string)?.trim() || null,
     propertyAddress: (attrs[BCAD_FIELDS.situs] as string)?.trim() || address,
@@ -1382,26 +1729,31 @@ async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<C
 // all. No land/improvement/market value fields exist on
 // this layer at all (checked — no companion table either), so those are honestly
 // null here, same pattern as Montgomery/Travis.
-async function queryDallas(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
-  const parsed = parseAddressForQuery(address, mode);
-  if (!parsed) return [];
-  const core = coreStreetName(parsed.street);
-  const streetClause = coreClauseOr("FULL_STREET_NAME", core);
-  const where =
-    mode === "nearby" ? `(${streetClause})` : `STREET_NUM=${parsed.house} AND (${streetClause})`;
-  const url =
-    "https://services3.arcgis.com/zqe2kwz79KUqUvxC/arcgis/rest/services/DCAD_PARCELS/FeatureServer/0/query" +
-    `?where=${encodeURIComponent(where)}` +
-    "&outFields=OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR" +
-    `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
-    "&returnGeometry=false&f=json";
+const DALLAS_URL =
+  "https://services3.arcgis.com/zqe2kwz79KUqUvxC/arcgis/rest/services/DCAD_PARCELS/FeatureServer/0/query";
+const DALLAS_OUT_FIELDS = "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR";
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Dallas CAD query failed: ${res.status}`);
-  const json = (await res.json()) as {
-    features?: Array<{ attributes: Record<string, string | number | null> }>;
-  };
-  return (json.features ?? []).map(({ attributes: attrs }) => {
+async function queryDallas(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(DALLAS_URL, "OWNER_NAME1", DALLAS_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    const streetClause = coreClauseOr("FULL_STREET_NAME", core);
+    const where =
+      mode === "nearby" ? `(${streetClause})` : `STREET_NUM=${parsed.house} AND (${streetClause})`;
+    const url =
+      `${DALLAS_URL}?where=${encodeURIComponent(where)}` +
+      `&outFields=${DALLAS_OUT_FIELDS}` +
+      `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
+      "&returnGeometry=false&f=json";
+    features = await fetchFeatures(url);
+  }
+  return features.map(({ attributes: attrs }) => {
     const site = (attrs.SiteAddress as string)?.trim();
     // Dallas disambiguates same-named cities in neighboring counties right in the
     // data — "GARLAND (DALLAS CO)", "MESQUITE (DALLAS CO)", etc. — useful for the
@@ -2487,6 +2839,21 @@ const NEARBY_QUERY_TIMEOUT_MS = 15000;
 // county-specific fix.
 const EXACT_QUERY_TIMEOUT_MS = 15000;
 
+// Used only for the as-you-type live-search dropdown (`body.preview === true`,
+// see Deno.serve below) — NOT the "Validate address"/full-submit flow, which
+// always keeps the generous timeouts above so a real but slow/rate-limited
+// county is never silently missed on the authoritative check. A live preview
+// is a different tradeoff: the user is still typing, waiting the full 15s for
+// one laggard county out of 12 reads as the search being broken, and whatever
+// it shows is never the final answer anyway — hitting "Validate address" (or
+// picking a suggestion) always re-runs the full, un-short-circuited sweep.
+// Some real counties are legitimately slower than this on an ordinary request
+// (Tarrant ran ~5s on a normal, non-pathological query — see
+// EXACT_QUERY_TIMEOUT_MS's own history above), so a preview can genuinely
+// omit a real match that the full validate would still find; that's the
+// accepted cost of a fast typeahead, not a bug.
+const PREVIEW_QUERY_TIMEOUT_MS = 4000;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     promise,
@@ -2498,6 +2865,7 @@ async function findNearby(
   countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
   address: string,
   cityGuess: string,
+  queryTimeoutMs: number = NEARBY_QUERY_TIMEOUT_MS,
 ): Promise<CadRecord[]> {
   // A bare road with no leading house number (e.g. "FM 1957, San Antonio")
   // can't be proximity-sorted by house number below, but it can still be
@@ -2512,7 +2880,7 @@ async function findNearby(
 
   const results = await Promise.allSettled(
     countyQueries.map((query) =>
-      withTimeout(query(address, "nearby"), NEARBY_QUERY_TIMEOUT_MS, [] as CadRecord[]),
+      withTimeout(query(address, "nearby"), queryTimeoutMs, [] as CadRecord[]),
     ),
   );
   const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
@@ -2538,24 +2906,109 @@ async function findNearby(
     return true;
   });
 
-  // Real zip match first (found live: a common road can have 40+ real
-  // parcels with no house number to sort by at all, so without this every
-  // candidate ties and the list is really just "whichever order the county
-  // API happened to return them in" — a real match with the wrong zip could
-  // silently fall past the slice below), then city match, THEN house-number
-  // distance.
+  // Region (zip's first two digits), THEN house-number distance, THEN exact
+  // zip, THEN city.
+  //
+  // House-number distance was promoted ahead of zip/city on 2026-10-01,
+  // found live chasing "2514 Parker Rd, Parker, TX": the real closest
+  // parcels are on "W Parker Rd" in Plano (house numbers bracketing 2514
+  // closely), but the OLD zip/city-first order buried them behind a
+  // completely different, much farther segment of the same-named road in
+  // the actual town of Parker, simply because that segment's city label
+  // matched what the user typed. A county/FM road commonly crosses several
+  // small cities under one name — its own city label is a weaker signal
+  // than how close the house number actually is, so it must not outrank a
+  // real, nearby match.
+  //
+  // The region tier was added the same day chasing the very next real
+  // report ("6555 Dallas Pkwy"): a bare-text core-street match on a
+  // combined address+city field can collide with an unrelated county 200+
+  // miles away whose CITY happens to contain the same word ("Dallas Dr,
+  // AUSTIN" for a "Dallas Pkwy" search — Williamson CAD, not Collin) —  and
+  // that candidate's house number can coincidentally be numerically closer
+  // to the target than the real, same-metro match, which let house-number
+  // distance alone rank the wrong-region result first. Texas zip-code
+  // prefixes cleanly separate the state's metros (75/76 = DFW, 78 = Austin,
+  // 77 = Houston, 7-prefix San Antonio, ...) and don't require a full
+  // zip-to-county table — cheap and reliable enough to use as a hard tier
+  // ahead of distance, without the fragility a full county guess would add.
+  //
+  // da/db fall through to Infinity (never finite) whenever either side has
+  // no parseable house number, OR the search itself had none (targetHouse
+  // NaN — a bare road like "FM 1957, San Antonio" with no number to sort
+  // by) — so that case still falls straight through to the zip/city
+  // tiebreak below exactly as before: a common road can have 40+ real
+  // parcels with no house number to sort by at all, so without zip/city
+  // every candidate ties and the list is really just "whichever order the
+  // county API happened to return them in" — a real match with the wrong
+  // zip could otherwise silently fall past the slice below.
+  const targetZipPrefix = targetZip ? targetZip.slice(0, 2) : null;
+  const zipPrefixOf = (addr: string) => {
+    const z = extractZip(addr);
+    return z ? z.slice(0, 2) : null;
+  };
+
+  // Strongest signal of all, checked ahead of everything else — found live
+  // 2026-10-01, the very next report after the region tier shipped ("6555
+  // Dallas Pkwy" still not surfacing even with a real zip given): a
+  // per-county nearby query's own tight-phrase-first attempt
+  // (nearbyFeaturesWithFallback above) can fall through to its loose,
+  // bare-core-word fallback under load, and that loose query is exactly the
+  // "street core word collides with an unrelated city name" case already
+  // documented there — "DALLAS" being both the searched street's core AND
+  // an extremely common city name in its own right made this far worse than
+  // the "PARKER" case that pattern was first found for. The result: real
+  // "Dallas Pkwy" parcels and "Frankford Rd, DALLAS" parcels (wrong street,
+  // right word only because DALLAS is its CITY) arrived mixed together, and
+  // house-number coincidence alone let the wrong street win.
+  //
+  // This re-checks each candidate's OWN street portion (not city, not the
+  // whole address) against the searched street's core AND suffix —
+  // independent of whatever the upstream query actually matched on, so a
+  // slow/loose backend response can no longer let the wrong street outrank
+  // the right one. Core word alone isn't enough: a first version of this
+  // fix compared only the suffix-stripped core and still let "Dallas Dr" in
+  // Austin pass as a match for "Dallas Pkwy", since both reduce to the bare
+  // core "DALLAS" — genuinely different streets that merely share a base
+  // word. trailingSuffixOf (canonicalized, so "Parker Road" vs. "PARKER RD"
+  // still agree despite the spelling difference) now has to agree too, when
+  // both sides actually have a recognized suffix.
+  const searchedPortion = parsed ? parsed.street.trim() : null;
+  const searchedStreetCore = searchedPortion ? coreStreetName(searchedPortion).toUpperCase() : null;
+  const searchedSuffix = searchedPortion ? trailingSuffixOf(searchedPortion) : null;
+  const matchesSearchedStreet = (addr: string): boolean => {
+    if (!searchedStreetCore) return false;
+    const portion = streetPortionOf(addr);
+    if (!portion || coreStreetName(portion).toUpperCase() !== searchedStreetCore) return false;
+    const candidateSuffix = trailingSuffixOf(portion);
+    if (searchedSuffix && candidateSuffix && searchedSuffix !== candidateSuffix) return false;
+    return true;
+  };
+
   deduped.sort((a, b) => {
+    if (searchedStreetCore) {
+      const as_ = matchesSearchedStreet(a.propertyAddress) ? 0 : 1;
+      const bs_ = matchesSearchedStreet(b.propertyAddress) ? 0 : 1;
+      if (as_ !== bs_) return as_ - bs_;
+    }
+    if (targetZipPrefix) {
+      const ar = zipPrefixOf(a.propertyAddress) === targetZipPrefix ? 0 : 1;
+      const br = zipPrefixOf(b.propertyAddress) === targetZipPrefix ? 0 : 1;
+      if (ar !== br) return ar - br;
+    }
+    const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
+    const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
+    const da =
+      Number.isFinite(ha) && Number.isFinite(targetHouse) ? Math.abs(ha - targetHouse) : Infinity;
+    const db =
+      Number.isFinite(hb) && Number.isFinite(targetHouse) ? Math.abs(hb - targetHouse) : Infinity;
+    if (da !== db) return da - db;
     const az = targetZip && extractZip(a.propertyAddress) === targetZip ? 0 : 1;
     const bz = targetZip && extractZip(b.propertyAddress) === targetZip ? 0 : 1;
     if (az !== bz) return az - bz;
     const ac = cityGuess && cityMatches(cityOf(a.propertyAddress), cityGuess) ? 0 : 1;
     const bc = cityGuess && cityMatches(cityOf(b.propertyAddress), cityGuess) ? 0 : 1;
-    if (ac !== bc) return ac - bc;
-    const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
-    const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
-    const da = Number.isFinite(ha) ? Math.abs(ha - targetHouse) : Infinity;
-    const db = Number.isFinite(hb) ? Math.abs(hb - targetHouse) : Infinity;
-    return da - db;
+    return ac - bc;
   });
 
   // Found live 2026-08-28 chasing a real report (a Bexar property on FM 1957,
@@ -2566,6 +3019,54 @@ async function findNearby(
   // in the county's arbitrary first 8 rows. Raised to 20 — still a bounded
   // list the UI's plain scrollable rows handle fine, but 8 was clearly too
   // aggressive for a common road with dozens of real parcels on it.
+  return deduped.slice(0, 20);
+}
+
+// Business/owner-name search (mode "name" — see parseNameQuery). Parallel to
+// findNearby above, but simpler: there's no house-number proximity to sort
+// by, so results are just deduped by account number, sorted by whether the
+// parsed city guess matches (same cityOf/cityMatches tiebreak findNearby
+// uses, and the same reason: a city is a preference here, not a hard SQL
+// filter — see ownerNameFeatures's own comment for the collision that forced
+// this), and capped. Two of the twelve counties are skipped entirely: Travis
+// publishes no owner-name field at all (see queryTravis's own comment), and
+// Kaufman's only source is a third-party vendor's free-text keyword search
+// whose exact field names for a name search aren't confirmed — safer to
+// return nothing there than guess at an unverified query shape.
+async function findByName(
+  countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
+  nameQuery: string,
+  cityGuess: string,
+  queryTimeoutMs: number,
+): Promise<CadRecord[]> {
+  const results = await Promise.allSettled(
+    countyQueries.map((query) =>
+      withTimeout(query(nameQuery, "name"), queryTimeoutMs, [] as CadRecord[]),
+    ),
+  );
+  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const seen = new Set<string>();
+  const deduped: CadRecord[] = [];
+  for (const c of candidates) {
+    const key = `${c.cad}:${c.accountNumber ?? c.propertyAddress}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(c);
+  }
+  // Filter to the typed city, not just sort it first — found live ("walmart
+  // denton" showing real Denton matches on top, but also Plano/Celina ones
+  // trailing below them): once there ARE real matches in the city the user
+  // actually typed, the other cities are just noise, not a helpful
+  // runner-up — and they can crowd a real same-city match out of the
+  // dropdown's own top-6 display cap. Only falls back to the full,
+  // unfiltered list when the typed city genuinely has zero matches at all
+  // (same reasoning as the "no matching records" empty state elsewhere:
+  // something real is better than nothing, but only once nothing real
+  // exists for what was actually asked).
+  if (cityGuess) {
+    const inCity = deduped.filter((r) => nameSearchCityMatches(r.propertyAddress, cityGuess));
+    if (inCity.length > 0) return inCity.slice(0, 20);
+  }
   return deduped.slice(0, 20);
 }
 
@@ -2608,6 +3109,12 @@ Deno.serve(async (req: Request) => {
     }
     const address = normalizeRoadPrefix(rawAddress);
 
+    // Set only by the as-you-type live-search dropdown (never by "Validate
+    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
+    // comment for why a fast, best-effort sweep is the right tradeoff there.
+    const preview = body.preview === true;
+    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+
     // Queries every supported county concurrently (see the comment above) — no
     // city-name filtering on WHICH counties to try. A single county's transient
     // failure (network error, endpoint down) no longer fails the whole lookup;
@@ -2627,6 +3134,32 @@ Deno.serve(async (req: Request) => {
       queryKaufman,
     ];
 
+    // A business/owner name ("Walmart Denton"), not a street address at all —
+    // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
+    // can parse this (both require a house number or a street-suffix word),
+    // so every county query below would otherwise bail out to [] without
+    // ever making a request. Checked here, once, rather than inside each of
+    // the 12 county functions separately.
+    if (!parseAddressForQuery(address, "nearby")) {
+      const nameQuery = parseNameQuery(address);
+      if (!nameQuery?.name) {
+        return new Response(JSON.stringify({ matched: false, nearby: [] }), {
+          status: 200,
+          headers: corsHeaders,
+        });
+      }
+      const nameResults = await findByName(
+        countyQueriesInOrder,
+        address,
+        nameQuery.city,
+        queryTimeoutMs,
+      );
+      return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
+        status: 200,
+        headers: corsHeaders,
+      });
+    }
+
     // cityGuess only depends on the raw address text, not on anything the
     // exact sweep finds — computed up front so the nearby sweep below can
     // start immediately, in parallel with the exact sweep, instead of only
@@ -2643,7 +3176,7 @@ Deno.serve(async (req: Request) => {
     // needed. If an exact match is found, this promise is simply never
     // awaited — its in-flight requests cost nothing to the response, since
     // nothing here ever reads their result.
-    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess);
+    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
 
     // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
     // seconds): a single slow/rate-limited county source could block the
@@ -2656,7 +3189,7 @@ Deno.serve(async (req: Request) => {
     // answer.
     const results = await Promise.allSettled(
       countyQueriesInOrder.map((query) =>
-        withTimeout(query(address), EXACT_QUERY_TIMEOUT_MS, [] as CadRecord[]),
+        withTimeout(query(address), queryTimeoutMs, [] as CadRecord[]),
       ),
     );
     // Flattened in county-priority order, then row order within each county — each

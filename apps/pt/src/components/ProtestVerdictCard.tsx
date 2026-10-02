@@ -71,11 +71,17 @@ export function ProtestVerdictCard({
 }) {
   if (properties.length === 0) return null;
   // Best news and open cases first, so the most useful answers are at the top.
-  const order: VerdictTone[] = ["good", "maybe", "info", "warn", "no", "done"];
+  const order: VerdictTone[] = ["good", "maybe", "info", "warn", "no"];
   const shown = properties
     .map((p) => ({ p, v: verdictFor(p, protests, healthScores[p.id]) }))
+    // Once a case is closed ("done"), "Can I protest?" no longer applies —
+    // that question already got answered. Drop it here entirely rather than
+    // just sorting it last; the result still lives on the Properties page
+    // and inside the case itself (VerdictChip there is unaffected).
+    .filter(({ v }) => v.tone !== "done")
     .sort((a, b) => order.indexOf(a.v.tone) - order.indexOf(b.v.tone))
     .slice(0, 6);
+  if (shown.length === 0) return null;
   return (
     <section aria-labelledby="verdict-heading" className="grid gap-3">
       <div>
