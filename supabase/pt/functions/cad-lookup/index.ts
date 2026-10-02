@@ -3064,7 +3064,25 @@ async function findByName(
       withTimeout(query(nameQuery, "name"), queryTimeoutMs, [] as CadRecord[]),
     ),
   );
-  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  // Each county's own mapper falls back to `propertyAddress ?? address` when
+  // a record's real situs is missing — a reasonable display fallback for an
+  // address-mode search (where `address` genuinely is what the user typed),
+  // but nonsensical here: `address` passed into a county function under
+  // "name" mode is the raw owner-name query text, not a real address at
+  // all. Found live: 4 real Collin "Land" parcels (WAL-MART REAL ESTATE
+  // BUSINESS TRUST, no situs on file — likely future store sites) came back
+  // with propertyAddress literally equal to "walmart denton," which then
+  // passed the city filter below since the ENTIRE fake "address" was
+  // exactly the city word being filtered for. Replaced with an honest
+  // fallback instead of a query-text echo that happens to look like a real
+  // match.
+  const candidates = results
+    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    .map((c) =>
+      c.propertyAddress.trim().toLowerCase() === nameQuery.trim().toLowerCase()
+        ? { ...c, propertyAddress: `${c.cad}${c.accountNumber ? ` — Account #${c.accountNumber}` : ""}` }
+        : c,
+    );
   const seen = new Set<string>();
   const deduped: CadRecord[] = [];
   for (const c of candidates) {
