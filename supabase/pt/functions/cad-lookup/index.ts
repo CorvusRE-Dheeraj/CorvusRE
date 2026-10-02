@@ -892,10 +892,23 @@ const NAME_SEARCH_ALIASES: Record<string, string> = {
   MCDONALDS: "MCDONALD'S",
 };
 
+// Prefix match, not exact — found live ("walmart south loop denton"):
+// parseNameQuery's own name/city split only recognizes the trailing city, so
+// extra real words typed between the brand and the city ("south loop," a
+// genuine part of this real store's street) get glued onto "the name" as
+// "walmart south loop," which never exact-matches the WALMART alias key.
+// The alias text itself ("WAL-MART") is still a clean, correct OR'd variant
+// regardless of what garbage is stuck on the end of the broken name, as
+// long as the name at least STARTS WITH a recognized brand — true for the
+// overwhelmingly common "Brand [extra words] City" typed shape.
 function nameSearchVariants(name: string): string[] {
   const key = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const alias = NAME_SEARCH_ALIASES[key];
-  return alias && alias.toUpperCase() !== name.toUpperCase() ? [name, alias] : [name];
+  for (const [aliasKey, alias] of Object.entries(NAME_SEARCH_ALIASES)) {
+    if (key.startsWith(aliasKey)) {
+      return alias.toUpperCase() !== name.toUpperCase() ? [name, alias] : [name];
+    }
+  }
+  return [name];
 }
 
 // Plain fetch+parse used by nearbyFeaturesWithFallback below — every ArcGIS
@@ -3348,6 +3361,35 @@ Deno.serve(async (req: Request) => {
       // Already well underway (started before the exact sweep even began) —
       // usually resolves close to immediately from here, not from scratch.
       const nearby = await nearbyPromise;
+      if (nearby.length === 0) {
+        // Falls back to a name search when the address interpretation found
+        // literally nothing — found live ("walmart south loop denton"):
+        // "loop" is itself a real street-suffix word (same as "dr" in an
+        // earlier report), so parseStreetOnly happily parses the WHOLE
+        // query as a bare road ("walmart south loop") and this never even
+        // reaches findByName at all, even though it's clearly a business
+        // name search. Rather than trying to anticipate every one of
+        // STREET_SUFFIX_ALT's ~50 words colliding with some real business
+        // name, just try the other interpretation when the first one comes
+        // up empty — address mode still gets first try (and wins if it
+        // finds anything), so this never changes behavior for a real
+        // address that happens to share a word with a business name.
+        const nameQuery = parseNameQuery(address);
+        if (nameQuery?.name) {
+          const nameResults = await findByName(
+            countyQueriesInOrder,
+            address,
+            nameQuery.city,
+            queryTimeoutMs,
+          );
+          if (nameResults.length > 0) {
+            return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
+              status: 200,
+              headers: corsHeaders,
+            });
+          }
+        }
+      }
       return new Response(JSON.stringify({ matched: false, nearby }), {
         status: 200,
         headers: corsHeaders,

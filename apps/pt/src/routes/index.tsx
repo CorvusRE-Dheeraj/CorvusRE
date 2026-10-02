@@ -302,7 +302,7 @@ function Home() {
                 <button
                   type="submit"
                   disabled={resolvingAddress}
-                  className="btn-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-accent !rounded-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {resolvingAddress ? "Resolving…" : "Start Free AI Property Review"}
                 </button>
