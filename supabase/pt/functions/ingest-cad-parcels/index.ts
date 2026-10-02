@@ -16,12 +16,15 @@
 // duplication of each county's URL/outFields/attribute-mapping here is the
 // safer trade.
 //
-// Proof-of-concept scope (2026-10-01): Collin only, to prove the
-// ingest -> index -> fast-search pipeline end to end before paginating the
-// other 11 counties. Tarrant's ArcGIS layer has no pagination support at
-// all (confirmed live: a plain resultRecordCount request 400s with
-// "Pagination is not supported") — it'll need an OBJECTID-range chunking
-// strategy instead of resultOffset paging, not yet built.
+// Collin (2026-10-01), Harris + Dallas (2026-10-02) wired so far — see
+// COUNTIES below for the rest. Tarrant's ArcGIS layer has no pagination
+// support at all (confirmed live: a plain resultRecordCount request 400s
+// with "Pagination is not supported") — it'll need an OBJECTID-range
+// chunking strategy instead of resultOffset paging, not yet built. Denton
+// was deferred after its own server started erroring on every request —
+// including returnCountOnly, confirmed live, independent of anything this
+// function does — a transient outage on the county's own infrastructure,
+// not a bug here; add it once its server is healthy again.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -112,8 +115,86 @@ const COLLIN: CountyConfig = {
   },
 };
 
+const HARRIS: CountyConfig = {
+  cad: "Harris Central Appraisal District",
+  url: "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query",
+  outFields:
+    "owner_name_1,site_str_num,site_str_pfx,site_str_name,site_str_sfx,site_city,land_value,bld_value,total_appraised_val,acct_num,tax_year,land_sqft,acreage_1",
+  // This service caps resultRecordCount at 1000 regardless of what's
+  // requested (confirmed live — asked for 2000, got 1000 back), unlike
+  // Collin/Dallas's 2000.
+  pageSize: 1000,
+  mapRow(attrs) {
+    if (attrs.acct_num == null) return null;
+    const streetParts = [attrs.site_str_num, attrs.site_str_pfx, attrs.site_str_name, attrs.site_str_sfx]
+      .map((v) => (typeof v === "string" ? v.trim() : v))
+      .filter(Boolean)
+      .join(" ");
+    const propertyAddress = streetParts
+      ? attrs.site_city
+        ? `${streetParts}, ${attrs.site_city}`
+        : streetParts
+      : "";
+    return {
+      cad: "Harris Central Appraisal District",
+      account_number: String(attrs.acct_num),
+      owner_name: (attrs.owner_name_1 as string) ?? null,
+      property_address: propertyAddress,
+      property_type: null,
+      land_value: parseMoneyField(attrs.land_value),
+      improvement_value: parseMoneyField(attrs.bld_value),
+      total_value: parseMoneyField(attrs.total_appraised_val),
+      tax_year: attrs.tax_year != null ? parseInt(String(attrs.tax_year), 10) : null,
+      building_sqft: null,
+      year_built: null,
+      building_class: null,
+      lot_size_acres: parseMoneyField(attrs.acreage_1),
+      lot_size_sqft: parseMoneyField(attrs.land_sqft),
+    };
+  },
+};
+
+const DALLAS: CountyConfig = {
+  cad: "Dallas Central Appraisal District",
+  url: "https://services3.arcgis.com/zqe2kwz79KUqUvxC/arcgis/rest/services/DCAD_PARCELS/FeatureServer/0/query",
+  outFields: "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR",
+  pageSize: 2000,
+  mapRow(attrs) {
+    if (attrs.ACCOUNT_NUM == null) return null;
+    const site = (attrs.SiteAddress as string)?.trim();
+    // Dallas disambiguates same-named cities in neighboring counties right in
+    // the data ("GARLAND (DALLAS CO)") — stripped here for display, same as
+    // cad-lookup's own live Dallas mapper.
+    const city = (attrs.PROPERTY_CITY as string)?.trim().replace(/\s*\([^)]*\)\s*$/, "");
+    const zip9 = attrs.PROPERTY_ZIPCODE != null ? String(attrs.PROPERTY_ZIPCODE) : null;
+    const zip = zip9 && zip9.length >= 5 ? `${zip9.slice(0, 5)}-${zip9.slice(5)}` : zip9;
+    const propertyAddress = site && city ? `${site}, ${city}, TX${zip ? ` ${zip}` : ""}` : site || "";
+    return {
+      cad: "Dallas Central Appraisal District",
+      account_number: String(attrs.ACCOUNT_NUM).trim(),
+      owner_name: (attrs.OWNER_NAME1 as string)?.trim() || null,
+      property_address: propertyAddress,
+      // No land/improvement/market value fields exist on this layer at all
+      // (confirmed in cad-lookup's own live Dallas query) — honestly null,
+      // not backfilled.
+      property_type: null,
+      land_value: null,
+      improvement_value: null,
+      total_value: null,
+      tax_year: attrs.APPRAISAL_YR != null ? Number(attrs.APPRAISAL_YR) : null,
+      building_sqft: null,
+      year_built: null,
+      building_class: null,
+      lot_size_acres: null,
+      lot_size_sqft: null,
+    };
+  },
+};
+
 const COUNTIES: Record<string, CountyConfig> = {
   collin: COLLIN,
+  harris: HARRIS,
+  dallas: DALLAS,
 };
 
 // How many pages this one invocation pulls before returning — bounded well

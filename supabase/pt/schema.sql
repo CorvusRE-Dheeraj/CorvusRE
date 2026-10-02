@@ -2833,10 +2833,17 @@ grant select, insert, update, delete on public.parcel_ingest_progress to service
 -- Applied to the live database (pg_cron -> net.http_post, same shape as
 -- refresh-property-base-data/send-deadline-reminders above), not re-run
 -- from this file:
---   ingest-cad-parcels-collin  '*/10 * * * *'  bulk-refreshes Collin's
---     parcel_search_index rows, ~30k rows (15 pages) per tick, looping back
---     to a fresh pass once a full one completes (see ingest-cad-parcels's
---     own done/next_offset handling). Collin is the only county wired as
---     of 2026-10-01 — the rest of the 12 supported counties still read live
---     via cad-lookup only; add one cron job per county here as each is
---     wired into ingest-cad-parcels's COUNTIES map.
+--   ingest-cad-parcels-collin  '*/10 * * * *'  ~30k rows (15 pages/tick)
+--   ingest-cad-parcels-harris  '*/2 * * * *'   ~15k rows (15 pages/tick,
+--     this service caps resultRecordCount at 1000 — half Collin/Dallas's
+--     2000 — so a tighter cron interval during the initial ~1.55M-row
+--     backfill; slow down once caught up)
+--   ingest-cad-parcels-dallas  '*/2 * * * *'   ~30k rows (15 pages/tick)
+-- Each loops back to a fresh pass once a full one completes (see
+-- ingest-cad-parcels's own done/next_offset handling). Collin, Harris, and
+-- Dallas are wired as of 2026-10-02 — the rest of the 12 supported counties
+-- still read live via cad-lookup only; add one cron job per county here as
+-- each is wired into ingest-cad-parcels's COUNTIES map. Tarrant needs an
+-- OBJECTID-range chunking strategy instead (no pagination support at all);
+-- Denton was deferred after its own server started erroring on every
+-- request, independent of anything this function does.
