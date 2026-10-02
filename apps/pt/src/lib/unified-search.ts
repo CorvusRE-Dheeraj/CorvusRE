@@ -97,19 +97,14 @@ function guessCityWord(query: string): string {
   return words.length > 1 ? words[words.length - 1] : "";
 }
 
-// Checks the CAD/county name too, not just the city in the address itself
-// — found live chasing a real report ("Braum's Denton" burying two
-// genuinely real Denton-COUNTY locations, in Frisco and The Colony, among
-// wrong-county Houston/Carrollton-via-Dallas-CAD noise): neither "Frisco"
-// nor "The Colony" ever contains the literal word "Denton," even though
-// both are real "Denton Central Appraisal District" parcels — a Texan
-// searching by county (the common mental model for property tax, and the
-// same CAD name this app's own dropdown rows already display) expects
-// every city within that county to count as a match.
+// Address-only on purpose — NOT the record's CAD/county name. Tried
+// matching the county too (treating "Denton" as matching any city inside
+// Denton County, e.g. Frisco), but direct user correction: typing a city
+// name in this search means that city, not its whole county — a real
+// Denton, TX resident expects "Denton" to mean the city of Denton, not
+// Frisco or The Colony just because they share a CAD.
 function matchesCityGuess(record: CadRecord, cityGuess: string): boolean {
-  if (!cityGuess) return false;
-  if (record.cad.toUpperCase().includes(cityGuess.toUpperCase())) return true;
-  return record.propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
+  return Boolean(cityGuess) && record.propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
 }
 
 // Resolves whatever the user typed to a merged, deduped list of real CAD

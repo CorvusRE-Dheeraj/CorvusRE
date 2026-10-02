@@ -523,19 +523,14 @@ function cityMatches(extractedCity: string, cityGuess: string): boolean {
 // findNearby's own tiebreak keeps the stricter cityOf()-only check, since a
 // name search has no house number to fall back on and the city signal
 // matters far more there.
-// Checks the CAD/county name too, not just the city in the address itself
-// — found live chasing a real report ("Braum's Denton" burying two
-// genuinely real Denton-COUNTY locations, in Frisco and The Colony, among
-// wrong-county Houston/Carrollton-via-Dallas-CAD noise): neither "Frisco"
-// nor "The Colony" ever contains the literal word "Denton," so the
-// address-only check never recognized them as the city the user meant,
-// even though both are real "Denton Central Appraisal District" parcels —
-// a Texan searching by county (the overwhelmingly common mental model for
-// property tax, and the same CAD name this app's own dropdown rows already
-// display) expects every city within that county to count as a match.
-function nameSearchCityMatches(propertyAddress: string, cityGuess: string, cad?: string): boolean {
+// Address-only on purpose — NOT the record's CAD/county name. Tried
+// matching the county too (treating "Denton" as matching any city inside
+// Denton County, e.g. Frisco), but direct user correction: typing a city
+// name in this search means that city, not its whole county — a real
+// Denton, TX resident expects "Denton" to mean the city of Denton, not
+// Frisco or The Colony just because they share a CAD.
+function nameSearchCityMatches(propertyAddress: string, cityGuess: string): boolean {
   if (!cityGuess) return false;
-  if (cad && cad.toUpperCase().includes(cityGuess.toUpperCase())) return true;
   const extracted = cityOf(propertyAddress);
   if (extracted) return cityMatches(extracted, cityGuess);
   return propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
@@ -3041,7 +3036,7 @@ async function findByName(
   // something real is better than nothing, but only once nothing real
   // exists for what was actually asked).
   if (cityGuess) {
-    const inCity = deduped.filter((r) => nameSearchCityMatches(r.propertyAddress, cityGuess, r.cad));
+    const inCity = deduped.filter((r) => nameSearchCityMatches(r.propertyAddress, cityGuess));
     if (inCity.length > 0) return inCity.slice(0, 20);
   }
   return deduped.slice(0, 20);
