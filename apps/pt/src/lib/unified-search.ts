@@ -86,14 +86,36 @@ function dedupeKey(r: CadRecord): string {
   return `${r.cad}:${r.accountNumber ?? r.propertyAddress}`;
 }
 
-// Best-effort city guess from the tail of the query — just enough to rank
-// "the Denton one" above "a same-named store somewhere else in Texas" when
-// both are among the candidates. Deliberately simple (last word only, same
-// as the edge function's own parseNameQuery fallback): good enough for the
-// overwhelmingly common single-word-city case ("Walmart Denton"), and never
-// worse than no preference at all when it's wrong for a multi-word city.
+// A deliberately non-exhaustive allowlist of Texas city names seen in this
+// app's own supported-county CAD data. Used to find the actual city word
+// anywhere in a free-text query, not just the last one — found live
+// ("Braum's Denton west univ dr" grabbed "dr" as the "city," since that WAS
+// the last word, so the real city guess "Denton" was never checked at all
+// and a wrong Houston result sailed through unfiltered). Only ever adds a
+// correct match; a city not in this list just falls back to the previous
+// last-word guess, the same behavior as before — never a new exclusion.
+const KNOWN_TX_CITIES = new Set([
+  "denton", "houston", "dallas", "plano", "frisco", "mckinney", "allen",
+  "carrollton", "lewisville", "wylie", "celina", "garland", "mesquite",
+  "irving", "arlington", "austin", "sherman", "denison", "conroe", "katy",
+  "georgetown", "humble", "spring", "stafford", "aubrey", "porter",
+  "crandall", "forney", "montgomery", "euless", "haltomcity", "hurst",
+  "bedford", "colleyville", "southlake", "keller", "burleson", "haslet",
+  "roanoke", "grapevine",
+]);
+
+// Best-effort city guess — prefers a recognized Texas city anywhere in the
+// query, falling back to the tail word only when nothing is recognized
+// (good enough for the common single-word-city case, "Walmart Denton," and
+// never worse than no preference at all when it's wrong for an
+// unrecognized or multi-word city).
 function guessCityWord(query: string): string {
-  const words = query.trim().split(/\s+/);
+  const words = query
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-zA-Z]/g, ""));
+  const known = words.find((w) => KNOWN_TX_CITIES.has(w.toLowerCase()));
+  if (known) return known;
   return words.length > 1 ? words[words.length - 1] : "";
 }
 

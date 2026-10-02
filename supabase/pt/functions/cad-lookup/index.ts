@@ -409,13 +409,35 @@ const MULTI_WORD_CITIES = [
   "lake dallas",
 ];
 
+// A short, deliberately non-exhaustive allowlist of single-word Texas city
+// names within this app's supported counties — checked against EVERY word
+// in the query, not just the last one, before falling back to the
+// last-word guess. Found live: "Braum's Denton west univ dr" took the last
+// word ("dr") as the city, so the real city ("Denton," in the middle of
+// the query) was never recognized at all — the same class of bug
+// MULTI_WORD_CITIES above already exists to prevent for a multi-word city,
+// just for a single-word one with extra trailing words. Trailing words
+// after a recognized city (here, "west univ dr") are dropped from the name
+// entirely — they read as leftover address fragments the user tacked on,
+// not part of either the business name or a second real city reference.
+const KNOWN_SINGLE_WORD_CITIES = new Set([
+  "denton", "houston", "dallas", "plano", "frisco", "mckinney", "allen",
+  "carrollton", "lewisville", "wylie", "celina", "garland", "mesquite",
+  "irving", "arlington", "austin", "sherman", "denison", "conroe", "katy",
+  "georgetown", "humble", "spring", "stafford", "aubrey", "porter",
+  "crandall", "forney", "montgomery", "euless", "hurst", "bedford",
+  "colleyville", "southlake", "keller", "burleson", "haslet", "roanoke",
+  "grapevine",
+]);
+
 // A bare business/owner name (optionally + city) — "Walmart Denton", "Walmart,
 // Denton, TX", or just "7-Eleven" — rather than a street address. Deliberately
 // simple: prefers an explicit comma ("Name, City, TX") when present (reusing
 // guessCity on the tail, same as a real address's own city extraction);
-// otherwise checks the known multi-word cities above, then falls back to
-// treating the LAST word as the city and everything before it as the name,
-// which covers the common "Business City" typed form without a comma.
+// otherwise checks the known multi-word cities above, then any recognized
+// single-word city anywhere in the query, then falls back to treating the
+// LAST word as the city and everything before it as the name, which covers
+// the common "Business City" typed form without a comma.
 function parseNameQuery(address: string): NameQuery | null {
   const trimmed = address.trim();
   if (!trimmed) return null;
@@ -433,6 +455,12 @@ function parseNameQuery(address: string): NameQuery | null {
       const name = trimmed.slice(0, trimmed.length - city.length).trim();
       if (name) return { name, city };
     }
+  }
+  const cityIndex = words.findIndex((w) =>
+    KNOWN_SINGLE_WORD_CITIES.has(w.replace(/[^a-zA-Z]/g, "").toLowerCase()),
+  );
+  if (cityIndex > 0) {
+    return { name: words.slice(0, cityIndex).join(" "), city: words[cityIndex] };
   }
   return { name: words.slice(0, -1).join(" "), city: words[words.length - 1] };
 }
