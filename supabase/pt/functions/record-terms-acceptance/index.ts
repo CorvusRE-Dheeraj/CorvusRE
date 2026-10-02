@@ -69,9 +69,24 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
-      { status: 500, headers: corsHeaders },
-    );
+    // Supabase's PostgrestError (an RLS violation, a constraint failure, ...)
+    // is a plain object with a `.message`, not `instanceof Error` — the
+    // previous `err instanceof Error ? err.message : "unknown error"` check
+    // silently discarded the real reason for every database failure and
+    // always showed the user a bare "unknown error" toast, exactly the
+    // anti-pattern apps/pt/src/lib/error-message.ts's own comment warns
+    // about. Checked here too now, so a real failure (which one surfaced
+    // live, as this exact "unknown error" toast) is actually diagnosable.
+    const message =
+      err instanceof Error
+        ? err.message
+        : err && typeof err === "object" && "message" in err && typeof err.message === "string"
+          ? err.message
+          : "unknown error";
+    console.error("record-terms-acceptance failed:", err);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 });
