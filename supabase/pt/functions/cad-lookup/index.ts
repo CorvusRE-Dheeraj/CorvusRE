@@ -3092,8 +3092,23 @@ async function findByName(
 // gets a real match instead of silently finding nothing.
 const TX_ROAD_PREFIX = /\b(FM|RM|CR|SH|US|IH|LP|LOOP|SPUR)(\d)/gi;
 
+// The opposite direction from TX_ROAD_PREFIX: Google spells an interstate
+// out in full with spaces ("Interstate 35 E") or a user types the
+// hyphenated form ("I-35 E"), but Denton (and likely other counties) store
+// it fully glued with no spaces at all ("I35E") — found live chasing a real
+// report (a real Braum's location resolved by Google at "529 S Interstate
+// 35 E, Denton, TX 76205" that cad-lookup couldn't find at all, but matched
+// immediately once retried as "529 S I35E, Denton, TX 76205"). Digits
+// capped at 3 (every real TX interstate is 1-3 digits) to keep this from
+// ever matching an unrelated standalone "I" elsewhere in an address.
+const TX_INTERSTATE = /\binterstate[\s-]*(\d{1,3})\s*([NSEW])?\b/gi;
+const TX_INTERSTATE_HYPHEN = /\bi[\s-]+(\d{1,3})\s*([NSEW])?\b/gi;
+
 function normalizeRoadPrefix(address: string): string {
-  return address.replace(TX_ROAD_PREFIX, "$1 $2");
+  return address
+    .replace(TX_ROAD_PREFIX, "$1 $2")
+    .replace(TX_INTERSTATE, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`)
+    .replace(TX_INTERSTATE_HYPHEN, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`);
 }
 
 Deno.serve(async (req: Request) => {
