@@ -2865,7 +2865,14 @@ const EXACT_QUERY_TIMEOUT_MS = 15000;
 // EXACT_QUERY_TIMEOUT_MS's own history above), so a preview can genuinely
 // omit a real match that the full validate would still find; that's the
 // accepted cost of a fast typeahead, not a bug.
-const PREVIEW_QUERY_TIMEOUT_MS = 4000;
+//
+// Bumped 4000 -> 6000 on 2026-10-02 chasing a real report (a genuinely real
+// Denton Braum's location, resolved correctly by Google, silently missing
+// from the live dropdown): Denton's own exact-match query measured 4.4-4.5s
+// repeatedly for this one real address — right at the old 4000ms ceiling,
+// so ordinary timing jitter was enough to drop a real match unpredictably.
+// 6s is still a large win over the un-capped 15s this replaced.
+const PREVIEW_QUERY_TIMEOUT_MS = 6000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
@@ -3057,7 +3064,25 @@ async function findByName(
       withTimeout(query(nameQuery, "name"), queryTimeoutMs, [] as CadRecord[]),
     ),
   );
-  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  // Each county's own mapper falls back to `propertyAddress ?? address` when
+  // a record's real situs is missing — a reasonable display fallback for an
+  // address-mode search (where `address` genuinely is what the user typed),
+  // but nonsensical here: `address` passed into a county function under
+  // "name" mode is the raw owner-name query text, not a real address at
+  // all. Found live: 4 real Collin "Land" parcels (WAL-MART REAL ESTATE
+  // BUSINESS TRUST, no situs on file — likely future store sites) came back
+  // with propertyAddress literally equal to "walmart denton," which then
+  // passed the city filter below since the ENTIRE fake "address" was
+  // exactly the city word being filtered for. Replaced with an honest
+  // fallback instead of a query-text echo that happens to look like a real
+  // match.
+  const candidates = results
+    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    .map((c) =>
+      c.propertyAddress.trim().toLowerCase() === nameQuery.trim().toLowerCase()
+        ? { ...c, propertyAddress: `${c.cad}${c.accountNumber ? ` — Account #${c.accountNumber}` : ""}` }
+        : c,
+    );
   const seen = new Set<string>();
   const deduped: CadRecord[] = [];
   for (const c of candidates) {
@@ -3092,8 +3117,23 @@ async function findByName(
 // gets a real match instead of silently finding nothing.
 const TX_ROAD_PREFIX = /\b(FM|RM|CR|SH|US|IH|LP|LOOP|SPUR)(\d)/gi;
 
+// The opposite direction from TX_ROAD_PREFIX: Google spells an interstate
+// out in full with spaces ("Interstate 35 E") or a user types the
+// hyphenated form ("I-35 E"), but Denton (and likely other counties) store
+// it fully glued with no spaces at all ("I35E") — found live chasing a real
+// report (a real Braum's location resolved by Google at "529 S Interstate
+// 35 E, Denton, TX 76205" that cad-lookup couldn't find at all, but matched
+// immediately once retried as "529 S I35E, Denton, TX 76205"). Digits
+// capped at 3 (every real TX interstate is 1-3 digits) to keep this from
+// ever matching an unrelated standalone "I" elsewhere in an address.
+const TX_INTERSTATE = /\binterstate[\s-]*(\d{1,3})\s*([NSEW])?\b/gi;
+const TX_INTERSTATE_HYPHEN = /\bi[\s-]+(\d{1,3})\s*([NSEW])?\b/gi;
+
 function normalizeRoadPrefix(address: string): string {
-  return address.replace(TX_ROAD_PREFIX, "$1 $2");
+  return address
+    .replace(TX_ROAD_PREFIX, "$1 $2")
+    .replace(TX_INTERSTATE, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`)
+    .replace(TX_INTERSTATE_HYPHEN, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`);
 }
 
 Deno.serve(async (req: Request) => {
