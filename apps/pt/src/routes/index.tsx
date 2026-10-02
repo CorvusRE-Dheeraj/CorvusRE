@@ -299,13 +299,6 @@ function Home() {
                   suppressSuggestions
                 />
                 <MicButton onResult={setAddress} />
-                <button
-                  type="submit"
-                  disabled={resolvingAddress}
-                  className="btn-accent disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {resolvingAddress ? "Resolving…" : "Start Free AI Property Review"}
-                </button>
               </form>
 
               {liveMatchesLoading && liveMatches.length === 0 && (

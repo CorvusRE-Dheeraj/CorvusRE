@@ -180,11 +180,22 @@ function Intake() {
     // behind an "Edit Address" click the user has no reason to expect.
     if (s.address && !s.confirmed) {
       setAddress(s.address);
-      // The county lookup already finished before the reload (the record is saved with the
-      // in-progress intake), so go straight back to the Confirm step instead of repeating a
-      // slow lookup from step 1.
-      if (s.accountNumber && s.cad) setStep("confirm");
-      else runValidation(s.address);
+      // The county lookup already finished before the reload (the record is
+      // saved with the in-progress intake) — or before ever reaching this
+      // page at all, for a property picked from the homepage's own live-match
+      // dropdown — so there's no need to repeat a slow lookup from step 1.
+      // computeSavingsAndAdvance reuses cached savings when they're already
+      // there (the reload case) and computes them fresh when they're not
+      // (the homepage-selection case) — found live: this used to jump
+      // straight to "confirm" just because accountNumber+cad were set,
+      // without checking whether savings had actually ever been computed,
+      // silently skipping the savings step entirely for a homepage pick.
+      if (s.accountNumber && s.cad) {
+        const requestId = ++requestIdRef.current;
+        computeSavingsAndAdvance(s, requestId);
+      } else {
+        runValidation(s.address);
+      }
     }
   }, []);
 
@@ -298,18 +309,28 @@ function Intake() {
     }
     const next = updateIntake(cadRecordToIntakePatch(record, resolvedAddress));
     setState(next);
+    await computeSavingsAndAdvance(next, requestId);
+  }
 
-    // See estimateSavings() for the comps -> formula cascade — both tiers are
-    // fully deterministic (no AI call), so the same property always produces
-    // the same number. Only null (no assessed value at all) skips the
-    // savings step straight to confirm.
-    //
-    // Still cached against this exact property (cad+accountNumber, or
-    // address when no account number exists) so refreshing the page or
-    // re-validating the same address mid-intake reuses the prior result
-    // instead of re-running the comps lookup for nothing — a performance
-    // nicety now, not a correctness requirement, since the estimate would
-    // come out identical either way.
+  // See estimateSavings() for the comps -> formula cascade — both tiers are
+  // fully deterministic (no AI call), so the same property always produces
+  // the same number. Only null (no assessed value at all) skips the
+  // savings step straight to confirm.
+  //
+  // Shared between applyCadRecord (a fresh validation/selection) and the
+  // mount effect below (resuming a property picked from the homepage's own
+  // live-match dropdown, which stores the record directly via
+  // cadRecordToIntakePatch without ever running applyCadRecord) — found
+  // live: picking a live match on the homepage landed straight on Confirm
+  // with no savings ever computed, since the old mount-effect shortcut only
+  // checked whether accountNumber+cad were already set, not whether savings
+  // actually were. Cached against this exact property (cad+accountNumber,
+  // or address when no account number exists) so refreshing the page or
+  // re-validating the same address mid-intake reuses the prior result
+  // instead of re-running the comps lookup for nothing — a performance
+  // nicety now, not a correctness requirement, since the estimate would
+  // come out identical either way.
+  async function computeSavingsAndAdvance(next: IntakeState, requestId: number) {
     const savingsKey =
       next.cad && next.accountNumber ? `${next.cad}::${next.accountNumber}` : next.address;
     let nextSavings: SavingsEstimate;
