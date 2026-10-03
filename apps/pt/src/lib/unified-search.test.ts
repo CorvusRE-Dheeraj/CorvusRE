@@ -337,4 +337,27 @@ describe("unifiedPropertySearch", () => {
       expect.anything(),
     );
   });
+
+  it("marks a directly-typed out-of-state address 'unsupported' without sweeping Texas counties for it", async () => {
+    // Regression: confirmed live ("2770 West Evans Avenue, Denver, CO
+    // 80219" typed directly, not via a Google suggestion) — the direct
+    // search's own house+street-core sweep has no concept of state at all,
+    // and genuinely returned a confident-looking but completely wrong
+    // Bexar County match ("2770 E Evans Rd, San Antonio") purely because
+    // the house number and street core happened to collide.
+    const wrongTexasRecord = record({
+      accountNumber: "660938",
+      propertyAddress: "2770 E EVANS RD, SAN ANTONIO, TX, 78259",
+      cad: "Bexar Appraisal District",
+    });
+    vi.mocked(cadLookupPreview).mockResolvedValue({ matched: true, record: wrongTexasRecord });
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([]);
+
+    const updates = await runSearch("2770 West Evans Avenue, Denver, CO 80219");
+    const final = updates[updates.length - 1];
+    expect(final).toHaveLength(1);
+    expect(final[0].cadStatus).toBe("unsupported");
+    expect(final[0].record).toBeUndefined();
+    expect(cadLookupPreview).not.toHaveBeenCalled();
+  });
 });
