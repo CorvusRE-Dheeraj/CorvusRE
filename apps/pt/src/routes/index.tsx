@@ -114,19 +114,37 @@ function Home() {
     setLiveMatchesLoading(true);
     const controller = new AbortController();
     const t = setTimeout(() => {
-      unifiedPropertySearch(q, controller.signal)
-        .then((results) => {
+      // Streaming, not atomic — found live chasing a real "why does it take
+      // 7 seconds to show the Braum's locations I can already see on
+      // Google Maps?" report: unifiedPropertySearch now calls back with
+      // whatever's been found so far every time a new sub-search resolves,
+      // instead of making the caller wait on the slowest one. Each callback
+      // just replaces the displayed list wholesale (it's already the full
+      // current best list, deduped+filtered) and opens the dropdown on the
+      // very first one, so the user sees the fast result immediately and
+      // watches slower ones join it, rather than a blank dropdown the whole
+      // time. unifiedPropertySearch itself caps the total wait at 10s and
+      // discards anything slower than that.
+      unifiedPropertySearch(
+        q,
+        (results) => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatches(results);
-          // Open regardless of count — a settled search with zero results
-          // still shows a "no matches" row + the manual-search fallback
-          // button, rather than rendering nothing at all (see the panel's
-          // own comment below for why that silence was itself a bug).
+          setLiveMatchesOpen(true);
+        },
+        controller.signal,
+      )
+        .then(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          // Nothing ever came in (a genuine zero-match search) — still open
+          // the dropdown so it shows the "no matches" row + manual-search
+          // fallback button, rather than rendering nothing at all (see the
+          // panel's own comment below for why that silence was itself a
+          // bug).
           setLiveMatchesOpen(true);
         })
         .catch(() => {
           if (liveMatchRequestRef.current !== requestId) return;
-          setLiveMatches([]);
           setLiveMatchesOpen(true);
         })
         .finally(() => {

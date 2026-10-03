@@ -33,6 +33,21 @@
 // incident on the production database and were removed entirely (table,
 // ingestion function, and cron jobs). cadLookupPreview below always queries
 // live.
+//
+// STREAMING, not atomic: each individual government CAD endpoint genuinely
+// takes several seconds (confirmed live — Denton alone is ~6.5s per lookup),
+// and a business-name search fires one of these per Google candidate, so
+// waiting for the slowest one before showing anything meant a real ~7s
+// blank dropdown — found live chasing "why does the app take so long to
+// show the Braum's locations I can already see on Google Maps?" Direct
+// product ask in response: show whichever result finishes first
+// immediately, and keep updating the dropdown as the rest trickle in,
+// rather than one all-or-nothing wait. unifiedPropertySearch therefore
+// takes an onUpdate callback instead of returning one final array — it's
+// invoked every time a new sub-search resolves, each time with the full
+// current best list (dedup + city-filter re-applied over everything found
+// so far), and the returned promise only resolves once every sub-search is
+// done (so a caller can stop showing a loading spinner at that point).
 import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
 import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 
@@ -41,6 +56,15 @@ import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 // how often this runs at all.
 const MAX_GOOGLE_CANDIDATES = 8;
 const MAX_RESULTS = 12;
+
+// Hard overall ceiling, independent of any individual county's own
+// per-request timeout — direct product decision after watching a real
+// Braum's/Denton search run ~7.2s end-to-end: better to show whatever's
+// already in hand and stop than to let one unusually slow candidate (or a
+// government endpoint having a bad day) keep the dropdown spinning
+// indefinitely. Anything that resolves after the cutoff is discarded, not
+// displayed — it's genuinely too late to be a "live suggestion" anymore.
+const SEARCH_TIMEOUT_MS = 10_000;
 
 export type UnifiedMatch = {
   record: CadRecord;
@@ -123,6 +147,24 @@ function matchesCityGuess(record: CadRecord, cityGuess: string): boolean {
   return Boolean(cityGuess) && record.propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
 }
 
+// Re-applies the exact same dedupe + "filter to typed city when any city
+// matches exist" rule the old atomic version used, but over whatever has
+// been found SO FAR — called once per sub-search as it resolves, so each
+// call can only ever add information, never require waiting on a slower
+// sibling search first. Filter-not-sort — found live ("walmart denton"
+// showing real Denton matches on top, but also real Plano/Celina ones
+// trailing below): once there ARE matches in the city actually typed, the
+// rest are noise, not a helpful runner-up. Only falls back to the
+// unfiltered list when the typed city genuinely has zero matches among
+// everything found so far.
+function buildDisplayList(all: UnifiedMatch[], cityGuess: string): UnifiedMatch[] {
+  if (cityGuess) {
+    const inCity = all.filter((m) => matchesCityGuess(m.record, cityGuess));
+    if (inCity.length > 0) return inCity.slice(0, MAX_RESULTS);
+  }
+  return all.slice(0, MAX_RESULTS);
+}
+
 // Resolves whatever the user typed to a merged, deduped list of real CAD
 // records — direct matches from the raw typed text, plus matches found by
 // following every one of Google's Text Search results to its real address
@@ -130,54 +172,79 @@ function matchesCityGuess(record: CadRecord, cityGuess: string): boolean {
 // Never throws: any individual lookup that fails just contributes nothing,
 // same as a plain no-match, so one slow/broken source can't blank the
 // others.
+//
+// Streaming contract: onUpdate fires every time a new sub-search resolves
+// (the direct search, or each individual Google candidate's CAD lookup),
+// each time with the complete current best list — so a caller can just
+// replace its displayed list wholesale on every call, no merging required
+// on the caller's side. The returned promise resolves after every
+// sub-search has settled (success or failure), once there's nothing left
+// to add.
 export async function unifiedPropertySearch(
   query: string,
+  onUpdate: (matches: UnifiedMatch[]) => void,
   signal?: AbortSignal,
-): Promise<UnifiedMatch[]> {
-  const direct = lookupRecords(query).then((records) => records.map((record) => ({ record })));
+): Promise<void> {
+  const cityGuess = guessCityWord(query);
+  const seen = new Set<string>();
+  const all: UnifiedMatch[] = [];
+  let timedOut = false;
+
+  // Direct results are pushed in first when they land — a match on the raw
+  // typed text (a real address, or our own owner-name search) is at least
+  // as precise as a Google-mediated one, so it's preferred when both find
+  // the same record (dedupe keeps whichever arrived first). Ignores
+  // anything arriving after SEARCH_TIMEOUT_MS has already cut the search
+  // off — see timedOut below.
+  function addMatches(newMatches: UnifiedMatch[]) {
+    if (timedOut) return;
+    let added = false;
+    for (const m of newMatches) {
+      const key = dedupeKey(m.record);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(m);
+      added = true;
+    }
+    if (added) onUpdate(buildDisplayList(all, cityGuess));
+  }
+
+  const direct = lookupRecords(query)
+    .then((records) => addMatches(records.map((record) => ({ record }))))
+    .catch(() => {});
 
   const viaGoogle = GOOGLE_API_KEY
     ? fetchGoogleTextSearch(query, signal)
         .then(async (results) => {
           const candidates = results.slice(0, MAX_GOOGLE_CANDIDATES);
-          const matchLists = await Promise.all(
+          // Each candidate's CAD lookup is awaited independently (not
+          // Promise.all'd into one combined wait) specifically so a fast
+          // candidate's result reaches addMatches — and onUpdate — the
+          // moment it's ready, instead of all of them being held back
+          // until the slowest one finishes.
+          await Promise.all(
             candidates.map(async ({ label, address }) => {
               const records = await lookupRecords(address, false);
-              return records.map((record) => ({ record, googleLabel: label }));
+              addMatches(records.map((record) => ({ record, googleLabel: label })));
             }),
           );
-          return matchLists.flat();
         })
-        .catch(() => [] as UnifiedMatch[])
-    : Promise.resolve([] as UnifiedMatch[]);
+        .catch(() => {})
+    : Promise.resolve();
 
-  const [directMatches, googleMatches] = await Promise.all([direct, viaGoogle]);
+  const everything = Promise.all([direct, viaGoogle]).then(() => {});
 
-  const seen = new Set<string>();
-  const merged: UnifiedMatch[] = [];
-  // Direct results first — a match on the raw typed text (a real address, or
-  // our own owner-name search) is at least as precise as a Google-mediated
-  // one, so it's preferred when both find the same record (dedupe keeps the
-  // first occurrence).
-  for (const m of [...directMatches, ...googleMatches]) {
-    const key = dedupeKey(m.record);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(m);
+  let timer!: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, SEARCH_TIMEOUT_MS);
+  });
+
+  try {
+    await Promise.race([everything, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
-
-  // Filter to the typed city, not just sort it first — found live
-  // ("walmart denton" showing real Denton matches on top, but also real
-  // Plano/Celina ones trailing below): once there ARE matches in the city
-  // actually typed, the rest are noise, not a helpful runner-up, and they
-  // can crowd a real same-city match out of the dropdown's own top-6
-  // display cap. Only falls back to the unfiltered list when the typed
-  // city genuinely has zero matches among everything found.
-  const cityGuess = guessCityWord(query);
-  if (cityGuess) {
-    const inCity = merged.filter((m) => matchesCityGuess(m.record, cityGuess));
-    if (inCity.length > 0) return inCity.slice(0, MAX_RESULTS);
-  }
-
-  return merged.slice(0, MAX_RESULTS);
 }

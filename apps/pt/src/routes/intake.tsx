@@ -222,16 +222,28 @@ function Intake() {
     setLiveMatchesLoading(true);
     const controller = new AbortController();
     const t = setTimeout(() => {
-      unifiedPropertySearch(q, controller.signal)
-        .then((results) => {
+      // Streaming, not atomic — see unified-search.ts's own comment on
+      // unifiedPropertySearch. Each callback already carries the full
+      // current best (deduped+city-filtered) list, so it's a straight
+      // replace; the dropdown opens on the very first one rather than
+      // waiting for every candidate to resolve. Capped at 10s total inside
+      // unifiedPropertySearch itself.
+      unifiedPropertySearch(
+        q,
+        (results) => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatches(results);
           // Open regardless of count — see the panel's own comment below.
           setLiveMatchesOpen(true);
+        },
+        controller.signal,
+      )
+        .then(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesOpen(true);
         })
         .catch(() => {
           if (liveMatchRequestRef.current !== requestId) return;
-          setLiveMatches([]);
           setLiveMatchesOpen(true);
         })
         .finally(() => {
