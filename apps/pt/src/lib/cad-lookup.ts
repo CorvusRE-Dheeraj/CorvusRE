@@ -80,15 +80,34 @@ export async function cadLookup(address: string): Promise<CadLookupResult> {
 }
 
 // Same lookup, but for the as-you-type live-search dropdown only — never for
-// a direct "Validate address" submit or a picked suggestion's own re-check.
-// Tells the edge function to use its much shorter PREVIEW_QUERY_TIMEOUT_MS
-// instead of waiting up to 15s for every one of the 12 counties (see that
-// constant's own comment): a live preview is best-effort and can genuinely
-// miss a real match a slow county would still have had, which is fine since
-// nothing here is the final answer — only the plain cadLookup() call that
-// "Validate address" makes is.
-export async function cadLookupPreview(address: string): Promise<CadLookupResult> {
-  return invokeEdgeFunction<CadLookupResult>("cad-lookup", { address, preview: true });
+// a direct "Validate address" submit or a picked suggestion's own re-check
+// (see cadLookup above for those). `preview: true` tells the edge function
+// to use its own PREVIEW_QUERY_TIMEOUT_MS per-county ceiling rather than
+// EXACT_QUERY_TIMEOUT_MS — the two aren't "fast vs. slow" against each
+// other any more (see that constant's own comment for the full history);
+// preview is actually the more patient of the two now, since the live
+// dropdown shows and enriches each row independently and can afford to
+// wait.
+//
+// countyHint — "Denton County," as Google's own addressComponents give it
+// directly for a resolved place (see unified-search.ts) — lets the edge
+// function try just that one county's own query first instead of
+// blind-firing all 12 concurrently for every single candidate. A business-
+// name search with several Google candidates in the same real county used
+// to mean candidates × 12 concurrent county queries for what's usually
+// really just one county; this cuts that down to roughly one query per
+// candidate, with a full 12-county fallback still running server-side if
+// the hinted county genuinely comes back empty, so a wrong/stale hint never
+// costs a real match, only a little time.
+export async function cadLookupPreview(
+  address: string,
+  countyHint?: string,
+): Promise<CadLookupResult> {
+  return invokeEdgeFunction<CadLookupResult>("cad-lookup", {
+    address,
+    preview: true,
+    ...(countyHint ? { countyHint } : {}),
+  });
 }
 
 // A direct, exact lookup by account/parcel number for a single named county —

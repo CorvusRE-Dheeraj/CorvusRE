@@ -719,6 +719,29 @@ function coreStreetName(street: string): string {
 // a false-positive shape, not a highway prefix) — left alone rather than
 // guessed, per this file's own standing discipline (see the Sixth bug class
 // note in the texas_cad_data_sources memory).
+// Appends every cardinal direction GLUED directly onto each of the given
+// forms with no separating space/hyphen ("I35" -> "I35N"/"I35S"/"I35E"/
+// "I35W") — found live chasing a real report (a genuinely real Denton
+// Braum's, correctly resolved by Google, missing from the live dropdown):
+// Denton stores this specific interstate's situs as "...I35E..." with the
+// direction glued straight onto the number, no space at all. The INPUT
+// address often has no directional to work with in the first place —
+// Google's own resolved address for this exact place was plain "Interstate
+// 35," no "E" — so there's nothing to echo back; the only way to still
+// find a real record stored this way is to try every direction as its own
+// candidate. Deliberately only wired into the interstate branch below,
+// which is the one confirmed-live case of this glued-no-space storage
+// convention — kept off the other highway types per this function's own
+// "only forms actually confirmed live, not every plausible spelling"
+// discipline (see the long comment above this function), and never
+// applied to ordinary (non-highway) street names, which already have a
+// separately proven, working mechanism for a trailing directional (see
+// singleFieldWhere's "end of string" boundary case, built for exactly
+// this on plain streets like "107 OAK DR E").
+function withGluedDirectionals(forms: string[]): string[] {
+  return forms.flatMap((f) => [f, ...["N", "S", "E", "W"].map((d) => `${f}${d}`)]);
+}
+
 function coreVariants(core: string): string[] {
   const variants = new Set<string>([core]);
   const m = core.match(
@@ -731,15 +754,10 @@ function coreVariants(core: string): string[] {
       .replace(/[\s-]+/g, " ")
       .trim();
     if (/^(interstate|ih|i)$/.test(prefix)) {
-      for (const v of [
-        `I${n}`,
-        `I ${n}`,
-        `I-${n}`,
-        `IH ${n}`,
-        `IH-${n}`,
-        `INTERSTATE ${n}`,
-        `INTERSTATE HY ${n}`,
-      ]) {
+      for (const v of withGluedDirectionals([`I${n}`, `I ${n}`, `I-${n}`, `IH ${n}`, `IH-${n}`])) {
+        variants.add(v);
+      }
+      for (const v of [`INTERSTATE ${n}`, `INTERSTATE HY ${n}`]) {
         variants.add(v);
       }
     } else if (/^(us|u s|u\.s\.)$/.test(prefix)) {
@@ -2828,9 +2846,12 @@ function nearbyDedupeKey(r: CadRecord): string {
 // nearby parcels on the same real street) — right at the edge of the old
 // 10000ms bound, so ordinary request overhead on top of that 9.2s was
 // enough to silently drop a real, correct nearby list on a plain, otherwise
-// unremarkable query. Matches EXACT_QUERY_TIMEOUT_MS now rather than
-// staying deliberately lower than it.
-const NEARBY_QUERY_TIMEOUT_MS = 15000;
+// unremarkable query.
+//
+// Bumped 15000 -> 30000 on 2026-10-03: see EXACT_QUERY_TIMEOUT_MS's own
+// history below for why this is now a universal, every-county headroom
+// increase rather than another one-off bump chasing a single address.
+const NEARBY_QUERY_TIMEOUT_MS = 30000;
 // The exact-match sweep is normally faster (a more selective, house-number-
 // anchored WHERE clause), but a single county source going slow or getting
 // rate-limited isn't otherwise bounded at all — found live 2026-08-25 that a
@@ -2850,29 +2871,46 @@ const NEARBY_QUERY_TIMEOUT_MS = 15000;
 // enough to matter — this is ordinary latency jitter, not a specific bad
 // county the way the nearby-timeout bump above was. More headroom, not a
 // county-specific fix.
-const EXACT_QUERY_TIMEOUT_MS = 15000;
+//
+// Bumped 15000 -> 30000 on 2026-10-03 after this exact "close to the
+// ceiling" pattern recurred a third time, for a third different reason
+// (Denton), and it became clear bumping the number by a few seconds each
+// time a new slow address got reported was never going to actually end:
+// each per-county query here is one plain, unretried, unchained `fetch()`
+// (see fetchFeatures/queryDenton etc.) — there is no inefficiency in our
+// own code to optimize away, the latency is genuinely the county's own
+// government server, and real, measured Denton response times for
+// DIFFERENT real addresses ranged from 4.4s to 15.5s on their own, no
+// request ever involving more than one county. Each county's timeout here
+// is independent and runs concurrently with every other county's (see
+// `withTimeout(query(address), queryTimeoutMs, [])` in Deno.serve below) —
+// a slow Denton query only ever costs Denton's own result, it never slows
+// down the other 11 counties' real, often much faster answers — so there
+// is no real downside to a generous per-county ceiling, only upside:
+// real margin above the worst government-server response seen so far,
+// instead of a number tuned to the last one reported.
+const EXACT_QUERY_TIMEOUT_MS = 30000;
 
 // Used only for the as-you-type live-search dropdown (`body.preview === true`,
 // see Deno.serve below) — NOT the "Validate address"/full-submit flow, which
 // always keeps the generous timeouts above so a real but slow/rate-limited
-// county is never silently missed on the authoritative check. A live preview
-// is a different tradeoff: the user is still typing, waiting the full 15s for
-// one laggard county out of 12 reads as the search being broken, and whatever
-// it shows is never the final answer anyway — hitting "Validate address" (or
-// picking a suggestion) always re-runs the full, un-short-circuited sweep.
-// Some real counties are legitimately slower than this on an ordinary request
-// (Tarrant ran ~5s on a normal, non-pathological query — see
-// EXACT_QUERY_TIMEOUT_MS's own history above), so a preview can genuinely
-// omit a real match that the full validate would still find; that's the
-// accepted cost of a fast typeahead, not a bug.
+// county is never silently missed on the authoritative check.
 //
-// Bumped 4000 -> 6000 on 2026-10-02 chasing a real report (a genuinely real
-// Denton Braum's location, resolved correctly by Google, silently missing
-// from the live dropdown): Denton's own exact-match query measured 4.4-4.5s
-// repeatedly for this one real address — right at the old 4000ms ceiling,
-// so ordinary timing jitter was enough to drop a real match unpredictably.
-// 6s is still a large win over the un-capped 15s this replaced.
-const PREVIEW_QUERY_TIMEOUT_MS = 6000;
+// Used to be deliberately shorter than EXACT_QUERY_TIMEOUT_MS (4000, then
+// 6000, then briefly tied to it at 15000) on the reasoning that the old live
+// dropdown was all-or-nothing: nothing showed at all until every candidate's
+// query finished, so waiting a long time for one laggard county read as the
+// whole search being broken. That reasoning no longer holds — the client
+// (unified-search.ts) now shows each Google-resolved address as its own row
+// the instant it's found and enriches it in place as its CAD lookup
+// resolves, so one slow county just keeps that one row on "Looking up
+// county parcel…" a little longer while every other row is already
+// showing. Set deliberately MORE generous than EXACT_QUERY_TIMEOUT_MS now
+// (not just equal to it) specifically because the live dropdown's own
+// overall patience for a "pending" row is a full 3 minutes (see
+// SEARCH_TIMEOUT_MS in unified-search.ts) — there's no reason for this
+// per-county ceiling to be the thing that gives up first.
+const PREVIEW_QUERY_TIMEOUT_MS = 60000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
@@ -3136,120 +3174,134 @@ function normalizeRoadPrefix(address: string): string {
     .replace(TX_INTERSTATE_HYPHEN, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`);
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+// Every county query function, in priority order — the full, unhinted
+// sweep. Queried concurrently with no city-name filtering on which to try
+// (see the comment on this further down); a single county's transient
+// failure (network error, endpoint down) no longer fails the whole lookup,
+// it's just skipped, same as a plain no-match.
+const ALL_COUNTY_QUERIES = [
+  queryCollin,
+  queryMontgomery,
+  queryDenton,
+  queryHarris,
+  queryTarrant,
+  queryFortBend,
+  queryWilliamson,
+  queryGrayson,
+  queryTravis,
+  queryBexar,
+  queryDallas,
+  queryKaufman,
+];
 
-  try {
-    const body = await req.json();
+// Maps Google's own `administrative_area_level_2` ("Denton County") to the
+// one query function for that county — see unified-search.ts's own comment
+// on why this exists: without it, every one of a business-name search's
+// several Google candidates blind-fires all 12 counties concurrently, even
+// when Google already names the exact county for each one. Built from
+// ALL_COUNTY_QUERIES itself (one entry per county name baked into each
+// function's own URL/comment) rather than hand-duplicated, so the two can
+// never silently drift apart.
+const COUNTY_QUERY_BY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
+  collin: queryCollin,
+  montgomery: queryMontgomery,
+  denton: queryDenton,
+  harris: queryHarris,
+  tarrant: queryTarrant,
+  "fort bend": queryFortBend,
+  williamson: queryWilliamson,
+  grayson: queryGrayson,
+  travis: queryTravis,
+  bexar: queryBexar,
+  dallas: queryDallas,
+  kaufman: queryKaufman,
+};
 
-    // Manual account-number lookup (see queryByAccountNumber's own comment)
-    // — a completely separate request shape from the address flow below,
-    // checked first so it never touches address parsing at all.
-    if (typeof body.accountNumber === "string" && typeof body.cad === "string") {
-      const record = await queryByAccountNumber(body.cad, body.accountNumber);
-      return new Response(JSON.stringify({ matched: Boolean(record), record: record ?? null }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+  if (typeof hint !== "string") return undefined;
+  const key = hint.toLowerCase().replace(/\s*county\s*$/i, "").trim();
+  return COUNTY_QUERY_BY_HINT[key];
+}
 
-    const rawAddress = body.address;
-    if (!rawAddress || typeof rawAddress !== "string") {
-      return new Response(JSON.stringify({ error: "address is required" }), {
-        status: 400,
-        headers: corsHeaders,
-      });
-    }
-    const address = normalizeRoadPrefix(rawAddress);
+type LookupResult =
+  | { matched: false; nearby: CadRecord[] }
+  | { matched: true; record: CadRecord }
+  | { matched: "multiple"; options: CadRecord[] };
 
-    // Set only by the as-you-type live-search dropdown (never by "Validate
-    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
-    // comment for why a fast, best-effort sweep is the right tradeoff there.
-    const preview = body.preview === true;
-    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+// Deliberately NOT "did the hinted county find literally nothing" — a
+// single wrong/stale hint (confirmed live: hinting "Collin County" for a
+// real Denton address) can still produce a plausible-looking "nearby"
+// result from the WRONG county's own loose fallback search, which isn't
+// empty but also isn't the real property. Only an actual exact-match or
+// multiple-accounts result is confident enough to skip the full sweep on;
+// anything else (including a non-empty "nearby" guess) still falls back to
+// ALL_COUNTY_QUERIES, discarding the hinted attempt entirely, so a bad hint
+// can only cost a little time, never a real match.
+function isConfidentMatch(r: LookupResult): boolean {
+  return r.matched === true || r.matched === "multiple";
+}
 
-    // Queries every supported county concurrently (see the comment above) — no
-    // city-name filtering on WHICH counties to try. A single county's transient
-    // failure (network error, endpoint down) no longer fails the whole lookup;
-    // it's just skipped, same as a plain no-match.
-    const countyQueriesInOrder = [
-      queryCollin,
-      queryMontgomery,
-      queryDenton,
-      queryHarris,
-      queryTarrant,
-      queryFortBend,
-      queryWilliamson,
-      queryGrayson,
-      queryTravis,
-      queryBexar,
-      queryDallas,
-      queryKaufman,
-    ];
+// The full address-lookup sweep, parameterized by WHICH county query
+// functions to run — everything that used to be the bulk of the
+// Deno.serve handler below, unchanged in behavior, just no longer
+// hardcoded to ALL_COUNTY_QUERIES so it can be tried against a single
+// hinted county first (see Deno.serve below for the two-phase caller).
+// Returns a plain result object rather than a Response so the caller can
+// inspect it (isConfidentMatch) and decide whether a fallback sweep is needed
+// before anything is sent back over the wire.
+async function runLookup(
+  address: string,
+  queryTimeoutMs: number,
+  countyQueriesInOrder: typeof ALL_COUNTY_QUERIES,
+): Promise<LookupResult> {
+  // A business/owner name ("Walmart Denton"), not a street address at all —
+  // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
+  // can parse this (both require a house number or a street-suffix word),
+  // so every county query below would otherwise bail out to [] without
+  // ever making a request. Checked here, once, rather than inside each of
+  // the 12 county functions separately.
+  if (!parseAddressForQuery(address, "nearby")) {
+    const nameQuery = parseNameQuery(address);
+    if (!nameQuery?.name) return { matched: false, nearby: [] };
+    const nameResults = await findByName(countyQueriesInOrder, address, nameQuery.city, queryTimeoutMs);
+    return { matched: false, nearby: nameResults };
+  }
 
-    // A business/owner name ("Walmart Denton"), not a street address at all —
-    // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
-    // can parse this (both require a house number or a street-suffix word),
-    // so every county query below would otherwise bail out to [] without
-    // ever making a request. Checked here, once, rather than inside each of
-    // the 12 county functions separately.
-    if (!parseAddressForQuery(address, "nearby")) {
-      const nameQuery = parseNameQuery(address);
-      if (!nameQuery?.name) {
-        return new Response(JSON.stringify({ matched: false, nearby: [] }), {
-          status: 200,
-          headers: corsHeaders,
-        });
-      }
-      const nameResults = await findByName(
-        countyQueriesInOrder,
-        address,
-        nameQuery.city,
-        queryTimeoutMs,
-      );
-      return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+  // cityGuess only depends on the raw address text, not on anything the
+  // exact sweep finds — computed up front so the nearby sweep below can
+  // start immediately, in parallel with the exact sweep, instead of only
+  // starting after it finishes.
+  const parsedForCity = parseHouseAndStreet(address);
+  const cityGuess = parsedForCity ? guessCity(parsedForCity.cityStateZip) : "";
 
-    // cityGuess only depends on the raw address text, not on anything the
-    // exact sweep finds — computed up front so the nearby sweep below can
-    // start immediately, in parallel with the exact sweep, instead of only
-    // starting after it finishes.
-    const parsedForCity = parseHouseAndStreet(address);
-    const cityGuess = parsedForCity ? guessCity(parsedForCity.cityStateZip) : "";
+  // Fired now, not awaited yet — a real address search used to pay the
+  // exact sweep's full latency AND THEN the nearby sweep's full latency
+  // back-to-back whenever nothing matched, since nearby only ever started
+  // after `!record` was already known. Calling findNearby() here starts its
+  // own concurrent county queries immediately; `await`ing the *result* is
+  // deferred until after the tiebreak below decides whether it's even
+  // needed. If an exact match is found, this promise is simply never
+  // awaited — its in-flight requests cost nothing to the response, since
+  // nothing here ever reads their result.
+  const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
 
-    // Fired now, not awaited yet — a real address search used to pay the
-    // exact sweep's full latency AND THEN the nearby sweep's full latency
-    // back-to-back whenever nothing matched, since nearby only ever started
-    // after `!record` was already known. Calling findNearby() here starts its
-    // own concurrent county queries immediately; `await`ing the *result* is
-    // deferred until after the tiebreak below decides whether it's even
-    // needed. If an exact match is found, this promise is simply never
-    // awaited — its in-flight requests cost nothing to the response, since
-    // nothing here ever reads their result.
-    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
-
-    // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
-    // seconds): a single slow/rate-limited county source could block the
-    // ENTIRE lookup, since Promise.allSettled alone has no time bound of its
-    // own — it just waits for every promise to settle, however long that
-    // takes. Same fix as the nearby sweep's own per-county timeout (see
-    // NEARBY_QUERY_TIMEOUT_MS above): a county that doesn't answer in time
-    // just contributes nothing this round, exactly like a real query error
-    // already does, rather than holding up every other (fast) county's real
-    // answer.
-    const results = await Promise.allSettled(
-      countyQueriesInOrder.map((query) =>
-        withTimeout(query(address), queryTimeoutMs, [] as CadRecord[]),
-      ),
-    );
-    // Flattened in county-priority order, then row order within each county — each
-    // county now returns up to MULTI_CANDIDATE_LIMIT real rows instead of just one
-    // (see the comment above that constant), so the tiebreak below has every real
-    // candidate to search, not just each county's arbitrary first row.
-    const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
+  // seconds): a single slow/rate-limited county source could block the
+  // ENTIRE lookup, since Promise.allSettled alone has no time bound of its
+  // own — it just waits for every promise to settle, however long that
+  // takes. Same fix as the nearby sweep's own per-county timeout (see
+  // NEARBY_QUERY_TIMEOUT_MS above): a county that doesn't answer in time
+  // just contributes nothing this round, exactly like a real query error
+  // already does, rather than holding up every other (fast) county's real
+  // answer.
+  const results = await Promise.allSettled(
+    countyQueriesInOrder.map((query) => withTimeout(query(address), queryTimeoutMs, [] as CadRecord[])),
+  );
+  // Flattened in county-priority order, then row order within each county — each
+  // county now returns up to MULTI_CANDIDATE_LIMIT real rows instead of just one
+  // (see the comment above that constant), so the tiebreak below has every real
+  // candidate to search, not just each county's arbitrary first row.
+  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
     // It's possible (found sampling real addresses on 2026-07-26) for the SAME
     // house number + a generic street word ("Commerce", "Marshall", "Maple", ...)
@@ -3390,10 +3442,7 @@ Deno.serve(async (req: Request) => {
             return enrichRecord(withCity);
           }),
         );
-        return new Response(JSON.stringify({ matched: "multiple", options }), {
-          status: 200,
-          headers: corsHeaders,
-        });
+        return { matched: "multiple", options };
       }
     }
 
@@ -3423,25 +3472,70 @@ Deno.serve(async (req: Request) => {
             queryTimeoutMs,
           );
           if (nameResults.length > 0) {
-            return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
-              status: 200,
-              headers: corsHeaders,
-            });
+            return { matched: false, nearby: nameResults };
           }
         }
       }
-      return new Response(JSON.stringify({ matched: false, nearby }), {
+      return { matched: false, nearby };
+    }
+
+    record = await enrichRecord(record);
+
+    return { matched: true, record };
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const body = await req.json();
+
+    // Manual account-number lookup (see queryByAccountNumber's own comment)
+    // — a completely separate request shape from the address flow below,
+    // checked first so it never touches address parsing at all.
+    if (typeof body.accountNumber === "string" && typeof body.cad === "string") {
+      const record = await queryByAccountNumber(body.cad, body.accountNumber);
+      return new Response(JSON.stringify({ matched: Boolean(record), record: record ?? null }), {
         status: 200,
         headers: corsHeaders,
       });
     }
 
-    record = await enrichRecord(record);
+    const rawAddress = body.address;
+    if (!rawAddress || typeof rawAddress !== "string") {
+      return new Response(JSON.stringify({ error: "address is required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
+    const address = normalizeRoadPrefix(rawAddress);
 
-    return new Response(JSON.stringify({ matched: true, record }), {
-      status: 200,
-      headers: corsHeaders,
-    });
+    // Set only by the as-you-type live-search dropdown (never by "Validate
+    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
+    // comment for why a more patient ceiling is the right tradeoff there.
+    const preview = body.preview === true;
+    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+
+    // See COUNTY_QUERY_BY_HINT's own comment — when the caller already knows
+    // the county (every Google-resolved candidate does), try just that one
+    // county first instead of ALL_COUNTY_QUERIES. Never trusted blindly: see
+    // isConfidentMatch's own comment for a real case (a wrong hint that
+    // produced a plausible but WRONG "nearby" guess from the wrong county)
+    // that made this check deliberately stricter than "came back empty" —
+    // only an actual exact/multiple match short-circuits the full sweep; a
+    // wrong or stale hint can only cost a little time, never a real match.
+    const hintedQuery = countyQueryForHint(body.countyHint);
+    let result: LookupResult;
+    if (hintedQuery) {
+      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery]);
+      result = isConfidentMatch(hinted)
+        ? hinted
+        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+    } else {
+      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+    }
+
+    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),

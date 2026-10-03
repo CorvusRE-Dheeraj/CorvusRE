@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Check, MapPin, ExternalLink } from "lucide-react";
+import { ArrowLeft, Check, MapPin, ExternalLink, Loader2 } from "lucide-react";
 import { AnimatedSteps } from "@/components/AnimatedSteps";
 import { CircularSearchLoader } from "@/components/CircularSearchLoader";
 import { ValueHistorySection } from "@/components/ValueHistorySection";
@@ -120,9 +120,12 @@ function Intake() {
   const liveMatchRequestRef = useRef(0);
   // CorvusPT serves commercial only, and a disabled/grayed residential row in
   // this list is just noise the user can't act on — drop them rather than
-  // show them unselectably.
+  // show them unselectably. Only ever excludes a row we KNOW is residential
+  // (a resolved CAD record says so) — a still-"pending"/"none" Google-only
+  // row has no propertyType to check yet, and the right default there is to
+  // show it, not hide a real address just because we haven't classified it.
   const liveMatchesCommercial = liveMatches.filter(
-    (m) => classifyPropertyCategory(m.record.propertyType) !== "residential",
+    (m) => !m.record || classifyPropertyCategory(m.record.propertyType) !== "residential",
   );
   const [pickingOnMap, setPickingOnMap] = useState(false);
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
@@ -206,8 +209,10 @@ function Intake() {
   // alone can't (a franchise location titled to an unrelated landlord LLC)
   // still surfaces a real, parcel-grounded match when one exists. Only runs
   // on the address step, with a minimum length so it doesn't fire a real
-  // lookup on every keystroke of a 3-character fragment.
-  const MIN_LIVE_SEARCH_LENGTH = 8;
+  // lookup on every keystroke of a 2-3-character fragment. Lowered from 8 —
+  // found live chasing "I want to see ALL the addresses, like Google Maps":
+  // Google's own search box starts suggesting after just a few characters.
+  const MIN_LIVE_SEARCH_LENGTH = 4;
   const LIVE_SEARCH_DEBOUNCE_MS = 500;
   useEffect(() => {
     if (step !== "address") return;
@@ -222,16 +227,28 @@ function Intake() {
     setLiveMatchesLoading(true);
     const controller = new AbortController();
     const t = setTimeout(() => {
-      unifiedPropertySearch(q, controller.signal)
-        .then((results) => {
+      // Streaming, not atomic — see unified-search.ts's own comment on
+      // unifiedPropertySearch. Each callback already carries the full
+      // current best (deduped+city-filtered) list, so it's a straight
+      // replace; the dropdown opens on the very first one rather than
+      // waiting for every candidate to resolve. Capped at 3 minutes total inside
+      // unifiedPropertySearch itself.
+      unifiedPropertySearch(
+        q,
+        (results) => {
           if (liveMatchRequestRef.current !== requestId) return;
           setLiveMatches(results);
           // Open regardless of count — see the panel's own comment below.
           setLiveMatchesOpen(true);
+        },
+        controller.signal,
+      )
+        .then(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesOpen(true);
         })
         .catch(() => {
           if (liveMatchRequestRef.current !== requestId) return;
-          setLiveMatches([]);
           setLiveMatchesOpen(true);
         })
         .finally(() => {
@@ -265,6 +282,24 @@ function Intake() {
       toast.error(message);
       setStep("address");
     }
+  }
+
+  // A dropdown row was clicked. Most rows already have a resolved CAD
+  // record (selectLiveMatch's fast path above). A row still "pending" or
+  // settled at "none" — a real Google-known address we just don't have
+  // county parcel data for yet/at all — has no record to jump straight in
+  // with, so it falls back to the same manual-resolution flow the "Don't
+  // see your address?" button below already uses for that address.
+  function selectMatch(m: UnifiedMatch) {
+    if (m.record) {
+      void selectLiveMatch(m.record);
+      return;
+    }
+    setLiveMatchesOpen(false);
+    const addr = m.address.trim();
+    if (!addr) return;
+    updateIntake({ address: addr, propertyKind });
+    runValidation(addr);
   }
 
   // Shared by a real cadLookup() match, by picking one of the "nearby"
@@ -701,28 +736,31 @@ function Intake() {
           )}
 
           {liveMatchesOpen && (
-            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            <div className="mt-2 max-h-[26rem] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card shadow-sm">
               {liveMatchesLoading && (
                 <div className="border-b border-border px-4 py-2.5">
                   <LiveSearchLoader />
                 </div>
               )}
               {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
-                // A settled search that genuinely found nothing — shown
-                // instead of rendering nothing at all (confirmed live:
-                // "Braum's Denton"/"Taco Bell Denton" can come back empty
-                // even after unifiedPropertySearch tries Google, since a
-                // franchise location is often titled to a landlord CAD has
-                // no way to tie to the brand name). Still gives a next step.
+                // A settled search that genuinely found nothing at all — not
+                // even a bare Google-known address, since those now show up
+                // as their own "none" row below instead of being dropped.
+                // Still gives a next step rather than silence.
                 <p className="px-4 py-3 text-sm text-muted-foreground">
-                  No matching county records found for "{address.trim()}".
+                  No matching addresses found for "{address.trim()}".
                 </p>
               )}
-              {liveMatchesCommercial.slice(0, 6).map(({ record: r, googleLabel }, i) => (
+              {/* Raised from 6 — every real Google match is now its own row
+              (see unifiedPropertySearch), not just the ones that happened to
+              resolve to a CAD record, so there's genuinely more worth
+              showing; the container above scrolls instead of growing the
+              page unboundedly. */}
+              {liveMatchesCommercial.slice(0, 10).map((m, i) => (
                 <button
-                  key={`${r.cad}-${r.accountNumber ?? i}`}
+                  key={m.id}
                   type="button"
-                  onClick={() => void selectLiveMatch(r)}
+                  onClick={() => selectMatch(m)}
                   className={`row-hover block w-full px-4 py-3 text-left ${
                     i > 0 ? "border-t border-border" : ""
                   }`}
@@ -730,23 +768,37 @@ function Intake() {
                   {/* Shown only for a result found by following a Google
                   suggestion to its real address first (see
                   unifiedPropertySearch) — ties the store/business name the
-                  user actually searched for back to the CAD record below
-                  it, instead of just a bare address they typed a name to
+                  user actually searched for back to the row below it,
+                  instead of just a bare address they typed a name to
                   find. */}
-                  {googleLabel && (
-                    <div className="truncate text-xs font-semibold text-accent">{googleLabel}</div>
+                  {m.googleLabel && (
+                    <div className="truncate text-xs font-semibold text-accent">{m.googleLabel}</div>
                   )}
                   <div className="truncate text-sm font-semibold uppercase tracking-tight">
-                    {r.propertyAddress}
+                    {m.address}
                   </div>
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    <span className="font-bold text-foreground">
-                      PARCEL: {r.accountNumber ?? "—"}
-                    </span>
-                    {" · "}
-                    {r.cad}
-                    {r.totalValue != null && <> · {currency(r.totalValue)}</>}
-                  </div>
+                  {m.record ? (
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <span className="font-bold text-foreground">
+                        PARCEL: {m.record.accountNumber ?? "—"}
+                      </span>
+                      {" · "}
+                      {m.record.cad}
+                      {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+                    </div>
+                  ) : m.cadStatus === "pending" ? (
+                    <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Looking up county parcel…
+                    </div>
+                  ) : (
+                    // "none" — a real address (Google found it) with no
+                    // county parcel on file for it. Still selectable: picking
+                    // it runs the normal, slower manual resolution flow.
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      No county parcel on file — tap to continue anyway
+                    </div>
+                  )}
                 </button>
               ))}
               <button

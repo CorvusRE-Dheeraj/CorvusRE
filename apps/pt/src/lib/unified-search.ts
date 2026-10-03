@@ -14,9 +14,7 @@
 // not the tenant brand) — Google still knows the real place by its business
 // name, same as Google Maps search does. Each of Google's matches is run
 // through the exact same CAD lookup, so a business name search still ends
-// up as real, parcel-grounded county records whenever any exist, and only
-// falls back to nothing when the business genuinely isn't a titleholder
-// anywhere nearby.
+// up as real, parcel-grounded county records whenever any exist.
 //
 // Text Search (not Autocomplete) specifically — found live chasing a real
 // report ("I see 3 Braum's locations in Denton on Google Maps, why does our
@@ -24,8 +22,29 @@
 // denton" where only 1 was genuinely in Denton city (the rest were Haltom
 // City/Carrollton/Frisco/The Colony); Text Search returned exactly the 2
 // real Denton locations, matching Google Maps' own result set precisely.
-// It's also simpler — one call already returns a usable address per
-// result, no per-candidate Place Details follow-up needed.
+// Re-confirmed chasing a later "I want to see ALL the addresses, like
+// Google Maps" report: Autocomplete's own locality text is genuinely
+// ambiguous between a real city and the county it sits in ("Main Street,
+// Frisco, Denton, TX, USA" — is "Denton" the city or county here? Only
+// Place Details' structured addressComponents says for sure, and that's a
+// second network call per candidate), while Text Search's
+// addressComponents gives a clean, authoritative locality directly — one
+// call, no per-candidate follow-up.
+//
+// SHOW EVERY GOOGLE MATCH, not just the ones that resolve to a CAD record —
+// the single biggest fix from that "I want to see all the addresses"
+// report. The old version only ever contributed a row for a Google
+// candidate whose CAD lookup actually succeeded, so any real place Google
+// knows about but our CAD data doesn't (outside a supported county, a
+// lookup timeout, a county with no situs on file) silently vanished from
+// the dropdown — a user typing a real address they could see on Google
+// Maps would see nothing. Now every Google match becomes a row the moment
+// it's found (cadStatus "pending"), and is enriched in place — never
+// re-ordered, same row object — once its CAD lookup resolves, to either
+// "found" (full parcel/account/value line) or "none" (still a real,
+// selectable address; selecting it just runs the normal manual
+// address-resolution flow the way typing a full address and hitting
+// "Don't see your address?" already does).
 //
 // This file deliberately has NO dependency on any locally-cached parcel
 // table — an earlier version tried pre-indexing county data for speed, but
@@ -33,24 +52,66 @@
 // incident on the production database and were removed entirely (table,
 // ingestion function, and cron jobs). cadLookupPreview below always queries
 // live.
+//
+// WHY THE LIVE LOOKUPS THEMSELVES ARE SLOW, AND THE REAL FIX FOR IT: each
+// county query is a single, unretried fetch() straight to that county's own
+// government GIS server (see cad-lookup/index.ts) — confirmed live, the
+// same exact query can genuinely take anywhere from under 1s to 60s+ at
+// different moments, pure government-server variance, nothing to optimize
+// in our own matching code. What WAS fixable: every Google candidate used
+// to blind-fire all 12 supported counties concurrently, every time, even
+// though Google's own addressComponents already name the exact county
+// ("Denton County") for that candidate — so a 5-candidate business-name
+// search fired 5 × 12 = 60 concurrent county queries, hammering the same
+// few real government servers far harder than necessary and almost
+// certainly worsening their already-variable response times. Each
+// candidate's resolved county (see google-places.ts's countyFromComponents)
+// is now passed through as a hint, so cad-lookup tries just that one county
+// first and only falls back to the full 12-county sweep if it genuinely
+// comes back empty — same correctness as before, a small fraction of the
+// concurrent load.
+//
+// STREAMING, not atomic: each individual government CAD endpoint genuinely
+// takes several seconds (confirmed live — Denton alone is ~6.5s per
+// lookup), and a business-name search fires one of these per Google
+// candidate, so waiting for the slowest one before showing anything meant
+// a real ~7s blank dropdown. unifiedPropertySearch takes an onUpdate
+// callback instead of returning one final array — it's invoked every time
+// a new sub-search resolves OR a new Google candidate is first found, each
+// time with the full current best list, and the returned promise resolves
+// once every sub-search is done (or the hard SEARCH_TIMEOUT_MS ceiling is
+// hit, whichever first — anything still pending past that point is
+// discarded, not awaited further).
 import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
 import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 
-// Bounded, not exhaustive — each extra candidate is a real CAD lookup, and
-// the debounce/MIN_LIVE_SEARCH_LENGTH gating in the caller already limits
-// how often this runs at all.
-const MAX_GOOGLE_CANDIDATES = 8;
-const MAX_RESULTS = 12;
+// Google Text Search itself returns up to ~20 for a loosely-matched query —
+// bounded well below that (each candidate fires its own real CAD lookup),
+// but raised from the old 8 specifically to surface more of what Google
+// Maps itself would show, per direct "I want to see ALL the addresses"
+// product ask.
+const MAX_GOOGLE_CANDIDATES = 15;
+const MAX_RESULTS = 20;
+
+export type CadStatus = "pending" | "found" | "none";
 
 export type UnifiedMatch = {
-  record: CadRecord;
+  // Stable row identity — a Google candidate's own place id (falls back to
+  // its address when Google omits one, which happens rarely), or the CAD
+  // record's own key for a direct-search row. Never changes once assigned,
+  // so a row can be enriched in place without jumping position in the list
+  // as slower candidates resolve around it.
+  id: string;
+  // Best address known right now — Google's resolved address until/unless
+  // a CAD record attaches, at which point the CAD situs address (more
+  // authoritative) takes over.
+  address: string;
   // The Google result's own label (e.g. "Taco Bell") — set only when this
   // record was found by following a Google match to its real address
   // first, not when it came from typing/matching the raw text directly.
-  // Lets the dropdown show the business name right next to the CAD-sourced
-  // parcel/account info, so a store-name search doesn't just show a bare
-  // address the user has no way to recognize as the right one.
   googleLabel?: string;
+  record?: CadRecord;
+  cadStatus: CadStatus;
 };
 
 // includeNearby=false drops the live path's "nearby" fallback (any real
@@ -65,19 +126,23 @@ function recordsFromResult(res: CadLookupResult, includeNearby: boolean): CadRec
 // includeNearby controls whether the live path's generic "nearby" fallback
 // counts as a result at all. Default true for a direct search on the raw
 // typed text, where "no exact hit, here are real nearby options" is
-// legitimate. Passed false when resolving a Google result's address (see
-// unifiedPropertySearch below): a nearby guess has no real connection to
-// the one place Google resolved, so it should never borrow that place's
-// name — found live, a bare street-name nearby match from an unrelated
-// city once got mislabeled with a Google suggestion's specific address.
-async function lookupRecords(addressOrName: string, includeNearby = true): Promise<CadRecord[]> {
-  return cadLookupPreview(addressOrName)
+// legitimate. Passed false when resolving a Google result's address: a
+// nearby guess has no real connection to the one place Google resolved, so
+// it should never borrow that place's name — found live, a bare
+// street-name nearby match from an unrelated city once got mislabeled with
+// a Google suggestion's specific address.
+async function lookupRecords(
+  addressOrName: string,
+  includeNearby = true,
+  countyHint?: string,
+): Promise<CadRecord[]> {
+  return cadLookupPreview(addressOrName, countyHint)
     .then((res) => recordsFromResult(res, includeNearby))
     .catch(() => [] as CadRecord[]);
 }
 
-function dedupeKey(r: CadRecord): string {
-  return `${r.cad}:${r.accountNumber ?? r.propertyAddress}`;
+function cadKey(r: CadRecord): string {
+  return `cad:${r.cad}:${r.accountNumber ?? r.propertyAddress}`;
 }
 
 // A deliberately non-exhaustive allowlist of Texas city names seen in this
@@ -118,66 +183,262 @@ function guessCityWord(query: string): string {
 // Denton County, e.g. Frisco), but direct user correction: typing a city
 // name in this search means that city, not its whole county — a real
 // Denton, TX resident expects "Denton" to mean the city of Denton, not
-// Frisco or The Colony just because they share a CAD.
-function matchesCityGuess(record: CadRecord, cityGuess: string): boolean {
-  return Boolean(cityGuess) && record.propertyAddress.toUpperCase().includes(cityGuess.toUpperCase());
+// Frisco or The Colony just because they share a CAD. Works off
+// match.address directly so it applies the same way whether the row is
+// already CAD-grounded or still a pending/none Google-only address.
+function matchesCityGuess(address: string, cityGuess: string): boolean {
+  return Boolean(cityGuess) && address.toUpperCase().includes(cityGuess.toUpperCase());
 }
 
-// Resolves whatever the user typed to a merged, deduped list of real CAD
-// records — direct matches from the raw typed text, plus matches found by
-// following every one of Google's Text Search results to its real address
-// first, then filtered to the city actually typed (see matchesCityGuess).
-// Never throws: any individual lookup that fails just contributes nothing,
-// same as a plain no-match, so one slow/broken source can't blank the
-// others.
+// Re-applies "filter to typed city when any city match exists, else show
+// everything" over whatever has been found SO FAR — called once per
+// sub-search as it resolves, so each call can only ever add information,
+// never require waiting on a slower sibling search first. Filter-not-sort
+// — found live ("walmart denton" showing real Denton matches on top, but
+// also real Plano/Celina ones trailing below): once there ARE matches in
+// the city actually typed, the rest are noise. Only falls back to the
+// unfiltered list when the typed city genuinely has zero matches among
+// everything found so far.
+function buildDisplayList(all: UnifiedMatch[], cityGuess: string): UnifiedMatch[] {
+  if (cityGuess) {
+    const inCity = all.filter((m) => matchesCityGuess(m.address, cityGuess));
+    if (inCity.length > 0) return inCity.slice(0, MAX_RESULTS);
+  }
+  return all.slice(0, MAX_RESULTS);
+}
+
+// Hard overall ceiling, independent of any individual county's own
+// per-request timeout — direct product decision after watching a real
+// Braum's/Denton search run ~7.2s end-to-end: better to show whatever's
+// already in hand and stop than to let one unusually slow candidate (or a
+// government endpoint having a bad day) keep the dropdown spinning
+// indefinitely. Anything that resolves after the cutoff is discarded, not
+// displayed — it's genuinely too late to be a "live suggestion" anymore.
+// Raised twice since: 10s -> 30s -> 3 minutes, per direct ask each time,
+// giving a genuinely slow county endpoint real room to still come back with
+// an actual parcel instead of settling for "none" early — still bounded,
+// just a patient one now; every "pending" row still settles to "none" at
+// the cutoff (see the timer below) rather than spinning forever past it.
+const SEARCH_TIMEOUT_MS = 3 * 60_000;
+
+// Resolves whatever the user typed to a merged list of real addresses —
+// direct matches from the raw typed text (always CAD-grounded, since
+// that's what a direct search IS), plus every one of Google's Text Search
+// matches (shown immediately, enriched with CAD data as it resolves),
+// filtered to the city actually typed when any city match exists. Never
+// throws: any individual lookup that fails just leaves that row at
+// cadStatus "none" (or contributes nothing, for the direct path), same as
+// a plain no-match, so one slow/broken source can't blank the others.
+//
+// Streaming contract: onUpdate fires every time the current best list
+// changes — a new row appears, or an existing row's cadStatus/record
+// changes — each time with the complete current best list, so a caller can
+// just replace its displayed list wholesale on every call. The returned
+// promise resolves once every sub-search has settled or SEARCH_TIMEOUT_MS
+// is reached, whichever first.
 export async function unifiedPropertySearch(
   query: string,
+  onUpdate: (matches: UnifiedMatch[]) => void,
   signal?: AbortSignal,
-): Promise<UnifiedMatch[]> {
-  const direct = lookupRecords(query).then((records) => records.map((record) => ({ record })));
+): Promise<void> {
+  const cityGuess = guessCityWord(query);
+  const order: string[] = [];
+  const byId = new Map<string, UnifiedMatch>();
+  // Lets a Google candidate's resolved CAD record recognize it's the same
+  // parcel as a row that already exists under a different id (another
+  // Google candidate, or the direct search) — merges onto that row instead
+  // of creating a visible duplicate.
+  const rowIdByCadKey = new Map<string, string>();
+  let timedOut = false;
+
+  function emit() {
+    onUpdate(buildDisplayList(order.map((id) => byId.get(id)!), cityGuess));
+  }
+
+  // insertAfter places a brand-new row right next to a related one (a
+  // second parcel found at the same Google-resolved address, right after
+  // the first) instead of always appending at the end of the list, where it
+  // would read as unrelated to the row it actually belongs next to.
+  function upsert(
+    id: string,
+    patch: Partial<UnifiedMatch> & { address: string; cadStatus: CadStatus },
+    insertAfter?: string,
+  ) {
+    if (timedOut) return;
+    const existing = byId.get(id);
+    if (existing) {
+      Object.assign(existing, patch);
+    } else {
+      byId.set(id, { id, googleLabel: undefined, ...patch });
+      const afterIdx = insertAfter ? order.indexOf(insertAfter) : -1;
+      if (afterIdx === -1) order.push(id);
+      else order.splice(afterIdx + 1, 0, id);
+    }
+    emit();
+  }
+
+  function removeRow(id: string) {
+    if (!byId.delete(id)) return;
+    const idx = order.indexOf(id);
+    if (idx !== -1) order.splice(idx, 1);
+  }
+
+  // Direct results — a match on the raw typed text (a real address, or our
+  // own owner-name search) is always already CAD-grounded.
+  //
+  // Checks rowIdByCadKey BOTH ways — found live ("Walmart Denton" showing
+  // every real parcel TWICE) in two stages:
+  //
+  // 1st attempt only registered a direct row in rowIdByCadKey so a LATER
+  // Google candidate for the same parcel could find and merge onto it. That
+  // fixed the case where direct resolves first, but direct and the Google
+  // candidates' own CAD lookups race the same way everything else here
+  // does — reported again right after shipping that fix, because the
+  // Google candidate just as often resolves to the parcel FIRST and
+  // registers its own row before direct's lookup (a slower owner-name
+  // search) finishes, and direct was only ever registering a NEW row for
+  // itself, never checking whether one already existed. Now checks first:
+  // if the parcel already has a row (from an already-resolved Google
+  // candidate), update that SAME row in place with the direct search's own
+  // (more authoritative) data instead of creating a second one; its
+  // googleLabel, if any, is untouched (upsert's Object.assign only
+  // overwrites fields actually present in the patch).
+  const direct = lookupRecords(query)
+    .then((records) => {
+      for (const record of records) {
+        const key = cadKey(record);
+        const existingRowId = rowIdByCadKey.get(key);
+        if (existingRowId) {
+          upsert(existingRowId, { address: record.propertyAddress, record, cadStatus: "found" });
+        } else {
+          rowIdByCadKey.set(key, key);
+          upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
+        }
+      }
+    })
+    .catch(() => {});
 
   const viaGoogle = GOOGLE_API_KEY
     ? fetchGoogleTextSearch(query, signal)
         .then(async (results) => {
           const candidates = results.slice(0, MAX_GOOGLE_CANDIDATES);
-          const matchLists = await Promise.all(
-            candidates.map(async ({ label, address }) => {
-              const records = await lookupRecords(address, false);
-              return records.map((record) => ({ record, googleLabel: label }));
+          await Promise.all(
+            candidates.map(async (candidate) => {
+              const googleRowId = `google:${candidate.placeId ?? candidate.address}`;
+              // Shown immediately — this is the actual fix for "I don't
+              // see all the addresses": a real Google match is a visible
+              // row the instant it's found, not only once/if a CAD record
+              // attaches to it.
+              upsert(googleRowId, {
+                address: candidate.address,
+                googleLabel: candidate.label,
+                cadStatus: "pending",
+              });
+
+              const records = await lookupRecords(candidate.address, false, candidate.county);
+              if (records.length === 0) {
+                // Still a real, selectable address — just no county parcel
+                // on file for it (outside a supported county, a lookup
+                // failure, or genuinely not in CAD data).
+                upsert(googleRowId, {
+                  address: candidate.address,
+                  googleLabel: candidate.label,
+                  cadStatus: "none",
+                });
+                return;
+              }
+              // One Google-resolved address can genuinely carry more than
+              // one real parcel (found live: a Denton Braum's address with
+              // 2 separate CAD accounts on file) — every one of them needs
+              // its own row, not just the first. The placeholder row this
+              // candidate already has (googleRowId) is claimed by whichever
+              // record isn't already a duplicate of some other row; any
+              // further distinct records get their own new row inserted
+              // right next to it, so they read as "more parcels here," not
+              // as unrelated entries at the bottom of the list.
+              let claimedPlaceholder = false;
+              records.forEach((record, i) => {
+                const key = cadKey(record);
+                const dupeRowId = rowIdByCadKey.get(key);
+                if (dupeRowId) {
+                  // Another row (direct search, or an earlier-resolving
+                  // Google candidate) already found this exact parcel —
+                  // merge the label onto it rather than show a duplicate.
+                  const target = byId.get(dupeRowId);
+                  if (target && !target.googleLabel) {
+                    target.googleLabel = candidate.label;
+                    emit();
+                  }
+                  return;
+                }
+                if (!claimedPlaceholder) {
+                  claimedPlaceholder = true;
+                  rowIdByCadKey.set(key, googleRowId);
+                  upsert(googleRowId, {
+                    address: record.propertyAddress,
+                    googleLabel: candidate.label,
+                    record,
+                    cadStatus: "found",
+                  });
+                } else {
+                  const extraRowId = `${googleRowId}#${i}`;
+                  rowIdByCadKey.set(key, extraRowId);
+                  upsert(
+                    extraRowId,
+                    {
+                      address: record.propertyAddress,
+                      googleLabel: candidate.label,
+                      record,
+                      cadStatus: "found",
+                    },
+                    googleRowId,
+                  );
+                }
+              });
+              if (!claimedPlaceholder) {
+                // Every record this candidate resolved to turned out to
+                // already be shown under some other row — nothing new to
+                // add, so drop the now-redundant "pending" placeholder
+                // instead of leaving it stuck mid-search forever.
+                removeRow(googleRowId);
+                emit();
+              }
             }),
           );
-          return matchLists.flat();
         })
-        .catch(() => [] as UnifiedMatch[])
-    : Promise.resolve([] as UnifiedMatch[]);
+        .catch(() => {})
+    : Promise.resolve();
 
-  const [directMatches, googleMatches] = await Promise.all([direct, viaGoogle]);
+  const everything = Promise.all([direct, viaGoogle]).then(() => {});
 
-  const seen = new Set<string>();
-  const merged: UnifiedMatch[] = [];
-  // Direct results first — a match on the raw typed text (a real address, or
-  // our own owner-name search) is at least as precise as a Google-mediated
-  // one, so it's preferred when both find the same record (dedupe keeps the
-  // first occurrence).
-  for (const m of [...directMatches, ...googleMatches]) {
-    const key = dedupeKey(m.record);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(m);
+  let timer!: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      // Settle every row still stuck on "pending" instead of just freezing
+      // future updates — found live ("it's been a long time, but still
+      // this is looking") on a real Denton address whose CAD lookup never
+      // came back before the cutoff: without this, timedOut silently makes
+      // upsert a no-op for it and the spinner just spins forever, since
+      // nothing ever flips its cadStatus to a resting state. This is its
+      // one chance to resolve to "none" — a real address, just no parcel
+      // found in time.
+      let changed = false;
+      for (const id of order) {
+        const m = byId.get(id)!;
+        if (m.cadStatus === "pending") {
+          m.cadStatus = "none";
+          changed = true;
+        }
+      }
+      if (changed) emit();
+      resolve();
+    }, SEARCH_TIMEOUT_MS);
+  });
+
+  try {
+    await Promise.race([everything, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
-
-  // Filter to the typed city, not just sort it first — found live
-  // ("walmart denton" showing real Denton matches on top, but also real
-  // Plano/Celina ones trailing below): once there ARE matches in the city
-  // actually typed, the rest are noise, not a helpful runner-up, and they
-  // can crowd a real same-city match out of the dropdown's own top-6
-  // display cap. Only falls back to the unfiltered list when the typed
-  // city genuinely has zero matches among everything found.
-  const cityGuess = guessCityWord(query);
-  if (cityGuess) {
-    const inCity = merged.filter((m) => matchesCityGuess(m.record, cityGuess));
-    if (inCity.length > 0) return inCity.slice(0, MAX_RESULTS);
-  }
-
-  return merged.slice(0, MAX_RESULTS);
 }
