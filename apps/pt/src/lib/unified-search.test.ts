@@ -312,4 +312,29 @@ describe("unifiedPropertySearch", () => {
     expect(rowsForParcel).toHaveLength(1);
     expect(rowsForParcel[0].googleLabel).toBe("Walmart Supercenter");
   });
+
+  it("marks an out-of-coverage county 'unsupported' without ever calling cadLookupPreview for it", async () => {
+    // Regression: confirmed live ("denver walmart" shown under a real,
+    // minutes-long "Searching Dallas County records…" spinner) — a county
+    // CAD sweep was being attempted against an address we can never serve.
+    // Google's own addressComponents already name the county; this should
+    // be recognized and skipped entirely, not just shown with a spinner
+    // that eventually gives up.
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+      { label: "Walmart", address: "2770 West Evans Avenue, Denver, CO", placeId: "p1", county: "Denver County" },
+    ]);
+    vi.mocked(cadLookupPreview).mockResolvedValue({ matched: false, nearby: [] });
+
+    const updates = await runSearch("denver walmart");
+    const final = updates[updates.length - 1];
+    expect(final).toHaveLength(1);
+    expect(final[0].cadStatus).toBe("unsupported");
+    // The direct search still runs (it's on the raw typed text, not scoped
+    // to any county), so cadLookupPreview IS called once for that — but
+    // never for the out-of-coverage Google candidate's own address.
+    expect(cadLookupPreview).not.toHaveBeenCalledWith(
+      "2770 West Evans Avenue, Denver, CO",
+      expect.anything(),
+    );
+  });
 });

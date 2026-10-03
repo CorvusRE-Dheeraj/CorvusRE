@@ -761,16 +761,29 @@ function Intake() {
               page unboundedly. */}
               {liveMatches.slice(0, 10).map((m, i) => {
                 const residential = isResidentialMatch(m);
+                // Same grayed-out, non-clickable treatment as a residential
+                // row — found live ("denver walmart" shown under a
+                // "Searching Dallas County records…" spinner for a real
+                // Colorado address): a row we already know is out of
+                // coverage is shown, not hidden, but never selectable, with
+                // its own plain reason instead of residential's.
+                const disabled = residential || m.cadStatus === "unsupported";
                 return (
                   <button
                     key={m.id}
                     type="button"
-                    disabled={residential}
-                    onClick={() => !residential && selectMatch(m)}
-                    title={residential ? "Residential — coming soon" : undefined}
+                    disabled={disabled}
+                    onClick={() => !disabled && selectMatch(m)}
+                    title={
+                      residential
+                        ? "Residential — coming soon"
+                        : disabled
+                          ? "We don't cover this county yet"
+                          : undefined
+                    }
                     className={`row-hover block w-full px-4 py-3 text-left ${
                       i > 0 ? "border-t border-border" : ""
-                    } ${residential ? "cursor-not-allowed opacity-60" : ""}`}
+                    } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
                   >
                     {/* Shown only for a result found by following a Google
                     suggestion to its real address first (see
@@ -780,13 +793,13 @@ function Intake() {
                     find. */}
                     {m.googleLabel && (
                       <div
-                        className={`truncate text-xs font-semibold ${residential ? "text-muted-foreground" : "text-accent"}`}
+                        className={`truncate text-xs font-semibold ${disabled ? "text-muted-foreground" : "text-accent"}`}
                       >
                         {m.googleLabel}
                       </div>
                     )}
                     <div
-                      className={`truncate text-sm font-semibold uppercase tracking-tight ${residential ? "text-muted-foreground" : ""}`}
+                      className={`truncate text-sm font-semibold uppercase tracking-tight ${disabled ? "text-muted-foreground" : ""}`}
                     >
                       {m.address}
                     </div>
@@ -798,6 +811,10 @@ function Intake() {
                       // language as the Residential tab above the search box.
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">
                         Residential — coming soon
+                      </div>
+                    ) : m.cadStatus === "unsupported" ? (
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        We don't cover this county yet
                       </div>
                     ) : m.record ? (
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">
