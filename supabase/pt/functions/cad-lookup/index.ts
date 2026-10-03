@@ -2828,9 +2828,12 @@ function nearbyDedupeKey(r: CadRecord): string {
 // nearby parcels on the same real street) — right at the edge of the old
 // 10000ms bound, so ordinary request overhead on top of that 9.2s was
 // enough to silently drop a real, correct nearby list on a plain, otherwise
-// unremarkable query. Matches EXACT_QUERY_TIMEOUT_MS now rather than
-// staying deliberately lower than it.
-const NEARBY_QUERY_TIMEOUT_MS = 15000;
+// unremarkable query.
+//
+// Bumped 15000 -> 30000 on 2026-10-03: see EXACT_QUERY_TIMEOUT_MS's own
+// history below for why this is now a universal, every-county headroom
+// increase rather than another one-off bump chasing a single address.
+const NEARBY_QUERY_TIMEOUT_MS = 30000;
 // The exact-match sweep is normally faster (a more selective, house-number-
 // anchored WHERE clause), but a single county source going slow or getting
 // rate-limited isn't otherwise bounded at all — found live 2026-08-25 that a
@@ -2850,32 +2853,46 @@ const NEARBY_QUERY_TIMEOUT_MS = 15000;
 // enough to matter — this is ordinary latency jitter, not a specific bad
 // county the way the nearby-timeout bump above was. More headroom, not a
 // county-specific fix.
-const EXACT_QUERY_TIMEOUT_MS = 15000;
+//
+// Bumped 15000 -> 30000 on 2026-10-03 after this exact "close to the
+// ceiling" pattern recurred a third time, for a third different reason
+// (Denton), and it became clear bumping the number by a few seconds each
+// time a new slow address got reported was never going to actually end:
+// each per-county query here is one plain, unretried, unchained `fetch()`
+// (see fetchFeatures/queryDenton etc.) — there is no inefficiency in our
+// own code to optimize away, the latency is genuinely the county's own
+// government server, and real, measured Denton response times for
+// DIFFERENT real addresses ranged from 4.4s to 15.5s on their own, no
+// request ever involving more than one county. Each county's timeout here
+// is independent and runs concurrently with every other county's (see
+// `withTimeout(query(address), queryTimeoutMs, [])` in Deno.serve below) —
+// a slow Denton query only ever costs Denton's own result, it never slows
+// down the other 11 counties' real, often much faster answers — so there
+// is no real downside to a generous per-county ceiling, only upside:
+// real margin above the worst government-server response seen so far,
+// instead of a number tuned to the last one reported.
+const EXACT_QUERY_TIMEOUT_MS = 30000;
 
 // Used only for the as-you-type live-search dropdown (`body.preview === true`,
 // see Deno.serve below) — NOT the "Validate address"/full-submit flow, which
 // always keeps the generous timeouts above so a real but slow/rate-limited
 // county is never silently missed on the authoritative check.
 //
-// Used to be deliberately shorter than EXACT_QUERY_TIMEOUT_MS (first 4000,
-// then 6000) on the reasoning that the old live dropdown was all-or-nothing:
-// nothing showed at all until every candidate's query finished, so waiting
-// the full 15s for one laggard county read as the whole search being
-// broken. That reasoning no longer holds — the client (unified-search.ts)
-// now shows each Google-resolved address as its own row the instant it's
-// found and enriches it in place as its CAD lookup resolves, so one slow
-// county just keeps that one row on "Looking up county parcel…" a little
-// longer while every other row is already showing. There's no longer a
-// real cost to waiting as long as the authoritative check does, and there
-// was a real, repeated cost to not: Denton alone measured 4.4-4.5s against
-// the old 4000ms ceiling, then 6.5-6.6s against the follow-up 6000ms one —
-// both times close enough to the ceiling that ordinary timing jitter
-// silently dropped a real, correct match unpredictably (confirmed live
-// twice, chasing two separate "it's not showing a real address" reports).
-// Now simply matches EXACT_QUERY_TIMEOUT_MS; the live dropdown's own
-// patience for a "pending" row is bounded separately, far more generously,
-// by SEARCH_TIMEOUT_MS in unified-search.ts.
-const PREVIEW_QUERY_TIMEOUT_MS = EXACT_QUERY_TIMEOUT_MS;
+// Used to be deliberately shorter than EXACT_QUERY_TIMEOUT_MS (4000, then
+// 6000, then briefly tied to it at 15000) on the reasoning that the old live
+// dropdown was all-or-nothing: nothing showed at all until every candidate's
+// query finished, so waiting a long time for one laggard county read as the
+// whole search being broken. That reasoning no longer holds — the client
+// (unified-search.ts) now shows each Google-resolved address as its own row
+// the instant it's found and enriches it in place as its CAD lookup
+// resolves, so one slow county just keeps that one row on "Looking up
+// county parcel…" a little longer while every other row is already
+// showing. Set deliberately MORE generous than EXACT_QUERY_TIMEOUT_MS now
+// (not just equal to it) specifically because the live dropdown's own
+// overall patience for a "pending" row is a full 3 minutes (see
+// SEARCH_TIMEOUT_MS in unified-search.ts) — there's no reason for this
+// per-county ceiling to be the thing that gives up first.
+const PREVIEW_QUERY_TIMEOUT_MS = 60000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
