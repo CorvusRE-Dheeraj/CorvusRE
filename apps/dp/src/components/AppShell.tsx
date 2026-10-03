@@ -25,6 +25,7 @@ import {
   Trash2,
   Landmark,
   Menu,
+  TrainTrack,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProjects, setActiveProject, deleteProject } from "@/lib/projects";
@@ -47,6 +48,9 @@ type NavSubgroup = { heading: string; items: NavLink[] };
 // instead of 10 flat rows in a dropdown.
 const OVERVIEW: NavLink = { to: "/dashboard", label: "Overview", icon: LayoutDashboard };
 const DESIGN: NavLink = { to: "/dashboard/design", label: "Design", icon: DraftingCompass };
+// The whole permitting lifecycle on one page, with the project's train on it —
+// sits above the two subgroups as the permitting section's overview.
+const TRACK_MAP: NavLink = { to: "/dashboard/track-map", label: "Track Map", icon: TrainTrack };
 
 const PERMITTING_SUBGROUPS: NavSubgroup[] = [
   {
@@ -88,6 +92,8 @@ const NO_SHELL_PREFIXES = [
   "/sign-in",
   "/forgot-password",
   "/reset-password",
+  // Station details open in their own popup window — no sidebar in there.
+  "/dashboard/track-station",
 ];
 
 export function shouldShowShell(pathname: string): boolean {
@@ -146,6 +152,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <SidebarLink item={DESIGN} onNavigate={onNavigate} />
 
       <SidebarSectionLabel icon={FileStack} label="Permitting" />
+      <SidebarLink item={TRACK_MAP} onNavigate={onNavigate} />
       {PERMITTING_SUBGROUPS.map((group) => (
         <div key={group.heading} className="flex flex-col gap-1">
           <div className="px-3 pt-1.5 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">

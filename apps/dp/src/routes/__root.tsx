@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -123,8 +124,28 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+// Pages that open in their own popup window and render bare — no site nav,
+// footer, dashboard sidebar or chat widget, just the page itself.
+const BARE_PATHS = new Set(["/dashboard/track-station"]);
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  if (BARE_PATHS.has(pathname)) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider delayDuration={200}>
+            <main id="main-content">
+              <Outlet />
+            </main>
+            <Toaster />
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
