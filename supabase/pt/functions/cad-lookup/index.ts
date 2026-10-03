@@ -719,6 +719,29 @@ function coreStreetName(street: string): string {
 // a false-positive shape, not a highway prefix) — left alone rather than
 // guessed, per this file's own standing discipline (see the Sixth bug class
 // note in the texas_cad_data_sources memory).
+// Appends every cardinal direction GLUED directly onto each of the given
+// forms with no separating space/hyphen ("I35" -> "I35N"/"I35S"/"I35E"/
+// "I35W") — found live chasing a real report (a genuinely real Denton
+// Braum's, correctly resolved by Google, missing from the live dropdown):
+// Denton stores this specific interstate's situs as "...I35E..." with the
+// direction glued straight onto the number, no space at all. The INPUT
+// address often has no directional to work with in the first place —
+// Google's own resolved address for this exact place was plain "Interstate
+// 35," no "E" — so there's nothing to echo back; the only way to still
+// find a real record stored this way is to try every direction as its own
+// candidate. Deliberately only wired into the interstate branch below,
+// which is the one confirmed-live case of this glued-no-space storage
+// convention — kept off the other highway types per this function's own
+// "only forms actually confirmed live, not every plausible spelling"
+// discipline (see the long comment above this function), and never
+// applied to ordinary (non-highway) street names, which already have a
+// separately proven, working mechanism for a trailing directional (see
+// singleFieldWhere's "end of string" boundary case, built for exactly
+// this on plain streets like "107 OAK DR E").
+function withGluedDirectionals(forms: string[]): string[] {
+  return forms.flatMap((f) => [f, ...["N", "S", "E", "W"].map((d) => `${f}${d}`)]);
+}
+
 function coreVariants(core: string): string[] {
   const variants = new Set<string>([core]);
   const m = core.match(
@@ -731,15 +754,10 @@ function coreVariants(core: string): string[] {
       .replace(/[\s-]+/g, " ")
       .trim();
     if (/^(interstate|ih|i)$/.test(prefix)) {
-      for (const v of [
-        `I${n}`,
-        `I ${n}`,
-        `I-${n}`,
-        `IH ${n}`,
-        `IH-${n}`,
-        `INTERSTATE ${n}`,
-        `INTERSTATE HY ${n}`,
-      ]) {
+      for (const v of withGluedDirectionals([`I${n}`, `I ${n}`, `I-${n}`, `IH ${n}`, `IH-${n}`])) {
+        variants.add(v);
+      }
+      for (const v of [`INTERSTATE ${n}`, `INTERSTATE HY ${n}`]) {
         variants.add(v);
       }
     } else if (/^(us|u s|u\.s\.)$/.test(prefix)) {
