@@ -100,6 +100,17 @@ function buildAddressFromComponents(components?: GoogleAddressComponent[]): stri
   return [line1, tail].filter(Boolean).join(", ") || null;
 }
 
+// Google's own `administrative_area_level_2` IS the county ("Denton
+// County"), given directly and reliably alongside the address — used to
+// tell cad-lookup which single county to try first instead of blind-firing
+// all 12 concurrently for every candidate. See unified-search.ts's own
+// comment on why this matters: a 5-candidate business-name search used to
+// mean 5 × 12 = 60 concurrent county queries for what's usually really just
+// one real county.
+function countyFromComponents(components?: GoogleAddressComponent[]): string | undefined {
+  return components?.find((c) => c.types?.includes("administrative_area_level_2"))?.longText;
+}
+
 // Resolves a placeId to its real, zip-inclusive, un-abbreviated address.
 // Returns null (never throws) on failure — a caller falls back to the
 // Autocomplete label itself rather than losing the candidate entirely.
@@ -134,6 +145,12 @@ export type GoogleTextSearchMatch = {
   // enriched in place once its CAD lookup resolves, instead of being keyed
   // by the (mutable, not-yet-known) CAD record it might turn into.
   placeId?: string;
+  // "Denton County" / "Collin County" / ... — Google's own, reliable county
+  // for this exact place. Passed to cad-lookup as a hint so it can try just
+  // that one county first instead of blind-firing all 12 for every single
+  // candidate. Free: addressComponents is already in the field mask below
+  // for buildAddressFromComponents, this just reads one more type off it.
+  county?: string;
 };
 
 // Text Search (New) — a full free-text search ("braums denton", "taco bell
@@ -178,7 +195,9 @@ export async function fetchGoogleTextSearch(
       const address =
         buildAddressFromComponents(p.addressComponents) ??
         (p.formattedAddress ? cleanGoogleLabel(p.formattedAddress) : null);
-      return label && address ? { label, address, placeId: p.id } : null;
+      return label && address
+        ? { label, address, placeId: p.id, county: countyFromComponents(p.addressComponents) }
+        : null;
     })
     .filter((m): m is GoogleTextSearchMatch => m !== null);
 }

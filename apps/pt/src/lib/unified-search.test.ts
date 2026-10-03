@@ -234,4 +234,20 @@ describe("unifiedPropertySearch", () => {
       vi.useRealTimers();
     }
   });
+
+  it("passes each Google candidate's own county through to cadLookupPreview as a hint", async () => {
+    // Confirmed live this cuts a 5-candidate business-name search from up
+    // to 60 concurrent county queries down to ~5 (one per candidate)
+    // instead of blind-firing all 12 counties for every single one — see
+    // this file's own top-of-file comment and cad-lookup/index.ts's
+    // COUNTY_QUERY_BY_HINT for the full story.
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+      { label: "Taco Bell", address: "681 Fort Worth Dr, Denton, TX", placeId: "p1", county: "Denton County" },
+    ]);
+    vi.mocked(cadLookupPreview).mockResolvedValue({ matched: false, nearby: [] });
+
+    await runSearch("tacobell denton");
+
+    expect(cadLookupPreview).toHaveBeenCalledWith("681 Fort Worth Dr, Denton, TX", "Denton County");
+  });
 });

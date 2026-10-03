@@ -3156,120 +3156,134 @@ function normalizeRoadPrefix(address: string): string {
     .replace(TX_INTERSTATE_HYPHEN, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`);
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+// Every county query function, in priority order — the full, unhinted
+// sweep. Queried concurrently with no city-name filtering on which to try
+// (see the comment on this further down); a single county's transient
+// failure (network error, endpoint down) no longer fails the whole lookup,
+// it's just skipped, same as a plain no-match.
+const ALL_COUNTY_QUERIES = [
+  queryCollin,
+  queryMontgomery,
+  queryDenton,
+  queryHarris,
+  queryTarrant,
+  queryFortBend,
+  queryWilliamson,
+  queryGrayson,
+  queryTravis,
+  queryBexar,
+  queryDallas,
+  queryKaufman,
+];
 
-  try {
-    const body = await req.json();
+// Maps Google's own `administrative_area_level_2` ("Denton County") to the
+// one query function for that county — see unified-search.ts's own comment
+// on why this exists: without it, every one of a business-name search's
+// several Google candidates blind-fires all 12 counties concurrently, even
+// when Google already names the exact county for each one. Built from
+// ALL_COUNTY_QUERIES itself (one entry per county name baked into each
+// function's own URL/comment) rather than hand-duplicated, so the two can
+// never silently drift apart.
+const COUNTY_QUERY_BY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
+  collin: queryCollin,
+  montgomery: queryMontgomery,
+  denton: queryDenton,
+  harris: queryHarris,
+  tarrant: queryTarrant,
+  "fort bend": queryFortBend,
+  williamson: queryWilliamson,
+  grayson: queryGrayson,
+  travis: queryTravis,
+  bexar: queryBexar,
+  dallas: queryDallas,
+  kaufman: queryKaufman,
+};
 
-    // Manual account-number lookup (see queryByAccountNumber's own comment)
-    // — a completely separate request shape from the address flow below,
-    // checked first so it never touches address parsing at all.
-    if (typeof body.accountNumber === "string" && typeof body.cad === "string") {
-      const record = await queryByAccountNumber(body.cad, body.accountNumber);
-      return new Response(JSON.stringify({ matched: Boolean(record), record: record ?? null }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+  if (typeof hint !== "string") return undefined;
+  const key = hint.toLowerCase().replace(/\s*county\s*$/i, "").trim();
+  return COUNTY_QUERY_BY_HINT[key];
+}
 
-    const rawAddress = body.address;
-    if (!rawAddress || typeof rawAddress !== "string") {
-      return new Response(JSON.stringify({ error: "address is required" }), {
-        status: 400,
-        headers: corsHeaders,
-      });
-    }
-    const address = normalizeRoadPrefix(rawAddress);
+type LookupResult =
+  | { matched: false; nearby: CadRecord[] }
+  | { matched: true; record: CadRecord }
+  | { matched: "multiple"; options: CadRecord[] };
 
-    // Set only by the as-you-type live-search dropdown (never by "Validate
-    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
-    // comment for why a fast, best-effort sweep is the right tradeoff there.
-    const preview = body.preview === true;
-    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+// Deliberately NOT "did the hinted county find literally nothing" — a
+// single wrong/stale hint (confirmed live: hinting "Collin County" for a
+// real Denton address) can still produce a plausible-looking "nearby"
+// result from the WRONG county's own loose fallback search, which isn't
+// empty but also isn't the real property. Only an actual exact-match or
+// multiple-accounts result is confident enough to skip the full sweep on;
+// anything else (including a non-empty "nearby" guess) still falls back to
+// ALL_COUNTY_QUERIES, discarding the hinted attempt entirely, so a bad hint
+// can only cost a little time, never a real match.
+function isConfidentMatch(r: LookupResult): boolean {
+  return r.matched === true || r.matched === "multiple";
+}
 
-    // Queries every supported county concurrently (see the comment above) — no
-    // city-name filtering on WHICH counties to try. A single county's transient
-    // failure (network error, endpoint down) no longer fails the whole lookup;
-    // it's just skipped, same as a plain no-match.
-    const countyQueriesInOrder = [
-      queryCollin,
-      queryMontgomery,
-      queryDenton,
-      queryHarris,
-      queryTarrant,
-      queryFortBend,
-      queryWilliamson,
-      queryGrayson,
-      queryTravis,
-      queryBexar,
-      queryDallas,
-      queryKaufman,
-    ];
+// The full address-lookup sweep, parameterized by WHICH county query
+// functions to run — everything that used to be the bulk of the
+// Deno.serve handler below, unchanged in behavior, just no longer
+// hardcoded to ALL_COUNTY_QUERIES so it can be tried against a single
+// hinted county first (see Deno.serve below for the two-phase caller).
+// Returns a plain result object rather than a Response so the caller can
+// inspect it (isConfidentMatch) and decide whether a fallback sweep is needed
+// before anything is sent back over the wire.
+async function runLookup(
+  address: string,
+  queryTimeoutMs: number,
+  countyQueriesInOrder: typeof ALL_COUNTY_QUERIES,
+): Promise<LookupResult> {
+  // A business/owner name ("Walmart Denton"), not a street address at all —
+  // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
+  // can parse this (both require a house number or a street-suffix word),
+  // so every county query below would otherwise bail out to [] without
+  // ever making a request. Checked here, once, rather than inside each of
+  // the 12 county functions separately.
+  if (!parseAddressForQuery(address, "nearby")) {
+    const nameQuery = parseNameQuery(address);
+    if (!nameQuery?.name) return { matched: false, nearby: [] };
+    const nameResults = await findByName(countyQueriesInOrder, address, nameQuery.city, queryTimeoutMs);
+    return { matched: false, nearby: nameResults };
+  }
 
-    // A business/owner name ("Walmart Denton"), not a street address at all —
-    // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
-    // can parse this (both require a house number or a street-suffix word),
-    // so every county query below would otherwise bail out to [] without
-    // ever making a request. Checked here, once, rather than inside each of
-    // the 12 county functions separately.
-    if (!parseAddressForQuery(address, "nearby")) {
-      const nameQuery = parseNameQuery(address);
-      if (!nameQuery?.name) {
-        return new Response(JSON.stringify({ matched: false, nearby: [] }), {
-          status: 200,
-          headers: corsHeaders,
-        });
-      }
-      const nameResults = await findByName(
-        countyQueriesInOrder,
-        address,
-        nameQuery.city,
-        queryTimeoutMs,
-      );
-      return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+  // cityGuess only depends on the raw address text, not on anything the
+  // exact sweep finds — computed up front so the nearby sweep below can
+  // start immediately, in parallel with the exact sweep, instead of only
+  // starting after it finishes.
+  const parsedForCity = parseHouseAndStreet(address);
+  const cityGuess = parsedForCity ? guessCity(parsedForCity.cityStateZip) : "";
 
-    // cityGuess only depends on the raw address text, not on anything the
-    // exact sweep finds — computed up front so the nearby sweep below can
-    // start immediately, in parallel with the exact sweep, instead of only
-    // starting after it finishes.
-    const parsedForCity = parseHouseAndStreet(address);
-    const cityGuess = parsedForCity ? guessCity(parsedForCity.cityStateZip) : "";
+  // Fired now, not awaited yet — a real address search used to pay the
+  // exact sweep's full latency AND THEN the nearby sweep's full latency
+  // back-to-back whenever nothing matched, since nearby only ever started
+  // after `!record` was already known. Calling findNearby() here starts its
+  // own concurrent county queries immediately; `await`ing the *result* is
+  // deferred until after the tiebreak below decides whether it's even
+  // needed. If an exact match is found, this promise is simply never
+  // awaited — its in-flight requests cost nothing to the response, since
+  // nothing here ever reads their result.
+  const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
 
-    // Fired now, not awaited yet — a real address search used to pay the
-    // exact sweep's full latency AND THEN the nearby sweep's full latency
-    // back-to-back whenever nothing matched, since nearby only ever started
-    // after `!record` was already known. Calling findNearby() here starts its
-    // own concurrent county queries immediately; `await`ing the *result* is
-    // deferred until after the tiebreak below decides whether it's even
-    // needed. If an exact match is found, this promise is simply never
-    // awaited — its in-flight requests cost nothing to the response, since
-    // nothing here ever reads their result.
-    const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
-
-    // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
-    // seconds): a single slow/rate-limited county source could block the
-    // ENTIRE lookup, since Promise.allSettled alone has no time bound of its
-    // own — it just waits for every promise to settle, however long that
-    // takes. Same fix as the nearby sweep's own per-county timeout (see
-    // NEARBY_QUERY_TIMEOUT_MS above): a county that doesn't answer in time
-    // just contributes nothing this round, exactly like a real query error
-    // already does, rather than holding up every other (fast) county's real
-    // answer.
-    const results = await Promise.allSettled(
-      countyQueriesInOrder.map((query) =>
-        withTimeout(query(address), queryTimeoutMs, [] as CadRecord[]),
-      ),
-    );
-    // Flattened in county-priority order, then row order within each county — each
-    // county now returns up to MULTI_CANDIDATE_LIMIT real rows instead of just one
-    // (see the comment above that constant), so the tiebreak below has every real
-    // candidate to search, not just each county's arbitrary first row.
-    const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
+  // seconds): a single slow/rate-limited county source could block the
+  // ENTIRE lookup, since Promise.allSettled alone has no time bound of its
+  // own — it just waits for every promise to settle, however long that
+  // takes. Same fix as the nearby sweep's own per-county timeout (see
+  // NEARBY_QUERY_TIMEOUT_MS above): a county that doesn't answer in time
+  // just contributes nothing this round, exactly like a real query error
+  // already does, rather than holding up every other (fast) county's real
+  // answer.
+  const results = await Promise.allSettled(
+    countyQueriesInOrder.map((query) => withTimeout(query(address), queryTimeoutMs, [] as CadRecord[])),
+  );
+  // Flattened in county-priority order, then row order within each county — each
+  // county now returns up to MULTI_CANDIDATE_LIMIT real rows instead of just one
+  // (see the comment above that constant), so the tiebreak below has every real
+  // candidate to search, not just each county's arbitrary first row.
+  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
     // It's possible (found sampling real addresses on 2026-07-26) for the SAME
     // house number + a generic street word ("Commerce", "Marshall", "Maple", ...)
@@ -3410,10 +3424,7 @@ Deno.serve(async (req: Request) => {
             return enrichRecord(withCity);
           }),
         );
-        return new Response(JSON.stringify({ matched: "multiple", options }), {
-          status: 200,
-          headers: corsHeaders,
-        });
+        return { matched: "multiple", options };
       }
     }
 
@@ -3443,25 +3454,70 @@ Deno.serve(async (req: Request) => {
             queryTimeoutMs,
           );
           if (nameResults.length > 0) {
-            return new Response(JSON.stringify({ matched: false, nearby: nameResults }), {
-              status: 200,
-              headers: corsHeaders,
-            });
+            return { matched: false, nearby: nameResults };
           }
         }
       }
-      return new Response(JSON.stringify({ matched: false, nearby }), {
+      return { matched: false, nearby };
+    }
+
+    record = await enrichRecord(record);
+
+    return { matched: true, record };
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const body = await req.json();
+
+    // Manual account-number lookup (see queryByAccountNumber's own comment)
+    // — a completely separate request shape from the address flow below,
+    // checked first so it never touches address parsing at all.
+    if (typeof body.accountNumber === "string" && typeof body.cad === "string") {
+      const record = await queryByAccountNumber(body.cad, body.accountNumber);
+      return new Response(JSON.stringify({ matched: Boolean(record), record: record ?? null }), {
         status: 200,
         headers: corsHeaders,
       });
     }
 
-    record = await enrichRecord(record);
+    const rawAddress = body.address;
+    if (!rawAddress || typeof rawAddress !== "string") {
+      return new Response(JSON.stringify({ error: "address is required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
+    const address = normalizeRoadPrefix(rawAddress);
 
-    return new Response(JSON.stringify({ matched: true, record }), {
-      status: 200,
-      headers: corsHeaders,
-    });
+    // Set only by the as-you-type live-search dropdown (never by "Validate
+    // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
+    // comment for why a more patient ceiling is the right tradeoff there.
+    const preview = body.preview === true;
+    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+
+    // See COUNTY_QUERY_BY_HINT's own comment — when the caller already knows
+    // the county (every Google-resolved candidate does), try just that one
+    // county first instead of ALL_COUNTY_QUERIES. Never trusted blindly: see
+    // isConfidentMatch's own comment for a real case (a wrong hint that
+    // produced a plausible but WRONG "nearby" guess from the wrong county)
+    // that made this check deliberately stricter than "came back empty" —
+    // only an actual exact/multiple match short-circuits the full sweep; a
+    // wrong or stale hint can only cost a little time, never a real match.
+    const hintedQuery = countyQueryForHint(body.countyHint);
+    let result: LookupResult;
+    if (hintedQuery) {
+      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery]);
+      result = isConfidentMatch(hinted)
+        ? hinted
+        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+    } else {
+      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+    }
+
+    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),

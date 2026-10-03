@@ -53,6 +53,24 @@
 // ingestion function, and cron jobs). cadLookupPreview below always queries
 // live.
 //
+// WHY THE LIVE LOOKUPS THEMSELVES ARE SLOW, AND THE REAL FIX FOR IT: each
+// county query is a single, unretried fetch() straight to that county's own
+// government GIS server (see cad-lookup/index.ts) — confirmed live, the
+// same exact query can genuinely take anywhere from under 1s to 60s+ at
+// different moments, pure government-server variance, nothing to optimize
+// in our own matching code. What WAS fixable: every Google candidate used
+// to blind-fire all 12 supported counties concurrently, every time, even
+// though Google's own addressComponents already name the exact county
+// ("Denton County") for that candidate — so a 5-candidate business-name
+// search fired 5 × 12 = 60 concurrent county queries, hammering the same
+// few real government servers far harder than necessary and almost
+// certainly worsening their already-variable response times. Each
+// candidate's resolved county (see google-places.ts's countyFromComponents)
+// is now passed through as a hint, so cad-lookup tries just that one county
+// first and only falls back to the full 12-county sweep if it genuinely
+// comes back empty — same correctness as before, a small fraction of the
+// concurrent load.
+//
 // STREAMING, not atomic: each individual government CAD endpoint genuinely
 // takes several seconds (confirmed live — Denton alone is ~6.5s per
 // lookup), and a business-name search fires one of these per Google
@@ -113,8 +131,12 @@ function recordsFromResult(res: CadLookupResult, includeNearby: boolean): CadRec
 // it should never borrow that place's name — found live, a bare
 // street-name nearby match from an unrelated city once got mislabeled with
 // a Google suggestion's specific address.
-async function lookupRecords(addressOrName: string, includeNearby = true): Promise<CadRecord[]> {
-  return cadLookupPreview(addressOrName)
+async function lookupRecords(
+  addressOrName: string,
+  includeNearby = true,
+  countyHint?: string,
+): Promise<CadRecord[]> {
+  return cadLookupPreview(addressOrName, countyHint)
     .then((res) => recordsFromResult(res, includeNearby))
     .catch(() => [] as CadRecord[]);
 }
@@ -288,7 +310,7 @@ export async function unifiedPropertySearch(
                 cadStatus: "pending",
               });
 
-              const records = await lookupRecords(candidate.address, false);
+              const records = await lookupRecords(candidate.address, false, candidate.county);
               if (records.length === 0) {
                 // Still a real, selectable address — just no county parcel
                 // on file for it (outside a supported county, a lookup
