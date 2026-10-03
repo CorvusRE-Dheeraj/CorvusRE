@@ -286,23 +286,34 @@ export async function unifiedPropertySearch(
   // Direct results — a match on the raw typed text (a real address, or our
   // own owner-name search) is always already CAD-grounded.
   //
-  // Registered in rowIdByCadKey too — found live ("Walmart Denton" showing
-  // every real parcel TWICE, once unlabeled from here and once again with
-  // the "Walmart Supercenter" label once the Google path resolved the same
-  // parcel): the Google path's own dedup check (below) looks up
-  // rowIdByCadKey to see whether a parcel already has a row before adding a
-  // new one, but a direct-search row was never recorded there in the first
-  // place, so that check always came back empty for these and let a second,
-  // duplicate row through every time. Direct results get first claim on a
-  // parcel's row (same as before this fix), so a later Google candidate
-  // resolving to the same parcel now correctly merges its label onto this
-  // row instead of duplicating it.
+  // Checks rowIdByCadKey BOTH ways — found live ("Walmart Denton" showing
+  // every real parcel TWICE) in two stages:
+  //
+  // 1st attempt only registered a direct row in rowIdByCadKey so a LATER
+  // Google candidate for the same parcel could find and merge onto it. That
+  // fixed the case where direct resolves first, but direct and the Google
+  // candidates' own CAD lookups race the same way everything else here
+  // does — reported again right after shipping that fix, because the
+  // Google candidate just as often resolves to the parcel FIRST and
+  // registers its own row before direct's lookup (a slower owner-name
+  // search) finishes, and direct was only ever registering a NEW row for
+  // itself, never checking whether one already existed. Now checks first:
+  // if the parcel already has a row (from an already-resolved Google
+  // candidate), update that SAME row in place with the direct search's own
+  // (more authoritative) data instead of creating a second one; its
+  // googleLabel, if any, is untouched (upsert's Object.assign only
+  // overwrites fields actually present in the patch).
   const direct = lookupRecords(query)
     .then((records) => {
       for (const record of records) {
         const key = cadKey(record);
-        rowIdByCadKey.set(key, key);
-        upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
+        const existingRowId = rowIdByCadKey.get(key);
+        if (existingRowId) {
+          upsert(existingRowId, { address: record.propertyAddress, record, cadStatus: "found" });
+        } else {
+          rowIdByCadKey.set(key, key);
+          upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
+        }
       }
     })
     .catch(() => {});

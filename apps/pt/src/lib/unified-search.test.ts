@@ -276,4 +276,40 @@ describe("unifiedPropertySearch", () => {
     expect(rowsForParcel).toHaveLength(1);
     expect(rowsForParcel[0].googleLabel).toBe("Walmart Supercenter");
   });
+
+  it("merges a direct-search row onto a Google candidate's row when Google resolves FIRST", async () => {
+    // Same real bug as the test above, the other ordering — reported again
+    // right after that fix shipped, because direct and each Google
+    // candidate's own CAD lookup race, and the Google candidate (a plain
+    // address lookup) often resolves before direct's slower owner-name
+    // search does. The fix above only taught direct to REGISTER itself for
+    // a later Google match to find; it never taught direct to check
+    // whether a row already existed when IT resolves second. Forces that
+    // exact ordering here: the Google candidate's lookup resolves
+    // immediately, direct's stays pending until released afterward.
+    const sharedRecord = record({ accountNumber: "618926", propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX" });
+    const directGate = deferred<CadLookupResult>();
+    vi.mocked(cadLookupPreview).mockImplementation((q: string) =>
+      q === "walmart denton" ? directGate.promise : Promise.resolve({ matched: true, record: sharedRecord }),
+    );
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+      { label: "Walmart Supercenter", address: "2750 W University Dr, Denton, TX", placeId: "p1" },
+    ]);
+
+    const updates: UnifiedMatch[][] = [];
+    const done = unifiedPropertySearch("walmart denton", (m) => updates.push(m));
+
+    // Let the Google candidate's row resolve and claim the parcel first.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(updates.flat().some((m) => m.record?.accountNumber === "618926")).toBe(true);
+
+    // Now let direct resolve to the SAME parcel.
+    directGate.resolve({ matched: true, record: sharedRecord });
+    await done;
+
+    const final = updates[updates.length - 1];
+    const rowsForParcel = final.filter((m) => m.record?.accountNumber === "618926");
+    expect(rowsForParcel).toHaveLength(1);
+    expect(rowsForParcel[0].googleLabel).toBe("Walmart Supercenter");
+  });
 });
