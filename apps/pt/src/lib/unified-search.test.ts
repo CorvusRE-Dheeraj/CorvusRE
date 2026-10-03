@@ -206,7 +206,7 @@ describe("unifiedPropertySearch", () => {
     expect(final[0].record?.accountNumber).toBe("ACC-DIRECT");
   });
 
-  it("settles a row stuck on 'pending' to 'none' once the 30s cutoff hits, instead of spinning forever", async () => {
+  it("settles a row stuck on 'pending' to 'none' once the 3-minute cutoff hits, instead of spinning forever", async () => {
     // Regression: confirmed live ("it's been a long time, but still this
     // is looking") on a real address whose county CAD lookup never
     // returned — the row just kept showing its spinner indefinitely,
@@ -224,7 +224,7 @@ describe("unifiedPropertySearch", () => {
       const updates: UnifiedMatch[][] = [];
       const done = unifiedPropertySearch("braums denton", (m) => updates.push(m));
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
       await done;
 
       const final = updates[updates.length - 1];

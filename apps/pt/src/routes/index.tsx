@@ -131,7 +131,7 @@ function Home() {
       // current best list, deduped+filtered) and opens the dropdown on the
       // very first one, so the user sees the fast result immediately and
       // watches slower ones join it, rather than a blank dropdown the whole
-      // time. unifiedPropertySearch itself caps the total wait at 30s and
+      // time. unifiedPropertySearch itself caps the total wait at 3 minutes and
       // discards anything slower than that.
       unifiedPropertySearch(
         q,

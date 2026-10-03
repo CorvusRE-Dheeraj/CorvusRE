@@ -192,12 +192,12 @@ function buildDisplayList(all: UnifiedMatch[], cityGuess: string): UnifiedMatch[
 // government endpoint having a bad day) keep the dropdown spinning
 // indefinitely. Anything that resolves after the cutoff is discarded, not
 // displayed — it's genuinely too late to be a "live suggestion" anymore.
-// Raised from an initial 10s to 30s per direct ask, giving a genuinely slow
-// county endpoint real room to still come back with a real parcel instead
-// of settling for "none" early — still bounded, just a more patient one;
-// every "pending" row still settles to "none" at the cutoff (see the timer
-// below) rather than spinning forever past it.
-const SEARCH_TIMEOUT_MS = 30_000;
+// Raised twice since: 10s -> 30s -> 3 minutes, per direct ask each time,
+// giving a genuinely slow county endpoint real room to still come back with
+// an actual parcel instead of settling for "none" early — still bounded,
+// just a patient one now; every "pending" row still settles to "none" at
+// the cutoff (see the timer below) rather than spinning forever past it.
+const SEARCH_TIMEOUT_MS = 3 * 60_000;
 
 // Resolves whatever the user typed to a merged list of real addresses —
 // direct matches from the raw typed text (always CAD-grounded, since
