@@ -250,4 +250,30 @@ describe("unifiedPropertySearch", () => {
 
     expect(cadLookupPreview).toHaveBeenCalledWith("681 Fort Worth Dr, Denton, TX", "Denton County");
   });
+
+  it("merges a Google candidate onto a direct-search row for the same parcel, not a duplicate", async () => {
+    // Regression: confirmed live ("Walmart Denton" showing every real
+    // parcel TWICE — once unlabeled, once again labeled "Walmart
+    // Supercenter"). The direct search (on the raw typed text "walmart
+    // denton") finds the parcel first via our own owner-name search; the
+    // Google candidate for the same store resolves to the identical
+    // parcel moments later. Only one row should ever reach the caller, and
+    // it should end up WITH the Google label attached (more informative),
+    // not without it.
+    const sharedRecord = record({ accountNumber: "618926", propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX" });
+    vi.mocked(cadLookupPreview).mockImplementation((q: string) =>
+      q === "walmart denton" || q.includes("University")
+        ? Promise.resolve({ matched: true, record: sharedRecord })
+        : Promise.resolve({ matched: false, nearby: [] }),
+    );
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+      { label: "Walmart Supercenter", address: "2750 W University Dr, Denton, TX", placeId: "p1" },
+    ]);
+
+    const updates = await runSearch("walmart denton");
+    const final = updates[updates.length - 1];
+    const rowsForParcel = final.filter((m) => m.record?.accountNumber === "618926");
+    expect(rowsForParcel).toHaveLength(1);
+    expect(rowsForParcel[0].googleLabel).toBe("Walmart Supercenter");
+  });
 });
