@@ -135,6 +135,37 @@ describe("unifiedPropertySearch", () => {
     expect(rowsWithRecord).toHaveLength(1);
   });
 
+  it("shows every parcel when one Google-resolved address has multiple CAD records on file", async () => {
+    // Regression: confirmed live — a real Denton Braum's address resolved
+    // to 2 separate CAD accounts, but only the last one ever stayed visible
+    // because both records were upserted onto the same row id, so the
+    // second silently overwrote the first.
+    vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+      { label: "Braum's", address: "2922 W University Dr, Denton, TX", placeId: "p1" },
+    ]);
+    // Isolate the candidate's own lookup (by address) from the direct
+    // search (by the raw typed text) so this exercises only the
+    // one-candidate-multiple-records path, not the cross-source merge.
+    vi.mocked(cadLookupPreview).mockImplementation((q: string) =>
+      q.includes("University")
+        ? Promise.resolve({
+            matched: "multiple",
+            options: [
+              record({ accountNumber: "776568", totalValue: 100 }),
+              record({ accountNumber: "776569", totalValue: 450000 }),
+            ],
+          })
+        : Promise.resolve({ matched: false, nearby: [] }),
+    );
+
+    const updates = await runSearch("braums denton");
+    const final = updates[updates.length - 1];
+    const accountNumbers = final.map((m) => m.record?.accountNumber).sort();
+    expect(accountNumbers).toEqual(["776568", "776569"]);
+    // Both carry the Google label and both are marked "found", not just one.
+    expect(final.every((m) => m.googleLabel === "Braum's" && m.cadStatus === "found")).toBe(true);
+  });
+
   it("filters to the typed city once an in-city match exists, keeping out-of-city rows out", async () => {
     vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
       { label: "Braum's", address: "1 Main St, Denton, TX", placeId: "p1" },
@@ -173,5 +204,34 @@ describe("unifiedPropertySearch", () => {
     const final = updates[updates.length - 1];
     expect(final).toHaveLength(1);
     expect(final[0].record?.accountNumber).toBe("ACC-DIRECT");
+  });
+
+  it("settles a row stuck on 'pending' to 'none' once the 30s cutoff hits, instead of spinning forever", async () => {
+    // Regression: confirmed live ("it's been a long time, but still this
+    // is looking") on a real address whose county CAD lookup never
+    // returned — the row just kept showing its spinner indefinitely,
+    // because the timeout only stopped FUTURE updates, never resolved the
+    // one already in flight.
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
+        { label: "Braum's", address: "529 S Interstate 35 E, Denton, TX", placeId: "p1" },
+      ]);
+      // A CAD lookup that never settles — simulates a county endpoint that
+      // hangs past the cutoff.
+      vi.mocked(cadLookupPreview).mockImplementation(() => new Promise(() => {}));
+
+      const updates: UnifiedMatch[][] = [];
+      const done = unifiedPropertySearch("braums denton", (m) => updates.push(m));
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await done;
+
+      const final = updates[updates.length - 1];
+      const row = final.find((m) => m.googleLabel === "Braum's")!;
+      expect(row.cadStatus).toBe("none");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

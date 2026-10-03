@@ -231,7 +231,7 @@ function Intake() {
       // unifiedPropertySearch. Each callback already carries the full
       // current best (deduped+city-filtered) list, so it's a straight
       // replace; the dropdown opens on the very first one rather than
-      // waiting for every candidate to resolve. Capped at 10s total inside
+      // waiting for every candidate to resolve. Capped at 30s total inside
       // unifiedPropertySearch itself.
       unifiedPropertySearch(
         q,

@@ -192,10 +192,12 @@ function buildDisplayList(all: UnifiedMatch[], cityGuess: string): UnifiedMatch[
 // government endpoint having a bad day) keep the dropdown spinning
 // indefinitely. Anything that resolves after the cutoff is discarded, not
 // displayed — it's genuinely too late to be a "live suggestion" anymore.
-// Less critical now that candidates appear immediately and are enriched in
-// place — the ceiling mostly bounds how long a "pending" row can stay
-// pending before further updates to it are dropped.
-const SEARCH_TIMEOUT_MS = 10_000;
+// Raised from an initial 10s to 30s per direct ask, giving a genuinely slow
+// county endpoint real room to still come back with a real parcel instead
+// of settling for "none" early — still bounded, just a more patient one;
+// every "pending" row still settles to "none" at the cutoff (see the timer
+// below) rather than spinning forever past it.
+const SEARCH_TIMEOUT_MS = 30_000;
 
 // Resolves whatever the user typed to a merged list of real addresses —
 // direct matches from the raw typed text (always CAD-grounded, since
@@ -231,16 +233,32 @@ export async function unifiedPropertySearch(
     onUpdate(buildDisplayList(order.map((id) => byId.get(id)!), cityGuess));
   }
 
-  function upsert(id: string, patch: Partial<UnifiedMatch> & { address: string; cadStatus: CadStatus }) {
+  // insertAfter places a brand-new row right next to a related one (a
+  // second parcel found at the same Google-resolved address, right after
+  // the first) instead of always appending at the end of the list, where it
+  // would read as unrelated to the row it actually belongs next to.
+  function upsert(
+    id: string,
+    patch: Partial<UnifiedMatch> & { address: string; cadStatus: CadStatus },
+    insertAfter?: string,
+  ) {
     if (timedOut) return;
     const existing = byId.get(id);
     if (existing) {
       Object.assign(existing, patch);
     } else {
       byId.set(id, { id, googleLabel: undefined, ...patch });
-      order.push(id);
+      const afterIdx = insertAfter ? order.indexOf(insertAfter) : -1;
+      if (afterIdx === -1) order.push(id);
+      else order.splice(afterIdx + 1, 0, id);
     }
     emit();
+  }
+
+  function removeRow(id: string) {
+    if (!byId.delete(id)) return;
+    const idx = order.indexOf(id);
+    if (idx !== -1) order.splice(idx, 1);
   }
 
   // Direct results — a match on the raw typed text (a real address, or our
@@ -282,10 +300,20 @@ export async function unifiedPropertySearch(
                 });
                 return;
               }
-              for (const record of records) {
+              // One Google-resolved address can genuinely carry more than
+              // one real parcel (found live: a Denton Braum's address with
+              // 2 separate CAD accounts on file) — every one of them needs
+              // its own row, not just the first. The placeholder row this
+              // candidate already has (googleRowId) is claimed by whichever
+              // record isn't already a duplicate of some other row; any
+              // further distinct records get their own new row inserted
+              // right next to it, so they read as "more parcels here," not
+              // as unrelated entries at the bottom of the list.
+              let claimedPlaceholder = false;
+              records.forEach((record, i) => {
                 const key = cadKey(record);
                 const dupeRowId = rowIdByCadKey.get(key);
-                if (dupeRowId && dupeRowId !== googleRowId) {
+                if (dupeRowId) {
                   // Another row (direct search, or an earlier-resolving
                   // Google candidate) already found this exact parcel —
                   // merge the label onto it rather than show a duplicate.
@@ -294,15 +322,39 @@ export async function unifiedPropertySearch(
                     target.googleLabel = candidate.label;
                     emit();
                   }
-                  continue;
+                  return;
                 }
-                rowIdByCadKey.set(key, googleRowId);
-                upsert(googleRowId, {
-                  address: record.propertyAddress,
-                  googleLabel: candidate.label,
-                  record,
-                  cadStatus: "found",
-                });
+                if (!claimedPlaceholder) {
+                  claimedPlaceholder = true;
+                  rowIdByCadKey.set(key, googleRowId);
+                  upsert(googleRowId, {
+                    address: record.propertyAddress,
+                    googleLabel: candidate.label,
+                    record,
+                    cadStatus: "found",
+                  });
+                } else {
+                  const extraRowId = `${googleRowId}#${i}`;
+                  rowIdByCadKey.set(key, extraRowId);
+                  upsert(
+                    extraRowId,
+                    {
+                      address: record.propertyAddress,
+                      googleLabel: candidate.label,
+                      record,
+                      cadStatus: "found",
+                    },
+                    googleRowId,
+                  );
+                }
+              });
+              if (!claimedPlaceholder) {
+                // Every record this candidate resolved to turned out to
+                // already be shown under some other row — nothing new to
+                // add, so drop the now-redundant "pending" placeholder
+                // instead of leaving it stuck mid-search forever.
+                removeRow(googleRowId);
+                emit();
               }
             }),
           );
@@ -316,6 +368,23 @@ export async function unifiedPropertySearch(
   const timeout = new Promise<void>((resolve) => {
     timer = setTimeout(() => {
       timedOut = true;
+      // Settle every row still stuck on "pending" instead of just freezing
+      // future updates — found live ("it's been a long time, but still
+      // this is looking") on a real Denton address whose CAD lookup never
+      // came back before the cutoff: without this, timedOut silently makes
+      // upsert a no-op for it and the spinner just spins forever, since
+      // nothing ever flips its cadStatus to a resting state. This is its
+      // one chance to resolve to "none" — a real address, just no parcel
+      // found in time.
+      let changed = false;
+      for (const id of order) {
+        const m = byId.get(id)!;
+        if (m.cadStatus === "pending") {
+          m.cadStatus = "none";
+          changed = true;
+        }
+      }
+      if (changed) emit();
       resolve();
     }, SEARCH_TIMEOUT_MS);
   });
