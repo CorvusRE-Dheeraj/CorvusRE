@@ -129,6 +129,11 @@ export async function fetchGooglePlaceDetails(
 export type GoogleTextSearchMatch = {
   label: string;
   address: string;
+  // Google's own stable id for this place — used as a row identity in
+  // unified-search.ts so a suggestion can be shown immediately and then
+  // enriched in place once its CAD lookup resolves, instead of being keyed
+  // by the (mutable, not-yet-known) CAD record it might turn into.
+  placeId?: string;
 };
 
 // Text Search (New) — a full free-text search ("braums denton", "taco bell
@@ -151,7 +156,7 @@ export async function fetchGoogleTextSearch(
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": GOOGLE_API_KEY,
-      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.addressComponents",
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.addressComponents",
     },
     body: JSON.stringify({
       textQuery: normalizeRoadPrefix(query),
@@ -161,18 +166,19 @@ export async function fetchGoogleTextSearch(
   if (!res.ok) throw new Error(`Google Text Search request failed: ${res.status}`);
   const data = (await res.json()) as {
     places?: Array<{
+      id?: string;
       displayName?: { text?: string };
       formattedAddress?: string;
       addressComponents?: GoogleAddressComponent[];
     }>;
   };
   return (data.places ?? [])
-    .map((p) => {
+    .map((p): GoogleTextSearchMatch | null => {
       const label = p.displayName?.text;
       const address =
         buildAddressFromComponents(p.addressComponents) ??
         (p.formattedAddress ? cleanGoogleLabel(p.formattedAddress) : null);
-      return label && address ? { label, address } : null;
+      return label && address ? { label, address, placeId: p.id } : null;
     })
     .filter((m): m is GoogleTextSearchMatch => m !== null);
 }
