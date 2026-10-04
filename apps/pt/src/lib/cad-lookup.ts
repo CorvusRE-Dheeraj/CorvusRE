@@ -99,15 +99,25 @@ export async function cadLookup(address: string): Promise<CadLookupResult> {
 // candidate, with a full 12-county fallback still running server-side if
 // the hinted county genuinely comes back empty, so a wrong/stale hint never
 // costs a real match, only a little time.
+// `signal` — threaded through to invokeEdgeFunction so an abandoned
+// keystroke's lookup is actually cancelled, not just ignored (see that
+// function's own comment for why this matters: the request used to keep
+// running to completion on both our edge function and the county's own
+// government server even after a newer search had already superseded it).
 export async function cadLookupPreview(
   address: string,
   countyHint?: string,
+  signal?: AbortSignal,
 ): Promise<CadLookupResult> {
-  return invokeEdgeFunction<CadLookupResult>("cad-lookup", {
-    address,
-    preview: true,
-    ...(countyHint ? { countyHint } : {}),
-  });
+  return invokeEdgeFunction<CadLookupResult>(
+    "cad-lookup",
+    {
+      address,
+      preview: true,
+      ...(countyHint ? { countyHint } : {}),
+    },
+    signal,
+  );
 }
 
 // A direct, exact lookup by account/parcel number for a single named county —

@@ -248,7 +248,11 @@ describe("unifiedPropertySearch", () => {
 
     await runSearch("tacobell denton");
 
-    expect(cadLookupPreview).toHaveBeenCalledWith("681 Fort Worth Dr, Denton, TX", "Denton County");
+    expect(cadLookupPreview).toHaveBeenCalledWith(
+      "681 Fort Worth Dr, Denton, TX",
+      "Denton County",
+      undefined,
+    );
   });
 
   it("merges a Google candidate onto a direct-search row for the same parcel, not a duplicate", async () => {

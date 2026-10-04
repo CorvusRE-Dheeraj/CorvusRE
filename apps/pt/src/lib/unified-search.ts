@@ -187,8 +187,9 @@ async function lookupRecords(
   addressOrName: string,
   includeNearby = true,
   countyHint?: string,
+  signal?: AbortSignal,
 ): Promise<CadRecord[]> {
-  return cadLookupPreview(addressOrName, countyHint)
+  return cadLookupPreview(addressOrName, countyHint, signal)
     .then((res) => recordsFromResult(res, includeNearby))
     .catch(() => [] as CadRecord[]);
 }
@@ -399,7 +400,7 @@ export async function unifiedPropertySearch(
         rowIdByCadKey.set(key, key);
         upsert(key, { address: query.trim(), cadStatus: "unsupported" });
       })
-    : lookupRecords(query)
+    : lookupRecords(query, true, undefined, signal)
         .then((records) => {
           for (const record of records) {
             const key = cadKey(record);
@@ -449,7 +450,7 @@ export async function unifiedPropertySearch(
                 cadStatus: "pending",
               });
 
-              const records = await lookupRecords(candidate.address, false, candidate.county);
+              const records = await lookupRecords(candidate.address, false, candidate.county, signal);
               if (records.length === 0) {
                 // Still a real, selectable address — just no county parcel
                 // on file for it (outside a supported county, a lookup
