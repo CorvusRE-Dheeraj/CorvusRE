@@ -407,6 +407,7 @@ const MULTI_WORD_CITIES = [
   "highland village",
   "north richland hills",
   "lake dallas",
+  "corpus christi",
 ];
 
 // A short, deliberately non-exhaustive allowlist of single-word Texas city
@@ -3310,6 +3311,104 @@ function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]
   return COUNTY_QUERY_BY_HINT[key];
 }
 
+// Same idea as Google's own countyHint above, for the ONE path that never
+// gets one: a search typed directly (not resolved through a Google
+// candidate — see unified-search.ts's "direct" branch) never carried a
+// county hint at all, so "walmart dallas" or "dental frisco" always swept
+// every one of the 13 supported counties concurrently, even though the
+// typed text itself names a real, usually unambiguous city. Found live
+// ("instead of searching all the counties, search directly in the
+// respective county based on the keyword").
+//
+// Maps each city already recognized by KNOWN_SINGLE_WORD_CITIES/
+// MULTI_WORD_CITIES above (reused rather than a second hand-maintained
+// list) to its PRIMARY supported county — a handful of these cities
+// genuinely straddle two counties (Frisco: Collin/Denton; Carrollton:
+// Denton/Dallas/Collin; Celina: Collin/Denton; Grand Prairie: Dallas/
+// Tarrant) and this only ever picks one. That's safe, not a correctness
+// risk: countyQueryForHint's own caller already falls back to the full
+// sweep whenever the hinted county isn't a confident match (see
+// isConfidentMatch) — a wrong guess here only ever costs one extra,
+// usually-fast single-county query before landing on the right answer the
+// same way an un-hinted search always did, it never excludes the real
+// county from being tried.
+const CITY_TO_COUNTY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
+  "fort worth": queryTarrant,
+  "san antonio": queryBexar,
+  "the colony": queryDenton,
+  "flower mound": queryDenton,
+  "round rock": queryWilliamson,
+  "sugar land": queryFortBend,
+  "missouri city": queryFortBend,
+  "grand prairie": queryDallas,
+  "little elm": queryDenton,
+  "highland village": queryDenton,
+  "north richland hills": queryTarrant,
+  "lake dallas": queryDenton,
+  "corpus christi": queryNueces,
+  denton: queryDenton,
+  houston: queryHarris,
+  dallas: queryDallas,
+  plano: queryCollin,
+  frisco: queryCollin,
+  mckinney: queryCollin,
+  allen: queryCollin,
+  carrollton: queryDenton,
+  lewisville: queryDenton,
+  wylie: queryCollin,
+  celina: queryCollin,
+  garland: queryDallas,
+  mesquite: queryDallas,
+  irving: queryDallas,
+  arlington: queryTarrant,
+  austin: queryTravis,
+  sherman: queryGrayson,
+  denison: queryGrayson,
+  conroe: queryMontgomery,
+  katy: queryHarris,
+  georgetown: queryWilliamson,
+  humble: queryHarris,
+  spring: queryHarris,
+  stafford: queryFortBend,
+  aubrey: queryDenton,
+  porter: queryMontgomery,
+  crandall: queryKaufman,
+  forney: queryKaufman,
+  montgomery: queryMontgomery,
+  euless: queryTarrant,
+  hurst: queryTarrant,
+  bedford: queryTarrant,
+  colleyville: queryTarrant,
+  southlake: queryTarrant,
+  keller: queryTarrant,
+  burleson: queryTarrant,
+  haslet: queryTarrant,
+  roanoke: queryDenton,
+  grapevine: queryTarrant,
+};
+
+// Tries the same two interpretations the rest of this file already uses to
+// find a city in free text — parseNameQuery's (a business name + city, no
+// house number) and parseHouseAndStreet's own cityStateZip tail (a real
+// address) — and looks the result up in CITY_TO_COUNTY_HINT. Returns
+// undefined (full sweep, exactly today's behavior) whenever neither
+// interpretation finds a recognized city, rather than guessing.
+function countyQueryFromQueryText(
+  address: string,
+): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+  const nameCity = parseNameQuery(address)?.city;
+  if (nameCity) {
+    const hit = CITY_TO_COUNTY_HINT[nameCity.toLowerCase().trim()];
+    if (hit) return hit;
+  }
+  const addressCity = parseHouseAndStreet(address)?.cityStateZip;
+  if (addressCity) {
+    const hit = CITY_TO_COUNTY_HINT[guessCity(addressCity).toLowerCase().trim()];
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 type LookupResult =
   | { matched: false; nearby: CadRecord[] }
   | { matched: true; record: CadRecord }
@@ -3324,8 +3423,24 @@ type LookupResult =
 // anything else (including a non-empty "nearby" guess) still falls back to
 // ALL_COUNTY_QUERIES, discarding the hinted attempt entirely, so a bad hint
 // can only cost a little time, never a real match.
-function isConfidentMatch(r: LookupResult): boolean {
-  return r.matched === true || r.matched === "multiple";
+//
+// isNameQuery changes what counts as confident for a business-name search
+// specifically — found live chasing a real report ("walmart dallas" still
+// took 13.8s with a hint in place): findByName() STRUCTURALLY only ever
+// returns `{matched: false, nearby: [...]}`, win or lose — it has no
+// "matched: true" shape to produce, since a name search is inherently a
+// list of candidates, not one exact row. The strict check above treated
+// every one of its results as "not confident," so the hinted single-county
+// attempt was discarded and the full sweep ran anyway EVERY time for a
+// name search, making the whole optimization a no-op for exactly the kind
+// of query ("<business> <city>") most live searches actually are. A
+// non-empty name-mode result from the hinted county doesn't carry the
+// address-mode risk above: it's a real owner-name match from that ONE
+// county's own search, not a fuzzy cross-county proximity guess, so it's
+// trustworthy on its own.
+function isConfidentMatch(r: LookupResult, isNameQuery: boolean): boolean {
+  if (r.matched === true || r.matched === "multiple") return true;
+  return isNameQuery && r.matched === false && r.nearby.length > 0;
 }
 
 // The full address-lookup sweep, parameterized by WHICH county query
@@ -3611,11 +3726,20 @@ Deno.serve(async (req: Request) => {
     // that made this check deliberately stricter than "came back empty" —
     // only an actual exact/multiple match short-circuits the full sweep; a
     // wrong or stale hint can only cost a little time, never a real match.
-    const hintedQuery = countyQueryForHint(body.countyHint);
+    //
+    // Google's own structured hint is preferred when the caller sent one;
+    // CITY_TO_COUNTY_HINT (countyQueryFromQueryText) only runs as a fallback
+    // for the one path that never gets one — a search typed directly, not
+    // resolved through a Google candidate (see that function's own comment).
+    const hintedQuery = countyQueryForHint(body.countyHint) ?? countyQueryFromQueryText(address);
+    // Same test runLookup itself uses internally to choose its name-search
+    // branch — computed here too so isConfidentMatch knows which shape of
+    // "confident" applies to this particular query.
+    const isNameQuery = !parseAddressForQuery(address, "nearby");
     let result: LookupResult;
     if (hintedQuery) {
       const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery]);
-      result = isConfidentMatch(hinted)
+      result = isConfidentMatch(hinted, isNameQuery)
         ? hinted
         : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
     } else {
