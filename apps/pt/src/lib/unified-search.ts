@@ -230,6 +230,38 @@ function guessCityWord(query: string): string {
   return words.length > 1 ? words[words.length - 1] : "";
 }
 
+// Same city -> county mapping as cad-lookup/index.ts's own
+// CITY_TO_COUNTY_HINT (kept in sync by hand, same as every other
+// client/server pair of constants in this app — Deno functions can't
+// import from src/lib) — used here purely for display, by
+// LiveSearchLoader, to show the real likely county while a search is in
+// flight instead of cycling through all 13 names. A handful of these
+// cities genuinely straddle two counties (Frisco, Carrollton, Celina);
+// picking one here has zero correctness stakes, it only ever affects
+// which name a loading message shows for a few seconds.
+const CITY_TO_COUNTY_DISPLAY: Record<string, string> = {
+  denton: "Denton", houston: "Harris", dallas: "Dallas", plano: "Collin",
+  frisco: "Collin", mckinney: "Collin", allen: "Collin", carrollton: "Denton",
+  lewisville: "Denton", wylie: "Collin", celina: "Collin", garland: "Dallas",
+  mesquite: "Dallas", irving: "Dallas", arlington: "Tarrant", austin: "Travis",
+  sherman: "Grayson", denison: "Grayson", conroe: "Montgomery", katy: "Harris",
+  georgetown: "Williamson", humble: "Harris", spring: "Harris",
+  stafford: "Fort Bend", aubrey: "Denton", porter: "Montgomery",
+  crandall: "Kaufman", forney: "Kaufman", montgomery: "Montgomery",
+  euless: "Tarrant", haltomcity: "Tarrant", hurst: "Tarrant", bedford: "Tarrant",
+  colleyville: "Tarrant", southlake: "Tarrant", keller: "Tarrant",
+  burleson: "Tarrant", haslet: "Tarrant", roanoke: "Denton", grapevine: "Tarrant",
+};
+
+// Best-effort "which county is this search probably in" for display only —
+// returns null (not a guess) when the typed text doesn't recognizably name
+// one of the cities above, same "only act when confident" discipline as
+// everywhere else county-guessing happens in this app.
+export function guessLikelyCountyName(query: string): string | null {
+  const city = guessCityWord(query).toLowerCase();
+  return CITY_TO_COUNTY_DISPLAY[city] ?? null;
+}
+
 // Address-only on purpose — NOT the record's CAD/county name. Tried
 // matching the county too (treating "Denton" as matching any city inside
 // Denton County, e.g. Frisco), but direct user correction: typing a city

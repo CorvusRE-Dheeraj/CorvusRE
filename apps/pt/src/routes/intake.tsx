@@ -735,14 +735,14 @@ function Intake() {
           </form>
 
           {liveMatchesLoading && liveMatches.length === 0 && (
-            <LiveSearchLoader className="mt-3 px-1" />
+            <LiveSearchLoader className="mt-3 px-1" query={address} />
           )}
 
           {liveMatchesOpen && (
             <div className="mt-2 max-h-[26rem] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card shadow-sm">
               {liveMatchesLoading && (
                 <div className="border-b border-border px-4 py-2.5">
-                  <LiveSearchLoader />
+                  <LiveSearchLoader query={address} />
                 </div>
               )}
               {liveMatches.length === 0 && !liveMatchesLoading && (
