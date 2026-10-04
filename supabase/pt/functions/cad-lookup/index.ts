@@ -954,20 +954,45 @@ async function fetchFeatures(
 // tiebreak in JS afterward (see findByName below), reusing cityOf/
 // cityMatches — the same city-is-a-preference-not-a-filter approach that
 // already works correctly for address search.
-function ownerNameFeatures(
+async function ownerNameFeatures(
   url: string,
   ownerField: string,
   outFields: string,
   name: string,
   limit: number | null,
 ): Promise<Array<{ attributes: Record<string, string | number | null> }>> {
-  const where = nameSearchVariants(name)
+  const limitParam = limit != null ? `&resultRecordCount=${limit}` : "";
+  const variants = nameSearchVariants(name);
+  const buildUrl = (where: string) =>
+    `${url}?where=${encodeURIComponent(where)}&outFields=${outFields}${limitParam}&returnGeometry=false&f=json`;
+
+  // Try a prefix-anchored LIKE ("WAL-MART%") before the substring LIKE
+  // ("%WAL-MART%") this used to send unconditionally. Confirmed live against
+  // every ArcGIS backend tested (Harris: 4.4s -> 1.2s; Denton: 1.2s -> 0.3s,
+  // both repeatable) that a leading wildcard forces a full table scan no
+  // backend here can index, while the owner-name field's own index (most of
+  // these are the primary ownership-search field for the county's public
+  // site) serves a prefix match directly. Harris is the one where this is
+  // the difference between a search that feels broken (7+s through our own
+  // edge function) and a fast one, but it's not a one-county fix: an
+  // unhinted business-name search sweeps all 13 counties concurrently and
+  // waits on the slowest, so Harris's substring-scan time was previously the
+  // effective floor for every business-name search, hinted or not. Owner
+  // names here are both short and start with the brand (WAL-MART, not "...
+  // WAL-MART..."), so the prefix case covers the overwhelmingly common real
+  // query. Only fall back to the slower substring scan when the prefix
+  // attempt genuinely comes back empty, so a name that isn't at the start of
+  // the field (rare) still gets found, just without the speedup.
+  const prefixWhere = variants
+    .map((v) => `UPPER(${ownerField}) LIKE UPPER('${escapeSqlString(v)}%')`)
+    .join(" OR ");
+  const prefixHits = await fetchFeatures(buildUrl(prefixWhere));
+  if (prefixHits.length > 0) return prefixHits;
+
+  const substringWhere = variants
     .map((v) => `UPPER(${ownerField}) LIKE UPPER('%${escapeSqlString(v)}%')`)
     .join(" OR ");
-  const limitParam = limit != null ? `&resultRecordCount=${limit}` : "";
-  return fetchFeatures(
-    `${url}?where=${encodeURIComponent(where)}&outFields=${outFields}${limitParam}&returnGeometry=false&f=json`,
-  );
+  return fetchFeatures(buildUrl(substringWhere));
 }
 
 // A failed tight nearby match can take as long as a real one on some
