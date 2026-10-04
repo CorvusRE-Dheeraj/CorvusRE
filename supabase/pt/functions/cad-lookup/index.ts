@@ -3455,6 +3455,20 @@ async function runLookup(
   address: string,
   queryTimeoutMs: number,
   countyQueriesInOrder: typeof ALL_COUNTY_QUERIES,
+  // Found live chasing a real report ("2930 West University Drive, Denton"
+  // took 33-38s even with the right county hinted and Denton's own raw
+  // ArcGIS endpoint independently confirmed to answer in 3.6s at that exact
+  // moment): enrichRecord() used to run unconditionally after every match,
+  // including every live-search-dropdown preview, even though enrichment's
+  // own TrueProdigy call makes a FRESH, uncached auth round-trip every
+  // single time (getTrueProdigyToken has no caching at all) before even
+  // starting its own search+deeds fetches — three real external network
+  // calls the dropdown doesn't need at all, just to show deed history and
+  // building class the user hasn't asked to see yet. Skipped entirely for a
+  // preview lookup now; the authoritative, non-preview call this same
+  // function serves for "Validate address" (or picking a suggestion) still
+  // enriches the one property actually chosen, same as before.
+  preview = false,
 ): Promise<LookupResult> {
   // A business/owner name ("Walmart Denton"), not a street address at all —
   // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
@@ -3641,7 +3655,7 @@ async function runLookup(
               parsedForCity && !c.propertyAddress.includes(",")
                 ? { ...c, propertyAddress: `${c.propertyAddress}, ${parsedForCity.cityStateZip}` }
                 : c;
-            return enrichRecord(withCity);
+            return preview ? withCity : enrichRecord(withCity);
           }),
         );
         return { matched: "multiple", options };
@@ -3681,7 +3695,7 @@ async function runLookup(
       return { matched: false, nearby };
     }
 
-    record = await enrichRecord(record);
+    if (!preview) record = await enrichRecord(record);
 
     return { matched: true, record };
 }
@@ -3738,12 +3752,12 @@ Deno.serve(async (req: Request) => {
     const isNameQuery = !parseAddressForQuery(address, "nearby");
     let result: LookupResult;
     if (hintedQuery) {
-      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery]);
+      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery], preview);
       result = isConfidentMatch(hinted, isNameQuery)
         ? hinted
-        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
     } else {
-      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
     }
 
     return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
