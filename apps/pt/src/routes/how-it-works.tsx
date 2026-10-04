@@ -44,7 +44,7 @@ const STEPS = [
   {
     n: 5,
     t: "Corvus AI or Our Team Handles the Protest",
-    d: "Depending on your subscription, Corvus AI or our team handles the filing, county communication, hearing support, and settlement coordination.",
+    d: "Depending on your subscription, Corvus AI or our team handles the filing and county communication. You'll always see your own hearing date, and nothing is settled without your approval first.",
   },
   {
     n: 6,

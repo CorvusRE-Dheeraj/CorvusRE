@@ -13,6 +13,7 @@ import {
   type PlanValue,
   type Tier,
 } from "@/lib/billing";
+import { ShieldCheck, CalendarCheck, FileCheck2 } from "lucide-react";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -65,6 +66,35 @@ const PAID_PLANS: {
     highlight: false,
   },
 ];
+
+// Illustrative cost-comparison numbers — NOT pulled from a live calculation
+// against a specific property, just representative examples at each real
+// value bracket. Assumptions stated plainly in the UI copy itself (a 10%
+// assessed-value reduction, a 2.2% blended Texas commercial effective tax
+// rate, and a 3-month subscription window from notice to resolution) rather
+// than hidden — this mirrors a real finding from the Oct 2026 competitive
+// analysis: on a successful case, CorvusPT's flat Owner-Managed fee is
+// usually dramatically cheaper than a typical contingency firm's 25-40%-of-
+// savings fee, and that gap widens with property value, but nobody visiting
+// this page could tell that without doing the math themselves. A typical
+// contingency range (25-40%) is shown generically rather than naming any
+// specific competitor.
+const COST_COMPARISON_EXAMPLES: {
+  bracket: (typeof VALUE_BRACKETS)[number]["value"];
+  exampleValue: string;
+  annualSavings: number;
+}[] = [
+  { bracket: "under2m", exampleValue: "$1.2M property", annualSavings: 2_640 },
+  { bracket: "mid2m10m", exampleValue: "$5M property", annualSavings: 11_000 },
+  { bracket: "over10m", exampleValue: "$15M property", annualSavings: 33_000 },
+];
+const COST_COMPARISON_MONTHS = 3;
+const CONTINGENCY_FEE_LOW = 0.25;
+const CONTINGENCY_FEE_HIGH = 0.4;
+
+function formatDollars(n: number): string {
+  return `$${Math.round(n).toLocaleString("en-US")}`;
+}
 
 // "ai_report" (flat-rate, self-file) and "managed_protest" (contingency, staff-filed)
 // are the legacy tiers this pricing overhaul replaced — kept here only to decide
@@ -190,6 +220,99 @@ function Page() {
             </table>
           </div>
         </ScrollReveal>
+      </div>
+
+      {/* Added per the Oct 2026 competitive analysis (Priority #7): the
+      pricing-model objection isn't that CorvusPT is expensive — on a
+      successful case it's usually much cheaper than a typical contingency
+      firm's cut — it's that nobody visiting this page could tell that
+      without doing the math themselves. Always visible, same as the table
+      above, since it's exactly what a prospect compares before signing up. */}
+      <div className="container-page">
+        <ScrollReveal className="card-elev p-6">
+          <h2 className="font-serif text-xl font-semibold">What it actually costs, on a win</h2>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Many property tax firms charge nothing upfront, then take 25–40% of whatever they save
+            you — which sounds risk-free, but scales with the dollar amount saved. CorvusPT's
+            Owner-Managed fee doesn't. For a successful protest, here's roughly how that compares:
+          </p>
+          <div className="mt-5 overflow-x-auto" tabIndex={0} role="region" aria-label="Cost comparison">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-t border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="whitespace-nowrap py-3 pr-4 font-medium">Example</th>
+                  <th className="whitespace-nowrap py-3 pr-4 font-medium">Annual savings</th>
+                  <th className="whitespace-nowrap py-3 pr-4 font-medium">CorvusPT (Owner-Managed)</th>
+                  <th className="whitespace-nowrap py-3 pr-4 font-medium">
+                    A typical contingency firm (25–40% of savings)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {COST_COMPARISON_EXAMPLES.map((ex) => {
+                  const corvusCost =
+                    TIER_BRACKET_PRICES.owner_managed[ex.bracket] * COST_COMPARISON_MONTHS;
+                  const contingencyLow = ex.annualSavings * CONTINGENCY_FEE_LOW;
+                  const contingencyHigh = ex.annualSavings * CONTINGENCY_FEE_HIGH;
+                  return (
+                    <tr key={ex.bracket} className="border-t border-border">
+                      <td className="py-3 pr-4 font-medium">{ex.exampleValue}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        {formatDollars(ex.annualSavings)}/yr
+                      </td>
+                      <td className="py-3 pr-4 font-semibold text-accent">
+                        {formatDollars(corvusCost)}
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        {formatDollars(contingencyLow)} – {formatDollars(contingencyHigh)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Illustrative, not a guarantee: assumes a 10% assessed-value reduction, a 2.2% blended
+            Texas commercial effective tax rate, and {COST_COMPARISON_MONTHS} months of
+            Owner-Managed subscription from notice to resolution. Your own property's actual
+            savings, timeline, and value bracket will differ — see your property's own AI report
+            for a real estimate.
+          </p>
+        </ScrollReveal>
+      </div>
+
+      {/* Added per the same analysis (Priority #4): these are real, already-
+      built parts of the CorvusPT-Managed workflow — the pricing page is
+      where a prospect is actively comparing options, so it's the right
+      place to say plainly what control they keep. */}
+      <div className="container-page mt-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <ScrollReveal className="card-elev p-5">
+            <CalendarCheck className="h-5 w-5 text-accent" aria-hidden="true" />
+            <h3 className="mt-2 font-serif text-base font-semibold">You see your own hearing date</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Every case's scheduled date, time, and mode is shown directly in your dashboard —
+              never something you find out about after the fact.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal delay={100} className="card-elev p-5">
+            <ShieldCheck className="h-5 w-5 text-accent" aria-hidden="true" />
+            <h3 className="mt-2 font-serif text-base font-semibold">You approve every settlement</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Nothing is accepted on your behalf without your sign-off first — CorvusPT-Managed
+              includes a real settlement-approval step, not a blanket authorization.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal delay={200} className="card-elev p-5">
+            <FileCheck2 className="h-5 w-5 text-accent" aria-hidden="true" />
+            <h3 className="mt-2 font-serif text-base font-semibold">You see the evidence filed</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Every comp and document behind your case is in your own case's Evidence section —
+              not a black box you have to request access to.
+            </p>
+          </ScrollReveal>
+        </div>
       </div>
 
       <div className="container-page pb-16">
