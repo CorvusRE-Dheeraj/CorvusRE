@@ -41,7 +41,14 @@ export type HealthScoreInput = {
   lastTransferDate?: string | null;
 };
 
-export type HealthScoreBreakdownEntry = { label: string; score: number };
+// `reason` added per direct user research: CorvusPT's own beta testers,
+// independently, in every one of 3 real feedback sessions, asked for the
+// score to "show the math" / "explain how it reached the conclusion"
+// instead of just stating a number ("I don't trust the estimate yet.").
+// Computed deterministically in computeHealthScore from the exact same
+// real numbers the score itself uses — never an AI paraphrase, so it can
+// never drift from, or contradict, the number it's explaining.
+export type HealthScoreBreakdownEntry = { label: string; score: number; reason: string };
 
 export type HealthScoreResult = {
   score: number;
