@@ -1,7 +1,10 @@
+import { VerdictChip, verdictFor } from "@/components/ProtestVerdictCard";
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { currency, resetIntake, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, resetIntake, updateIntake } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
 import {
   listProperties,
@@ -74,6 +77,10 @@ import {
   ArrowLeftRight,
   SlidersHorizontal,
 } from "lucide-react";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { Building2 as HeroPropertiesIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -112,8 +119,8 @@ const STATUS_FILTER_OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "protested", label: "Protested" },
   { key: "not_protested", label: "Not protested" },
   { key: "needs_action", label: "Needs action" },
-  { key: "paid", label: "Paid" },
-  { key: "unpaid", label: "Not paid" },
+  { key: "paid", label: "Subscribed" },
+  { key: "unpaid", label: "Free" },
 ];
 
 const LS_VIEW = "corvus.properties.view";
@@ -314,6 +321,9 @@ function Properties() {
   // reload/revisit never re-triggers this.
   useEffect(() => {
     if (!user || checkout !== "success") return;
+    toast.success(
+      "Payment received. We are activating your subscription. This takes a few seconds.",
+    );
     let cancelled = false;
     const delaysMs = [1500, 3000, 5000, 8000];
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -357,6 +367,9 @@ function Properties() {
     setSubscribing({ propertyId: p.id, tier });
     try {
       await startPropertyCheckout(p.id, tier, { newTab: true });
+      toast.info(
+        "Stripe checkout opened in a new tab. Finish paying there, then come back to this tab.",
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not start checkout. Please try again.",
@@ -369,8 +382,8 @@ function Properties() {
   // Cancels exactly this property's own subscription — unambiguous now that
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
-    const confirmed = window.confirm(
-      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property.`,
+    const confirmed = await confirmDialog(
+      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property. This takes effect immediately, not at the end of the billing period.`,
     );
     if (!confirmed) return;
     setCancelingId(p.id);
@@ -433,7 +446,7 @@ function Properties() {
         : currentPrice != null && newPrice < currentPrice
           ? "This is a downgrade — Stripe will credit your account today for the prorated difference (applied to your next invoice, not refunded directly to your card)."
           : "Stripe will settle the prorated difference today.";
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Switch ${p.address} from ${TIER_LABEL[p.planTier as Tier] ?? "its current plan"} to ${TIER_LABEL[tier]}? ${settlementNote}`,
     );
     if (!confirmed) return;
@@ -467,7 +480,7 @@ function Properties() {
       toast.error("Cancel this property's subscription before deleting it.");
       return;
     }
-    if (!window.confirm(`Remove ${p.address} from your dashboard?`)) return;
+    if (!(await confirmDialog(`Remove ${p.address} from your dashboard?`))) return;
     setDeletingId(p.id);
     try {
       await deleteProperty(p.id);
@@ -495,12 +508,12 @@ function Properties() {
     }
     const n = deletable.length;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Remove ${n} propert${n === 1 ? "y" : "ies"} from your dashboard?` +
           (blocked.length
             ? `\n\n${blocked.length} with an active subscription will be skipped.`
             : ""),
-      )
+      ))
     ) {
       return;
     }
@@ -702,6 +715,28 @@ function Properties() {
     });
   }
 
+  // Selects/deselects every checkbox-eligible row currently on screen (not
+  // just the fully-subscribed ones, same as an individual row's own
+  // checkbox) — ADDS to/REMOVES from the existing selection rather than
+  // replacing it outright, so a selection made under one search/filter isn't
+  // silently dropped by toggling "select all" under a different one.
+  const eligibleDisplayed = displayProperties.filter(bulkEligible);
+  const allDisplayedSelected =
+    eligibleDisplayed.length > 0 && eligibleDisplayed.every((p) => selectedIds.has(p.id));
+  const someDisplayedSelected =
+    !allDisplayedSelected && eligibleDisplayed.some((p) => selectedIds.has(p.id));
+
+  function toggleSelectAllDisplayed() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const p of eligibleDisplayed) {
+        if (allDisplayedSelected) next.delete(p.id);
+        else next.add(p.id);
+      }
+      return next;
+    });
+  }
+
   function handleBulkDone(results: BulkSubResult[]) {
     const active = results.filter((r) => r.status === "active").length;
     const needs = results.filter((r) => r.status === "needs_action");
@@ -722,16 +757,32 @@ function Properties() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h1 className="font-serif text-2xl font-semibold">My Properties</h1>
-          {!propertiesLoading && (
-            <span className="badge-soft">
-              {properties.length} propert{properties.length === 1 ? "y" : "ies"}
-            </span>
-          )}
-          <PaymentsModeChip />
-        </div>
+      <PageHero
+        icon={HeroPropertiesIcon}
+        title="My Properties"
+        tone="emerald"
+        subtitle="Your properties, with their values, deadlines and cases. Open one to see what to do next."
+        stats={[
+          { label: "Properties", value: properties.length },
+          { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },
+          {
+            label: "Assessed value",
+            value: properties.reduce((sum, p) => sum + (p.totalValue ?? 0), 0),
+            format: (n) => compactCurrency(n),
+          },
+        ]}
+        badges={
+          <>
+            {!propertiesLoading && (
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {properties.length} propert{properties.length === 1 ? "y" : "ies"}
+              </span>
+            )}
+            <PaymentsModeChip />
+          </>
+        }
+      />
+      <div className="mt-4 flex flex-wrap items-end justify-end gap-4">
         <div className="flex flex-wrap items-center gap-2">
           {/* Bulk actions for a multi-selection — once one or more property
               checkboxes are ticked, this floats and stays pinned near the top
@@ -786,6 +837,13 @@ function Properties() {
           </Link>
         </div>
       </div>
+
+      <TaxUpdatesBanner
+        contexts={properties.map((property) => ({
+          property,
+          protest: protests.find((x) => x.propertyId === property.id) ?? null,
+        }))}
+      />
 
       {importOpen && user && (
         <ImportPropertiesModal
@@ -944,19 +1002,21 @@ function Properties() {
             <PropertyCardSkeleton />
           </div>
         ) : properties.length === 0 ? (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Start with an address or upload an appraisal notice.
-            </p>
-            <Link
-              to="/intake"
-              onClick={() => resetIntake()}
-              className="btn-primary btn-primary-hover mt-4 inline-flex"
-            >
-              Start Free AI Property Review
-            </Link>
-          </div>
+          <EmptyState
+            kind="properties"
+            title="No properties yet."
+            action={
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover inline-flex"
+              >
+                Start Free AI Property Review
+              </Link>
+            }
+          >
+            Start with an address or upload an appraisal notice.
+          </EmptyState>
         ) : displayProperties.length === 0 ? (
           <div className="card-elev p-8 text-center">
             <h3 className="font-serif text-xl font-semibold">No matches.</h3>
@@ -977,7 +1037,20 @@ function Properties() {
             <table className="w-full min-w-[56rem] border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="w-9 px-3 py-2.5" />
+                  <th className="w-9 px-3 py-2.5">
+                    {eligibleDisplayed.length > 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select all properties"
+                        checked={allDisplayedSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someDisplayedSelected;
+                        }}
+                        onChange={toggleSelectAllDisplayed}
+                        className="h-4 w-4"
+                      />
+                    )}
+                  </th>
                   <th className="min-w-[14rem] px-3 py-2.5">Address</th>
                   {visibleColumnOptions.map((c) => (
                     <th key={c.key} className="whitespace-nowrap px-3 py-2.5">
@@ -1024,8 +1097,6 @@ function Properties() {
                             <Link
                               to="/dashboard/case"
                               search={{ propertyId: p.id }}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="btn-outline whitespace-nowrap px-2.5 py-1 text-xs"
                             >
                               View Case
@@ -1069,11 +1140,11 @@ function Properties() {
               return (
                 <div
                   key={p.id}
-                  className="card-elev p-6"
+                  className="card-elev p-4 sm:p-6"
                   style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-60">
                       <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
@@ -1084,7 +1155,7 @@ function Properties() {
                             className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
-                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                        <h2 className="font-serif text-xl font-semibold">{p.address}</h2>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
@@ -1101,6 +1172,9 @@ function Properties() {
                         • Tax year {p.taxYear}
                       </p>
                       <AiScoreBadge score={healthScores[p.id]} />
+                      <div className="mt-2">
+                        <VerdictChip verdict={verdictFor(p, protests, healthScores[p.id])} />
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs text-muted-foreground">Assessed value</div>
@@ -1193,6 +1267,17 @@ function Properties() {
                       <span className="text-sm font-normal text-muted-foreground">/mo</span>
                     </div>
                     <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
+                    {(() => {
+                      const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
+                      const est = protestingProperty.estimatedSavings;
+                      if (est == null || est <= 0 || est >= yearly) return null;
+                      return (
+                        <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                          Heads up: this plan costs about {currency(yearly)} a year, but the
+                          estimated tax saving for this property is only {currency(est)} a year.
+                        </p>
+                      );
+                    })()}
                     <button
                       disabled={!!subscribing}
                       onClick={async () => {
@@ -1342,8 +1427,6 @@ function PropertyActionsMenu({
             <Link
               to="/dashboard/case"
               search={{ propertyId: p.id }}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <Gavel className="mr-2 h-4 w-4" /> View Case
             </Link>
@@ -1498,7 +1581,7 @@ function PropertyDocsModal({
       {loadError ? (
         <p className="mt-6 text-sm text-destructive">Couldn't load documents.</p>
       ) : docs === null ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : docs.length === 0 ? (
         <div className="mt-6 rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
           No documents for this property yet.
@@ -1642,8 +1725,11 @@ function AiScoreBadge({ score }: { score: PropertyAiScore | undefined }) {
   // inline bold/code parser, used directly (no block wrapper) to keep this
   // as one line, matching the label it's appended to.
   return (
-    <p className="mt-1 text-sm text-accent">
-      AI Score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
+    <p
+      className="mt-1 text-sm text-accent"
+      title="Recalculated in the AI Report whenever you upload or remove evidence."
+    >
+      AI score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
     </p>
   );
 }

@@ -1,4 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
+import {
+  GOOGLE_API_KEY,
+  fetchGoogleSuggestions as fetchGooglePlaceSuggestions,
+  fetchGooglePlaceDetails,
+  normalizeRoadPrefix,
+} from "@/lib/google-places";
 
 type Props = {
   value: string;
@@ -21,6 +27,16 @@ type Props = {
   placeholder?: string;
   className?: string;
   ariaLabel?: string;
+  // When true, this component's own suggestion dropdown never renders —
+  // internal search/debounce/state all still run normally, only the `{open
+  // && ...}` list is suppressed. Added for callers that show a SECOND
+  // dropdown of their own below this input (the live CAD-match list on the
+  // homepage and /intake) — confirmed live: both panels floating open at
+  // once visually overlap (this one is `position: absolute`, so it floats
+  // over whatever comes after it in normal flow, not pushed below it), and
+  // once there's a real, verified county match to show, that's strictly
+  // more useful than a generic "did you mean this address" text guess.
+  suppressSuggestions?: boolean;
 };
 
 type Suggestion = {
@@ -34,22 +50,16 @@ type Suggestion = {
   googlePlaceId?: string;
 };
 
-// Texas bounding box. bounded=1 (Nominatim) / a hard rectangle restriction
-// (Google) make this a hard restriction, not just a ranking preference, since
-// this app only serves Texas properties.
+// Texas bounding box for Nominatim's own `bounded=1` restriction — Google's
+// equivalent (TEXAS_RECTANGLE) now lives in lib/google-places.ts alongside
+// the Google-specific fetch helpers themselves.
 const TEXAS_VIEWBOX = "-106.7,36.5,-93.5,25.8";
-const TEXAS_RECTANGLE = {
-  low: { latitude: 25.8, longitude: -106.7 },
-  high: { latitude: 36.5, longitude: -93.5 },
-};
 
 // Nominatim's usage policy caps automated use at 1 request/second and asks that
 // callers not fire a request per keystroke — the debounce below is what enforces that,
 // not just a UX nicety. See https://operations.osmfoundation.org/policies/nominatim/
 const DEBOUNCE_MS = 500;
 const MIN_QUERY_LENGTH = 5;
-
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
 type NominatimAddress = {
   house_number?: string;
@@ -108,19 +118,6 @@ function formatNominatimAddress(r: NominatimResult): string | null {
   return formatted || null;
 }
 
-// Texas road names are commonly typed/pasted without a space before the
-// number ("FM1957", "CR304", "Loop410") — county CAD systems, and Nominatim's
-// own tokenizer, both need the space ("FM 1957"). Confirmed via direct
-// testing (FM1957 → [], FM 1957 → the real road; same for CR/Loop). Insert
-// the space without changing what the user sees or types. Reused for the
-// Google query too — Google itself tolerates either form, but consistency
-// costs nothing and this was already proven correct.
-const TX_ROAD_PREFIX = /\b(FM|RM|CR|SH|US|IH|LP|LOOP|SPUR)(\d)/gi;
-
-function normalizeRoadPrefix(query: string): string {
-  return query.replace(TX_ROAD_PREFIX, "$1 $2");
-}
-
 async function fetchNominatimSuggestions(
   query: string,
   signal: AbortSignal,
@@ -153,119 +150,13 @@ async function fetchNominatimSuggestions(
     });
 }
 
-type GooglePlacePrediction = {
-  placeId?: string;
-  text?: { text?: string };
-};
-type GoogleAutocompleteResponse = {
-  suggestions?: Array<{ placePrediction?: GooglePlacePrediction }>;
-};
-
-// Google's Autocomplete predictions read "13158 FM1957, San Antonio, TX, USA"
-// — no postal code (only Place Details has that) and a trailing ", USA" this
-// app's short postal-style convention doesn't use elsewhere. Stripped here so
-// a Google-sourced label looks the same shape as a Nominatim one; the missing
-// zip gets filled in on selection (see fetchGooglePlaceDetails).
-function cleanGoogleLabel(text: string): string {
-  return text.replace(/,\s*USA$/i, "").trim();
-}
-
+// fetchGoogleSuggestions/fetchGooglePlaceDetails now live in
+// lib/google-places.ts (shared with the unified property-search panel) —
+// wrapped here only to adapt their return shape to this component's own
+// Suggestion type.
 async function fetchGoogleSuggestions(query: string, signal: AbortSignal): Promise<Suggestion[]> {
-  const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-    method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": GOOGLE_API_KEY! },
-    body: JSON.stringify({
-      input: normalizeRoadPrefix(query),
-      includedRegionCodes: ["us"],
-      locationRestriction: { rectangle: TEXAS_RECTANGLE },
-      // No includedPrimaryTypes filter — deliberately left open rather than
-      // narrowed to street_address/premise/route. A commercial property is
-      // just as often searched by business name ("Quality Inn Denton") as by
-      // its street address, and Google only resolves that name to a real
-      // place at all under types like "lodging"/"establishment"/
-      // "point_of_interest", not the address-only types. The onward flow is
-      // unaffected either way — selectSuggestion() always follows up with a
-      // Place Details call for `formattedAddress`, which turns a business
-      // name into its real numbered street address (confirmed live: "Quality
-      // Inn Denton" → "4211 N Interstate 35, Denton, TX 76207, USA") before
-      // it ever reaches CAD lookup.
-    }),
-  });
-  if (!res.ok) throw new Error(`Google Places request failed: ${res.status}`);
-  const data = (await res.json()) as GoogleAutocompleteResponse;
-  return (data.suggestions ?? [])
-    .map((s) => s.placePrediction)
-    .filter((p): p is GooglePlacePrediction => Boolean(p?.placeId && p.text?.text))
-    .map((p) => ({
-      id: p.placeId!,
-      label: cleanGoogleLabel(p.text!.text!),
-      googlePlaceId: p.placeId,
-    }));
-}
-
-type GoogleAddressComponent = {
-  longText?: string;
-  shortText?: string;
-  types?: string[];
-};
-
-// Built from addressComponents' longText (the un-abbreviated form, e.g.
-// "Market Place Boulevard") rather than the pre-abbreviated formattedAddress
-// string (e.g. "Market Pl Blvd"). Confirmed live chasing a real false
-// "not found" on a real property (1800 Market Place Blvd, Irving): Google's
-// formattedAddress abbreviates mid-name words like "Place" -> "Pl", not just
-// the trailing suffix — but Dallas CAD's own FULL_STREET_NAME field spells it
-// out ("MARKET PLACE BLVD"), and cad-lookup's word-boundary-anchored LIKE
-// matching (coreStreetName/coreClauseOr) requires the core street name to be
-// followed immediately by a space/comma/end-of-string, so the abbreviated
-// "Market Pl" — followed by "ace" in the county's real data, not a boundary —
-// silently matched nothing. longText avoids this whole class of mismatch;
-// the app's own coreStreetName() already strips a full trailing suffix word
-// ("Boulevard" included) the same way it strips the abbreviated form.
-function buildAddressFromComponents(components?: GoogleAddressComponent[]): string | null {
-  if (!components) return null;
-  const find = (type: string) => components.find((c) => c.types?.includes(type))?.longText;
-  const streetNumber = find("street_number");
-  const route = find("route");
-  if (!route) return null;
-  const city = find("locality") || find("postal_town") || find("sublocality");
-  // Short form ("TX") deliberately kept for the state — matches this app's
-  // postal-style convention everywhere else (formatNominatimAddress, etc.);
-  // only the street name's mid-word abbreviation was the actual CAD-matching
-  // problem, not the state abbreviation.
-  const state = components.find((c) => c.types?.includes("administrative_area_level_1"))?.shortText;
-  const zip = find("postal_code");
-  const line1 = [streetNumber, route].filter(Boolean).join(" ");
-  const cityState = [city, state].filter(Boolean).join(", ");
-  const tail = [cityState, zip].filter(Boolean).join(" ");
-  return [line1, tail].filter(Boolean).join(", ") || null;
-}
-
-// Only called once, when the user actually picks a Google suggestion (not on
-// every keystroke) — fetches what Autocomplete's prediction text doesn't
-// carry: a real postal code (needed for the same zip-priority matching
-// cad-lookup's "nearby" fallback already relies on for a bare-road address —
-// see extractZip() in supabase/functions/cad-lookup/index.ts) and the
-// un-abbreviated street name (see buildAddressFromComponents above). Falls
-// back to the Autocomplete label itself if this call fails for any reason,
-// rather than blocking selection.
-async function fetchGooglePlaceDetails(
-  placeId: string,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const res = await fetch(
-    `https://places.googleapis.com/v1/places/${placeId}?fields=addressComponents,formattedAddress`,
-    { signal, headers: { "X-Goog-Api-Key": GOOGLE_API_KEY! } },
-  );
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    addressComponents?: GoogleAddressComponent[];
-    formattedAddress?: string;
-  };
-  const built = buildAddressFromComponents(data.addressComponents);
-  if (built) return built;
-  return data.formattedAddress ? cleanGoogleLabel(data.formattedAddress) : null;
+  const results = await fetchGooglePlaceSuggestions(query, signal);
+  return results.map((r) => ({ id: r.id, label: r.label, googlePlaceId: r.placeId }));
 }
 
 // Wraps a plain <input> with address suggestions — Google Places (New) when
@@ -281,6 +172,7 @@ export function AddressAutocomplete({
   placeholder,
   className,
   ariaLabel,
+  suppressSuggestions,
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -465,7 +357,7 @@ export function AddressAutocomplete({
         aria-controls={listboxId}
         autoComplete="off"
       />
-      {open && (
+      {open && !suppressSuggestions && (
         <ul
           id={listboxId}
           role="listbox"

@@ -1,0 +1,354 @@
+/* Shared styling for the not-yet-live door pages (apps/sbl, apps/co, apps/rf).
+   Builds on hub.css's tokens and its beta-form classes (#betaForm,
+   .beta-field, .beta-submit ...), so the early-access form here looks and
+   behaves exactly like the landing page's. Each page sets --door-hue on
+   <body> to tint its own glow and accents. */
+
+body {
+  --door-hue: 255;
+  --door-accent: oklch(0.62 0.19 var(--door-hue));
+  --door-glow: oklch(0.72 0.16 var(--door-hue) / 0.35);
+  overflow-x: hidden;
+}
+
+/* --- Hero ---------------------------------------------------------------- */
+.door-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 5rem 0 4rem;
+  text-align: center;
+}
+.door-hero::before,
+.door-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 32rem;
+  height: 32rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--door-glow), transparent 68%);
+  filter: blur(8px);
+  animation: doorDrift 14s ease-in-out infinite alternate;
+}
+.door-hero::before {
+  top: -12rem;
+  left: -8rem;
+}
+.door-hero::after {
+  bottom: -14rem;
+  right: -8rem;
+  animation-duration: 18s;
+  animation-direction: alternate-reverse;
+}
+@keyframes doorDrift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3rem, 2rem, 0) scale(1.15);
+  }
+}
+
+.door-hero .container-page {
+  max-width: 46rem;
+}
+.door-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--door-accent);
+  background: var(--door-glow);
+}
+.door-pill::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--door-accent);
+  animation: doorPulse 1.8s ease-out infinite;
+}
+@keyframes doorPulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--door-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 0.6rem transparent;
+  }
+}
+
+.door-hero h1 {
+  margin: 1.25rem 0 0;
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.door-hero h1 .accent {
+  color: var(--door-accent);
+}
+.door-hero .door-lede {
+  margin: 1.25rem auto 0;
+  max-width: 36rem;
+  font-size: 1.125rem;
+  color: var(--muted-foreground);
+}
+
+/* The door's own letters (B·S·L, Co·nstruct, R·F) rise in one by one. */
+.door-words {
+  margin: 1.75rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.door-words li {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  animation: doorWordIn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(0.35s + var(--i, 0) * 0.12s);
+}
+.door-words li b {
+  color: var(--door-accent);
+}
+@keyframes doorWordIn {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.94);
+  }
+}
+
+.door-cta-row {
+  margin-top: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.door-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: var(--card);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.door-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.6rem 1.4rem oklch(0 0 0 / 0.12);
+}
+.door-btn-primary {
+  background: var(--brand);
+  color: var(--brand-foreground);
+  border-color: transparent;
+}
+
+/* --- Sections ------------------------------------------------------------ */
+.door-section {
+  padding: 3.5rem 0;
+}
+.door-section h2 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  font-weight: 800;
+}
+.door-section .door-sub {
+  margin: 0.5rem auto 0;
+  max-width: 34rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.door-cards {
+  margin-top: 2.25rem;
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.door-card {
+  position: relative;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+.door-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--door-accent);
+  box-shadow: 0 1rem 2rem oklch(0 0 0 / 0.1);
+}
+.door-card-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  display: grid;
+  place-items: center;
+  color: var(--door-accent);
+  background: var(--door-glow);
+  transition: transform 0.3s ease;
+}
+.door-card:hover .door-card-icon {
+  transform: rotate(-6deg) scale(1.08);
+}
+.door-card-icon svg {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+.door-card h3 {
+  margin: 1rem 0 0.35rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.door-card p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.9375rem;
+}
+
+/* --- Early-access form --------------------------------------------------- */
+.door-form-wrap {
+  max-width: 34rem;
+  margin: 2rem auto 0;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 1.25rem;
+  padding: 2rem 1.75rem;
+  box-shadow: 0 1.25rem 3rem oklch(0 0 0 / 0.08);
+}
+.door-form-wrap #betaForm .beta-field input,
+.door-form-wrap #betaForm .beta-field textarea {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.door-form-wrap #betaForm .beta-field input:focus,
+.door-form-wrap #betaForm .beta-field textarea:focus {
+  border-color: var(--door-accent);
+  box-shadow: 0 0 0 3px var(--door-glow);
+}
+.door-form-wrap .beta-radio-group input[type="checkbox"] {
+  accent-color: var(--door-accent);
+}
+.door-signin {
+  margin: 1.25rem 0 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+.door-signin a {
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.door-success {
+  text-align: center;
+  padding: 1rem 0;
+}
+.door-success h2 {
+  margin: 1rem 0 0.4rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+.door-success p {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+.door-check {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+.door-check circle {
+  fill: none;
+  stroke: var(--door-accent);
+  stroke-width: 3;
+  stroke-dasharray: 152;
+  stroke-dashoffset: 152;
+  animation: doorDraw 0.7s ease forwards;
+}
+.door-check path {
+  fill: none;
+  stroke: var(--door-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: doorDraw 0.5s ease 0.6s forwards;
+}
+@keyframes doorDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* --- Scroll reveal (only when JS is running, so nothing is ever hidden without it) */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(1.5rem);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 0.1s);
+}
+.js .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (max-width: 640px) {
+  .door-hero {
+    padding: 3.5rem 0 3rem;
+  }
+  .door-form-wrap {
+    padding: 1.5rem 1.15rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .door-hero::before,
+  .door-hero::after,
+  .door-pill::before,
+  .door-words li {
+    animation: none;
+  }
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .door-check circle,
+  .door-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .door-btn,
+  .door-card,
+  .door-card-icon {
+    transition: none;
+  }
+}

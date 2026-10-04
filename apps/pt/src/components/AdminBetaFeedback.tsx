@@ -9,6 +9,8 @@ import {
   type FeedbackInsightsRecord,
 } from "@/lib/beta-feedback";
 import { ALL_SECTIONS, type Answer, type Question } from "@/lib/beta-feedback-questions";
+import { FORM_SECTIONS } from "@/lib/feedback-form";
+import { FORM_V2_SECTIONS } from "@/lib/feedback-form-v2";
 import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import {
   Dialog,
@@ -49,38 +51,43 @@ const includesSomethingBut = (excluded: string) => (a: Answer) =>
   Array.isArray(a) && a.length > 0 && a.some((v) => v !== excluded);
 
 function computeHeadlineStats(rows: AdminFeedbackRow[]) {
+  // Keyed to the current chat-style form (feedback-form.ts). Responses given to
+  // the earlier form have none of these answers, so they simply don't count here.
   return [
     {
-      label: "Understood the purpose immediately",
-      ...answeredWith(rows, "q1", notEq("I wasn't sure")),
+      label: "Learned something new about their property",
+      ...answeredWith(rows, "f4", isIn(["Yes, significantly", "Yes, somewhat"])),
     },
     {
-      label: "Believe Corvus identified their property correctly",
-      ...answeredWith(rows, "q4", isIn(["Completely confident", "Mostly confident"])),
+      label: "Found the reason to protest clear",
+      ...answeredWith(rows, "f8", isIn(["Very clear", "Mostly clear"])),
     },
     {
-      label: "Say the AI helped them understand their tax situation",
-      ...answeredWith(rows, "q7", includesSomethingBut("I understood very little from the review")),
-    },
-    {
-      label: "Would use Corvus for a real protest",
-      ...answeredWith(rows, "q39", isIn(["“I could use this for a real property tax protest.”"])),
-    },
-    {
-      label: "Would return annually",
+      label: "Would use the AI analysis in a real protest",
       ...answeredWith(
         rows,
-        "q50",
-        isIn(["Once a year", "Every tax/assessment cycle", "Whenever I receive a notice"]),
+        "f6",
+        isIn([
+          "I would rely on it with normal review",
+          "I would use it but verify important conclusions",
+        ]),
       ),
     },
     {
-      label: "Would trust automated property/tax alerts",
-      ...answeredWith(rows, "q32", isIn(["Absolutely", "Probably"])),
+      label: "Rarely or never unsure what to do next",
+      ...answeredWith(rows, "f14", isIn(["Never", "Once"])),
     },
     {
-      label: "Want multi-property monitoring",
-      ...answeredWith(rows, "q52", isIn(["Yes", "Probably"])),
+      label: "Want Corvus to guide the entire process",
+      ...answeredWith(rows, "f13", isIn(["The entire process"])),
+    },
+    {
+      label: "Want Corvus to handle as much as possible",
+      ...answeredWith(rows, "f15", isIn(["I would prefer Corvus to handle as much as possible"])),
+    },
+    {
+      label: "Want yearly monitoring built first",
+      ...answeredWith(rows, "f17", isIn(["Better yearly property monitoring"])),
     },
   ];
 }
@@ -98,8 +105,12 @@ function tally(rows: AdminFeedbackRow[], id: string): { name: string; value: num
     .sort((a, b) => b.value - a.value);
 }
 
+// The current chat-style form first, then the earlier 57-question form (its
+// answers stay on file and stay readable here).
+const ALL_BANKS = [...FORM_SECTIONS, ...FORM_V2_SECTIONS, ...ALL_SECTIONS];
+
 const QUESTION_BY_ID = new Map<string, Question>();
-for (const section of ALL_SECTIONS) {
+for (const section of ALL_BANKS) {
   for (const q of section.questions) {
     QUESTION_BY_ID.set(q.id, q);
     if (q.followUp) QUESTION_BY_ID.set(q.followUp.question.id, q.followUp.question);
@@ -110,8 +121,16 @@ function formatAnswer(a: Answer): string {
   return Array.isArray(a) ? a.join(", ") : a;
 }
 
+function answeredCount(row: AdminFeedbackRow): number {
+  return Object.keys(row.answers).filter((k) => QUESTION_BY_ID.has(k)).length;
+}
+
 function ResponseDetail({ row, onClose }: { row: AdminFeedbackRow; onClose: () => void }) {
-  const shownSections = ALL_SECTIONS.filter((s) => row.sectionsShown.includes(s.key));
+  // Testers now get a per-person selection of questions, so what was "shown"
+  // is whatever they actually answered, grouped by its original section.
+  const shownSections = ALL_BANKS.filter((s) =>
+    s.questions.some((q) => row.answers[q.id] !== undefined),
+  );
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
@@ -120,9 +139,8 @@ function ResponseDetail({ row, onClose }: { row: AdminFeedbackRow; onClose: () =
             {row.firstName ?? ""} {row.lastName ?? ""} — {row.email}
           </DialogTitle>
           <DialogDescription>
-            {row.completedAt ? "Completed" : "In progress"} · {shownSections.length} of{" "}
-            {ALL_SECTIONS.length} sections shown · updated{" "}
-            {new Date(row.updatedAt).toLocaleDateString()}
+            {row.completedAt ? "Completed" : "In progress"} · {answeredCount(row)} answered ·
+            updated {new Date(row.updatedAt).toLocaleDateString()}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6">
@@ -146,6 +164,14 @@ function ResponseDetail({ row, onClose }: { row: AdminFeedbackRow; onClose: () =
                           {formatAnswer(a)}
                           {typeof other === "string" && other && ` — ${other}`}
                         </p>
+                        {q.followUp && typeof row.answers[q.followUp.question.id] === "string" && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {q.followUp.question.label}{" "}
+                            <span className="text-foreground">
+                              {row.answers[q.followUp.question.id] as string}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     );
                   })}
@@ -212,8 +238,8 @@ export function AdminBetaFeedback() {
 
   const completed = useMemo(() => rows.filter((r) => r.completedAt), [rows]);
   const headline = useMemo(() => computeHeadlineStats(completed), [completed]);
-  const trustHesitation = useMemo(() => tally(completed, "q40"), [completed]);
-  const howFar = useMemo(() => tally(completed, "how_far"), [completed]);
+  const trustHesitation = useMemo(() => tally(completed, "f16"), [completed]);
+  const howFar = useMemo(() => tally(completed, "f17"), [completed]);
 
   async function handleRegenerate() {
     setRegenerating(true);
@@ -274,7 +300,7 @@ export function AdminBetaFeedback() {
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="card-elev p-4">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Top reasons they'd hesitate to trust Corvus
+                    What would make them stop trusting Corvus
                   </div>
                   <ResponsiveContainer
                     width="100%"
@@ -299,7 +325,7 @@ export function AdminBetaFeedback() {
 
                 <div className="card-elev p-4">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    How far testers got
+                    Which area to improve first
                   </div>
                   <ResponsiveContainer width="100%" height={Math.max(140, howFar.length * 32)}>
                     <BarChart
@@ -339,7 +365,7 @@ export function AdminBetaFeedback() {
                 </div>
                 <div className="mt-3 grid gap-4 sm:grid-cols-3">
                   <ThemeList
-                    title="Top pain points with the old process"
+                    title="Where testers felt unsure"
                     themes={insights?.insights.painPoints ?? []}
                   />
                   <ThemeList
@@ -347,7 +373,7 @@ export function AdminBetaFeedback() {
                     themes={insights?.insights.featureRequests ?? []}
                   />
                   <ThemeList
-                    title="What they'd miss if Corvus disappeared"
+                    title="What would make them use Corvus every year"
                     themes={insights?.insights.wouldMiss ?? []}
                   />
                 </div>
@@ -370,7 +396,7 @@ export function AdminBetaFeedback() {
                   <tr>
                     <th className="px-4 py-2 text-left">Tester</th>
                     <th className="px-4 py-2 text-left">Status</th>
-                    <th className="px-4 py-2 text-left">Sections shown</th>
+                    <th className="px-4 py-2 text-left">Answered</th>
                     <th className="px-4 py-2 text-left">Updated</th>
                     <th className="px-4 py-2" />
                   </tr>
@@ -393,9 +419,7 @@ export function AdminBetaFeedback() {
                           {r.completedAt ? "Completed" : "In progress"}
                         </span>
                       </td>
-                      <td className="px-4 py-2">
-                        {r.sectionsShown.length} / {ALL_SECTIONS.length}
-                      </td>
+                      <td className="px-4 py-2">{answeredCount(r)}</td>
                       <td className="px-4 py-2 text-muted-foreground">
                         {new Date(r.updatedAt).toLocaleDateString()}
                       </td>

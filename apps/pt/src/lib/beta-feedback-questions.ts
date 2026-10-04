@@ -1,14 +1,10 @@
-// The full Corvus Beta Tester Feedback Form — see beta-feedback.ts for the
-// real-usage signals each section's showIf gates on, and
-// routes/dashboard/_layout.feedback.tsx for the form itself.
+// The Corvus Beta Tester Feedback Form — see beta-feedback.ts for the
+// real-usage signals, and routes/dashboard/_layout.feedback.tsx for the form.
 //
-// Every section below is gated on what the tester actually DID in the app
-// (properties added, AI Review generated, comps viewed, documents uploaded,
-// a protest started), not on what they say they did — someone who only
-// entered an address never sees the hearing/filing/evidence sections, which
-// is what keeps this ~7-10 minutes instead of 57 questions for everyone.
-// Sections with no real signal to gate on (first impressions, trust,
-// investor-validation background, the closing open questions) always show.
+// The earlier 57-question form's question bank. The live form is now the
+// chat-style one in feedback-form.ts; this bank stays because answers already
+// given under it are still on file and still readable in the admin viewer, and
+// because UsageSignals (below) is shared.
 export type UsageSignals = {
   propertyCount: number;
   hasNoticeUpload: boolean;
@@ -985,7 +981,3 @@ export const OPTIONAL_INFO: Section = {
 };
 
 export const ALL_SECTIONS: Section[] = [...SECTIONS, OPTIONAL_INFO];
-
-export function visibleSections(signals: UsageSignals): Section[] {
-  return ALL_SECTIONS.filter((s) => s.showIf(signals));
-}

@@ -16,8 +16,10 @@ test("design brief wizard walks a guest to a locked brief", async ({ page }) => 
   await page.getByLabel("Property address").fill("123 Test Street, Denton, TX 76201");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Step 2: Type of project
-  await page.getByRole("button", { name: "commercial" }).click();
+  // Step 2: Type of project — Sector is no longer a user choice (CorvusDP is
+  // commercial-only; see dp-intake.ts's emptyState), just a fixed
+  // non-interactive "Commercial" chip, so there's nothing to click here
+  // any more.
   await page.getByRole("button", { name: "New Construction" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 

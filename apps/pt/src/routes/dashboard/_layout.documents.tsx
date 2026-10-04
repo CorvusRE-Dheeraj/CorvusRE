@@ -1,4 +1,6 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -49,6 +51,7 @@ import {
   Pencil,
   FileEdit,
   MoreHorizontal,
+  Search,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,8 +62,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DocumentReviewModal } from "@/components/DocumentReviewModal";
 import { DocumentEditorModal, isEditableDoc } from "@/components/DocumentEditorModal";
+import { PageHero } from "@/components/PageHero";
+import { FolderOpen as HeroDocsIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 export const Route = createFileRoute("/dashboard/_layout/documents")({
+  // Lets a screen that just worked on one property (Module 8, View Case) open
+  // this tab already on that property's documents.
+  validateSearch: (search: Record<string, unknown>): { propertyId?: string } => ({
+    propertyId: typeof search.propertyId === "string" ? search.propertyId : undefined,
+  }),
   component: Documents,
 });
 
@@ -100,7 +111,12 @@ function Documents() {
   // page, so only the selected one's documents render at a time. Keyed by
   // property id (or "orphaned" for documents whose property was removed),
   // not the address, since two properties could share an address string.
+  const [docQuery, setDocQuery] = useState("");
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+
+  // Refetches when a document is added/changed anywhere (this tab or another),
+  // so an upload made on the AI Report page shows up here without a reload.
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     if (!user) return;
@@ -112,7 +128,7 @@ function Documents() {
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, docsVersion]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -123,6 +139,17 @@ function Documents() {
     });
   }
   const selectedDocs = documents.filter((d) => selectedIds.has(d.id));
+  // Select (or clear) every document in one group at once — the header's "Select all".
+  function setGroupSelected(ids: string[], value: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (value) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
 
   async function handleDownload(doc: DocumentRecord) {
     try {
@@ -176,7 +203,8 @@ function Documents() {
   }
 
   async function handlePurge(doc: DocumentRecord) {
-    if (!window.confirm(`Permanently delete "${doc.fileName}"? This can't be undone.`)) return;
+    if (!(await confirmDialog(`Permanently delete "${doc.fileName}"? This can't be undone.`)))
+      return;
     try {
       await purgeDocument(doc);
       setTrashed((prev) => prev.filter((d) => d.id !== doc.id));
@@ -441,22 +469,34 @@ function Documents() {
   if (orphanedDocs.length > 0) {
     groups.push({ key: "orphaned", label: "Property removed", docs: orphanedDocs, property: null });
   }
-  // Falls back to the first group whenever nothing is picked yet, or the
-  // previously-picked property no longer exists in `groups` (deleted, or
-  // this is the first render before properties have loaded) — never an
-  // empty picker once there's at least one group to show.
+  // Picked property first; else the one the caller asked for (?propertyId=);
+  // else the property of the most recently uploaded document (`documents` is
+  // newest-first) — so files you just added are on screen, not hidden behind
+  // whichever property happens to be first in the list. Falls back to the
+  // first group when none of those resolve (deleted property, or the first
+  // render before properties have loaded).
+  const requestedKey = Route.useSearch().propertyId ?? null;
+  const newestKey = documents[0]
+    ? groups.find((g) => g.docs.some((d) => d.id === documents[0].id))?.key
+    : undefined;
   const activeGroup =
-    groups.find((g) => g.key === selectedGroupKey) ?? (groups.length > 0 ? groups[0] : null);
+    groups.find((g) => g.key === selectedGroupKey) ??
+    groups.find((g) => g.key === requestedKey) ??
+    groups.find((g) => g.key === newestKey) ??
+    (groups.length > 0 ? groups[0] : null);
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold">Documents</h1>
-      <p className="text-muted-foreground text-sm">
-        Documents you upload during property intake land here automatically — or upload several at
-        once below and AI sorts each one to the right property. Run an AI check on any file to
-        classify it, confirm it belongs to that property, flag anything off, and get a suggested
-        name.
-      </p>
+      <PageHero
+        icon={HeroDocsIcon}
+        title="Documents"
+        tone="sky"
+        stats={[
+          { label: "Documents", value: documents.length },
+          { label: "Properties", value: properties.length },
+        ]}
+        subtitle="Keep every file for your case here. Drop in your appraisal notice or any photos and AI files each one under the right property. Use the AI check on a file to see what it is and whether anything looks off."
+      />
 
       <div className="mt-6 card-elev p-6">
         <h2 className="font-semibold">Upload Documents</h2>
@@ -583,14 +623,36 @@ function Documents() {
                 ))}
               </select>
             </div>
+            <div className="relative">
+              <label className="sr-only" htmlFor="doc-search">
+                Search documents
+              </label>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="doc-search"
+                type="search"
+                value={docQuery}
+                onChange={(e) => setDocQuery(e.target.value)}
+                placeholder="Search this property's documents by file name"
+                className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm"
+              />
+            </div>
             {activeGroup && (
               <PropertyDocGroup
                 key={activeGroup.key}
-                group={activeGroup}
+                group={{
+                  ...activeGroup,
+                  docs: docQuery.trim()
+                    ? activeGroup.docs.filter((d) =>
+                        d.fileName.toLowerCase().includes(docQuery.trim().toLowerCase()),
+                      )
+                    : activeGroup.docs,
+                }}
                 allDocs={documents}
                 dupDismissed={dupDismissed}
                 selectedIds={selectedIds}
                 onToggleSelected={toggleSelected}
+                onSelectAll={setGroupSelected}
                 onView={setViewDoc}
                 onReview={handleReviewOpen}
                 onEdit={setEditDoc}
@@ -611,12 +673,9 @@ function Documents() {
             )}
           </div>
         ) : (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No documents yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Documents you upload during property intake are stored here automatically.
-            </p>
-          </div>
+          <EmptyState kind="documents" title="No documents yet.">
+            Documents you upload during property intake are stored here automatically.
+          </EmptyState>
         )}
 
         {trashed.length > 0 && (
@@ -724,7 +783,7 @@ function DocumentViewerModal({
 
   return (
     <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] w-[92vw] sm:max-w-3xl">
+      <DialogContent className="max-h-[92vh] w-[92vw] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="truncate">{doc?.fileName}</DialogTitle>
           {doc && (
@@ -954,6 +1013,7 @@ function PropertyDocGroup({
   dupDismissed,
   selectedIds,
   onToggleSelected,
+  onSelectAll,
   onView,
   onReview,
   onEdit,
@@ -974,6 +1034,7 @@ function PropertyDocGroup({
   dupDismissed: Set<string>;
   selectedIds: Set<string>;
   onToggleSelected: (id: string) => void;
+  onSelectAll: (ids: string[], value: boolean) => void;
   onView: (doc: DocumentRecord) => void;
   onReview: (doc: DocumentRecord) => void;
   onEdit: (doc: DocumentRecord) => void;
@@ -998,6 +1059,7 @@ function PropertyDocGroup({
   const checked = group.docs.filter((d) => d.aiCheckedAt);
   const issues = group.docs.filter((d) => d.aiVerdict === "issues" || d.aiVerdict === "invalid");
   const unchecked = group.docs.filter((d) => !d.aiCheckedAt);
+  const allSelected = hasDocs && group.docs.every((d) => selectedIds.has(d.id));
   const anyAnalyzing = group.docs.some((d) => analyzingIds.has(d.id));
   const summary = hasDocs
     ? [
@@ -1028,6 +1090,23 @@ function PropertyDocGroup({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-3">
+          {hasDocs && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => {
+                  setExpanded(true);
+                  onSelectAll(
+                    group.docs.map((d) => d.id),
+                    e.target.checked,
+                  );
+                }}
+                className="h-3.5 w-3.5"
+              />
+              Select all
+            </label>
+          )}
           {hasDocs && unchecked.length > 0 && (
             <button
               type="button"
@@ -1231,16 +1310,16 @@ function DocRow({
               {doc.editedFrom && <span className="italic">· edited copy</span>}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="badge-soft">{cat.label}</span>
+              <span className="chip-doc">{cat.label}</span>
               <span className="badge-soft bg-secondary text-muted-foreground">
                 {sourceLabel(cat.source)}
               </span>
               {analyzing ? (
-                <span className="badge-soft-warning">AI: checking…</span>
+                <span className="chip-ai">AI: checking…</span>
               ) : (
                 <VerdictBadge doc={doc} />
               )}
-              {isEvidenceDoc(doc) && <span className="badge-soft">Evidence</span>}
+              {isEvidenceDoc(doc) && <span className="chip-doc">Evidence</span>}
               {doc.documentType?.startsWith("AI Data Sheet — ") && (
                 <span
                   className="badge-soft-warning"

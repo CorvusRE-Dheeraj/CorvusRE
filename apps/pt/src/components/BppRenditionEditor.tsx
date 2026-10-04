@@ -184,7 +184,7 @@ export function BppRenditionEditor({
         <div className="mt-4 grid gap-6">
           {BPP_RENDITION_SCHEMA.map((section) => (
             <div key={section.title}>
-              <h4 className="text-sm font-semibold">{section.title}</h4>
+              <h2 className="text-sm font-semibold">{section.title}</h2>
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 {section.fields.map((f) => {
                   if (f.type === "checkbox") {

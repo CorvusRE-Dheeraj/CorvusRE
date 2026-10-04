@@ -201,8 +201,6 @@ function ProtestedPropertyCard({
         <Link
           to="/dashboard/case"
           search={{ propertyId: property.id }}
-          target="_blank"
-          rel="noopener noreferrer"
           className="btn-outline"
         >
           View Case

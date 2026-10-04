@@ -96,21 +96,11 @@ test.skip("signing the authorization and requesting a protest creates a case", a
   const fullName = `${await firstNameField.inputValue()} ${await lastNameField.inputValue()}`;
   await page.getByRole("button", { name: "Next" }).click();
 
-  // Step 2: recent-purchase question.
-  await page.getByRole("radio").last().check(); // "No"
-  await page.getByRole("button", { name: "Next" }).click();
-
-  // Step 3: "Review Before Proceeding" AI acknowledgement — check the box,
-  // then "Confirm & Continue" (records the acknowledgement per property/case).
-  await page
-    .getByRole("heading", { name: "Review Before Proceeding" })
-    .waitFor({ state: "visible" });
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Confirm & Continue" }).click();
-
-  // Step 4: review + typed signature.
+  // Step 2: one combined screen — the AI acknowledgement checkbox (recorded
+  // on submit), the agent authorization checkbox, and the typed signature.
   await page.getByRole("heading", { name: "Review & Sign" }).waitFor({ state: "visible" });
-  await page.getByRole("checkbox").check();
+  await page.getByRole("checkbox").nth(0).check(); // AI acknowledgement
+  await page.getByRole("checkbox").nth(1).check(); // agent authorization
   await page.getByPlaceholder("Type your full legal name").fill(fullName);
   await page.getByRole("button", { name: "Sign & Submit" }).click();
 

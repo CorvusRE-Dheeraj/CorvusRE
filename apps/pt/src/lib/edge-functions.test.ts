@@ -121,4 +121,36 @@ describe("invokeEdgeFunction", () => {
     // initial attempt + MAX_RETRIES_NETWORK(2) retries = 3 calls total.
     expect(mockInvoke).toHaveBeenCalledTimes(3);
   });
+
+  // Found live chasing "can anything else make search faster?": an
+  // abandoned live-search keystroke's request used to keep running to
+  // completion on both our edge function and the county's own government
+  // server, even after a newer search had already superseded it, because
+  // nothing here ever passed supabase-js's own (already-supported) signal
+  // option through.
+  it("passes the given AbortSignal through to functions.invoke", async () => {
+    mockInvoke.mockResolvedValue({ data: { ok: true }, error: null });
+    const controller = new AbortController();
+
+    await invokeEdgeFunction("cad-lookup", { address: "123 Main St" }, controller.signal);
+
+    const options = mockInvoke.mock.calls[0][1] as { signal?: AbortSignal };
+    expect(options.signal).toBe(controller.signal);
+  });
+
+  // A deliberate abort is a "stop," not a transient failure — without this,
+  // it would fall into the same retry path as a genuine network blip
+  // (identical shape: an error with no `context`) and fire up to
+  // MAX_RETRIES_NETWORK more requests for exactly the work the caller just
+  // asked to cancel.
+  it("throws immediately without retrying when the signal is already aborted", async () => {
+    mockInvoke.mockResolvedValue(networkError());
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      invokeEdgeFunction("cad-lookup", { address: "123 Main St" }, controller.signal),
+    ).rejects.toThrow("Failed to send a request to the Edge Function");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
 });

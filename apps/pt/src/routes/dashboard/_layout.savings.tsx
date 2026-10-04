@@ -9,6 +9,8 @@ import { listProtests } from "@/lib/protests";
 import { computePortfolioSavings, type PortfolioSavings } from "@/lib/portfolio-savings";
 import { currency } from "@/lib/intake-store";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHero } from "@/components/PageHero";
+import { PiggyBank as HeroSavingsIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/savings")({
   component: SavingsPage,
@@ -39,12 +41,12 @@ function SavingsPage() {
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-semibold">Lifetime Savings</h1>
-      <p className="text-muted-foreground text-sm">
-        Real, decision-backed savings from every resolved case — original assessed value vs. the
-        final value your protest actually landed at, at your county's real effective tax rate. Not
-        an estimate.
-      </p>
+      <PageHero
+        icon={HeroSavingsIcon}
+        title="Lifetime Savings"
+        tone="emerald"
+        subtitle="What you actually saved. Each resolved case compares the original value with the final one, at your county's real tax rate. Nothing here is estimated."
+      />
 
       {loading ? (
         <div className="mt-6 grid gap-4">
@@ -53,7 +55,7 @@ function SavingsPage() {
         </div>
       ) : !savings || savings.resolvedCaseCount === 0 ? (
         <div className="card-elev mt-6 p-8 text-center">
-          <h3 className="font-serif text-xl font-semibold">No resolved cases yet.</h3>
+          <h2 className="font-serif text-xl font-semibold">No resolved cases yet.</h2>
           <p className="text-muted-foreground mt-1">
             Once a protest is resolved — an ARB decision, or an accepted settlement — its real
             savings will show up here.
@@ -98,6 +100,12 @@ function SavingsPage() {
               </div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <defs>
+                    <linearGradient id="savings-bar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#0ea5e9" />
+                    </linearGradient>
+                  </defs>
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis
                     tick={{ fontSize: 11 }}
@@ -105,7 +113,12 @@ function SavingsPage() {
                     tickFormatter={(v) => `$${Math.round(v / 1000)}K`}
                   />
                   <Tooltip formatter={(v: number) => currency(v)} />
-                  <Bar dataKey="value" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+                  <Bar
+                    dataKey="value"
+                    fill="url(#savings-bar)"
+                    radius={[8, 8, 0, 0]}
+                    animationDuration={1000}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>

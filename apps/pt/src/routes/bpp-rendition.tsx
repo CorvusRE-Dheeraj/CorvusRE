@@ -59,7 +59,7 @@ function Page() {
           {items.map(([t, d], i) => (
             <ScrollReveal key={t} delay={i * 80}>
               <div className="card-elev p-6 transition-all hover:-translate-y-0.5 hover:shadow-elev">
-                <h3 className="font-semibold text-lg">{t}</h3>
+                <h2 className="font-semibold text-lg">{t}</h2>
                 <p className="mt-2 text-muted-foreground">{d}</p>
               </div>
             </ScrollReveal>

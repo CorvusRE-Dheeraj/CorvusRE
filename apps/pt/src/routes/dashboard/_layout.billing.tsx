@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +23,9 @@ import {
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
+import { PageHero } from "@/components/PageHero";
+import { CreditCard as HeroBillingIcon } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/billing")({
   component: Billing,
@@ -143,7 +147,7 @@ function Billing() {
   async function handleCancel(s: MySubscription, label: string) {
     if (!s.propertyId && !s.bppAccountId) return;
     const subjectWord = s.bppAccountId ? "BPP account" : "property";
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `Cancel the subscription for ${label}? It ends immediately — you'll lose paid AI Report ` +
         `access and the ability to request a new protest filing for this ${subjectWord}.`,
     );
@@ -199,16 +203,16 @@ function Billing() {
     // mx-auto, which pinned a form-width column to the left edge and left a
     // large dead zone of empty space on wider screens.
     <div className="mx-auto max-w-2xl">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="font-serif text-2xl font-semibold">Billing</h1>
-        <PaymentsModeChip />
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Your CorvusPT subscriptions, by property and BPP account.
-      </p>
+      <PageHero
+        icon={HeroBillingIcon}
+        title="Billing"
+        tone="indigo"
+        badges={<PaymentsModeChip />}
+        subtitle="Your CorvusPT subscriptions, by property and BPP account."
+      />
 
       {loading ? (
-        <p className="text-muted-foreground mt-6 text-sm">Loading…</p>
+        <PageSkeleton />
       ) : isBeta ? (
         <div className="card-elev mt-6 p-6">
           <div className="text-muted-foreground text-xs uppercase tracking-wide">Current plan</div>

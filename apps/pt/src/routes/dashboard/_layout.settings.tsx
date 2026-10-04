@@ -1,3 +1,4 @@
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -23,6 +24,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { PageHero } from "@/components/PageHero";
+import { Settings as HeroSettingsIcon } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/settings")({
   component: Settings,
@@ -89,7 +93,7 @@ function Settings() {
   // Applies immediately to every existing case, not just future ones — a
   // customer switching to Weekly (or Off) means it right now, not "starting
   // with my next case." The same switch this email's own unsubscribe link
-  // flips (see supabase-pt/functions/unsubscribe-evidence-reminders).
+  // flips (see supabase/pt/functions/unsubscribe-evidence-reminders).
   async function handleReminderFrequencyChange(frequency: ReminderFrequency) {
     if (!user) return;
     const prev = notificationPrefs;
@@ -111,6 +115,22 @@ function Settings() {
   // see send-deadline-reminders. SMS can't actually be turned on without a
   // phone number on file (checked here, not just disabled in the JSX, since
   // the checkbox's own onChange is the only path that sets it true).
+  async function handleHourAlertChange(value: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    setNotificationPrefs({ ...prev, deadlineHourAlert: value });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { deadlineHourAlert: value });
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
   async function handleDeadlineReminderChange(channel: "email" | "sms", value: boolean) {
     if (!user) return;
     if (channel === "sms" && value && !phone.trim()) {
@@ -220,11 +240,15 @@ function Settings() {
     // screens. One shared max-w here, centered once, makes every card line
     // up to the same width and the whole page read as one balanced column.
     <div className="mx-auto max-w-2xl">
-      <h1 className="font-serif text-2xl font-semibold">Settings</h1>
-      <p className="text-muted-foreground text-sm">Your account details.</p>
+      <PageHero
+        icon={HeroSettingsIcon}
+        title="Settings"
+        tone="slate"
+        subtitle="Update your name, contact details and preferences."
+      />
 
       {loading ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : (
         <form onSubmit={handleSave} className="mt-6 card-elev p-6 grid gap-4">
           <label className="grid gap-1">
@@ -353,6 +377,8 @@ function Settings() {
         </form>
       )}
 
+      {!loading && <TextSizeControl />}
+
       {!loading && (
         <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Notification Preferences</h2>
@@ -383,7 +409,8 @@ function Settings() {
             Every protest deadline, ARB hearing, informal review, tax date, and personal reminder on
             your Calendar gets a reminder 30, 15, 7, 3, and 2 days before, and the day of, by
             whichever channel(s) you turn on below — all six are on by default, but you can turn any
-            of them off.
+            of them off. You also get a short alert about an hour before a hearing or informal
+            review starts, and an hour before a deadline day closes (5 PM Central).
           </p>
           <div className="mt-4 grid gap-3">
             <label className="flex items-center gap-2 text-sm">
@@ -408,6 +435,16 @@ function Settings() {
               <span className="text-xs">— coming soon</span>
             </label>
           </div>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notificationPrefs.deadlineHourAlert}
+              disabled={savingPrefs}
+              onChange={(e) => handleHourAlertChange(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Alert me about an hour before (email and on-screen)
+          </label>
           <p className="mt-5 text-xs font-medium text-muted-foreground">When to remind me</p>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
             {DEADLINE_REMINDER_OFFSETS.map((offset) => (

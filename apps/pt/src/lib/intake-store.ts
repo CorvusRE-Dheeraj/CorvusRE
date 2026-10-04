@@ -6,7 +6,7 @@ import {
   type DocumentType,
 } from "./document-ai";
 import { getFirstPage } from "./pdf-utils";
-import type { CadDeed, CadValueHistoryEntry } from "./cad-lookup";
+import type { CadDeed, CadRecord, CadValueHistoryEntry } from "./cad-lookup";
 import type { SavingsEstimate } from "./savings-estimate";
 
 export type AuditEntry = {
@@ -135,6 +135,42 @@ export function updateIntake(patch: Partial<IntakeState>): IntakeState {
   };
   writeIntake(next);
   return next;
+}
+
+// Every field intake.tsx's applyCadRecord() stores from a matched CadRecord —
+// extracted here so a second entry point (the homepage's own live address
+// search, which can also resolve a real CadRecord directly) stores the exact
+// same shape instead of a second, hand-copied field list that could silently
+// drift out of sync with the first. `resolvedAddress` is separate from
+// `record.propertyAddress` because that field can come back an empty string
+// (see applyCadRecord's own comment) — the caller already has a sensible
+// fallback (the user's typed text, or an account-number label) worked out.
+export function cadRecordToIntakePatch(
+  record: CadRecord,
+  resolvedAddress: string,
+): Partial<IntakeState> {
+  return {
+    address: resolvedAddress,
+    cad: record.cad,
+    accountNumber: record.accountNumber ?? undefined,
+    ownerName: record.ownerName ?? undefined,
+    propertyType: record.propertyType ?? undefined,
+    landValue: record.landValue ?? undefined,
+    improvementValue: record.improvementValue ?? undefined,
+    totalValue: record.totalValue ?? undefined,
+    // Pinned the same way applyCadRecord's own copy is — see its comment on
+    // CURRENT_TAX_YEAR in lib/tax-calendar.ts for why this isn't computed.
+    taxYear: 2026,
+    legalDescription: record.legalDescription ?? undefined,
+    subdivision: record.subdivision ?? undefined,
+    geoId: record.geoId ?? undefined,
+    mailingAddress: record.mailingAddress ?? undefined,
+    ownershipPct: record.ownershipPct ?? undefined,
+    protestStatus: record.protestStatus ?? undefined,
+    bisPropertyId: record.bisPropertyId ?? undefined,
+    valueHistory: record.valueHistory ?? undefined,
+    deeds: record.deeds ?? undefined,
+  };
 }
 
 export function appendAudit(entry: Omit<AuditEntry, "ts">) {

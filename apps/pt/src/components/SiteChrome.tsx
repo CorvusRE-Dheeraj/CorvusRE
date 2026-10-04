@@ -1,11 +1,17 @@
+import { NotificationsBell } from "@/components/NotificationsBell";
+import { ConfirmHost } from "@/components/ConfirmHost";
+import { WelcomeTour } from "@/components/WelcomeTour";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { checkIsAdmin } from "@/lib/admin";
 import { shouldShowShell } from "@/components/AppShell";
-import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
+import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { HelpMenu } from "@/components/HelpMenu";
 import {
   Dialog,
   DialogContent,
@@ -15,18 +21,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-// Never nag someone who already told us "just sign out" once — set on that
-// choice, checked before showing the sign-out prompt again. Feedback itself
-// still stays reachable any time from the profile menu; this only stops the
-// interrupt from repeating every single sign-out.
-const SKIP_PROMPT_KEY = "corvusre.feedbackSignOutPromptSkipped";
-
 const NAV = [
   { to: "/", label: "Home" },
   { to: "/how-it-works", label: "How It Works" },
   { to: "/property-protest", label: "Protest" },
   { to: "/bpp-rendition", label: "Personal Property" },
   { to: "/tax-payment", label: "Pay Taxes" },
+  { to: "/dashboard/tax-updates", label: "Texas Tax Updates" },
   { to: "/pricing", label: "Pricing" },
   { to: "/contact", label: "Contact Us" },
 ] as const;
@@ -44,41 +45,43 @@ export function SiteNav() {
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
-  // (sign-out prompt, tab-close prompt), never blocks anything itself, so a
+  // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
   // treatment as isAdmin above.
   const [feedbackDone, setFeedbackDone] = useState<boolean | null>(null);
   // The feedback form is for BETA TESTERS specifically (plan === "beta",
   // the same free/full-access grant Billing.tsx's own isBeta check reads) —
   // a real paying customer isn't part of that cohort and shouldn't get
-  // interrupted at sign-out/tab-close for a survey that isn't about them.
+  // interrupted at sign-out for a survey that isn't about them.
   const [isBetaUser, setIsBetaUser] = useState<boolean | null>(null);
   const promptEligible = isBetaUser === true && feedbackDone === false;
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
-  // The one thing a beforeunload listener genuinely cannot do (in any
-  // browser, since ~2016) is say anything of its own — every browser shows
-  // only its own fixed "Leave site?" text, never custom copy. This modal is
-  // the actual "give feedback" ask before they go: triggered on exit intent
-  // (the pointer leaving toward the tab bar/back button, the same heuristic
-  // exit-intent popups have always used), not tab-close itself — it can't
-  // catch every way of leaving (Ctrl+W, the OS close button), but it's the
-  // only path that can show real copy, so it runs alongside the native
-  // warning rather than replacing it.
-  const [showExitIntentPrompt, setShowExitIntentPrompt] = useState(false);
-  const exitIntentShownRef = useRef(false);
+  // The Feedback nav tab opens the floating feedback widget in place instead of
+  // navigating anywhere.
+  const feedbackItemClick = (to: string) => (e: { preventDefault: () => void }) => {
+    if (to !== "/dashboard/feedback") return;
+    e.preventDefault();
+    openFeedbackWidget();
+  };
   // AppShell renders its own "Dashboard"-first tab bar directly under this
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
   // pages so the two rows don't repeat the same entry right on top of each other.
-  const navItems = signedIn
+  const baseNavItems = signedIn
     ? shouldShowShell(pathname)
       ? NAV
       : [NAV[0], { to: "/dashboard", label: "Dashboard" } as const, ...NAV.slice(1)]
     : NAV;
+  // Beta testers only — same "beta" plan gate as the profile dropdown's
+  // "Beta Feedback" link, just surfaced in the main nav too, right next to
+  // Contact Us, since NAV's last entry is Contact Us.
+  const navItems = isBetaUser
+    ? [...baseNavItems, { to: "/dashboard/feedback", label: "Feedback" } as const]
+    : baseNavItems;
 
   useEffect(() => {
     if (!user) {
@@ -106,51 +109,41 @@ export function SiteNav() {
       return;
     }
     getMyFeedbackResponse(user.id)
-      .then((r) => setFeedbackDone(!!r?.completedAt))
+      .then((r) => setFeedbackDone(isFormV2Complete(r)))
       .catch(() => setFeedbackDone(null));
     getMyBilling(user.id)
       .then((b) => setIsBetaUser(b.plan === "beta"))
       .catch(() => setIsBetaUser(null));
   }, [user]);
 
-  // Native browser prompt only — every browser has shown its OWN fixed text
-  // here (never a custom message) since ~2016, as an anti-abuse measure.
-  // Best-effort nudge on an actual tab close/refresh/external navigation;
-  // does nothing on in-app client-side route changes (those don't unload
-  // the page at all). Same "skip once declined" flag as the sign-out
-  // prompt, so choosing "Just sign out" there quiets this too.
+  // Catches a tab close of any kind, including a keyboard-triggered one
+  // (Ctrl+W and friends) — browsers reserve those shortcuts entirely, no
+  // page JS ever sees them in time to show its own UI, so there's no way to
+  // put a branded modal in front of that specific exit. `pagehide`, unlike
+  // `beforeunload`, fires reliably for every way of leaving a page
+  // (including a keyboard close) without needing any user interaction with
+  // a dialog — so instead of trying to interrupt in the moment, this fires
+  // a `sendBeacon` (the one API designed to survive the page tearing down
+  // mid-call) telling beacon-feedback-nudge to follow up by email shortly
+  // after — that function itself caps it at 3 sends, 2 days apart, so
+  // firing this beacon on every single close attempt is safe; it's a no-op
+  // most of the time. The access token travels in the beacon body because
+  // sendBeacon cannot set an Authorization header at all.
   useEffect(() => {
-    if (!promptEligible) return;
-    function onBeforeUnload(e: BeforeUnloadEvent) {
-      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
-      e.preventDefault();
-      e.returnValue = "";
+    if (!promptEligible || !session?.access_token) return;
+    const token = session.access_token;
+    function onPageHide() {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const url = `${supabaseUrl}/functions/v1/beacon-feedback-nudge`;
+      const body = new Blob([JSON.stringify({ accessToken: token })], { type: "application/json" });
+      navigator.sendBeacon(url, body);
     }
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [promptEligible]);
-
-  // Exit intent: the pointer leaving toward the top of the viewport (the
-  // tab bar, the back/close buttons) — the one moment left to show real,
-  // branded copy before they're gone, since beforeunload's own dialog can't.
-  // Fires at most once per page load (exitIntentShownRef), and never at all
-  // if they've already declined once (same SKIP_PROMPT_KEY the sign-out
-  // prompt uses) or already have the sign-out prompt open (don't stack two).
-  useEffect(() => {
-    if (!promptEligible) return;
-    function onMouseOut(e: MouseEvent) {
-      if (exitIntentShownRef.current) return;
-      if (e.clientY > 0 || e.relatedTarget) return; // only a genuine top-edge exit
-      if (localStorage.getItem(SKIP_PROMPT_KEY) === "1") return;
-      exitIntentShownRef.current = true;
-      setShowExitIntentPrompt(true);
-    }
-    document.addEventListener("mouseout", onMouseOut);
-    return () => document.removeEventListener("mouseout", onMouseOut);
-  }, [promptEligible]);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [promptEligible, session?.access_token]);
 
   function handleSignOutClick() {
-    if (promptEligible && localStorage.getItem(SKIP_PROMPT_KEY) !== "1") {
+    if (promptEligible) {
       setProfileOpen(false);
       setShowSignOutPrompt(true);
       return;
@@ -168,8 +161,14 @@ export function SiteNav() {
     // had the same pre-existing race (signOut-then-navigate), just newly
     // visible once testing actually followed the sign-out through.
     setProfileOpen(false);
-    await nav({ to: "/" });
-    await supabase.auth.signOut();
+    // The sign-out itself must never depend on the navigation finishing: if the home route is
+    // slow (or a page is mid-load) the navigation promise can stay pending, and awaiting it
+    // alone meant no logout request was ever sent. So wait for it, but only briefly.
+    try {
+      await Promise.race([nav({ to: "/" }), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    } finally {
+      await supabase.auth.signOut();
+    }
   }
 
   useEffect(() => {
@@ -262,11 +261,15 @@ export function SiteNav() {
         <Link to="/" className="flex items-center gap-2">
           <LogoMark />
           <span className="font-serif text-lg font-semibold tracking-tight">
-            Corvus<span className="text-emerald-600 dark:text-emerald-400">PT</span>
+            Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
           </span>
         </Link>
 
-        <nav ref={navContainerRef} className="relative hidden lg:flex items-center gap-1">
+        <nav
+          aria-label="Main"
+          ref={navContainerRef}
+          className="relative hidden min-[1340px]:flex items-center gap-0.5"
+        >
           <span
             aria-hidden
             className="absolute inset-y-1 rounded-md bg-nav-highlight transition-[left,width] duration-300 ease-out"
@@ -283,7 +286,8 @@ export function SiteNav() {
                 linkRefs.current[item.to] = el;
               }}
               to={item.to}
-              className="relative rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
+              onClick={feedbackItemClick(item.to)}
+              className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1500px]:px-3 min-[1500px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}
               activeOptions={{ exact: item.to === "/" }}
             >
@@ -292,7 +296,14 @@ export function SiteNav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <NotificationsBell />
+          <div className="hidden sm:block">
+            <HelpMenu />
+          </div>
+          <WelcomeTour />
+          <ConfirmHost />
+          <ThemeToggle />
           {signedIn ? (
             <div className="relative" ref={profileRef}>
               <button
@@ -345,7 +356,11 @@ export function SiteNav() {
                   {isBetaUser && (
                     <Link
                       to="/dashboard/feedback"
-                      onClick={() => setProfileOpen(false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setProfileOpen(false);
+                        openFeedbackWidget();
+                      }}
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
                       Beta Feedback
@@ -380,7 +395,7 @@ export function SiteNav() {
           )}
           <button
             ref={menuButtonRef}
-            className="lg:hidden btn-outline text-sm"
+            className="min-[1340px]:hidden btn-outline text-sm"
             onClick={() => setOpen((v) => !v)}
             aria-label="Menu"
             aria-expanded={open}
@@ -390,18 +405,24 @@ export function SiteNav() {
         </div>
       </div>
       {open && (
-        <div className="lg:hidden border-t border-border/70 bg-background">
+        <div className="min-[1340px]:hidden border-t border-border/70 bg-background">
           <div className="container-page grid gap-1 py-3">
             {navItems.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  setOpen(false);
+                  feedbackItemClick(item.to)(e);
+                }}
                 className="rounded-md px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary"
               >
                 {item.label}
               </Link>
             ))}
+            <div className="sm:hidden">
+              <HelpMenu inline />
+            </div>
             {!signedIn && (
               <Link
                 to="/sign-in"
@@ -427,7 +448,6 @@ export function SiteNav() {
           <DialogFooter className="gap-2 sm:gap-2">
             <button
               onClick={() => {
-                localStorage.setItem(SKIP_PROMPT_KEY, "1");
                 setShowSignOutPrompt(false);
                 void doSignOut();
               }}
@@ -438,38 +458,7 @@ export function SiteNav() {
             <button
               onClick={() => {
                 setShowSignOutPrompt(false);
-                nav({ to: "/dashboard/feedback" });
-              }}
-              className="btn-primary btn-primary-hover"
-            >
-              Give feedback
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showExitIntentPrompt} onOpenChange={setShowExitIntentPrompt}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Before you go — got 7-10 minutes for us?</DialogTitle>
-            <DialogDescription>
-              You're one of our beta testers, and we haven't heard from you yet. Help us make Corvus
-              better — it directly shapes what we build next.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-2">
-            <button
-              onClick={() => {
-                localStorage.setItem(SKIP_PROMPT_KEY, "1");
-                setShowExitIntentPrompt(false);
-              }}
-              className="btn-outline"
-            >
-              No thanks
-            </button>
-            <button
-              onClick={() => {
-                setShowExitIntentPrompt(false);
-                nav({ to: "/dashboard/feedback" });
+                openFeedbackWidget();
               }}
               className="btn-primary btn-primary-hover"
             >
@@ -486,30 +475,88 @@ export function SiteNav() {
 // footer (logo blurb + Platform/Services/Company link columns) was removed
 // site-wide as redundant with the top nav, but this bottom line stays as the
 // one place stating real county coverage.
+// Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder — the
+// real counties with a live data source, not an aspirational "all 254" claim.
+// Update this list if that array ever changes (the count is derived from it).
+const SERVED_COUNTIES = [
+  "Collin",
+  "Montgomery",
+  "Denton",
+  "Harris",
+  "Tarrant",
+  "Fort Bend",
+  "Williamson",
+  "Grayson",
+  "Travis",
+  "Bexar",
+  "Dallas",
+  "Kaufman",
+];
+
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border/70 bg-secondary/40">
-      <div className="container-page py-5 text-xs text-muted-foreground flex flex-wrap justify-between gap-2">
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>
+    <footer className="bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 text-white">
+      {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
+          bottom-right corner: extra bottom room on phones, right room above. */}
+      <div className="container-page pt-4 pb-20 sm:pb-4 sm:pr-24">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 ring-1 ring-white/25">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <path d="M4 20c3-6 5-9 8-9s5 3 8 9" strokeLinecap="round" />
+                <circle cx="16" cy="7" r="2" fill="currentColor" />
+              </svg>
+            </span>
+            <span className="leading-tight">
+              <span className="block text-sm font-semibold">CorvusPT</span>
+              <span className="block text-xs text-white/75">Texas Property Tax AI</span>
+            </span>
+          </Link>
+          <nav aria-label="Legal" className="flex items-center gap-2 text-xs font-medium">
+            <Link
+              to="/terms"
+              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              to="/privacy"
+              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              Privacy Policy
+            </Link>
+          </nav>
+        </div>
+
+        <div className="mt-3 border-t border-white/15 pt-3">
+          <p className="flex items-center gap-2 text-xs font-semibold text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
+            Serving {SERVED_COUNTIES.length} Texas counties
+            <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+              Beta
+            </span>
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Counties served">
+            {SERVED_COUNTIES.map((county) => (
+              <li
+                key={county}
+                className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/90 ring-1 ring-white/15"
+              >
+                {county}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2.5 text-xs text-white/70">
             © {new Date().getFullYear()} CorvusPT — Texas Property Tax AI. All rights reserved.
-          </span>
-          <Link to="/terms" className="underline underline-offset-2 hover:text-foreground">
-            Terms of Service
-          </Link>
-          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
-            Privacy Policy
-          </Link>
-        </span>
-        {/* Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder
-            (Collin, Montgomery, Denton, Harris, Tarrant, Fort Bend, Williamson,
-            Grayson, Travis, Bexar, Dallas, Kaufman) — the real counties with a
-            live data source, not an aspirational "all 254" claim. Update both
-            this list and the count if that array ever changes. */}
-        <span>
-          Serving 12 Texas counties for Beta phase — Collin, Montgomery, Denton, Harris, Tarrant,
-          Fort Bend, Williamson, Grayson, Travis, Bexar, Dallas, and Kaufman.
-        </span>
+          </p>
+        </div>
       </div>
     </footer>
   );

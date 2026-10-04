@@ -1,5 +1,7 @@
+import { syncHealthScore } from "@/lib/property-scores";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/error-message";
 import {
@@ -58,7 +60,7 @@ import {
   type IntakeState,
 } from "@/lib/intake-store";
 import { MODULES, type Module } from "@/lib/modules";
-import type { IconColor } from "@/lib/icon-colors";
+import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import {
   getMyBilling,
@@ -101,6 +103,7 @@ import {
   EMPTY_TAX_INPUTS,
   type SavingsAnalysis,
   type SavingsTaxInputs,
+  type ModuleIndication,
 } from "@/lib/savings-analysis";
 import {
   getSavingsTaxInputs,
@@ -123,14 +126,25 @@ import {
   classifyPropertyCategory,
   getAssessmentRatioInfo,
   applyValueTrendAdjustment,
+  getEffectiveTaxRate,
 } from "@/lib/texas-tax-rates";
 import { CompsMap, useLeaflet } from "@/components/CompsMap";
+import { EvidenceImpactCard, EvidenceImpactContext } from "@/components/EvidenceImpactCard";
+import {
+  applyEvidenceToEstimate,
+  baseIndicatedValue,
+  applyPoints,
+  computeEvidenceAdjustment,
+  VALUE_SIGNAL_SCHEMA_VERSION,
+  type ValueSignal,
+} from "@/lib/evidence-value";
 import {
   findExistingProperty,
   addProperty,
   listProperties,
   buildAiReportIntakePatch,
   updatePropertyIdentity,
+  updatePropertySavings,
   type PropertyRecord,
 } from "@/lib/properties";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
@@ -150,6 +164,8 @@ import {
   EVIDENCE_DOCUMENT_TYPE,
   PROTEST_EVIDENCE_DOCUMENT_TYPE,
   type DocumentRecord,
+  extractEvidenceValue,
+  notifyDocumentsChanged,
 } from "@/lib/documents";
 import { tagUploadedDocument, setDocumentModules, MODULE_TAG_LABEL } from "@/lib/document-modules";
 import {
@@ -165,6 +181,8 @@ import {
 import { analyzeEvidence, type EvidenceAnalysis, type DocumentStatus } from "@/lib/protest-reason";
 import { buildEvidencePacket } from "@/lib/evidence-packet";
 import { categorizeEvidenceUploads, evidenceItemSlug } from "@/lib/evidence-categorize";
+import { EvidenceFileRow, type EvidenceCategoryOption } from "@/components/EvidenceFileRow";
+import { JourneyTracker } from "@/components/JourneyTracker";
 import { downloadPdf } from "@/lib/protest-documents";
 import {
   listModuleOverrides,
@@ -217,6 +235,10 @@ import {
 import { getAiReportCacheEnabled } from "@/lib/app-settings";
 import { ValueHistorySection } from "@/components/ValueHistorySection";
 import { Modal } from "@/components/Modal";
+import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBanner";
+import { ProgressRing } from "@/components/ProgressRing";
+import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
+import { protestOutcome } from "@/lib/protest-outcome";
 
 type ModuleAsyncState = {
   data: unknown;
@@ -331,7 +353,7 @@ function Report() {
   // only when the user clicks "Unlock preview" on that specific module, via
   // loadModule() below — rather than all up front, so tokens are only spent on
   // modules the user actually opens.
-  const [moduleData, setModuleData] = useState<Record<string, ModuleAsyncState>>({});
+  const [rawModuleData, setModuleData] = useState<Record<string, ModuleAsyncState>>({});
   // Separate from moduleData since it's not an AI call and has its own real/empty
   // result shape (CompsResult, not the free-text ModuleResultMap) — only fetched
   // when the Comps module (module 3) is opened.
@@ -396,6 +418,10 @@ function Report() {
   // src/lib/property-base-data.ts.
   const [baseData, setBaseData] = useState<PropertyBaseData | null>(null);
   const [baseDataBusy, setBaseDataBusy] = useState(false);
+  // True once the stored base data (its value history and building details feed the Module 1
+  // score) has been read, so the score is never computed from a half-loaded page and then
+  // shown differently after a reload.
+  const [baseDataChecked, setBaseDataChecked] = useState(false);
   const baseDataFetchedFor = useRef<string | null>(null);
 
   // "Fetch details" (Module 6) — re-pull this property's CAD record from the
@@ -688,10 +714,17 @@ function Report() {
   // hash), so they must not fire until this list has settled, or a reload
   // races it and a cached result misses just because the docs weren't in yet.
   const [evidenceDocsLoaded, setEvidenceDocsLoaded] = useState(false);
+  // True once every evidence file has been read for what it says about value (or we gave up on a
+  // file), so the score and savings are computed from the full picture once, not repeatedly as
+  // each file finishes.
+  const [valueSignalsSettled, setValueSignalsSettled] = useState(false);
+  const signalAttempts = useRef<Set<string>>(new Set());
   // Every non-deleted document for this property — used by Module 10's Full
   // Case Report (case-report.ts) for the Key Documents section. evidenceDocs
   // above is the evidence-only subset the cache hash folds in.
   const [caseDocuments, setCaseDocuments] = useState<DocumentRecord[]>([]);
+  // Refetch when a document changes elsewhere (View Case / Documents / another tab).
+  const docsVersion = useDocumentsVersion();
   useEffect(() => {
     if (!user || !resolvedProperty) {
       setEvidenceDocsLoaded(!resolvedProperty); // no property => nothing to wait for
@@ -722,7 +755,38 @@ function Report() {
       .catch((err) => console.error("Could not load uploaded evidence for this property:", err))
       .finally(() => setEvidenceDocsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, resolvedProperty]);
+  }, [user?.id, resolvedProperty, docsVersion]);
+
+  useEffect(() => {
+    if (!evidenceDocsLoaded) return;
+    const pending = evidenceDocs.filter(
+      (d) =>
+        d.valueSignal?.schemaVersion !== VALUE_SIGNAL_SCHEMA_VERSION &&
+        !signalAttempts.current.has(d.id),
+    );
+    if (pending.length === 0) {
+      setValueSignalsSettled(true);
+      return;
+    }
+    setValueSignalsSettled(false);
+    let cancelled = false;
+    void (async () => {
+      for (const d of pending) {
+        signalAttempts.current.add(d.id);
+        try {
+          await extractEvidenceValue(d.id);
+        } catch (err) {
+          console.error("Could not read this evidence file for value:", err);
+        }
+        if (cancelled) return;
+      }
+      // Pull the stored readings back in; the effect re-runs and settles.
+      notifyDocumentsChanged();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceDocs, evidenceDocsLoaded]);
 
   // Address → AI-fetched property base data. Loads the stored copy so the
   // "Property Base Data" strip renders immediately; auto-fetches once per
@@ -733,6 +797,7 @@ function Report() {
     if (!user || !resolvedProperty) return;
     if (baseDataFetchedFor.current === resolvedProperty.id) return;
     baseDataFetchedFor.current = resolvedProperty.id;
+    setBaseDataChecked(false);
     getPropertyBaseData(resolvedProperty.id)
       .then((bd) => {
         setBaseData(bd);
@@ -751,7 +816,8 @@ function Report() {
           void refreshBaseData({ silent: true });
         }
       })
-      .catch((err) => console.error("Could not load property base data:", err));
+      .catch((err) => console.error("Could not load property base data:", err))
+      .finally(() => setBaseDataChecked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, resolvedProperty]);
 
@@ -971,7 +1037,7 @@ function Report() {
     status: new Map(),
   });
   useEffect(() => {
-    const items = (moduleData.evidence?.data as ModuleResultMap["evidence"] | undefined)?.items;
+    const items = (rawModuleData.evidence?.data as ModuleResultMap["evidence"] | undefined)?.items;
     if (!items || !resolvedProperty) return;
     if (evidenceStatusSeenRef.current.propertyId !== resolvedProperty.id) {
       evidenceStatusSeenRef.current = { propertyId: resolvedProperty.id, status: new Map() };
@@ -992,7 +1058,7 @@ function Report() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleData.evidence?.data, resolvedProperty?.id]);
+  }, [rawModuleData.evidence?.data, resolvedProperty?.id]);
 
   // Save owner-confirmed income figures. Optimistic; the effect above then
   // re-runs Module 7 with the fresh numbers. The form always sends the
@@ -1714,6 +1780,11 @@ function Report() {
           `Comparable sales (Module 3): ${cs.count} comps, median $${cs.median.toLocaleString()} (range $${cs.min.toLocaleString()}–$${cs.max.toLocaleString()}).`,
         );
       }
+      for (const c of evidenceAdj.contributions) {
+        facts.push(
+          `Owner-uploaded evidence (read by AI, ${c.importance} importance, ${c.direction}): ${c.label} — ${c.detail}`,
+        );
+      }
       if (facts.length > 0) input.authoritativeFacts = facts;
     }
 
@@ -1756,6 +1827,13 @@ function Report() {
           state.totalValue,
         );
         input.compsGapPct = hStats.valuationGapPct;
+        if (evidenceAdj.applied) {
+          input.evidence = {
+            valueGapPct: evidenceAdj.valueGapPct,
+            strength: evidenceAdj.strength,
+            otherNet: evidenceAdj.otherNet,
+          };
+        }
       }
       input.evidenceFileNames = evidenceDocs.map((d) => d.fileName);
     }
@@ -2047,7 +2125,7 @@ function Report() {
   const AUTO_RETRY_MAX = 3;
   const AUTO_RETRY_DELAY_MS = 6000;
   useEffect(() => {
-    for (const [id, entry] of Object.entries(moduleData)) {
+    for (const [id, entry] of Object.entries(rawModuleData)) {
       const tracked = autoRetryRef.current[id];
       // A retry attempt itself sets {data: null, loading: true, error: null}
       // — indistinguishable from "never failed" by entry.error alone, which
@@ -2082,7 +2160,7 @@ function Report() {
     // fetch guard and would otherwise re-fire this effect on every load it
     // itself triggers).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleData]);
+  }, [rawModuleData]);
   // Cleanup only, run once — cancels any still-pending auto-retry timers if
   // the user navigates away mid-retry rather than letting them fire (and
   // call setModuleData) against an unmounted page. Deliberately reads
@@ -2302,7 +2380,7 @@ function Report() {
   // depending on which page you were on. Calling the one real function here
   // instead means this page and the intake flow always agree for the same
   // property, and the number never depends on an AI call.
-  const [savingsEstimate, setSavingsEstimate] =
+  const [rawSavingsEstimate, setSavingsEstimate] =
     useState<Awaited<ReturnType<typeof estimateSavings>>>(null);
   useEffect(() => {
     if (!state.totalValue) return;
@@ -2330,6 +2408,122 @@ function Report() {
     state.taxYear,
     state.valueHistory,
   ]);
+
+  // What the owner's uploaded evidence says about value (each file is read once by
+  // extract-evidence-value and stored). Everything below is deterministic from those stored
+  // readings, so the score and the savings only change when evidence is added or removed.
+  const evidenceItems = useMemo(
+    () =>
+      evidenceDocs
+        .filter((d) => !!d.valueSignal && d.valueSignal.kind !== "not_valuation_evidence")
+        .map((d) => ({ docId: d.id, fileName: d.fileName, signal: d.valueSignal as ValueSignal })),
+    [evidenceDocs],
+  );
+  const evidenceAdj = useMemo(
+    () =>
+      computeEvidenceAdjustment({
+        cadValue: state.totalValue ?? null,
+        baseIndicated: baseIndicatedValue(rawSavingsEstimate, state.totalValue ?? 0),
+        baseBasis: rawSavingsEstimate?.basis ?? null,
+        subjectSqft: baseData?.snapshot.cad?.buildingSqft ?? null,
+        items: evidenceItems,
+      }),
+    [evidenceItems, rawSavingsEstimate, state.totalValue, baseData],
+  );
+  const savingsEstimate = useMemo(() => {
+    if (!state.totalValue) return rawSavingsEstimate;
+    const ratePct =
+      rawSavingsEstimate?.effectiveTaxRatePct ??
+      Math.round(getEffectiveTaxRate(state.cad) * 1000) / 10;
+    return applyEvidenceToEstimate(rawSavingsEstimate, state.totalValue, ratePct, evidenceAdj);
+  }, [rawSavingsEstimate, state.totalValue, state.cad, evidenceAdj]);
+  // The per-analysis scores (Comparable Sales, Site, Improvement, Income, Zoning) come from the
+  // Module 2 strategy ranking. Layer the evidence's importance-weighted effect on top at read
+  // time, so a critical file raises them a lot, a minor one a little, and evidence that backs the
+  // county lowers them. Nothing is written back to the cached results.
+  const moduleData = useMemo(() => {
+    if (!evidenceAdj.applied) return rawModuleData;
+    const uplift = evidenceAdj.moduleUplift as Record<string, number>;
+    const coverage = evidenceAdj.moduleCoverage as Record<string, number>;
+    const next = { ...rawModuleData };
+
+    // Modules 2-7: the per-analysis strength scores and confidence.
+    const st = rawModuleData.strategy;
+    const d = st?.data as ModuleResultMap["strategy"] | undefined;
+    if (st && d) {
+      const strategies = d.strategies
+        .map((s, i) => {
+          const pts = s.relatedModules.reduce(
+            (best, m) => (Math.abs(uplift[m] ?? 0) > Math.abs(best) ? (uplift[m] ?? 0) : best),
+            0,
+          );
+          const cov = s.relatedModules.reduce((best, m) => Math.max(best, coverage[m] ?? 0), 0);
+          return {
+            s: {
+              ...s,
+              strengthScore: applyPoints(s.strengthScore, pts),
+              confidencePct: Math.min(95, s.confidencePct + Math.round(cov * 15)),
+            },
+            i,
+          };
+        })
+        .sort((x, y) => y.s.strengthScore - x.s.strengthScore || x.i - y.i)
+        .map((x) => x.s);
+      next.strategy = { ...st, data: { ...d, strategies } };
+    }
+
+    // Modules 4 and 5: the "documentation priority" meters fall as important evidence covers them.
+    for (const id of ["site", "improvement"] as const) {
+      const m = rawModuleData[id];
+      const md = m?.data as { priorityScore?: number } | undefined;
+      if (m && md && typeof md.priorityScore === "number") {
+        const reduced = Math.max(5, md.priorityScore - Math.round((coverage[id] ?? 0) * 25));
+        next[id] = { ...m, data: { ...md, priorityScore: reduced } as never };
+      }
+    }
+
+    // Module 10: the value to argue for follows the evidence-adjusted indication.
+    const ex = rawModuleData.executive;
+    const exd = ex?.data as ModuleResultMap["executive"] | undefined;
+    if (ex && exd && evidenceAdj.indicatedValue != null) {
+      next.executive = {
+        ...ex,
+        data: {
+          ...exd,
+          recommendedProtestValue: evidenceAdj.indicatedValue,
+          recommendedProtestValueBasis:
+            "Weighted from the county estimate and the evidence you uploaded, by how important each file is.",
+        },
+      };
+    }
+    return next;
+  }, [rawModuleData, evidenceAdj]);
+  const evidenceImpact = useMemo(
+    () => ({
+      adjustment: evidenceAdj,
+      beforeAmount: rawSavingsEstimate?.amount ?? 0,
+      afterAmount: savingsEstimate?.amount ?? 0,
+      reading: !valueSignalsSettled,
+      evidenceCount: evidenceDocs.length,
+    }),
+    [evidenceAdj, rawSavingsEstimate, savingsEstimate, valueSignalsSettled, evidenceDocs.length],
+  );
+
+  // Keep the saved estimate on the property (shown on the Properties page and dashboard) in step
+  // with the evidence-adjusted figure, so the amount the owner sees saved everywhere moves when
+  // they upload or remove evidence.
+  const healthResult = moduleData.health?.data as HealthScoreResult | undefined;
+  const lastSyncedScore = useRef<number | null>(null);
+  useEffect(() => {
+    if (!resolvedProperty || !valueSignalsSettled || !healthResult) return;
+    if (lastSyncedScore.current === healthResult.score) return;
+    lastSyncedScore.current = healthResult.score;
+    syncHealthScore(resolvedProperty.id, {
+      score: healthResult.score,
+      summary: healthResult.executiveConclusion,
+      factors: healthResult.factorsIncreasing,
+    }).catch((err) => console.error("Could not save the updated score:", err));
+  }, [resolvedProperty, valueSignalsSettled, healthResult]);
 
   const estimated = useMemo(() => {
     // `hasEstimate: false` means "no assessed value to estimate from at all"
@@ -2394,6 +2588,46 @@ function Report() {
       .catch((err) => console.error("Could not load savings tax inputs:", err));
   }, [resolvedProperty]);
 
+  // Module 7 (Income Approach) and Module 5 (Improvement Condition) each
+  // sometimes compute their own real indicated value for this property —
+  // see computeSavingsAnalysis's own doc comment for why these only ever
+  // pull the estimate's indicated value DOWN, never up. Both are gated on
+  // the module's own "this is real, not a guess" signal: Income on
+  // dataComplete (the owner-confirmed P&L figures), Improvement on
+  // effectiveAgeYears being non-null (server-enforced null with zero real
+  // photo evidence — see ai-report-modules.ts).
+  const moduleImprovementData = moduleData.improvement?.data as
+    | ModuleResultMap["improvement"]
+    | undefined;
+  const moduleIndications = useMemo<ModuleIndication[]>(() => {
+    const out: ModuleIndication[] = [];
+    if (incomeComputed.dataComplete && incomeComputed.indicatedValue != null) {
+      out.push({ source: "income", value: incomeComputed.indicatedValue });
+    }
+    if (moduleImprovementData?.effectiveAgeYears != null && state.improvementValue != null) {
+      const dep = computeDepreciation(
+        moduleImprovementData.effectiveAgeYears,
+        getTypicalEconomicLife(state.propertyType),
+        moduleImprovementData.functionalObsolescencePct,
+        moduleImprovementData.externalObsolescencePct,
+        state.improvementValue,
+      );
+      if (dep.conditionAdjustedValue != null && state.totalValue != null) {
+        const adjustedTotal =
+          state.totalValue - state.improvementValue + dep.conditionAdjustedValue;
+        out.push({ source: "improvement", value: Math.round(adjustedTotal) });
+      }
+    }
+    return out;
+  }, [
+    incomeComputed.dataComplete,
+    incomeComputed.indicatedValue,
+    moduleImprovementData,
+    state.improvementValue,
+    state.totalValue,
+    state.propertyType,
+  ]);
+
   const savingsAnalysis = useMemo<SavingsAnalysis>(() => {
     const cs = computeComparableStats(
       compsMap.data?.subject ?? null,
@@ -2409,6 +2643,7 @@ function Report() {
         ? { min: cs.indicated.min, median: cs.indicated.median, max: cs.indicated.max }
         : null,
       taxInputs: savingsTaxInputs ?? EMPTY_TAX_INPUTS,
+      moduleIndications,
     });
   }, [
     savingsEstimate,
@@ -2417,7 +2652,35 @@ function Report() {
     state.totalValue,
     state.taxYear,
     state.cad,
+    moduleIndications,
   ]);
+
+  // Persists savingsAnalysis's own annualSavings (not the raw savingsEstimate
+  // amount) — the same module-aware number Module 9 shows, including any
+  // Income/Improvement adjustment (see moduleIndications above). Before this,
+  // this synced the pre-module baseline only, so uploading evidence or
+  // saving income figures could visibly move Module 9's own number while the
+  // dashboard/Properties-page total (read from this saved column) silently
+  // stayed put — the actual bug behind "I added values but I don't see any
+  // change in the protest amount I am saving."
+  const lastSavedSavings = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !resolvedProperty ||
+      !valueSignalsSettled ||
+      !savingsEstimate ||
+      !savingsAnalysis.sufficient
+    )
+      return;
+    const amount = savingsAnalysis.annualSavings;
+    if (lastSavedSavings.current === amount) return;
+    lastSavedSavings.current = amount;
+    if (resolvedProperty.estimatedSavings === amount) return;
+    updatePropertySavings(resolvedProperty.id, {
+      estimatedSavings: amount,
+      savingsBasis: savingsEstimate.basis,
+    }).catch((err) => console.error("Could not save the updated savings estimate:", err));
+  }, [resolvedProperty, valueSignalsSettled, savingsEstimate, savingsAnalysis]);
 
   async function saveSavingsTaxInputs(input: SavingsTaxInputsInput) {
     if (!user || !resolvedProperty) return;
@@ -2535,7 +2798,9 @@ function Report() {
       !evidenceDocsLoaded ||
       !auxDataLoaded ||
       !compsMap.attempted ||
-      compsMap.loading
+      compsMap.loading ||
+      !valueSignalsSettled ||
+      (!!user && !!resolvedProperty && !baseDataChecked)
     )
       return;
     for (const m of MODULES) {
@@ -2566,6 +2831,8 @@ function Report() {
     auxDataLoaded,
     compsMap.attempted,
     compsMap.loading,
+    baseDataChecked,
+    valueSignalsSettled,
   ]);
 
   // comps/site/improvement/zoning wait for Module 2 (Strategy) to resolve —
@@ -2704,47 +2971,48 @@ function Report() {
   const openModel = MODULES.find((m) => m.id === openId) ?? null;
 
   return (
-    <div className="container-page py-10">
-      {/* Summary */}
-      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="card-elev p-6">
-          <div className="flex items-center gap-2">
-            <span className="badge-soft">Property Summary</span>
-            <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
+    <EvidenceImpactContext.Provider value={evidenceImpact}>
+      <div className="container-page py-10">
+        {/* Summary */}
+        <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div className="card-elev p-6">
+            <div className="flex items-center gap-2">
+              <span className="badge-soft">Property Summary</span>
+              <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
+            </div>
+            <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
+            <p className="text-muted-foreground text-sm">{state.cad}</p>
+            <dl className="mt-5 grid gap-3 sm:grid-cols-3 text-sm">
+              <Field label="Owner" value={state.ownerName} />
+              <Field label="Account #" value={state.accountNumber} />
+              <Field label="Type" value={state.propertyType} />
+              <Field label="Land" value={currency(state.landValue)} />
+              <Field label="Improvement" value={currency(state.improvementValue)} />
+              <Field label="Total" value={currency(state.totalValue)} bold />
+            </dl>
+            <ValueHistorySection history={state.valueHistory ?? []} />
+            {user && (
+              <button
+                type="button"
+                onClick={handleGeneratePropertySummary}
+                disabled={generatingPropertySummary}
+                className="btn-outline mt-4 text-sm disabled:opacity-60"
+              >
+                {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
+              </button>
+            )}
           </div>
-          <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
-          <p className="text-muted-foreground text-sm">{state.cad}</p>
-          <dl className="mt-5 grid gap-3 sm:grid-cols-3 text-sm">
-            <Field label="Owner" value={state.ownerName} />
-            <Field label="Account #" value={state.accountNumber} />
-            <Field label="Type" value={state.propertyType} />
-            <Field label="Land" value={currency(state.landValue)} />
-            <Field label="Improvement" value={currency(state.improvementValue)} />
-            <Field label="Total" value={currency(state.totalValue)} bold />
-          </dl>
-          <ValueHistorySection history={state.valueHistory ?? []} />
-          {user && (
-            <button
-              type="button"
-              onClick={handleGeneratePropertySummary}
-              disabled={generatingPropertySummary}
-              className="btn-outline mt-4 text-sm disabled:opacity-60"
-            >
-              {generatingPropertySummary ? "Generating…" : "Generate Property Summary"}
-            </button>
-          )}
-        </div>
-        <div className="card-elev overflow-hidden">
-          <iframe
-            title="Property Map"
-            className="w-full h-64 lg:h-full min-h-[240px]"
-            src={`https://www.google.com/maps?q=${encodeURIComponent(state.address ?? "Texas")}&output=embed`}
-            loading="lazy"
-          />
-        </div>
-      </section>
+          <div className="card-elev overflow-hidden">
+            <iframe
+              title="Property Map"
+              className="w-full h-64 lg:h-full min-h-[240px]"
+              src={`https://www.google.com/maps?q=${encodeURIComponent(state.address ?? "Texas")}&output=embed`}
+              loading="lazy"
+            />
+          </div>
+        </section>
 
-      {/* Analysis banner — the savings figure is the whole point of this page for
+        {/* Analysis banner — the savings figure is the whole point of this page for
           most visitors, so it gets a hero-scale treatment (was the same text-lg
           size as the "AI analysis completed" label above it, easy to skim past)
           rather than reading as one more line of body copy. Previously had
@@ -2752,574 +3020,608 @@ function Report() {
           it read as cartoonish for what's otherwise a professional tax-filing
           tool — the gradient/glow/sheen surface below carries the "this is a
           good moment" read on its own, without particle animation. */}
-      <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
-        {/* Richer than a flat bg-primary fill — a diagonal gradient with a
+        <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
+          {/* Richer than a flat bg-primary fill — a diagonal gradient with a
             faint accent-green undertone, so the banner reads as an
             intentionally celebratory surface even before any motion kicks in. */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(135deg, var(--primary) 0%, color-mix(in oklch, var(--primary) 82%, var(--accent) 18%) 50%, var(--primary) 100%)",
-          }}
-        />
-        {/* Two ambient glow blobs — a flat solid-navy card read as plain/
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--primary) 0%, color-mix(in oklch, var(--primary) 82%, var(--accent) 18%) 50%, var(--primary) 100%)",
+            }}
+          />
+          {/* Two ambient glow blobs — a flat solid-navy card read as plain/
             static for what's meant to be the page's one exciting moment.
             Emerald top-left near the number, warm gold bottom-right (offset
             pulse timing via the CSS itself), both z-0'd behind the real
             content below. */}
-        {!analyzing && (
-          <>
-            <div
-              className="savings-glow pointer-events-none absolute -left-24 -top-24 z-0 h-96 w-96 rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, color-mix(in oklch, var(--accent) 55%, transparent) 0%, transparent 70%)",
-              }}
-            />
-            <div
-              className="savings-glow-warm pointer-events-none absolute -bottom-24 -right-24 z-0 h-96 w-96 rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle, color-mix(in oklch, var(--warning) 50%, transparent) 0%, transparent 70%)",
-              }}
-            />
-            {/* Slow diagonal light sweep across the whole banner surface —
+          {!analyzing && (
+            <>
+              <div
+                className="savings-glow pointer-events-none absolute -left-24 -top-24 z-0 h-96 w-96 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle, color-mix(in oklch, var(--accent) 55%, transparent) 0%, transparent 70%)",
+                }}
+              />
+              <div
+                className="savings-glow-warm pointer-events-none absolute -bottom-24 -right-24 z-0 h-96 w-96 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle, color-mix(in oklch, var(--warning) 50%, transparent) 0%, transparent 70%)",
+                }}
+              />
+              {/* Slow diagonal light sweep across the whole banner surface —
                 see the savings-sheen-sweep keyframe in styles.css. */}
-            <div className="savings-sheen pointer-events-none absolute -inset-y-12 left-0 z-0 w-1/3 bg-white/10" />
-          </>
-        )}
-        <div className="relative z-10 flex flex-wrap items-start justify-between gap-6 p-5 sm:p-8">
-          <div className="min-w-0">
-            <p className="text-sm text-primary-foreground/80">
-              {analyzing ? "AI is analyzing your property..." : "AI analysis completed."}
-            </p>
-            {analyzing ? (
-              <p className="mt-1 font-serif text-lg sm:text-xl">
-                Preparing your property valuation review...
+              <div className="savings-sheen pointer-events-none absolute -inset-y-12 left-0 z-0 w-1/3 bg-white/10" />
+            </>
+          )}
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-6 p-5 sm:p-8">
+            <div className="min-w-0">
+              <p className="text-sm text-primary-foreground/80">
+                {analyzing ? "AI is analyzing your property..." : "AI analysis completed."}
               </p>
-            ) : estimated.savings >= 1 ? (
-              <>
-                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary-foreground/70">
-                  Estimated tax savings this year
+              {analyzing ? (
+                <p className="mt-1 font-serif text-lg sm:text-xl">
+                  Preparing your property valuation review...
                 </p>
-                {/* Sized off the actual formatted string's length, not just the
+              ) : estimated.savings >= 1 ? (
+                <>
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary-foreground/70">
+                    {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                      ? buildCaseOutcome(resolvedProperty, existingProtest)
+                      : null
+                    )?.taxSavings != null
+                      ? "Actual tax savings from your protest"
+                      : "Estimated tax savings this year"}
+                  </p>
+                  {/* Sized off the actual formatted string's length, not just the
                     viewport — a fixed text-6xl/7xl/8xl scale (confirmed live)
                     clips off-card on a narrow phone once a large property's
                     savings run to 6+ digits ("$135,675" and up), since a wider
                     viewport can't be assumed to always mean a shorter number.
                     Common case (the vast majority of real properties) still
                     gets the full hero size below. */}
-                <p
-                  className={`mt-1 flex w-fit items-center gap-2 font-serif font-bold leading-none text-accent ${
-                    savingsDigits <= 7
-                      ? "text-6xl sm:text-7xl lg:text-8xl"
-                      : savingsDigits <= 9
-                        ? "text-5xl sm:text-6xl lg:text-7xl"
-                        : "text-4xl sm:text-5xl lg:text-6xl"
-                  }`}
-                >
-                  <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
-                  <AnimatedNumber value={estimated.savings} format={currency} duration={900} />
-                </p>
-              </>
-            ) : !estimated.hasEstimate ? (
-              // No estimate at all — the CAD record carried no assessed value
-              // (a brand-new/unassessed parcel, or a county feed that hasn't
-              // synced this year's values yet). estimateSavings() returns null
-              // for exactly this case rather than computing 0 * anything = 0,
-              // and intake.tsx skips its whole Savings step when it does. This
-              // banner used to fall straight through to the "fairly assessed"
-              // branch below and tell the owner, confidently and wrongly, that
-              // there was no savings opportunity — when the truth is we have
-              // no value to judge from. Say that instead.
-              <>
-                <p className="mt-2 font-serif text-2xl font-bold sm:text-3xl">
-                  We need this year's value.
-                </p>
-                <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
-                  The county record for this property doesn't carry an assessed value yet, so we
-                  can't estimate a savings opportunity. Upload your appraisal notice, or check back
-                  once the county publishes this year's value.
-                </p>
-              </>
-            ) : (
-              // Same reasoning as intake.tsx's Savings step — a real analysis
-              // that lands on (near-)$0 isn't a failure, it means this
-              // property's own assessed value already looks in line with real
-              // comps/protest-outcome data. >= 1, not > 0: currency() rounds
-              // to whole dollars, so a positive-but-sub-$1 amount would
-              // otherwise still render as a bare, confusing "$0" hero.
-              <>
-                <p className="mt-2 font-serif text-2xl font-bold text-accent sm:text-3xl">
-                  Good news!
-                </p>
-                <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
-                  Your property appears to be fairly assessed. We found little or no opportunity for
-                  additional tax savings this year.
-                </p>
-              </>
-            )}
-          </div>
-          <div className="print:hidden shrink-0 text-right text-sm">
-            {hasFullAccess ? (
-              <div className="text-primary-foreground/70 text-xs">
-                AI Report subscription active
-              </div>
-            ) : (
-              <>
-                <div>
-                  {FREE_MODULE_COUNT} of {MODULES.length} modules free
-                </div>
+                  <p
+                    className={`mt-1 flex w-fit items-center gap-2 font-serif font-bold leading-none text-accent ${
+                      savingsDigits <= 7
+                        ? "text-6xl sm:text-7xl lg:text-8xl"
+                        : savingsDigits <= 9
+                          ? "text-5xl sm:text-6xl lg:text-7xl"
+                          : "text-4xl sm:text-5xl lg:text-6xl"
+                    }`}
+                  >
+                    <TrendingUp className="h-8 w-8 shrink-0 sm:h-10 sm:w-10 lg:h-14 lg:w-14" />
+                    <AnimatedNumber
+                      value={
+                        (existingProtest &&
+                        resolvedProperty &&
+                        existingProtest.status === "resolved"
+                          ? buildCaseOutcome(resolvedProperty, existingProtest)
+                          : null
+                        )?.taxSavings ?? estimated.savings
+                      }
+                      format={currency}
+                      duration={900}
+                    />
+                  </p>
+                </>
+              ) : !estimated.hasEstimate ? (
+                // No estimate at all — the CAD record carried no assessed value
+                // (a brand-new/unassessed parcel, or a county feed that hasn't
+                // synced this year's values yet). estimateSavings() returns null
+                // for exactly this case rather than computing 0 * anything = 0,
+                // and intake.tsx skips its whole Savings step when it does. This
+                // banner used to fall straight through to the "fairly assessed"
+                // branch below and tell the owner, confidently and wrongly, that
+                // there was no savings opportunity — when the truth is we have
+                // no value to judge from. Say that instead.
+                <>
+                  <p className="mt-2 font-serif text-2xl font-bold sm:text-3xl">
+                    We need this year's value.
+                  </p>
+                  <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
+                    The county record for this property doesn't carry an assessed value yet, so we
+                    can't estimate a savings opportunity. Upload your appraisal notice, or check
+                    back once the county publishes this year's value.
+                  </p>
+                </>
+              ) : (
+                // Same reasoning as intake.tsx's Savings step — a real analysis
+                // that lands on (near-)$0 isn't a failure, it means this
+                // property's own assessed value already looks in line with real
+                // comps/protest-outcome data. >= 1, not > 0: currency() rounds
+                // to whole dollars, so a positive-but-sub-$1 amount would
+                // otherwise still render as a bare, confusing "$0" hero.
+                <>
+                  <p className="mt-2 font-serif text-2xl font-bold text-accent sm:text-3xl">
+                    Good news!
+                  </p>
+                  <p className="mt-2 max-w-md text-sm text-primary-foreground/80">
+                    Your property appears to be fairly assessed. We found little or no opportunity
+                    for additional tax savings this year.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="print:hidden shrink-0 text-right text-sm">
+              {hasFullAccess ? (
                 <div className="text-primary-foreground/70 text-xs">
-                  Subscribe to unlock the rest
+                  AI Report subscription active
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  <div>
+                    {FREE_MODULE_COUNT} of {MODULES.length} modules free
+                  </div>
+                  <div className="text-primary-foreground/70 text-xs">
+                    Subscribe to unlock the rest
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-        {user && (
-          <div className="relative z-10 border-t border-primary-foreground/20 px-5 pb-5 pt-3 print:hidden sm:px-8 sm:pb-8">
-            {existingProtest ? (
-              // Case Progress / Next Action — the stages shown, their labels,
-              // and which one is "current" all come from case-next-action.ts,
-              // the same rules View Case's own Prepare & File tab and Corvus
-              // AI Guidance panel are built on, so this can never say
-              // something View Case itself would disagree with. View Case
-              // stays the prominent, filled action (it's where the whole
-              // case actually gets managed); the dynamic button beside it
-              // just answers "what do I need to do next," using View Case's
-              // own terminology for whichever stage that is.
-              <div className="grid gap-3">
-                {nextAction ? (
-                  <>
-                    <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-xs">
-                      {nextAction.timeline.map((stage, i) => (
-                        <li key={stage.id} className="flex items-center gap-1.5">
-                          {i > 0 && (
-                            <span aria-hidden className="text-primary-foreground/30">
-                              →
+          {user && (
+            <div className="relative z-10 border-t border-primary-foreground/20 px-5 pb-5 pt-3 print:hidden sm:px-8 sm:pb-8">
+              {existingProtest ? (
+                // Case Progress / Next Action — the stages shown, their labels,
+                // and which one is "current" all come from case-next-action.ts,
+                // the same rules View Case's own Prepare & File tab and Corvus
+                // AI Guidance panel are built on, so this can never say
+                // something View Case itself would disagree with. View Case
+                // stays the prominent, filled action (it's where the whole
+                // case actually gets managed); the dynamic button beside it
+                // just answers "what do I need to do next," using View Case's
+                // own terminology for whichever stage that is.
+                <div className="grid gap-3">
+                  {nextAction ? (
+                    <>
+                      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-xs">
+                        {nextAction.timeline.map((stage, i) => (
+                          <li key={stage.id} className="flex items-center gap-1.5">
+                            {i > 0 && (
+                              <span aria-hidden className="text-primary-foreground/30">
+                                →
+                              </span>
+                            )}
+                            <span
+                              className={`whitespace-nowrap rounded-full px-2.5 py-1 font-medium ${
+                                stage.status === "current"
+                                  ? "bg-accent text-accent-foreground"
+                                  : stage.status === "done"
+                                    ? "bg-white/10 text-primary-foreground/70"
+                                    : "text-primary-foreground/40"
+                              }`}
+                            >
+                              {stage.status === "done" ? "✓ " : ""}
+                              {stage.label}
                             </span>
-                          )}
-                          <span
-                            className={`whitespace-nowrap rounded-full px-2.5 py-1 font-medium ${
-                              stage.status === "current"
-                                ? "bg-accent text-accent-foreground"
-                                : stage.status === "done"
-                                  ? "bg-white/10 text-primary-foreground/70"
-                                  : "text-primary-foreground/40"
-                            }`}
-                          >
-                            {stage.status === "done" ? "✓ " : ""}
-                            {stage.label}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                    <p className="max-w-xl text-sm text-primary-foreground/80">
-                      {nextAction.summary}
-                    </p>
-                  </>
-                ) : (
-                  <div className="h-4 w-56 animate-pulse rounded bg-white/10" aria-hidden />
-                )}
-                <div className="flex flex-wrap items-center gap-3">
-                  {resolvedProperty && (
-                    <Link
-                      to="/dashboard/case"
-                      search={{ propertyId: resolvedProperty.id }}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-accent text-sm py-1.5 font-semibold"
-                    >
-                      View Case
-                    </Link>
+                          </li>
+                        ))}
+                      </ol>
+                      <p className="max-w-xl text-sm text-primary-foreground/80">
+                        {nextAction.summary}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="h-4 w-56 animate-pulse rounded bg-white/10" aria-hidden />
                   )}
-                  {nextAction?.action &&
-                    resolvedProperty &&
-                    (nextAction.action.kind === "external" ? (
-                      <a
-                        href={nextAction.action.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                      >
-                        {nextAction.action.label}
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    {resolvedProperty && (
                       <Link
                         to="/dashboard/case"
                         search={{ propertyId: resolvedProperty.id }}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        className="btn-accent text-sm py-1.5 font-semibold"
                       >
-                        {nextAction.action.label}
+                        View Case
                       </Link>
-                    ))}
+                    )}
+                    {nextAction?.action &&
+                      resolvedProperty &&
+                      (nextAction.action.kind === "external" ? (
+                        <a
+                          href={nextAction.action.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        >
+                          {nextAction.action.label}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        <Link
+                          to="/dashboard/case"
+                          search={{ propertyId: resolvedProperty.id }}
+                          className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
+                        >
+                          {nextAction.action.label}
+                        </Link>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            ) : hasFullAccess ? (
-              <button onClick={startProtest} className="btn-accent text-sm py-1.5">
-                {myPlan === "owner_managed" ? "File Protest" : "Request Protest Filing"}
-              </button>
-            ) : (
-              // Real payment gate (see startProtest's own check) reflected
-              // honestly here — real, one-click checkout for THIS property
-              // right in the banner, not a dead-end link to go find it again
-              // on the Properties list. The bracket is already known from
-              // the property's own value; only the tier is a real choice,
-              // so both real prices are shown.
-              <div className="flex flex-wrap gap-2">
-                {(["owner_managed", "corvusrf_managed"] as const).map((tier) => {
-                  const bracket = bracketForValue(resolvedProperty?.totalValue ?? state.totalValue);
-                  return (
-                    <button
-                      key={tier}
-                      disabled={!!subscribingTier}
-                      onClick={() => handleSubscribeToProperty(tier)}
-                      className="btn-accent text-sm py-1.5 disabled:opacity-60"
-                    >
-                      {subscribingTier === tier
-                        ? "Redirecting…"
-                        : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo`}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Modules */}
-      <section className="mt-8 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
-          <button onClick={() => window.print()} className="btn-outline text-sm py-2">
-            Export Report
-          </button>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          {hasFullAccess
-            ? "All modules unlocked with your AI Report subscription."
-            : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
-        </p>
-
-        {hasFullAccess && resolvedProperty && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
-            <div className="min-w-0">
-              <span className="font-semibold text-foreground">Property Base Data</span>
-              {baseData ? (
-                <span className="text-muted-foreground">
-                  {" — "}AI-fetched from{" "}
-                  {baseData.snapshot.sources.length > 0
-                    ? baseData.snapshot.sources.join(", ")
-                    : "the address (no live county source)"}{" "}
-                  · {new Date(baseData.fetchedAt).toLocaleDateString()}
-                  {baseData.lastChangeNote ? ` · last change: ${baseData.lastChangeNote}` : ""}
-                </span>
+              ) : hasFullAccess ? (
+                <button onClick={startProtest} className="btn-accent text-sm py-1.5">
+                  {myPlan === "owner_managed" ? "File Protest" : "Request Protest Filing"}
+                </button>
               ) : (
-                <span className="text-muted-foreground">
-                  {" — "}
-                  {baseDataBusy ? "fetching from county + federal sources…" : "not fetched yet"}
-                </span>
+                // Real payment gate (see startProtest's own check) reflected
+                // honestly here — real, one-click checkout for THIS property
+                // right in the banner, not a dead-end link to go find it again
+                // on the Properties list. The bracket is already known from
+                // the property's own value; only the tier is a real choice,
+                // so both real prices are shown.
+                <div className="flex flex-wrap gap-2">
+                  {(["owner_managed", "corvusrf_managed"] as const).map((tier) => {
+                    const bracket = bracketForValue(
+                      resolvedProperty?.totalValue ?? state.totalValue,
+                    );
+                    return (
+                      <button
+                        key={tier}
+                        disabled={!!subscribingTier}
+                        onClick={() => handleSubscribeToProperty(tier)}
+                        className="btn-accent text-sm py-1.5 disabled:opacity-60"
+                      >
+                        {subscribingTier === tier
+                          ? "Redirecting…"
+                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo`}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              {baseData?.documentId && (
-                <Link to="/dashboard/documents" className="text-accent hover:underline">
-                  View in Documents
-                </Link>
-              )}
-              <button
-                type="button"
-                onClick={() => void refreshBaseData()}
-                disabled={baseDataBusy}
-                className="btn-outline text-xs py-1 disabled:opacity-60"
-              >
-                {baseDataBusy ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
+          )}
+        </section>
+
+        {/* The selected property's own journey — follows the property picked at the top. */}
+        {resolvedProperty && (
+          <div className="mt-8 print:hidden">
+            <JourneyTracker propertyId={resolvedProperty.id} />
           </div>
         )}
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((m) => (
-            <ModuleCard
-              key={m.id}
-              m={m}
-              unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
-              hasFullAccess={hasFullAccess}
-              moduleState={moduleData[m.id]}
-              moduleData={moduleData}
-              compsMap={compsMap}
-              siteGisMap={siteGisMap}
-              siteCoords={siteCoords}
-              estimated={estimated}
-              propertyType={state.propertyType}
-              address={resolvedProperty?.address || state.address}
-              totalValue={state.totalValue}
-              improvementValue={state.improvementValue}
-              overrides={overrides}
-              incomeComputed={incomeComputed}
-              incomeAnalysis={incomeAnalysis}
-              savingsAnalysis={savingsAnalysis}
-              uploadingEvidence={uploadingEvidence}
-              onUploadEvidence={handleUploadEvidence}
-              onSaveIncomeAnalysis={saveIncomeAnalysis}
-              onOpen={() => openModule(m)}
-              onForceReload={() => loadModule(m.id, { recheck: true })}
-            />
-          ))}
-        </div>
-      </section>
+        {/* Modules */}
+        <section className="mt-8 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
+            <button onClick={() => window.print()} className="btn-outline text-sm py-2">
+              Export Report
+            </button>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            {hasFullAccess
+              ? "All modules unlocked with your AI Report subscription."
+              : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
+          </p>
 
-      {/* Print-only linear report — reuses the exact same module-rendering logic as
+          {hasFullAccess && resolvedProperty && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-secondary/30 p-3 text-xs">
+              <div className="min-w-0">
+                <span className="font-semibold text-foreground">Property Base Data</span>
+                {baseData ? (
+                  <span className="text-muted-foreground">
+                    {" — "}AI-fetched from{" "}
+                    {baseData.snapshot.sources.length > 0
+                      ? baseData.snapshot.sources.join(", ")
+                      : "the address (no live county source)"}{" "}
+                    · {new Date(baseData.fetchedAt).toLocaleDateString()}
+                    {baseData.lastChangeNote ? ` · last change: ${baseData.lastChangeNote}` : ""}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {" — "}
+                    {baseDataBusy ? "fetching from county + federal sources…" : "not fetched yet"}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                {baseData?.documentId && (
+                  <Link
+                    to="/dashboard/documents"
+                    search={{ propertyId: resolvedProperty?.id }}
+                    className="text-accent hover:underline"
+                  >
+                    View in Documents
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void refreshBaseData()}
+                  disabled={baseDataBusy}
+                  className="btn-outline text-xs py-1 disabled:opacity-60"
+                >
+                  {baseDataBusy ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <CaseResultContext.Provider
+            value={
+              existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                ? buildCaseOutcome(resolvedProperty, existingProtest)
+                : null
+            }
+          >
+            <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {MODULES.map((m) => (
+                <ModuleCard
+                  key={m.id}
+                  m={m}
+                  unlocked={hasFullAccess || m.n <= FREE_MODULE_COUNT}
+                  hasFullAccess={hasFullAccess}
+                  moduleState={moduleData[m.id]}
+                  moduleData={moduleData}
+                  compsMap={compsMap}
+                  siteGisMap={siteGisMap}
+                  siteCoords={siteCoords}
+                  estimated={estimated}
+                  propertyType={state.propertyType}
+                  address={resolvedProperty?.address || state.address}
+                  totalValue={state.totalValue}
+                  improvementValue={state.improvementValue}
+                  overrides={overrides}
+                  incomeComputed={incomeComputed}
+                  incomeAnalysis={incomeAnalysis}
+                  savingsAnalysis={savingsAnalysis}
+                  uploadingEvidence={uploadingEvidence}
+                  onUploadEvidence={handleUploadEvidence}
+                  onSaveIncomeAnalysis={saveIncomeAnalysis}
+                  onOpen={() => openModule(m)}
+                  onForceReload={() => loadModule(m.id, { recheck: true })}
+                />
+              ))}
+            </div>
+          </CaseResultContext.Provider>
+        </section>
+
+        {/* Print-only linear report — reuses the exact same module-rendering logic as
           the modal above (ModulePreviewBody), stacking every module the user has
           already unlocked and viewed into one printable document. Deliberately
           does NOT trigger new AI calls at export time (no re-fetch here) — export
           captures "your report so far," the same content already shown on screen,
           rather than firing up to 9 fresh AI calls the moment someone clicks print. */}
-      <section className="hidden print:block mt-8">
-        <h2 className="font-serif text-2xl font-semibold">AI Property Tax Report</h2>
-        <p className="text-sm text-muted-foreground">
-          {state.address} · {state.cad} · Generated {new Date().toLocaleDateString()}
-        </p>
-        {(() => {
-          const printable = MODULES.filter(
-            (m) => moduleData[m.id]?.data != null || (m.id === "comps" && compsMap.data),
-          );
-          if (printable.length === 0) {
-            return (
-              <p className="mt-4 text-sm text-muted-foreground">
-                Open a module above, then use Export Report again to include it here.
-              </p>
+        <section className="hidden print:block mt-8">
+          <h2 className="font-serif text-2xl font-semibold">AI Property Tax Report</h2>
+          <p className="text-sm text-muted-foreground">
+            {state.address} · {state.cad} · Generated {new Date().toLocaleDateString()}
+          </p>
+          {(() => {
+            const printable = MODULES.filter(
+              (m) => moduleData[m.id]?.data != null || (m.id === "comps" && compsMap.data),
             );
-          }
-          return printable.map((m) => (
-            <div key={m.id} className="mt-6" style={{ breakInside: "avoid" }}>
-              <h3 className="font-serif text-lg font-semibold">{m.shortName}</h3>
-              <div className="text-xs font-medium text-muted-foreground">{m.title}</div>
-              <p className="text-sm text-muted-foreground">{m.question}</p>
-              <ModulePreviewBody
-                m={m}
-                estimated={estimated}
-                state={state}
-                moduleState={moduleData[m.id]}
-                moduleData={moduleData}
-                compsMap={compsMap}
-                siteGisMap={siteGisMap}
-                siteCoords={siteCoords}
-                siteCoordsSettled={siteCoordsSettled}
-                onRetry={() => {}}
-                allowEvidenceUpload={false}
-                evidenceDocs={evidenceDocs}
-                uploadingEvidence={false}
-                onUploadEvidence={() => {}}
-                onForceReload={() => {}}
-                onReloadModule={() => {}}
-                onFetchCadDetails={() => {}}
-                onRefreshSiteGis={() => {}}
-                siteGisRefreshing={false}
-                cadFetching={false}
-                onAutoSourceEvidence={() => {}}
-                autoSourcingEvidence={false}
-                onFetchPublicData={() => {}}
-                fetchingPublicData={false}
-                onAnswerStrategy={() => {}}
-                onAskQuestion={() => Promise.resolve("")}
-                onGenerateDataSheet={() => Promise.resolve(null)}
-                existingProtest={null}
-                resolvedProperty={null}
-                caseDocuments={[]}
-                noticeSignedAt={null}
-                onOpenModule={() => {}}
-                onStartProtest={() => {}}
-                onViewCase={() => {}}
-                overrides={overrides}
-                onMarkNotApplicable={() => {}}
-                onClearNotApplicable={() => {}}
-                compSelections={compSelections}
-                onSaveCompSelection={() => {}}
-                onRemoveCompSelection={() => {}}
-                onExtractCompSale={async () => null}
-                incomeAnalysis={incomeAnalysis}
-                incomeComputed={incomeComputed}
-                onSaveIncomeAnalysis={() => {}}
-                onExtractIncome={extractIncome}
-                savingsAnalysis={savingsAnalysis}
-                savingsTaxInputs={savingsTaxInputs}
-                onSaveSavingsTaxInputs={() => {}}
-              />
-            </div>
-          ));
-        })()}
-      </section>
+            if (printable.length === 0) {
+              return (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Open a module above, then use Export Report again to include it here.
+                </p>
+              );
+            }
+            return printable.map((m) => (
+              <div key={m.id} className="mt-6" style={{ breakInside: "avoid" }}>
+                <h3 className="font-serif text-lg font-semibold">{m.shortName}</h3>
+                <div className="text-xs font-medium text-muted-foreground">{m.title}</div>
+                <p className="text-sm text-muted-foreground">{m.question}</p>
+                <ModulePreviewBody
+                  m={m}
+                  estimated={estimated}
+                  state={state}
+                  moduleState={moduleData[m.id]}
+                  moduleData={moduleData}
+                  compsMap={compsMap}
+                  siteGisMap={siteGisMap}
+                  siteCoords={siteCoords}
+                  siteCoordsSettled={siteCoordsSettled}
+                  onRetry={() => {}}
+                  allowEvidenceUpload={false}
+                  evidenceDocs={evidenceDocs}
+                  uploadingEvidence={false}
+                  onUploadEvidence={() => {}}
+                  onForceReload={() => {}}
+                  onReloadModule={() => {}}
+                  onFetchCadDetails={() => {}}
+                  onRefreshSiteGis={() => {}}
+                  siteGisRefreshing={false}
+                  cadFetching={false}
+                  onAutoSourceEvidence={() => {}}
+                  autoSourcingEvidence={false}
+                  onFetchPublicData={() => {}}
+                  fetchingPublicData={false}
+                  onAnswerStrategy={() => {}}
+                  onAskQuestion={() => Promise.resolve("")}
+                  onGenerateDataSheet={() => Promise.resolve(null)}
+                  existingProtest={null}
+                  resolvedProperty={null}
+                  caseDocuments={[]}
+                  noticeSignedAt={null}
+                  onOpenModule={() => {}}
+                  onStartProtest={() => {}}
+                  onViewCase={() => {}}
+                  overrides={overrides}
+                  onMarkNotApplicable={() => {}}
+                  onClearNotApplicable={() => {}}
+                  compSelections={compSelections}
+                  onSaveCompSelection={() => {}}
+                  onRemoveCompSelection={() => {}}
+                  onExtractCompSale={async () => null}
+                  incomeAnalysis={incomeAnalysis}
+                  incomeComputed={incomeComputed}
+                  onSaveIncomeAnalysis={() => {}}
+                  onExtractIncome={extractIncome}
+                  savingsAnalysis={savingsAnalysis}
+                  savingsTaxInputs={savingsTaxInputs}
+                  onSaveSavingsTaxInputs={() => {}}
+                />
+              </div>
+            ));
+          })()}
+        </section>
 
-      {/* Preview modal */}
-      {openModel && (
-        <Modal onClose={() => setOpenId(null)} wide>
-          <span className="badge-soft">{hasFullAccess ? "Unlocked" : "Free Preview"}</span>
-          <div className="mt-2 flex items-center gap-2">
-            <NumberBadge n={openModel.n} color={openModel.color} size="lg" />
-            <h3 className="font-serif text-2xl font-semibold">{openModel.shortName}</h3>
-          </div>
-          <div className="text-sm font-medium text-muted-foreground">{openModel.title}</div>
-          <p className="text-muted-foreground">{openModel.question}</p>
-          {!!moduleData[openModel.id]?.data && (
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                {moduleData[openModel.id]?.cachedAt
-                  ? `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
-                  : "Updated just now"}
-              </span>
-              {openModel.id !== "savings" && (
-                <>
-                  {/* Refresh re-checks the cache: identical inputs → the exact
+        {/* Preview modal */}
+        {openModel && (
+          <Modal onClose={() => setOpenId(null)} wide>
+            <span className="badge-soft">{hasFullAccess ? "Unlocked" : "Free Preview"}</span>
+            <div className="mt-2 flex items-center gap-2">
+              <NumberBadge n={openModel.n} color={openModel.color} size="lg" />
+              <h3 className="font-serif text-2xl font-semibold">{openModel.shortName}</h3>
+            </div>
+            <div className="text-sm font-medium text-muted-foreground">{openModel.title}</div>
+            <p className="text-muted-foreground">{openModel.question}</p>
+            {!!moduleData[openModel.id]?.data && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>
+                  {moduleData[openModel.id]?.cachedAt
+                    ? `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
+                    : "Updated just now"}
+                </span>
+                {openModel.id !== "savings" && (
+                  <>
+                    {/* Refresh re-checks the cache: identical inputs → the exact
                       same stored result, no AI call. Only a real input change
                       re-runs the analysis. */}
-                  <button
-                    type="button"
-                    onClick={() => loadModule(openModel.id, { recheck: true })}
-                    disabled={moduleData[openModel.id]?.loading}
-                    className="inline-flex items-center gap-1 font-medium text-accent hover:underline disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      className={`h-3 w-3 ${moduleData[openModel.id]?.loading ? "animate-spin" : ""}`}
-                    />
-                    Refresh
-                  </button>
-                  <span aria-hidden>·</span>
-                  {/* Force a fresh AI pass — for re-wording an answer that reads
+                    <button
+                      type="button"
+                      onClick={() => loadModule(openModel.id, { recheck: true })}
+                      disabled={moduleData[openModel.id]?.loading}
+                      className="inline-flex items-center gap-1 font-medium text-accent hover:underline disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={`h-3 w-3 ${moduleData[openModel.id]?.loading ? "animate-spin" : ""}`}
+                      />
+                      Refresh
+                    </button>
+                    <span aria-hidden>·</span>
+                    {/* Force a fresh AI pass — for re-wording an answer that reads
                       oddly. The figures are computed from CAD data, so they
                       barely move. */}
-                  <button
-                    type="button"
-                    onClick={() => loadModule(openModel.id, { force: true })}
-                    disabled={moduleData[openModel.id]?.loading}
-                    title="Ask the AI to re-write the wording. Figures are computed from CAD data and won't move."
-                    className="hover:underline disabled:opacity-50"
-                  >
-                    Regenerate with AI
-                  </button>
-                </>
+                    <button
+                      type="button"
+                      onClick={() => loadModule(openModel.id, { force: true })}
+                      disabled={moduleData[openModel.id]?.loading}
+                      title="Ask the AI to re-write the wording. Figures are computed from CAD data and won't move."
+                      className="hover:underline disabled:opacity-50"
+                    >
+                      Regenerate with AI
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            <ModulePreviewBody
+              m={openModel}
+              estimated={estimated}
+              state={state}
+              moduleState={moduleData[openModel.id]}
+              moduleData={moduleData}
+              compsMap={compsMap}
+              siteGisMap={siteGisMap}
+              siteCoords={siteCoords}
+              siteCoordsSettled={siteCoordsSettled}
+              onRetry={() => loadModule(openModel.id)}
+              allowEvidenceUpload
+              evidenceDocs={evidenceDocs}
+              uploadingEvidence={uploadingEvidence}
+              onUploadEvidence={handleUploadEvidence}
+              onForceReload={() => loadModule(openModel.id, { recheck: true })}
+              onFetchCadDetails={handleFetchCadDetails}
+              onRefreshSiteGis={handleRefreshSiteGis}
+              siteGisRefreshing={siteGisRefreshing}
+              cadFetching={cadFetching}
+              onAutoSourceEvidence={handleAutoSourceEvidence}
+              autoSourcingEvidence={autoSourcingEvidence}
+              onFetchPublicData={handleFetchPublicData}
+              fetchingPublicData={baseDataBusy}
+              onAnswerStrategy={answerStrategy}
+              onAskQuestion={askQuestion}
+              onGenerateDataSheet={handleGenerateDataSheet}
+              existingProtest={existingProtest}
+              resolvedProperty={resolvedProperty}
+              caseDocuments={caseDocuments}
+              noticeSignedAt={null}
+              onOpenModule={(id) => {
+                const target = MODULES.find((mm) => mm.id === id);
+                if (target) openModule(target);
+              }}
+              onStartProtest={startProtest}
+              onReloadModule={(id) => loadModule(id, { force: true })}
+              onViewCase={() => {
+                if (!resolvedProperty) return;
+                // Same-window navigation (per product direction) — opening it
+                // in a new tab left two tabs that each reloaded on focus.
+                nav({ to: "/dashboard/case", search: { propertyId: resolvedProperty.id } });
+              }}
+              overrides={overrides}
+              onMarkNotApplicable={markNotApplicable}
+              onClearNotApplicable={clearNotApplicable}
+              compSelections={compSelections}
+              onSaveCompSelection={saveCompSelection}
+              onRemoveCompSelection={removeCompSelection}
+              onExtractCompSale={extractCompSaleFromFile}
+              incomeAnalysis={incomeAnalysis}
+              incomeComputed={incomeComputed}
+              onSaveIncomeAnalysis={saveIncomeAnalysis}
+              onExtractIncome={extractIncome}
+              savingsAnalysis={savingsAnalysis}
+              savingsTaxInputs={savingsTaxInputs}
+              onSaveSavingsTaxInputs={saveSavingsTaxInputs}
+            />
+            <div className="mt-6 flex gap-2 justify-end">
+              <button onClick={() => setOpenId(null)} className="btn-outline">
+                Return to Property Summary
+              </button>
+              {!hasFullAccess && (
+                <Link to="/pricing" className="btn-accent">
+                  Subscribe & Unlock Full Report
+                </Link>
               )}
             </div>
-          )}
-          <ModulePreviewBody
-            m={openModel}
-            estimated={estimated}
-            state={state}
-            moduleState={moduleData[openModel.id]}
-            moduleData={moduleData}
-            compsMap={compsMap}
-            siteGisMap={siteGisMap}
-            siteCoords={siteCoords}
-            siteCoordsSettled={siteCoordsSettled}
-            onRetry={() => loadModule(openModel.id)}
-            allowEvidenceUpload
-            evidenceDocs={evidenceDocs}
-            uploadingEvidence={uploadingEvidence}
-            onUploadEvidence={handleUploadEvidence}
-            onForceReload={() => loadModule(openModel.id, { recheck: true })}
-            onFetchCadDetails={handleFetchCadDetails}
-            onRefreshSiteGis={handleRefreshSiteGis}
-            siteGisRefreshing={siteGisRefreshing}
-            cadFetching={cadFetching}
-            onAutoSourceEvidence={handleAutoSourceEvidence}
-            autoSourcingEvidence={autoSourcingEvidence}
-            onFetchPublicData={handleFetchPublicData}
-            fetchingPublicData={baseDataBusy}
-            onAnswerStrategy={answerStrategy}
-            onAskQuestion={askQuestion}
-            onGenerateDataSheet={handleGenerateDataSheet}
-            existingProtest={existingProtest}
-            resolvedProperty={resolvedProperty}
-            caseDocuments={caseDocuments}
-            noticeSignedAt={null}
-            onOpenModule={(id) => {
-              const target = MODULES.find((mm) => mm.id === id);
-              if (target) openModule(target);
-            }}
-            onStartProtest={startProtest}
-            onReloadModule={(id) => loadModule(id, { force: true })}
-            onViewCase={() => {
-              if (!resolvedProperty) return;
-              // Same-window navigation (per product direction) — opening it
-              // in a new tab left two tabs that each reloaded on focus.
-              nav({ to: "/dashboard/case", search: { propertyId: resolvedProperty.id } });
-            }}
-            overrides={overrides}
-            onMarkNotApplicable={markNotApplicable}
-            onClearNotApplicable={clearNotApplicable}
-            compSelections={compSelections}
-            onSaveCompSelection={saveCompSelection}
-            onRemoveCompSelection={removeCompSelection}
-            onExtractCompSale={extractCompSaleFromFile}
-            incomeAnalysis={incomeAnalysis}
-            incomeComputed={incomeComputed}
-            onSaveIncomeAnalysis={saveIncomeAnalysis}
-            onExtractIncome={extractIncome}
-            savingsAnalysis={savingsAnalysis}
-            savingsTaxInputs={savingsTaxInputs}
-            onSaveSavingsTaxInputs={saveSavingsTaxInputs}
-          />
-          <div className="mt-6 flex gap-2 justify-end">
-            <button onClick={() => setOpenId(null)} className="btn-outline">
-              Return to Property Summary
-            </button>
-            {!hasFullAccess && (
+          </Modal>
+        )}
+
+        {/* Subscription wall */}
+        {showWall && (
+          <Modal onClose={() => setShowWall(false)}>
+            <h3 className="font-serif text-2xl font-semibold">
+              Unlock Your Complete AI Property Analysis
+            </h3>
+            <p className="text-muted-foreground mt-2">
+              Modules 1-{FREE_MODULE_COUNT} are free to preview. Subscribe to unlock modules{" "}
+              {FREE_MODULE_COUNT + 1}-{MODULES.length} and the complete property analysis.
+            </p>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
               <Link to="/pricing" className="btn-accent">
                 Subscribe & Unlock Full Report
               </Link>
-            )}
-          </div>
-        </Modal>
-      )}
+              <Link to="/pricing" className="btn-outline">
+                Compare Plans
+              </Link>
+              <button onClick={() => setShowWall(false)} className="btn-outline sm:col-span-2">
+                Return to Property Summary
+              </button>
+            </div>
+          </Modal>
+        )}
 
-      {/* Subscription wall */}
-      {showWall && (
-        <Modal onClose={() => setShowWall(false)}>
-          <h3 className="font-serif text-2xl font-semibold">
-            Unlock Your Complete AI Property Analysis
-          </h3>
-          <p className="text-muted-foreground mt-2">
-            Modules 1-{FREE_MODULE_COUNT} are free to preview. Subscribe to unlock modules{" "}
-            {FREE_MODULE_COUNT + 1}-{MODULES.length} and the complete property analysis.
-          </p>
-          <div className="mt-6 grid gap-2 sm:grid-cols-2">
-            <Link to="/pricing" className="btn-accent">
-              Subscribe & Unlock Full Report
-            </Link>
-            <Link to="/pricing" className="btn-outline">
-              Compare Plans
-            </Link>
-            <button onClick={() => setShowWall(false)} className="btn-outline sm:col-span-2">
-              Return to Property Summary
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {authorizing && user && resolvedProperty && (
-        <ProtestAuthorizationFlow
-          userId={user.id}
-          property={resolvedProperty}
-          userEmail={user.email}
-          isPaid={hasFullAccess}
-          open={authorizing}
-          onOpenChange={(open) => setAuthorizing(open)}
-          onDone={(created) => {
-            setExistingProtest(created);
-            generateCasePrep(created.id, user.id, resolvedProperty).catch((err) =>
-              console.error("Case prep generation failed:", err),
-            );
-          }}
-        />
-      )}
-    </div>
+        {authorizing && user && resolvedProperty && (
+          <ProtestAuthorizationFlow
+            userId={user.id}
+            property={resolvedProperty}
+            userEmail={user.email}
+            isPaid={hasFullAccess}
+            open={authorizing}
+            onOpenChange={(open) => setAuthorizing(open)}
+            onDone={(created) => {
+              setExistingProtest(created);
+              generateCasePrep(created.id, user.id, resolvedProperty).catch((err) =>
+                console.error("Case prep generation failed:", err),
+              );
+            }}
+          />
+        )}
+      </div>
+    </EvidenceImpactContext.Provider>
   );
 }
 
@@ -3457,6 +3759,7 @@ function ModuleCard({
   onOpen: () => void;
   onForceReload: () => void;
 }) {
+  const caseResult = useContext(CaseResultContext);
   // Reflects what's actually happening now that the grid eager-loads real
   // data (see the effect above Report()), not the old static per-module
   // metadata — "Completed" used to show even for a module nobody had opened
@@ -3480,18 +3783,21 @@ function ModuleCard({
           : moduleState.error
             ? "Error"
             : "Completed";
-  const insight = unlocked
-    ? moduleInsight(
-        m,
-        moduleState,
-        compsMap,
-        estimated,
-        totalValue,
-        overrides,
-        incomeComputed,
-        savingsAnalysis,
-      )
-    : null;
+  const insight =
+    unlocked && caseResult && m.id === "health"
+      ? "Protest completed"
+      : unlocked
+        ? moduleInsight(
+            m,
+            moduleState,
+            compsMap,
+            estimated,
+            totalValue,
+            overrides,
+            incomeComputed,
+            savingsAnalysis,
+          )
+        : null;
   // Module 2's own score for this module's strategy, once it's resolved — see
   // the priorityContext sequencing in loadModule()/the eager-load effects
   // above. Only comps/site/improvement/income/zoning map to one of Module 2's
@@ -3509,11 +3815,23 @@ function ModuleCard({
       ? cardDataGap(m.id, moduleState?.data, compsMap, overrides)
       : null;
   return (
-    <div className="card-elev overflow-hidden flex flex-col">
+    <div className="card-elev relative flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+      {/* A strip in the module's own colour along the top. */}
+      <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
+      <m.icon
+        aria-hidden
+        className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
+      />
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <NumberBadge n={m.n} color={m.color} size="lg" />
+            <ProgressRing
+              percent={status === "Completed" ? 100 : status === "Analyzing" ? 35 : 0}
+              spinning={status === "Analyzing"}
+              className={m.color.text}
+            >
+              <NumberBadge n={m.n} color={m.color} size="lg" />
+            </ProgressRing>
             {/* Wraps instead of truncating — confirmed live on a narrow
                 mobile card that even the already-shortened names ("Zoning &
                 Classification", "Executive Protest Report") still don't fit
@@ -3721,6 +4039,7 @@ function ModuleVisual({
   onSaveIncomeAnalysis: (input: IncomeAnalysisInput) => void;
   onOpen: () => void;
 }) {
+  const caseResult = useContext(CaseResultContext);
   if (!unlocked) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -3779,6 +4098,12 @@ function ModuleVisual({
 
   if (m.id === "comps" && compsMap.data?.comps.length) {
     const stats = computeComparableStats(compsMap.data.subject, compsMap.data.comps, totalValue);
+    // The single most-similar comp (ranked[0] once excluded ones are skipped —
+    // `ranked` is already sorted highest-similarity-first, see comps-analysis.ts) —
+    // a real, named nearby property instead of just an aggregate range, so the
+    // card's otherwise-empty space below the chart shows something concrete
+    // and specific to this property rather than being wasted.
+    const topComp = stats.ranked.find((c) => !c.excluded) ?? null;
     return (
       <div>
         <div className="flex items-baseline gap-1.5">
@@ -3792,6 +4117,22 @@ function ModuleVisual({
             comps={stats.ranked}
           />
         </div>
+        {topComp && (
+          <div className={`mt-3 rounded-lg px-2.5 py-2 ${m.color.bg}`}>
+            <div
+              className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}
+            >
+              Closest match — {Math.round(topComp.similarity)}% similar
+            </div>
+            <div className="mt-0.5 truncate text-xs font-medium text-foreground">
+              {topComp.address}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {topComp.distanceMi.toFixed(1)} mi away
+              {topComp.marketValue != null && ` · ${compactCurrency(topComp.marketValue)}`}
+            </div>
+          </div>
+        )}
         {stats.limitedData ? (
           <div className="mt-3 rounded-md bg-warning/15 px-2 py-1 text-[11px] text-warning-foreground">
             Limited Comparable Data
@@ -3849,13 +4190,64 @@ function ModuleVisual({
   switch (m.id) {
     case "health": {
       const d = moduleState.data as HealthScoreResult;
-      const label =
-        d.score >= 70
-          ? "Strong Opportunity"
-          : d.score >= 40
-            ? "Moderate Opportunity"
-            : "Limited Opportunity";
       const top3 = d.scoreBreakdown.slice(0, 3);
+      // Once the case is closed, Module 1's own score/gauge is the wrong
+      // number to show — it measures pre-protest OPPORTUNITY ("is this worth
+      // protesting"), not how the actual, completed protest went, and kept
+      // showing a low, red "weak" score plus the old pre-protest narrative
+      // even after a real, sizeable reduction. Grade the real outcome
+      // instead, from the product-specified bands (protest-outcome.ts).
+      if (caseResult) {
+        const outcome = protestOutcome(caseResult.valueReductionPct);
+        const outcomeColor =
+          outcome.tone === "success" ? "var(--success)" : "var(--muted-foreground)";
+        return (
+          <div>
+            <div className="text-center">
+              <div className="font-serif text-xl font-bold" style={{ color: outcomeColor }}>
+                {outcome.label}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{outcome.message}</p>
+            </div>
+            {top3.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+                {top3.map((b) => {
+                  const Icon = breakdownIcon(b.label);
+                  return (
+                    <div key={b.label} className="flex flex-col items-center gap-1">
+                      <span
+                        className={`grid h-8 w-8 place-items-center rounded-full ${m.color.bg} ${m.color.text}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="text-[9px] leading-tight text-muted-foreground">
+                        {b.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {caseResult.taxSavings != null && (
+              <div className="mt-3 rounded-lg bg-success/10 px-3 py-2.5 text-center">
+                <div className="font-serif text-2xl font-bold leading-none text-success">
+                  {currency(caseResult.taxSavings)}
+                </div>
+                {caseResult.valueReductionPct != null ? (
+                  <div className="mt-1 text-base font-bold text-success/90">
+                    {Math.round(caseResult.valueReductionPct)}% lower assessed value
+                  </div>
+                ) : null}
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  actual tax savings from your completed protest
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+      const label =
+        d.score >= 70 ? "Strong Opportunity" : d.score >= 40 ? "Moderate Opportunity" : "Limited Opportunity";
       return (
         <div>
           <SpeedometerGauge value={d.score} size="sm" />
@@ -3893,7 +4285,11 @@ function ModuleVisual({
               </div>
               {totalValue ? (
                 <div className="mt-1 text-base font-bold text-success/90">
-                  {Math.round((estimated.reduction / totalValue) * 100)}% of assessed value
+                  {(() => {
+                    // The percentage is how much the assessed VALUE drops (not the tax $ above).
+                    const pct = (estimated.reduction / totalValue) * 100;
+                    return `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}% lower assessed value`;
+                  })()}
                 </div>
               ) : null}
               <div className="mt-1 text-[10px] text-muted-foreground">
@@ -3901,6 +4297,7 @@ function ModuleVisual({
               </div>
             </div>
           )}
+          <EvidenceImpactCard />
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
@@ -3916,10 +4313,30 @@ function ModuleVisual({
     case "strategy": {
       const d = moduleState.data as ModuleResultMap["strategy"];
       if (d.strategies.length === 0) return null;
-      // No per-row upload chips — the card shows one "Upload data" control at
-      // the bottom (see cardDataGap's "strategy" case). Rows that still need
-      // evidence show a plain "Data Needed" pill instead.
-      return <StrategyRankList strategies={d.strategies} color={m.color} max={5} />;
+      // The AI's own one-line reason for its top-ranked argument — already
+      // computed for the modal's StrategyDetail, just not shown here, so this
+      // reuses it instead of adding anything new. Real and specific to this
+      // property (not a generic "here's how scoring works" blurb), which is
+      // what makes the otherwise-empty space above the bars worth filling.
+      const top = d.strategies.reduce((best, s) =>
+        s.strengthScore > best.strengthScore ? s : best,
+      );
+      return (
+        <div>
+          {top.primaryReason && (
+            <div className={`mb-3 rounded-lg px-3 py-2 ${m.color.bg}`}>
+              <div className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}>
+                Strongest argument — {top.name}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{top.primaryReason}</p>
+            </div>
+          )}
+          {/* No per-row upload chips — the card shows one "Upload data" control at
+              the bottom (see cardDataGap's "strategy" case). Rows that still need
+              evidence show a plain "Data Needed" pill instead. */}
+          <StrategyRankList strategies={d.strategies} color={m.color} max={5} />
+        </div>
+      );
     }
     case "comps": {
       const d = moduleState.data as ModuleResultMap["comps"];
@@ -3927,9 +4344,9 @@ function ModuleVisual({
         <div className="grid gap-1 text-xs text-muted-foreground">
           {!compsMap.loading && !compsMap.data?.comps.length && (
             <p>
-              No comparable-property map yet — live comps are only available for Collin, Denton, Grayson,
-              Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal below to
-              build the comp set yourself.
+              No comparable-property map yet — live comps are only available for Collin, Denton,
+              Grayson, Montgomery, Tarrant and Travis counties so far. Upload a sale or appraisal
+              below to build the comp set yourself.
             </p>
           )}
           <p>
@@ -4627,10 +5044,13 @@ function ComparableValueChart({
   );
 }
 
-// The appraisal-style normalization behind the size-adjusted indicated
-// value — each top comp reduced to $/acre (or $/SF), restated at the
-// subject's own size, then time-adjusted only if it has a real dated sale
-// (see computeComparableStats). All deterministic, never AI-written.
+// The equal-and-uniform rate range behind the indicated value: every comp
+// priced BELOW the subject's own $/acre, restated at the subject's actual
+// size — what the subject would be worth at that comp's rate (see
+// computeComparableStats's own "Rate-based indicated range" comment).
+// Product-specified 2026-09: no size or time adjustment, and only comps that
+// argue for a lower value are shown here at all. All deterministic, never
+// AI-written.
 function CompsAdjustmentGrid({
   perCompAdjustment,
   ranked,
@@ -4645,53 +5065,46 @@ function CompsAdjustmentGrid({
     const c = ranked.find((r) => r.key === key);
     return c?.address || `Property #${c?.pid ?? "?"}`;
   };
-  const unitLabel = (b: "acre" | "sqft" | "raw") =>
-    b === "acre" ? "$/acre" : b === "sqft" ? "$/SF" : "raw";
   return (
     <div>
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Size &amp; Time Adjustments → Indicated Value
+        Comps Below Subject Rate → Indicated Target Range
       </div>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[560px] text-left text-xs">
+        <table className="w-full min-w-[480px] text-left text-xs">
           <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-semibold">Comp</th>
-              <th className="px-3 py-2 font-semibold">Basis</th>
-              <th className="px-3 py-2 font-semibold">$ / Unit</th>
-              <th className="px-3 py-2 font-semibold">Size-Adjusted</th>
-              <th className="px-3 py-2 font-semibold">Time Adj.</th>
-              <th className="px-3 py-2 font-semibold">Adjusted Value</th>
+              <th className="px-3 py-2 font-semibold">Comp Property</th>
+              <th className="px-3 py-2 font-semibold">Unit ($/acre)</th>
+              <th className="px-3 py-2 font-semibold">Comp Value / Acre</th>
+              <th className="px-3 py-2 font-semibold">Subject Value at Comp Rate</th>
             </tr>
           </thead>
           <tbody>
             {perCompAdjustment.map((a) => (
               <tr key={a.key} className="border-t border-border/60">
                 <td className="px-3 py-2 text-muted-foreground">{addrOf(a.key)}</td>
-                <td className="px-3 py-2 text-muted-foreground">{unitLabel(a.unitBasis)}</td>
+                <td className="px-3 py-2 text-muted-foreground">$/acre</td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {a.unitBasis === "raw" ? "—" : compactCurrency(a.unitRate)}
+                  {compactCurrency(a.compPerAcre)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {compactCurrency(a.sizeAdjValue)}
+                <td className="px-3 py-2 font-semibold">
+                  {compactCurrency(a.subjectValueAtCompRate)}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {a.timeAdjPct === 0 ? "—" : `${a.timeAdjPct > 0 ? "+" : ""}${a.timeAdjPct}%`}
-                </td>
-                <td className="px-3 py-2 font-semibold">{compactCurrency(a.adjustedValue)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Similarity-weighted reconciliation:{" "}
+        Indicated target:{" "}
         <span className="font-semibold text-foreground">
           {compactCurrency(adjustedIndicated.value)}
         </span>{" "}
-        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Time
-        adjustments apply only to comps with a real dated sale — a CAD deed date isn&apos;t a
-        verified sale.
+        ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Each
+        comp&apos;s own $/acre applied to the subject&apos;s actual size — only comps priced below
+        the subject&apos;s own $/acre are shown; a comp priced at or above it doesn&apos;t argue
+        for a lower value.
       </p>
     </div>
   );
@@ -4773,6 +5186,8 @@ function ComparableTable({
   recommendedKeys,
   onToggleExclude,
   onRemove,
+  subjectValue,
+  subjectAcres,
 }: {
   ranked: RankedComp[];
   cad?: string;
@@ -4780,14 +5195,32 @@ function ComparableTable({
   recommendedKeys?: Set<string>;
   onToggleExclude?: (comp: RankedComp, exclude: boolean) => void;
   onRemove?: (comp: RankedComp) => void;
+  // The subject's own assessed value / land size — same valuePerAcre() basis
+  // every comp row already uses, so "$ / Acre" and "vs Subject" below are a
+  // fair apples-to-apples read, not assessed value skewed by lot size.
+  subjectValue?: number | null;
+  subjectAcres?: number | null;
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   if (ranked.length === 0) return null;
   const interactive = !!onToggleExclude;
   const showAi = !!perComp && perComp.size > 0;
-  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0);
+  const subjectPerAcre = valuePerAcre(subjectValue, subjectAcres);
+  const showVsSubject = subjectPerAcre != null;
+  const colCount = 7 + (interactive ? 1 : 0) + (showAi ? 1 : 0) + (showVsSubject ? 1 : 0);
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+      {subjectPerAcre != null && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border bg-secondary/30 px-3 py-2 text-xs">
+          <span className="font-semibold text-foreground">Subject Property</span>
+          <span className="text-muted-foreground">
+            {subjectAcres != null && `${formatAcres(subjectAcres)} · `}
+            {subjectValue != null && `${compactCurrency(subjectValue)} · `}
+            <span className="font-semibold text-foreground">{compactCurrency(subjectPerAcre)}</span>
+            /acre
+          </span>
+        </div>
+      )}
       <table className="w-full min-w-[640px] text-left text-xs">
         <thead className="bg-secondary/60 text-[10px] uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -4798,6 +5231,7 @@ function ComparableTable({
             <th className="px-3 py-2 font-semibold">Land Size</th>
             <th className="px-3 py-2 font-semibold">Assessed Value</th>
             <th className="px-3 py-2 font-semibold">$ / Acre</th>
+            {showVsSubject && <th className="px-3 py-2 font-semibold">vs Subject</th>}
             <th className="px-3 py-2 font-semibold">Distance</th>
             <th className="px-3 py-2 font-semibold">Similarity</th>
           </tr>
@@ -4887,6 +5321,18 @@ function ComparableTable({
                   <td className="px-3 py-2 text-muted-foreground">
                     {perAcre != null ? compactCurrency(perAcre) : "—"}
                   </td>
+                  {showVsSubject && (
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {perAcre != null && subjectPerAcre != null
+                        ? (() => {
+                            const deltaPct = Math.round(
+                              ((perAcre - subjectPerAcre) / subjectPerAcre) * 100,
+                            );
+                            return `${deltaPct > 0 ? "+" : ""}${deltaPct}%`;
+                          })()
+                        : "—"}
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-muted-foreground">{c.distanceMi.toFixed(2)} mi</td>
                   <td
                     className="px-3 py-2 font-semibold"
@@ -5385,7 +5831,7 @@ function FormulaChain({
         Icon={Home}
         value={compactCurrency(reduction)}
         label="value reduction"
-        tone="bg-sky-500/15 text-sky-600"
+        tone="bg-sky-500/15 text-sky-700"
       />
       <span className="text-sm text-muted-foreground">×</span>
       <FormulaIcon
@@ -5561,11 +6007,16 @@ function SiteFactorRow({
 // a glance (evidenceNeeded is still there as a hover title for anyone who
 // wants it). The same generic icon on every tile, same rationale as
 // ChecklistIconRows: nothing here is a specific categorized finding, so no
-// icon should look like one. Taps straight through to Module 8.
+// icon should look like one. The icon/name still taps through to Module 8
+// for full context; the two real actions — N/A and a direct per-factor
+// Upload (tagged "Site: <factor>", same convention Site's own auto-upload
+// already recognizes) — are both right here, so neither needs that detour.
 function SiteFactorGapTile({
   factor,
   onOpenModule,
   onMarkNotApplicable,
+  onUpload,
+  uploading,
 }: {
   factor: SiteFactor;
   onOpenModule: (moduleId: string) => void;
@@ -5573,6 +6024,8 @@ function SiteFactorGapTile({
   // enforceSiteFactorRealData) — this is the escape hatch so the card
   // isn't a permanent dead end when there's genuinely nothing to upload.
   onMarkNotApplicable: () => void;
+  onUpload: (factor: SiteFactor, files: File[]) => void;
+  uploading?: boolean;
 }) {
   return (
     <div
@@ -5587,13 +6040,37 @@ function SiteFactorGapTile({
         <FileWarning className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="line-clamp-2 text-[10px] font-medium leading-tight">{factor.factor}</span>
       </button>
-      <button
-        type="button"
-        onClick={onMarkNotApplicable}
-        className="text-[9px] font-medium text-muted-foreground underline decoration-dotted hover:text-foreground"
-      >
-        Mark N/A
-      </button>
+      <div className="flex items-center gap-1 text-[9px] font-medium">
+        <button
+          type="button"
+          onClick={onMarkNotApplicable}
+          className="text-muted-foreground underline decoration-dotted hover:text-foreground"
+        >
+          N/A
+        </button>
+        <span aria-hidden className="text-muted-foreground/50">
+          ·
+        </span>
+        <label
+          className={`cursor-pointer text-accent underline decoration-dotted hover:text-accent/80 ${
+            uploading ? "pointer-events-none opacity-60" : ""
+          }`}
+        >
+          {uploading ? "…" : "Upload"}
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            disabled={uploading}
+            className="hidden"
+            onChange={(e) => {
+              const sel = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (sel.length > 0) onUpload(factor, sel);
+            }}
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -6446,6 +6923,8 @@ function StrategyDetail({
   onAnswerStrategy,
   onRefresh,
   refreshing,
+  onOpenModule,
+  onAskQuestion,
 }: {
   s: StrategyEntry;
   rank: number;
@@ -6460,12 +6939,43 @@ function StrategyDetail({
   // uploading evidence for this one. Same handler as the card's header spinner.
   onRefresh?: () => void;
   refreshing?: boolean;
+  // "Recommended investigation" is now a real action, not just a sentence to
+  // read: when this strategy maps to one of the 5 fixed modules
+  // (relatedModules), clicking it opens that module — same navigation the
+  // rest of the report already uses. For an "Other: ..." strategy with no
+  // fixed module to point at, it asks the AI directly instead (same Q&A the
+  // module's own "Ask AI" box answers with) and shows the answer inline.
+  onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
 }) {
   const Icon = strategyIcon(s);
   const slug = strategySlug(s.name);
   const uploaded = evidenceDocs.filter((d) => d.documentType === `Strategy Evidence: ${slug}`);
   const [draft, setDraft] = useState(answer ?? "");
   const hasAnyEvidence = uploaded.length > 0 || !!answer?.trim();
+  const [investigationAnswer, setInvestigationAnswer] = useState<string | null>(null);
+  const [askingInvestigation, setAskingInvestigation] = useState(false);
+  const relatedModuleId = s.relatedModules[0];
+
+  async function handleInvestigationClick() {
+    if (relatedModuleId) {
+      onOpenModule(relatedModuleId);
+      return;
+    }
+    if (askingInvestigation || !s.recommendedInvestigation) return;
+    setAskingInvestigation(true);
+    try {
+      const a = await onAskQuestion(
+        "strategy",
+        `For the "${s.name}" strategy, walk me through this recommended investigation step: ${s.recommendedInvestigation}`,
+      );
+      setInvestigationAnswer(a);
+    } catch {
+      setInvestigationAnswer("Couldn't get an answer — please retry.");
+    } finally {
+      setAskingInvestigation(false);
+    }
+  }
 
   return (
     <div className="card-elev min-w-0 p-4">
@@ -6530,7 +7040,25 @@ function StrategyDetail({
         {s.recommendedInvestigation && (
           <div>
             <div className="font-semibold text-foreground">Recommended investigation</div>
-            <p className="break-words text-muted-foreground">{s.recommendedInvestigation}</p>
+            <button
+              type="button"
+              onClick={handleInvestigationClick}
+              disabled={askingInvestigation}
+              title={
+                relatedModuleId
+                  ? `Open ${MODULES.find((mm) => mm.id === relatedModuleId)?.shortName ?? relatedModuleId}`
+                  : "Ask AI about this"
+              }
+              className="mt-0.5 flex items-start gap-1 break-words text-left text-muted-foreground hover:text-accent hover:underline disabled:cursor-default disabled:opacity-60"
+            >
+              <span>
+                {askingInvestigation ? "Asking…" : s.recommendedInvestigation}
+              </span>
+              <ArrowRight className="mt-0.5 h-3 w-3 shrink-0" />
+            </button>
+            {investigationAnswer && (
+              <MarkdownLite className="mt-1.5 text-foreground" text={investigationAnswer} />
+            )}
           </div>
         )}
       </div>
@@ -6572,7 +7100,19 @@ function StrategyDetail({
         <div className="mt-2 flex flex-wrap gap-1">
           {s.relatedModules.map((id) => {
             const relatedModule = MODULES.find((mm) => mm.id === id);
-            return relatedModule ? <Chip key={id}>Related: {relatedModule.shortName}</Chip> : null;
+            if (!relatedModule) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onOpenModule(id)}
+                title={`Open ${relatedModule.shortName}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent/15 hover:text-accent"
+              >
+                Related: {relatedModule.shortName}
+                <ArrowRight className="h-3 w-3" />
+              </button>
+            );
           })}
         </div>
       )}
@@ -6710,6 +7250,17 @@ const ZONING_ASPECT_ICON: Record<string, LucideIcon> = {
   "Actual Use": Building2,
   "Zoning District": MapPin,
   "Permitted Use": CheckCircle2,
+};
+
+// Each aspect tile gets its own color from the app's shared icon palette
+// (icon-colors.ts) instead of all four sharing one flat muted gray — Permitted
+// Use gets the same success green the checkmark already uses a few lines down
+// for a "Matches" outcome, so approval reads the same color everywhere.
+const ZONING_ASPECT_COLOR: Record<string, IconColor> = {
+  "CAD Classification": ICON_COLORS[6], // sky — official record/paperwork
+  "Actual Use": ICON_COLORS[2], // teal — the building itself
+  "Zoning District": ICON_COLORS[1], // violet — location/district
+  "Permitted Use": ICON_COLORS[5], // success green — approval
 };
 
 // The 4-column classification line-up from the spec's screenshot: the four
@@ -6883,9 +7434,14 @@ function ZoningAspectTiles({
         {aspects.map((a) => {
           const st = ZONING_ASPECT_STATUS[a.status];
           const Icon = ZONING_ASPECT_ICON[a.label] ?? FileText;
+          const color = ZONING_ASPECT_COLOR[a.label] ?? ICON_COLORS[5];
           return (
             <div key={a.label} className="rounded-lg bg-secondary/50 p-2 text-center">
-              <Icon className="mx-auto h-4 w-4 text-muted-foreground" />
+              <span
+                className={`mx-auto grid h-6 w-6 place-items-center rounded-full ${color.bg} ${color.text}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
               <div className="mt-1 text-[8px] uppercase leading-tight tracking-wide text-muted-foreground">
                 {a.label}
               </div>
@@ -7189,6 +7745,17 @@ function IncomeLadderPreview({
     });
   }
 
+  // Same non-blocking sanity check as the full income form (a real
+  // commercial cap rate is usually ~5-10%; well outside that, NOI ÷ cap
+  // rate swings the indicated value 5-10x) — this compact card is the more
+  // commonly used entry point, so it needs the same warning, not just the
+  // "More options" modal.
+  const capRateNum = parse(f.cap);
+  const capRateHint =
+    editable && capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving.`
+      : null;
+
   return (
     <div className="grid gap-2">
       <div
@@ -7201,6 +7768,9 @@ function IncomeLadderPreview({
               {r.cell}
             </div>
           ))}
+          {capRateHint && (
+            <p className="text-[10px] leading-tight text-warning-foreground">{capRateHint}</p>
+          )}
           <div className="mt-1 flex items-center justify-between border-t border-border/60 pt-1.5 text-sm font-semibold text-foreground">
             <span>Indicated Value</span>
             <span className={`${VALUE_COL} pr-2.5 text-right tabular-nums`}>
@@ -7679,7 +8249,7 @@ function IncomeFiguresForm({
   const field = (
     label: string,
     k: keyof IncomeFormState,
-    opts?: { prefix?: string; suffix?: string },
+    opts?: { prefix?: string; suffix?: string; hint?: string },
   ) => (
     <label className="grid gap-1 text-xs">
       <span className="font-medium text-muted-foreground">{label}</span>
@@ -7694,8 +8264,21 @@ function IncomeFiguresForm({
         />
         {opts?.suffix && <span className="text-muted-foreground">{opts.suffix}</span>}
       </span>
+      {opts?.hint && <span className="text-[11px] text-warning-foreground">{opts.hint}</span>}
     </label>
   );
+
+  // A real commercial cap rate is usually ~5-10% — well outside that, NOI ÷
+  // cap rate swings wildly (e.g. a 1% entry meant to be a placeholder or a
+  // typo can produce an indicated value 5-10x too high), so this flags it
+  // right where it's entered instead of only showing up as a confusing
+  // Income Value number later. Non-blocking: still saves either way, in case
+  // the property genuinely has an unusual rate.
+  const capRateNum = numOrNull(form.capRatePct);
+  const capRateHint =
+    capRateNum != null && (capRateNum < 3 || capRateNum > 20)
+      ? `${capRateNum}% is unusual for commercial property (typically 5–10%) — double-check this before saving; it has a big effect on the indicated value.`
+      : undefined;
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -7727,7 +8310,7 @@ function IncomeFiguresForm({
         {field("Operating expenses (annual)", "operatingExpenses", { prefix: "$" })}
         {field("Stated NOI (optional, from a doc)", "noiStated", { prefix: "$" })}
         {field("Rentable area (optional)", "rentableSqft", { suffix: "SF" })}
-        {field("Capitalization rate", "capRatePct", { suffix: "%" })}
+        {field("Capitalization rate", "capRatePct", { suffix: "%", hint: capRateHint })}
         <label className="grid gap-1 text-xs">
           <span className="font-medium text-muted-foreground">Cap rate source</span>
           <select
@@ -7966,7 +8549,7 @@ function CostBenefitRow({ savings }: { savings: number }) {
         Icon={DollarSign}
         value={compactCurrency(cost)}
         label="protest cost (25%)"
-        tone="bg-violet-500/15 text-violet-600"
+        tone="bg-violet-500/15 text-violet-700"
       />
       <span className="text-sm text-muted-foreground">−</span>
       <FormulaIcon
@@ -8021,7 +8604,7 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
               : compactCurrency(a.indicatedValue)
           }
           label="indicated"
-          tone="bg-sky-500/15 text-sky-600"
+          tone="bg-sky-500/15 text-sky-700"
         />
         <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
         <FormulaIcon
@@ -8039,7 +8622,12 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
         />
       </div>
       <div className="flex items-center justify-center gap-2 text-xs">
-        <span className="text-muted-foreground">Net benefit</span>
+        <span
+          className="text-muted-foreground"
+          title="After our standard 25% success fee. Beta testers do not pay it."
+        >
+          Net benefit (after 25% fee)
+        </span>
         <span className="font-serif font-bold text-success">{compactCurrency(a.netBenefit)}</span>
         {a.roiPct != null ? (
           <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
@@ -8074,7 +8662,7 @@ function SavingsFlowStrip({ a }: { a: SavingsAnalysis }) {
     {
       label: a.indicatedRange ? "AI-Indicated Value Range" : "AI-Indicated Value",
       value: indicated,
-      tone: "border-sky-500/40 bg-sky-500/5 text-sky-600",
+      tone: "border-sky-500/40 bg-sky-500/5 text-sky-700",
       Icon: Home,
     },
     {
@@ -8214,6 +8802,10 @@ function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         ROI Analysis (Base Scenario)
       </div>
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        This fuller model applies exemptions and the standard 25% fee, so its savings figure can
+        differ slightly from the headline estimate. Beta testers do not pay the fee.
+      </p>
       {/* Annual figures only — ROI is defined on the annual net benefit
           (spec §8). The multi-year projection is its own line below. */}
       <div className="flex flex-wrap items-center justify-center gap-1.5">
@@ -8228,7 +8820,7 @@ function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
           Icon={DollarSign}
           value={a.protestCostSource === "none" ? "$0" : currency(a.protestCost)}
           label="protest cost"
-          tone="bg-violet-500/15 text-violet-600"
+          tone="bg-violet-500/15 text-violet-700"
         />
         <span className="text-sm text-muted-foreground">=</span>
         <FormulaIcon
@@ -8609,7 +9201,14 @@ function SpeedometerGauge({ value, size = "md" }: { value: number; size?: "sm" |
   // version (confirmed via a live console error and an empty sectors group)
   // — reverted in favor of this reliable single-bar approach.
   return (
-    <div className="relative mx-auto" style={{ width: dims.w, height: dims.h }}>
+    <div
+      className="relative mx-auto"
+      style={{
+        width: dims.w,
+        height: dims.h,
+        filter: `drop-shadow(0 0 8px color-mix(in oklch, ${color} 45%, transparent))`,
+      }}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <RadialBarChart
           cx="50%"
@@ -8635,15 +9234,23 @@ function SpeedometerGauge({ value, size = "md" }: { value: number; size?: "sm" |
   );
 }
 
+// Each item's reason line is shown directly under its bar now — found live
+// chasing real beta feedback ("I don't trust the estimate yet," "more
+// explanation of the reasoning," asked independently by every one of 3 real
+// testers): a bare "CAD Valuation 62/100" with no sentence attached gave no
+// way to tell WHY, short of hunting for the same numbers somewhere else in
+// the report. b.reason is deterministic (see computeHealthScore), built
+// from the exact same variable that produced b.score, so it can never say
+// something the number doesn't back up.
 function ScoreBreakdownList({ breakdown }: { breakdown: HealthScoreBreakdownEntry[] }) {
   if (breakdown.length === 0) return null;
   return (
-    <div className="grid gap-2.5">
+    <div className="grid gap-3">
       {breakdown.map((b) => {
         const Icon = breakdownIcon(b.label);
         return (
-          <div key={b.label} className="flex items-center gap-2.5">
-            <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div key={b.label} className="flex items-start gap-2.5">
+            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-muted-foreground">{b.label}</span>
@@ -8657,6 +9264,7 @@ function ScoreBreakdownList({ breakdown }: { breakdown: HealthScoreBreakdownEntr
                   style={{ width: `${b.score}%`, backgroundColor: scoreColor(b.score) }}
                 />
               </div>
+              {b.reason && <p className="mt-1 text-xs text-muted-foreground">{b.reason}</p>}
             </div>
           </div>
         );
@@ -8778,7 +9386,11 @@ function SourcesList({
 // collapsed Detailed Analysis section, since that's real data worth keeping
 // available, just not surfaced as a whole extra workflow up front.
 function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
-  return status === "Verified" ? "Reviewed" : status === "Found" ? "More Information Helpful" : "Data Not Available";
+  return status === "Verified"
+    ? "Reviewed"
+    : status === "Found"
+      ? "More Information Helpful"
+      : "Data Not Available";
 }
 
 function Module1Content({
@@ -8792,6 +9404,9 @@ function Module1Content({
   onOpenModule,
   compsMap,
   evidenceDocs,
+  protest,
+  property,
+  onViewCase,
 }: {
   data: HealthScoreResult;
   state: IntakeState;
@@ -8803,6 +9418,10 @@ function Module1Content({
   onOpenModule: (moduleId: string) => void;
   compsMap: { data: CompsResult | null; loading: boolean };
   evidenceDocs: DocumentRecord[];
+  // Once a protest exists this module reports how it went instead of pitching one.
+  protest: ProtestRecord | null;
+  property: PropertyRecord | null;
+  onViewCase: () => void;
 }) {
   const evidenceState = moduleData.evidence;
   const evidenceItems = (evidenceState?.data as ModuleResultMap["evidence"] | undefined)?.items;
@@ -8825,6 +9444,21 @@ function Module1Content({
 
   const tier = data.score >= 70 ? "Strong" : data.score >= 40 ? "Moderate" : "Limited";
 
+  // Case state: nothing yet / in progress / completed.
+  const caseOutcome = protest && property ? buildCaseOutcome(property, protest) : null;
+  const caseDone = !!protest && protest.status === "resolved" && !!caseOutcome;
+  const caseOpen = !!protest && protest.status !== "requested" && protest.status !== "resolved";
+  // Same reasoning as the compact card (ModuleVisual's "health" case): once
+  // the case is closed, the pre-protest opportunity score/gauge and its
+  // pre-protest narrative are the wrong things to show — grade the real,
+  // completed outcome instead (protest-outcome.ts).
+  const outcome = caseDone && caseOutcome ? protestOutcome(caseOutcome.valueReductionPct) : null;
+  const outcomeColor = outcome
+    ? outcome.tone === "success"
+      ? "var(--success)"
+      : "var(--muted-foreground)"
+    : null;
+
   return (
     <div className="mt-4 grid gap-5">
       {/* 1. Your Protest Recommendation — conclusion + the 3 headline numbers,
@@ -8832,34 +9466,73 @@ function Module1Content({
           string: a dollar amount and a percentage are two different numbers
           and reading them as one implies a relationship that isn't real. */}
       <div>
-        {data.executiveConclusion && (
-          <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+        {outcome ? (
+          <AiVerdictLine icon={m.icon} text={outcome.message} color={m.color} />
+        ) : (
+          data.executiveConclusion && (
+            <AiVerdictLine icon={m.icon} text={data.executiveConclusion} color={m.color} />
+          )
         )}
         <div className="mt-3 grid gap-4 sm:grid-cols-[13rem_1fr] items-center">
           <div className="text-center">
-            <SpeedometerGauge value={data.score} size="lg" />
-            <div className="mt-1 text-sm font-semibold" style={{ color: scoreColor(data.score) }}>
-              {tier} Protest Opportunity
+            {outcome ? (
+              <div className="grid h-[132px] place-items-center">
+                <div className="font-serif text-2xl font-bold" style={{ color: outcomeColor! }}>
+                  {outcome.label}
+                </div>
+              </div>
+            ) : (
+              <SpeedometerGauge value={data.score} size="lg" />
+            )}
+            <div
+              className="mt-1 text-sm font-semibold"
+              style={{ color: outcome ? outcomeColor! : scoreColor(data.score) }}
+            >
+              {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Stat
-              label="Potential Tax Savings"
-              value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
-              tone="success"
-            />
-            <Stat
-              label="Potential Assessment Reduction"
-              value={
-                estimated.hasEstimate && state.totalValue
-                  ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
-                  : "Not yet available"
-              }
-            />
-            <Stat
-              label="Current Assessed Value"
-              value={state.totalValue ? currency(state.totalValue) : "—"}
-            />
+            {caseDone && caseOutcome ? (
+              <>
+                <Stat
+                  label="Actual Tax Savings"
+                  value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
+                  tone="success"
+                />
+                <Stat
+                  label="Assessment Reduction"
+                  value={
+                    caseOutcome.valueReductionPct != null
+                      ? `${Math.round(caseOutcome.valueReductionPct)}%`
+                      : "—"
+                  }
+                />
+                <Stat
+                  label="Final Assessed Value"
+                  value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
+                />
+              </>
+            ) : (
+              <>
+                <Stat
+                  label="Potential Tax Savings"
+                  value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
+                  tone="success"
+                />
+                <Stat
+                  label="Potential Assessment Reduction"
+                  value={
+                    estimated.hasEstimate && state.totalValue
+                      ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                      : "Not yet available"
+                  }
+                />
+                <Stat
+                  label="Current Assessed Value"
+                  value={state.totalValue ? currency(state.totalValue) : "—"}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -8879,15 +9552,54 @@ function Module1Content({
           </ul>
           <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence: {data.confidencePct}%
-            {!data.dataSufficient && " — More information needed"}
+            Confidence: {data.confidencePct}%{!data.dataSufficient && " — More information needed"}
           </div>
         </div>
       )}
 
       {/* 3. Recommended Next Step — large and unambiguous, one action only. */}
-      <div className={`rounded-lg p-5 ${readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}>
-        {readyToProtest ? (
+      <div
+        className={`rounded-lg p-5 ${caseDone || caseOpen || readyToProtest ? "bg-primary text-primary-foreground" : m.color.bg}`}
+      >
+        {caseDone && protest && caseOutcome ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Protest completed
+            </div>
+            <p className="mt-2 text-lg font-semibold">
+              Final value {currency(caseOutcome.finalValue)}
+              {caseOutcome.taxSavings
+                ? ` — about ${currency(caseOutcome.taxSavings)}/yr saved`
+                : ""}
+            </p>
+            <button
+              onClick={onViewCase}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              VIEW CASE OUTCOME
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Resolved through {outcomeRouteLabel(protest)}. Your property returns to tax monitoring
+              for next year.
+            </p>
+          </>
+        ) : caseOpen && protest ? (
+          <>
+            <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Your protest is in progress
+            </div>
+            <p className="mt-2 text-lg font-semibold">Stage: {caseStageLabel(protest)}</p>
+            <button
+              onClick={onViewCase}
+              className="btn-accent mt-3 w-full text-base font-bold sm:w-auto"
+            >
+              VIEW CASE
+            </button>
+            <p className="mt-3 text-sm opacity-90">
+              Open the case to see what to do next and to keep everything in one place.
+            </p>
+          </>
+        ) : readyToProtest ? (
           <>
             <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
               Corvus AI Recommends a Protest
@@ -9005,15 +9717,7 @@ function Module1Content({
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "success";
-}) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "success" }) {
   return (
     <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
       <div
@@ -9021,7 +9725,9 @@ function Stat({
       >
         {label}
       </div>
-      <div className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}>
+      <div
+        className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}
+      >
         {value}
       </div>
     </div>
@@ -9051,6 +9757,7 @@ function Module2Content({
   onAnswerStrategy,
   onForceReload,
   onOpenModule,
+  onAskQuestion,
   refreshing,
 }: {
   d: ModuleResultMap["strategy"];
@@ -9062,6 +9769,7 @@ function Module2Content({
   onAnswerStrategy: (strategyId: string, answer: string) => void;
   onForceReload: () => void;
   onOpenModule: (moduleId: string) => void;
+  onAskQuestion: (moduleId: string, question: string) => Promise<string>;
   refreshing: boolean;
 }) {
   const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
@@ -9096,7 +9804,9 @@ function Module2Content({
       </div>
 
       {/* 2. Recommended Next Step — one action only. */}
-      <div className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}>
+      <div
+        className={`rounded-lg p-5 ${needsMoreInfo ? m.color.bg : "bg-primary text-primary-foreground"}`}
+      >
         {needsMoreInfo ? (
           <>
             <div className={`text-xs font-semibold uppercase tracking-wide ${m.color.text}`}>
@@ -9148,7 +9858,18 @@ function Module2Content({
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Ranked Strategies
             </div>
-            <StrategyRankList strategies={d.strategies} color={m.color} />
+            {/* Unlike the compact card's own StrategyRankList (one consolidated
+                "Upload data" button instead), this detail-view list has room for
+                each row's own "Data Needed" pill to actually DO something — same
+                per-strategy upload StrategyDetail's own card below already
+                offers, just reachable straight from the summary row instead of
+                only after scrolling to find the matching detail card. */}
+            <StrategyRankList
+              strategies={d.strategies}
+              color={m.color}
+              onUploadFor={(s, files) => onUploadEvidence(files, strategySlug(s.name))}
+              uploading={uploadingEvidence}
+            />
           </div>
           <div className="grid gap-3 [&>*]:min-w-0">
             {d.strategies.map((s, i) => (
@@ -9164,6 +9885,8 @@ function Module2Content({
                 onAnswerStrategy={onAnswerStrategy}
                 onRefresh={onForceReload}
                 refreshing={refreshing}
+                onOpenModule={onOpenModule}
+                onAskQuestion={onAskQuestion}
               />
             ))}
           </div>
@@ -9321,8 +10044,7 @@ function Module5Content({
             Recommended Next Step
           </div>
           <p className="mt-1 text-sm font-semibold">
-            Complete the missing property information so Corvus AI can finish your protest
-            analysis.
+            Complete the missing property information so Corvus AI can finish your protest analysis.
           </p>
           <div className="mt-3">
             <button
@@ -9348,7 +10070,9 @@ function Module5Content({
         <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
           <ExecutiveStat
             label="Effective Age"
-            value={d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"}
+            value={
+              d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"
+            }
           />
           <ExecutiveStat
             label="Economic Life"
@@ -9428,6 +10152,7 @@ function ModulePreviewContent({
   onStartProtest,
   onReloadModule,
   onViewCase,
+  onAskQuestion,
   overrides,
   onMarkNotApplicable,
   onClearNotApplicable,
@@ -9622,8 +10347,8 @@ function ModulePreviewContent({
           <p className="font-serif text-xl font-bold">No assessed value on file yet.</p>
           <p className="mx-auto max-w-sm text-sm text-muted-foreground">
             The county record for this property doesn't carry an assessed value for this tax year,
-            so there's nothing to estimate savings from. Upload your appraisal notice, or check
-            back once the county publishes this year's value.
+            so there's nothing to estimate savings from. Upload your appraisal notice, or check back
+            once the county publishes this year's value.
           </p>
         </div>
       );
@@ -9662,6 +10387,7 @@ function ModulePreviewContent({
             <FinalCaseSummaryPanel summary={finalSummary} />
           </div>
         )}
+        <EvidenceImpactCard />
         <SavingsWorkspace
           analysis={savingsAnalysis}
           taxInputs={savingsTaxInputs}
@@ -9841,6 +10567,8 @@ function ModulePreviewContent({
               recommendedKeys={recommendedKeys}
               onToggleExclude={compsInteractive ? handleToggleExclude : undefined}
               onRemove={compsInteractive ? (c) => onRemoveCompSelection(c.key) : undefined}
+              subjectValue={stats.subjectValue}
+              subjectAcres={map?.subject?.legalAcreage ?? null}
             />
             {excludedCount > 0 && (
               <p className="-mt-2 text-[11px] text-muted-foreground">
@@ -9881,16 +10609,14 @@ function ModulePreviewContent({
               </div>
             )}
 
-            {/* 6. Indicated Value / CAD Value / Gap. Prefers the size-
-                adjusted reconciliation when there were enough size-bearing
-                comps to adjust; otherwise the raw top-5 range. */}
+            {/* 6. Indicated Value / CAD Value / Gap. Prefers the rate-based
+                target range (comps priced below the subject's own $/acre)
+                when at least one qualifies; otherwise the raw top-5 range. */}
             {stats.indicated && (
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg bg-success/10 p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
-                    {stats.adjustedIndicated
-                      ? "Indicated Value (adjusted)"
-                      : "Indicated Value Range"}
+                    {stats.adjustedIndicated ? "Indicated Target Range" : "Indicated Value Range"}
                   </div>
                   <div className="mt-0.5 text-lg font-bold text-success">
                     {stats.adjustedIndicated
@@ -10115,6 +10841,9 @@ function ModulePreviewContent({
         onOpenModule={onOpenModule}
         compsMap={compsMap}
         evidenceDocs={evidenceDocs}
+        protest={existingProtest}
+        property={resolvedProperty}
+        onViewCase={onViewCase}
       />
     );
   }
@@ -10140,6 +10869,7 @@ function ModulePreviewContent({
           onAnswerStrategy={onAnswerStrategy}
           onForceReload={onForceReload}
           onOpenModule={onOpenModule}
+          onAskQuestion={onAskQuestion}
           refreshing={!!moduleState?.loading}
         />
       );
@@ -10276,6 +11006,10 @@ function ModulePreviewContent({
                           factor={f}
                           onOpenModule={onOpenModule}
                           onMarkNotApplicable={() => onMarkNotApplicable("site", f.factor)}
+                          onUpload={(factor, files) =>
+                            onUploadEvidence(files, undefined, `Site: ${factor.factor}`)
+                          }
+                          uploading={uploadingEvidence}
                         />
                       ))}
                     </div>
@@ -10673,6 +11407,7 @@ function ModulePreviewContent({
             key={it.item}
             it={it}
             uploadedDocs={uploadedForItem}
+            categories={d.items.map((x) => ({ label: x.item, slug: evidenceItemSlug(x.item) }))}
             expanded={expandedEvidenceItem === it.item}
             onToggleExpand={() =>
               setExpandedEvidenceItem((prev) => (prev === it.item ? null : it.item))
@@ -10872,22 +11607,17 @@ function ModulePreviewContent({
                 above automatically. Anything that doesn't clearly match stays here, uncategorized.
               </p>
               {protestEvidenceDocs.length > 0 && (
-                <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                  {protestEvidenceDocs.map((doc) => {
-                    const categorySlug = doc.documentType?.startsWith("Evidence Category: ")
-                      ? doc.documentType.slice("Evidence Category: ".length)
-                      : null;
-                    const category = categorySlug
-                      ? (d.items.find((it) => evidenceItemSlug(it.item) === categorySlug)?.item ??
-                        null)
-                      : null;
-                    return (
-                      <li key={doc.id}>
-                        {doc.fileName}
-                        {category && <span className="text-foreground/70"> — {category}</span>}
-                      </li>
-                    );
-                  })}
+                <ul className="mt-2 grid gap-1.5 text-xs text-muted-foreground">
+                  {protestEvidenceDocs.map((doc) => (
+                    <EvidenceFileRow
+                      key={doc.id}
+                      doc={doc}
+                      categories={d.items.map((it) => ({
+                        label: it.item,
+                        slug: evidenceItemSlug(it.item),
+                      }))}
+                    />
+                  ))}
                 </ul>
               )}
               <label
@@ -11143,7 +11873,9 @@ function ModulePreviewContent({
 
       // Single primary CTA, deterministic — never more than one rendered.
       let cta: { label: string; onClick: () => void } | null = null;
-      if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
+      if (existingProtest && existingProtest.status === "resolved") {
+        cta = { label: "View Case Outcome", onClick: onViewCase };
+      } else if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
         cta = null; // "Complete Missing Information" — see the Properties link below instead
       } else if (criticalMissing.length > 0) {
         cta = { label: "Complete Missing Evidence", onClick: () => onOpenModule("evidence") };
@@ -11532,11 +12264,17 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
     !!props.moduleState?.data;
   return (
     <>
+      <CaseOutcomeBanner
+        protest={props.existingProtest}
+        property={props.resolvedProperty}
+        onViewCase={props.onViewCase}
+      />
       <ModulePreviewContent {...props} />
       {showDataSheet && (
         <ModuleDataSheetButton
           moduleId={props.m.id}
           moduleLabel={props.m.title}
+          shortLabel={props.m.shortName}
           moduleResult={props.moduleState?.data}
           onGenerate={props.onGenerateDataSheet}
         />
@@ -11553,11 +12291,18 @@ function ModulePreviewBody(props: Parameters<typeof ModulePreviewContent>[0]) {
 function ModuleDataSheetButton({
   moduleId,
   moduleLabel,
+  shortLabel,
   moduleResult,
   onGenerate,
 }: {
   moduleId: string;
   moduleLabel: string;
+  // The module's short display name (e.g. "Site Condition", "Income Value")
+  // — used only for the button's own text, so it reads "Generate Site
+  // Condition Overview" instead of the generic "Generate Property Summary"
+  // every module used to share. `moduleLabel` (the longer title) still goes
+  // into the generated file's own name/tagging, unchanged.
+  shortLabel: string;
   moduleResult: unknown;
   onGenerate: (
     moduleId: string,
@@ -11588,7 +12333,7 @@ function ModuleDataSheetButton({
         }}
         className="btn-outline mt-2 text-sm disabled:opacity-50"
       >
-        {busy ? "Drafting…" : "Generate a starter data sheet"}
+        {busy ? "Drafting…" : `Generate ${shortLabel} Overview`}
       </button>
       {madeFile && (
         <p className="mt-1.5 text-xs text-success">Added “{madeFile}” to your documents.</p>
@@ -11834,9 +12579,13 @@ function ChecklistSteps({ items, color }: { items: string[]; color: IconColor })
 // for the generic bulk upload button, which doesn't know the category up
 // front). Already-uploaded documents tagged to this category are listed
 // too, so the user can see at a glance what's covered vs. still needed.
-function EvidenceCategoryRow({
+// Exported so CaseDetailModal's EvidenceChecklistPanel (View Case's inline
+// Module 8 embed) can render the exact same per-item row — one real
+// component, two places it shows up, instead of a second copy drifting.
+export function EvidenceCategoryRow({
   it,
   uploadedDocs,
+  categories,
   expanded,
   onToggleExpand,
   uploadingEvidence,
@@ -11844,6 +12593,7 @@ function EvidenceCategoryRow({
 }: {
   it: ModuleResultMap["evidence"]["items"][number];
   uploadedDocs: DocumentRecord[];
+  categories: EvidenceCategoryOption[];
   expanded: boolean;
   onToggleExpand: () => void;
   uploadingEvidence: boolean;
@@ -11929,12 +12679,9 @@ function EvidenceCategoryRow({
             </p>
           )}
           {uploadedDocs.length > 0 && (
-            <ul className="grid gap-1 text-xs text-muted-foreground">
+            <ul className="grid gap-1.5 text-xs text-muted-foreground">
               {uploadedDocs.map((doc) => (
-                <li key={doc.id} className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3 shrink-0 text-success" />
-                  <span className="min-w-0 truncate">{doc.fileName}</span>
-                </li>
+                <EvidenceFileRow key={doc.id} doc={doc} categories={categories} />
               ))}
             </ul>
           )}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, X, Send, Mic, Volume2, VolumeX } from "lucide-react";
+import { Sparkles, X, Send, Mic, Volume2, VolumeX, Phone, Mail } from "lucide-react";
+import { toast } from "sonner";
 import { askRouter } from "@/lib/ask-router";
 import { askAboutDocument } from "@/lib/document-ai";
 import { buildUserContext } from "@/lib/ai-context";
@@ -9,14 +10,83 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { listProperties } from "@/lib/properties";
 import { looksLikeReminderRequest, parseReminderRequest, addReminder } from "@/lib/reminders";
+import { notifyStaff } from "@/lib/staff-notification";
+import { createSupportEscalation, type TranscriptTurn } from "@/lib/support-escalations";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { getErrorMessage } from "@/lib/error-message";
 
 type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   destination?: string | null;
+  image?: { src: string; alt: string; caption: string };
 };
+
+// A different first name each session, so the bot reads as one particular
+// support associate rather than a generic "AI" — reused for every answer
+// this session so it doesn't change mid-conversation.
+const ASSOCIATE_NAMES = ["Jordan", "Riley", "Casey", "Morgan", "Taylor", "Avery", "Sam", "Drew"];
+const ASSOCIATE_NAME_KEY = "corvuspt.supportAssociateName";
+
+function pickAssociateName(): string {
+  try {
+    const saved = sessionStorage.getItem(ASSOCIATE_NAME_KEY);
+    if (saved && ASSOCIATE_NAMES.includes(saved)) return saved;
+  } catch {
+    // storage blocked — fine, just picks fresh below
+  }
+  const name = ASSOCIATE_NAMES[Math.floor(Math.random() * ASSOCIATE_NAMES.length)];
+  try {
+    sessionStorage.setItem(ASSOCIATE_NAME_KEY, name);
+  } catch {
+    // storage blocked — the name just won't be remembered on reopen
+  }
+  return name;
+}
+
+// The address every "Email us" answer gives out — the same inbox the /contact
+// form and every staff notification already land in (staff-notification.ts'
+// STAFF_EMAIL). One real, monitored inbox, not a new alias nobody reads yet.
+const SUPPORT_EMAIL = "properties@srclandbuilding.com";
+
+// A handful of common "how do I…" questions get a real screenshot of exactly
+// where to click, on top of whatever the AI says — matched against the
+// user's own question text, not the AI's answer, so it's exact and doesn't
+// depend on the model mentioning the right page. Deliberately small: only
+// topics worth a dedicated image, not a substitute for the AI answer itself.
+const SUPPORT_TOPICS: { match: RegExp; image: string; alt: string; caption: string }[] = [
+  {
+    match: /\badd(ing)?\s+(a\s+|another\s+)?propert(y|ies)\b|\bnew\s+propert(y|ies)\b/i,
+    image: "add-property.png",
+    alt: "The Add another property button on the Properties page",
+    caption: "Here's where to add one:",
+  },
+  {
+    match: /\bupload(ing)?\b.*\b(notice|document|evidence|file)s?\b|\b(notice|document)s?\b.*\bupload/i,
+    image: "upload-documents.png",
+    alt: "The document upload area",
+    caption: "Here's where to upload it:",
+  },
+  {
+    match: /\bfile\b.*\bprotest\b|\bstart\b.*\bprotest\b|\bhow\s+do\s+i\s+protest\b|\bprotest\s+my\s+propert/i,
+    image: "file-protest.png",
+    alt: "The Protest My Property button",
+    caption: "Here's where to start a protest:",
+  },
+  {
+    match: /\bcase\s+status\b|\bview\s+(my\s+)?case\b|\bwhere.{0,15}\bmy\s+(case|protest)\b|\btrack\b.*\b(case|protest)\b/i,
+    image: "view-case.png",
+    alt: "The View Case button on a property's row",
+    caption: "Here's where to check it:",
+  },
+];
+
+function findSupportTopic(question: string): ChatMessage["image"] {
+  const t = SUPPORT_TOPICS.find((t) => t.match.test(question));
+  if (!t) return undefined;
+  return { src: `${import.meta.env.BASE_URL}support/${t.image}`, alt: t.alt, caption: t.caption };
+}
 
 // Floating, site-wide chat that actually answers questions (via the same
 // Gemini-backed answer engine used in document-review's "Ask AI" modal), with a
@@ -25,12 +95,22 @@ type ChatMessage = {
 // this conversation are folded into that same context string so follow-up
 // questions ("what about the second one?") resolve correctly — there's no
 // separate multi-turn API, ask-about-document just sees the running transcript.
+//
+// This is also CorvusPT's front line of customer support until there's a
+// real support team: it answers in a warm, first-person "support associate"
+// voice (see personaName below and ask-about-document's SUPPORT_STYLE), and
+// once someone's had at least one answer, offers a real escalation — a call
+// (reported to staff, a real support_escalations row + notifyStaff) or the
+// support email — rather than leaving them stuck with just the AI.
 export function AskAiWidget() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [asking, setAsking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [associateName] = useState(pickAssociateName);
+  const [escalated, setEscalated] = useState<"call" | "email" | null>(null);
+  const [escalating, setEscalating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Read the answer aloud. On when the toggle is on, or (either way) when
   // the question was just asked by voice — so a spoken question gets a
@@ -57,6 +137,7 @@ export function AskAiWidget() {
     setQuery("");
     setMessages([]);
     setAsking(false);
+    setEscalated(null);
   }
 
   function close() {
@@ -127,24 +208,79 @@ export function AskAiWidget() {
         .join("\n");
       const context = [accountContext, transcript].filter(Boolean).join("\n\n") || undefined;
 
-      // When the answer is going to be read aloud (voice question, or
-      // read-aloud toggled on), ask for a natural spoken reply instead of
-      // the scannable bullets a typed chat wants.
-      const wantSpoken = askedByVoice.current || tts.enabled;
+      // personaName always on here — this widget IS the support bot, and its
+      // own SUPPORT_STYLE already reads naturally whether typed or spoken, so
+      // there's no separate "conversational" mode to choose on top of it.
       const [answerRes, routeRes] = await Promise.allSettled([
-        askAboutDocument({ question: q, context, conversational: wantSpoken }),
+        askAboutDocument({ question: q, context, personaName: associateName }),
         askRouter(q),
       ]);
       const answer =
         answerRes.status === "fulfilled"
           ? answerRes.value.answer
-          : "Sorry, I couldn't process that. Please try again.";
+          : "Sorry, I couldn't process that — mind trying again?";
       const destination = routeRes.status === "fulfilled" ? routeRes.value.destination : null;
-      setMessages((prev) => [...prev, { role: "assistant", text: answer, destination }]);
+      const image = findSupportTopic(q);
+      setMessages((prev) => [...prev, { role: "assistant", text: answer, destination, image }]);
       maybeSpeak(answer);
     } finally {
       setAsking(false);
       askedByVoice.current = false;
+    }
+  }
+
+  // "Still need help?" — offered once there's been at least one real answer,
+  // so it never shows before the bot has actually tried to help. A "call"
+  // escalation is a real, admin-visible ticket plus a staff email; "email"
+  // just hands over the address (the DB row is best-effort tracking only —
+  // the actual email comes from the user's own client with their own
+  // attachments, so a failed write here must never block that answer).
+  async function escalate(method: "call" | "email") {
+    if (!user || escalating) return;
+    setEscalating(true);
+    try {
+      const lastQuestion = [...messages].reverse().find((m) => m.role === "user")?.text ?? "";
+      const transcript: TranscriptTurn[] = messages.map(({ role, text }) => ({ role, text }));
+      if (method === "call") {
+        await createSupportEscalation({
+          userId: user.id,
+          contactMethod: "call",
+          summary: lastQuestion,
+          transcript,
+        });
+        await notifyStaff({
+          subject: "CorvusPT support escalation — call requested",
+          message:
+            `A user asked ${associateName} (Ask AI) to have support call them back.\n\n` +
+            `User: ${user.email}\n\nConversation:\n` +
+            transcript.map((t) => `${t.role === "user" ? "User" : associateName}: ${t.text}`).join("\n"),
+          replyToEmail: user.email ?? undefined,
+        }).catch(() => {
+          // The DB row above is the real record either way — a notification
+          // hiccup shouldn't make the widget claim the report failed.
+        });
+        const line =
+          "I've reported this to our support team. Someone from the team will get back to you within 48 business hours.";
+        setMessages((prev) => [...prev, { role: "assistant", text: line }]);
+        maybeSpeak(line);
+      } else {
+        await createSupportEscalation({
+          userId: user.id,
+          contactMethod: "email",
+          summary: lastQuestion,
+          transcript,
+        }).catch(() => {
+          // Tracking only — the address still needs to be given either way.
+        });
+        const line = `You can reach us directly at ${SUPPORT_EMAIL} — just include a description of the issue and any relevant screenshots so the team can look into it.`;
+        setMessages((prev) => [...prev, { role: "assistant", text: line }]);
+        maybeSpeak(line);
+      }
+      setEscalated(method);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not reach support right now — please try again."));
+    } finally {
+      setEscalating(false);
     }
   }
 
@@ -155,7 +291,7 @@ export function AskAiWidget() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-medium text-sm">
               <Sparkles className="h-4 w-4 text-accent" />
-              Ask AI
+              Ask AI — {associateName} from Support
             </div>
             <button
               onClick={close}
@@ -168,8 +304,8 @@ export function AskAiWidget() {
 
           {messages.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Ask about protests, BPP, deadlines, or payments — I'll answer and point you to the
-              right place.
+              Hi, I'm {associateName} from Corvus support 👋 What can I help you with — a
+              question, or something not working right?
             </p>
           )}
 
@@ -189,6 +325,18 @@ export function AskAiWidget() {
                     className="mr-auto max-w-[90%] rounded-md bg-secondary/50 px-3 py-2 text-sm"
                   >
                     <MarkdownLite text={m.text} />
+                    {m.image && (
+                      <div className="mt-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {m.image.caption}
+                        </p>
+                        <img
+                          src={m.image.src}
+                          alt={m.image.alt}
+                          className="mt-1 w-full rounded-md border border-border"
+                        />
+                      </div>
+                    )}
                     {m.destination && (
                       <Link
                         to={m.destination}
@@ -203,9 +351,35 @@ export function AskAiWidget() {
               )}
               {asking && (
                 <div className="mr-auto rounded-md bg-secondary/50 px-3 py-2 text-sm text-muted-foreground">
-                  AI is thinking…
+                  {associateName} is looking into that…
                 </div>
               )}
+              {user &&
+                !asking &&
+                !escalated &&
+                messages.some((m) => m.role === "assistant") && (
+                  <div className="mr-auto max-w-[90%] rounded-md border border-dashed border-border px-3 py-2 text-xs">
+                    <p className="text-muted-foreground">Still stuck? I can get a real person on it.</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void escalate("call")}
+                        disabled={escalating}
+                        className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
+                      >
+                        <Phone className="h-3 w-3" /> Talk to someone
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void escalate("email")}
+                        disabled={escalating}
+                        className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
+                      >
+                        <Mail className="h-3 w-3" /> Email us
+                      </button>
+                    </div>
+                  </div>
+                )}
             </div>
           )}
 
@@ -284,7 +458,7 @@ export function AskAiWidget() {
           <button
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close Ask AI" : "Open Ask AI"}
-            className="grid h-14 w-14 place-items-center rounded-full bg-accent text-accent-foreground shadow-lg transition-all hover:opacity-90 hover:scale-105 active:scale-95"
+            className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-violet-600 via-purple-700 to-indigo-700 text-white shadow-lg shadow-violet-700/25 transition-all hover:opacity-95 hover:scale-105 active:scale-95"
           >
             {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
           </button>

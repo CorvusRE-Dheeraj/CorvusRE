@@ -176,7 +176,31 @@ describe("computeComparableStats", () => {
     expect(c2.flags).not.toContain("Type mismatch");
   });
 
-  it("normalizes comps to $/acre and reconciles a similarity-weighted adjusted value", () => {
+  it("rate-based range: only comps priced BELOW the subject's own $/acre count, applied to the subject's own size", () => {
+    // Subject: $600,000 / 1.0 ac = $600,000/acre.
+    const s = comp({ pid: 1, marketValue: 600000, legalAcreage: 1.0 });
+    const stats = computeComparableStats(
+      s,
+      [
+        comp({ pid: 2, marketValue: 400000, legalAcreage: 1.0 }), // $400k/acre — below subject, qualifies
+        comp({ pid: 3, marketValue: 500000, legalAcreage: 1.0 }), // $500k/acre — below subject, qualifies
+        comp({ pid: 4, marketValue: 700000, legalAcreage: 1.0 }), // $700k/acre — ABOVE subject, excluded
+      ],
+      600000,
+    );
+    expect(stats.perCompAdjustment).toHaveLength(2);
+    expect(stats.perCompAdjustment.map((a) => a.key).sort()).toEqual(["2", "3"]);
+    const pid2 = stats.perCompAdjustment.find((a) => a.key === "2")!;
+    expect(pid2.compPerAcre).toBe(400000);
+    // $400k/acre × the subject's own 1.0 acre = $400k.
+    expect(pid2.subjectValueAtCompRate).toBe(400000);
+    expect(stats.adjustedIndicated).toEqual({ value: 500000, min: 400000, max: 500000 });
+    // subject 600k is above the 500k indicated target → positive gap (overvaluation argument)
+    expect(stats.valuationGapPct).toBeGreaterThan(0);
+  });
+
+  it("no comp priced below the subject: adjustedIndicated is null, not a misleading blended figure", () => {
+    // Subject: $500,000 / 0.3 ac ≈ $1.67M/acre — every comp below prices HIGHER per acre.
     const s = comp({ pid: 1, marketValue: 500000, legalAcreage: 0.3 });
     const stats = computeComparableStats(
       s,
@@ -187,14 +211,10 @@ describe("computeComparableStats", () => {
       ],
       500000,
     );
-    expect(stats.perCompAdjustment.every((a) => a.unitBasis === "acre")).toBe(true);
-    // ~$2.0M/acre × 0.3 acre ≈ $600k per comp
-    expect(stats.perCompAdjustment[0].sizeAdjValue).toBeGreaterThan(580000);
-    expect(stats.perCompAdjustment[0].timeAdjPct).toBe(0); // CAD comps get no time adjustment
-    expect(stats.adjustedIndicated).not.toBeNull();
-    expect(stats.adjustedIndicated!.value).toBeGreaterThan(560000);
-    // subject 500k is now BELOW the size-adjusted indicated ≈ 600k → negative gap
-    expect(stats.valuationGapPct).toBeLessThan(0);
+    expect(stats.perCompAdjustment).toHaveLength(0);
+    expect(stats.adjustedIndicated).toBeNull();
+    // Falls back to the raw (unadjusted) comp median for the gap calc.
+    expect(stats.valuationGapPct).not.toBeNull();
   });
 
   it("merges a user-added comp into the pool and ranks it", () => {

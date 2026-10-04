@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // CorvusPT is the shared identity source for the CorvusRE login bridge (see
-// supabase-dp/functions/mint-door-session/index.ts for the full mechanics
+// supabase/dp/functions/mint-door-session/index.ts for the full mechanics
 // and why -- no new/paid Supabase project was created for this). This is a
 // second, independent Supabase client in the SAME browser, pointed at
 // CorvusPT's project purely to read whether the visitor already has a

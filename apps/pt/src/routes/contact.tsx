@@ -1,3 +1,4 @@
+import { FieldError, emailError, requiredError, useTouched } from "@/components/FieldError";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -6,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { getMyProfile } from "@/lib/profile";
 import { notifyStaff } from "@/lib/staff-notification";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { ScheduleAppointment } from "@/components/ScheduleAppointment";
 
 const PHONE_DISPLAY = "(469) 501-9362";
 const PHONE_TEL = "+14695019362";
@@ -56,6 +58,10 @@ function Contact() {
       });
   }, [user]);
 
+  const nameT = useTouched();
+  const emailT = useTouched();
+  const msgT = useTouched();
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -93,6 +99,7 @@ function Contact() {
 
       <div className="container-page pb-16 max-w-2xl">
         <ScrollReveal>
+          <ScheduleAppointment />
           <a
             href={`tel:${PHONE_TEL}`}
             className="card-elev mb-8 flex items-center justify-between gap-4 p-6 transition-all hover:-translate-y-0.5 hover:shadow-elev"
@@ -102,7 +109,7 @@ function Contact() {
                 <Phone className="h-5 w-5" />
               </span>
               <div>
-                <h3 className="font-semibold">Prefer to talk now?</h3>
+                <h2 className="font-semibold">Prefer to talk now?</h2>
                 <p className="text-sm text-muted-foreground">Call us at {PHONE_DISPLAY}</p>
               </div>
             </div>
@@ -111,7 +118,7 @@ function Contact() {
         </ScrollReveal>
         {sent ? (
           <div className="mt-8 card-elev p-6">
-            <h3 className="font-semibold text-lg">Thanks — we'll be in touch.</h3>
+            <h2 className="font-semibold text-lg">Thanks — we'll be in touch.</h2>
             <p className="text-muted-foreground mt-1">
               A CorvusPT specialist will reach out within one business day.
             </p>
@@ -137,7 +144,14 @@ function Contact() {
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
+                      onBlur={nameT.onBlur}
+                      aria-invalid={nameT.touched && !!requiredError(name, "your name")}
+                      aria-describedby="contact-name-err"
                       className="rounded-md border border-input bg-background px-3 py-2"
+                    />
+                    <FieldError
+                      id="contact-name-err"
+                      message={nameT.touched ? requiredError(name, "your name") : null}
                     />
                   </label>
                   <label className="grid gap-1 text-sm">
@@ -149,7 +163,14 @@ function Contact() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={emailT.onBlur}
+                      aria-invalid={emailT.touched && !!emailError(email)}
+                      aria-describedby="contact-email-err"
                       className="rounded-md border border-input bg-background px-3 py-2"
+                    />
+                    <FieldError
+                      id="contact-email-err"
+                      message={emailT.touched ? emailError(email) : null}
                     />
                   </label>
                 </>
@@ -163,7 +184,14 @@ function Contact() {
                   required
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  onBlur={msgT.onBlur}
+                  aria-invalid={msgT.touched && !!requiredError(message, "a message")}
+                  aria-describedby="contact-msg-err"
                   className="rounded-md border border-input bg-background px-3 py-2"
+                />
+                <FieldError
+                  id="contact-msg-err"
+                  message={msgT.touched ? requiredError(message, "a message") : null}
                 />
               </label>
               {error && <p className="text-sm text-destructive">{error}</p>}

@@ -87,11 +87,11 @@
   /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
      feedback — same hue (163) and lightness, just richer, so every existing
      accent/badge/ring usage sitewide reads more vivid without a redesign. */
-  --accent: oklch(0.596 0.185 163.225); /* emerald, matching the PT door green */
+  --accent: oklch(0.49 0.14 163); /* emerald, matching the PT door green */
   --accent-foreground: oklch(0.99 0.01 163);
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.62 0.17 155);
+  --success: oklch(0.49 0.14 155);
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.78 0.19 75);
   --warning-foreground: oklch(0.22 0.05 60);
@@ -103,11 +103,7 @@
      signature move across pages rather than a different gradient per
      section. A soft (low-alpha) variant works as a section wash; the solid
      one is for a real focal band (a banner, a highlighted plan's header). */
-  --gradient-brand: linear-gradient(
-    135deg,
-    oklch(0.29 0.08 255),
-    oklch(0.5 0.16 163)
-  );
+  --gradient-brand: linear-gradient(135deg, oklch(0.29 0.08 255), oklch(0.5 0.16 163));
   --gradient-brand-soft: linear-gradient(
     135deg,
     oklch(0.29 0.08 255 / 0.08),
@@ -159,6 +155,53 @@
 }
 .hero-moon-wrap {
   display: none;
+}
+
+/* Dark theme — opt-in only, via the toggle in the header (adds .dark to <html>). The app
+   stays light by default, whatever the OS prefers. */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.17 0.03 255);
+  --foreground: oklch(0.95 0.01 250);
+  --card: oklch(0.22 0.035 255);
+  --card-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.22 0.035 255);
+  --popover-foreground: oklch(0.95 0.01 250);
+  --primary: oklch(0.33 0.09 255);
+  --primary-foreground: oklch(0.985 0.005 90);
+  --secondary: oklch(0.27 0.03 255);
+  --secondary-foreground: oklch(0.93 0.01 250);
+  --muted: oklch(0.27 0.025 255);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.7 0.17 163);
+  --accent-foreground: oklch(0.15 0.03 163);
+  --destructive: oklch(0.66 0.21 27);
+  --success: oklch(0.72 0.17 155);
+  --warning: oklch(0.82 0.16 80);
+  /* Unlike every other -foreground token, this was left dark in both themes — every real
+     usage sitewide is amber text on a low-opacity warning tint (badges, banners), so in dark
+     mode that tint sits over the near-black page background and dark-on-dark text disappeared
+     (reported live: the tax-updates banner was unreadable in dark mode). Flipped light here,
+     matching how accent/success/destructive-foreground already flip per theme. */
+  --warning-foreground: oklch(0.92 0.1 80);
+  --border: oklch(0.32 0.03 255);
+  --input: oklch(0.3 0.03 255);
+  --ring: oklch(0.7 0.15 163);
+  --nav-highlight: oklch(0.32 0.07 163);
+  --nav-highlight-foreground: oklch(0.92 0.08 163);
+  --hero-sky-top: oklch(0.2 0.04 255);
+  --hero-sky-bottom: oklch(0.17 0.03 255);
+  --hero-cloud: oklch(0.3 0.03 255);
+  --hero-cloud-opacity: 0.5;
+  --hero-field: oklch(0.34 0.07 150);
+  --hero-field-shade: oklch(0.28 0.08 150);
+  --hero-tree: oklch(0.3 0.08 150);
+}
+.dark .hero-sun-wrap {
+  display: none;
+}
+.dark .hero-moon-wrap {
+  display: block;
 }
 
 @layer base {
@@ -223,8 +266,12 @@
 /* The header's own .container-page spans the full window edge-to-edge instead of
    staying centered at 80rem — otherwise on wide screens the logo sits stranded well
    inside the actual left corner instead of flush against it (same technique as the
-   CorvusRE hub's header, hub/hub.css). */
-header .container-page {
+   CorvusRE hub's header, hub/hub.css). The footer gets the same treatment: at 80rem
+   its content wraps into extra rows while a big empty margin sits unused on both
+   sides — letting it use the full width instead gives the same content more room
+   per row, so it wraps less and the footer is shorter. */
+header .container-page,
+footer .container-page {
   max-width: none;
   margin-inline: 0;
 }
@@ -602,7 +649,7 @@ header .container-page {
    the speech bubble once he's arrived — separate elements from the
    continuously-waving arm, so none of these ever fight over the same
    element's transform (see the CorvusRE doors work for why that matters). */
-@keyframes bear-emerge {
+@keyframes mascot-emerge {
   from {
     opacity: 0;
     transform: translateY(18px) scale(0.7);
@@ -636,15 +683,15 @@ header .container-page {
   .hero-wave-arm {
     animation: wave-arm 1.8s ease-in-out infinite;
   }
-  .hero-bear-emerge {
-    animation: bear-emerge 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  .hero-mascot-emerge {
+    animation: mascot-emerge 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
   }
   .hero-bubble {
     animation: bubble-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.7s both;
   }
 }
 
-/* Speech bubble greeting beside the hero's waving bear — visible
+/* Speech bubble greeting beside the hero's waving robot — visible
    immediately (unconditionally) even for reduced-motion users; only the
    pop-in motion above is gated. */
 .hero-bubble {
@@ -829,4 +876,253 @@ header .container-page {
   .savings-sheen {
     animation: savings-sheen-sweep 6s ease-in-out infinite;
   }
+}
+
+/* Feedback widget: the bot bobs gently and each panel/question pops in. */
+@keyframes fb-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fb-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.fb-pop {
+  animation: fb-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.fb-bob {
+  animation: fb-bob 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-pop,
+  .fb-bob {
+    animation: none;
+  }
+}
+
+/* Texas Tax Updates: cards rise in one after another; icons float; the hero glows. */
+@keyframes tu-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tu-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(3deg);
+  }
+}
+@keyframes tu-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.12);
+  }
+}
+.tu-rise {
+  animation: tu-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.tu-float {
+  animation: tu-float 4s ease-in-out infinite;
+}
+.tu-glow {
+  animation: tu-glow 5s ease-in-out infinite;
+}
+.tu-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.tu-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px -14px rgb(0 0 0 / 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tu-rise,
+  .tu-float,
+  .tu-glow {
+    animation: none;
+  }
+  .tu-card:hover {
+    transform: none;
+  }
+}
+
+/* Case celebration: confetti pieces fall and spin once, then stay hidden. */
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, -20px, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-x, 0px), 420px, 0) rotate(720deg);
+  }
+}
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: confetti-fall var(--confetti-d, 2.8s) ease-in var(--confetti-delay, 0s) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti-piece {
+    display: none;
+  }
+}
+
+/* Dark mode: the dashboard's soft canvas zone and its contrast overrides. */
+.dark .dashboard-contrast {
+  --border: oklch(0.34 0.03 255);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 26px -10px oklch(0 0 0 / 0.5);
+  background: oklch(0.2 0.03 255);
+}
+
+/* Typography and polish pass */
+::selection {
+  background: color-mix(in oklch, var(--color-accent) 30%, transparent);
+}
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+/* Clickable cards (links / buttons that use .card-elev) lift a little on hover. */
+a.card-elev,
+button.card-elev {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+a.card-elev:hover,
+button.card-elev:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -14px oklch(0.18 0.06 250 / 0.35);
+}
+/* Numbers line up in columns and read as figures, not prose. */
+.tabular-nums,
+.font-serif.font-black,
+.font-serif.font-bold {
+  font-variant-numeric: tabular-nums;
+}
+h1 {
+  text-wrap: balance;
+}
+h2,
+h3 {
+  text-wrap: pretty;
+}
+
+@keyframes tu-float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.tu-float-slow {
+  animation: tu-float-slow 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tu-float-slow {
+    animation: none;
+  }
+}
+
+/* Semantic chips — a colour means one thing everywhere:
+   amber = deadlines & time, violet = AI, sky = documents & evidence, coral = alerts. */
+.chip-deadline,
+.chip-ai,
+.chip-doc,
+.chip-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.chip-deadline {
+  background: oklch(0.95 0.06 80);
+  color: oklch(0.45 0.13 65);
+}
+.chip-ai {
+  background: oklch(0.94 0.05 300);
+  color: oklch(0.42 0.17 300);
+}
+.chip-doc {
+  background: oklch(0.94 0.04 235);
+  color: oklch(0.42 0.13 240);
+}
+.chip-alert {
+  background: oklch(0.94 0.05 25);
+  color: oklch(0.5 0.2 25);
+}
+.dark .chip-deadline {
+  background: oklch(0.32 0.06 80);
+  color: oklch(0.88 0.12 80);
+}
+.dark .chip-ai {
+  background: oklch(0.32 0.08 300);
+  color: oklch(0.86 0.1 300);
+}
+.dark .chip-doc {
+  background: oklch(0.3 0.06 235);
+  color: oklch(0.85 0.09 235);
+}
+.dark .chip-alert {
+  background: oklch(0.32 0.09 25);
+  color: oklch(0.86 0.11 25);
+}
+
+/* Small coloured labels use the -700 shade for contrast on light surfaces; in dark mode
+   they switch to the lighter -400 shade so they stay readable. */
+.dark .text-emerald-700 {
+  color: var(--color-emerald-400);
+}
+.dark .text-sky-700 {
+  color: var(--color-sky-400);
+}
+.dark .text-amber-700 {
+  color: var(--color-amber-400);
+}
+.dark .text-violet-700 {
+  color: var(--color-violet-400);
+}
+.dark .text-rose-700 {
+  color: var(--color-rose-400);
 }
