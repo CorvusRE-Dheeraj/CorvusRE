@@ -3177,6 +3177,36 @@ async function findNearby(
 // Kaufman's only source is a third-party vendor's free-text keyword search
 // whose exact field names for a name search aren't confirmed — safer to
 // return nothing there than guess at an unverified query shape.
+// Tarrant's own owner-name search is structurally, consistently slow —
+// confirmed live (11-15s, repeatedly, isolated to Tarrant alone via an
+// explicit hint) — because its backend has no pagination support at all
+// (see queryTarrant's own comment: "Pagination is not supported... always
+// returns every matching row unbounded"), so a broad name LIKE-scan has no
+// way to cap the transfer at the API level the way every other county's
+// name search can. Found chasing a direct "don't just fix one record, think
+// universally" report: Travis and Kaufman's OWN query functions have no
+// "name" mode branch at all (confirmed live: an explicit single-county hint
+// to either still took ~11s) — they return empty almost instantly, which
+// correctly triggers the hinted-attempt-wasn't-confident fallback to the
+// full 13-county sweep, and THAT sweep's total time is bounded by whichever
+// county is slowest — Tarrant, every time. So Tarrant's own ~15s cost was
+// really a tax on every business-name search that falls back to a full
+// sweep, not just Tarrant's own searches.
+//
+// Only applied when Tarrant is one of SEVERAL counties being tried
+// (countyQueries.length > 1) — capping it tightly there is a clear win,
+// since the other dozen counties' own real, fast answers shouldn't wait on
+// Tarrant's slowest-in-the-room cost. Caught live before shipping the
+// naive always-cap version: when Tarrant is hinted alone (a real
+// "<business> fort worth" search, where Tarrant genuinely is the right
+// answer), capping it tightly just means that one attempt fails its own
+// cap, THEN pays for a second, equally-capped Tarrant attempt inside the
+// full-sweep fallback — slower overall (16.5s measured) than the original
+// uncapped 15.5s, for the one case that most needed Tarrant's own real
+// answer. Left uncapped (the full queryTimeoutMs) in that single-county
+// case, where there's no other county to usefully fall back to anyway.
+const TARRANT_NAME_QUERY_TIMEOUT_MS = 8000;
+
 async function findByName(
   countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
   nameQuery: string,
@@ -3184,9 +3214,13 @@ async function findByName(
   queryTimeoutMs: number,
 ): Promise<CadRecord[]> {
   const results = await Promise.allSettled(
-    countyQueries.map((query) =>
-      withTimeout(query(nameQuery, "name"), queryTimeoutMs, [] as CadRecord[]),
-    ),
+    countyQueries.map((query) => {
+      const timeoutMs =
+        query === queryTarrant && countyQueries.length > 1
+          ? Math.min(queryTimeoutMs, TARRANT_NAME_QUERY_TIMEOUT_MS)
+          : queryTimeoutMs;
+      return withTimeout(query(nameQuery, "name"), timeoutMs, [] as CadRecord[]);
+    }),
   );
   // Each county's own mapper falls back to `propertyAddress ?? address` when
   // a record's real situs is missing — a reasonable display fallback for an
