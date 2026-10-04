@@ -44,7 +44,7 @@ const STEPS = [
   {
     n: 5,
     t: "Corvus AI or Our Team Handles the Protest",
-    d: "Depending on your subscription, Corvus AI or our team handles the filing, county communication, hearing support, and settlement coordination.",
+    d: "Depending on your subscription, Corvus AI or our team handles the filing and county communication. You'll always see your own hearing date, and nothing is settled without your approval first.",
   },
   {
     n: 6,
@@ -80,7 +80,7 @@ function HowItWorks() {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground font-serif text-lg">
                       {s.n}
                     </span>
-                    <h3 className="text-xl font-semibold">{s.t}</h3>
+                    <h2 className="text-xl font-semibold">{s.t}</h2>
                   </div>
                   <p className="mt-3 text-muted-foreground">{s.d}</p>
                 </div>

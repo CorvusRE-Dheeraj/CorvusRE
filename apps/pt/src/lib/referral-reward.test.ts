@@ -5,7 +5,7 @@ import {
   runReferralRewards,
   type AdminLike,
   type StripeLike,
-} from "../../../../supabase-pt/functions/_shared/referral-reward";
+} from "../../../../supabase/pt/functions/_shared/referral-reward";
 
 // Minimal in-memory stand-in for the slice of supabase-js the reward logic
 // uses. Every terminal await yields once first, so two concurrent callers

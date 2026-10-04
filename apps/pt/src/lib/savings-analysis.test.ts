@@ -112,7 +112,7 @@ describe("computeSavingsAnalysis", () => {
     const a = computeSavingsAnalysis({
       cadValue: 3_100_000,
       taxYear: 2026,
-      cad: "Dallas Central Appraisal District", // not in COUNTY_EFFECTIVE_TAX_RATE
+      cad: "Some Other CAD", // not in COUNTY_EFFECTIVE_TAX_RATE
       estimate: formulaEstimate,
       compsIndicated: null,
       taxInputs: EMPTY_TAX_INPUTS,
@@ -120,5 +120,68 @@ describe("computeSavingsAnalysis", () => {
     expect(a.taxRate.countySpecific).toBe(false);
     expect(a.taxDataConfidence).toBe("Limited");
     expect(a.assumptions.some((s) => /statewide average/.test(s))).toBe(true);
+  });
+
+  describe("moduleIndications", () => {
+    it("a module value below the comps baseline replaces it and raises savings", () => {
+      const withIncome = computeSavingsAnalysis({
+        cadValue: 5_900_000,
+        taxYear: 2026,
+        cad: "Denton Central Appraisal District",
+        estimate: compsEstimate,
+        compsIndicated: { min: 4_800_000, median: 5_200_000, max: 5_600_000 },
+        taxInputs: EMPTY_TAX_INPUTS,
+        moduleIndications: [{ source: "income", value: 4_500_000 }],
+      });
+      const withoutIncome = computeSavingsAnalysis({
+        cadValue: 5_900_000,
+        taxYear: 2026,
+        cad: "Denton Central Appraisal District",
+        estimate: compsEstimate,
+        compsIndicated: { min: 4_800_000, median: 5_200_000, max: 5_600_000 },
+        taxInputs: EMPTY_TAX_INPUTS,
+      });
+      expect(withIncome.indicatedValue).toBe(4_500_000);
+      expect(withIncome.valueBasisLabel).toBe("income approach");
+      expect(withIncome.reductionBase).toBeGreaterThan(withoutIncome.reductionBase);
+      expect(withIncome.annualSavings).toBeGreaterThan(withoutIncome.annualSavings);
+      expect(withIncome.assumptions.some((s) => /Module 7 \(Income Approach\)/.test(s))).toBe(
+        true,
+      );
+    });
+
+    it("a module value ABOVE the baseline (income doesn't support a reduction) is ignored", () => {
+      const a = computeSavingsAnalysis({
+        cadValue: 5_700_000,
+        taxYear: 2026,
+        cad: "Denton Central Appraisal District",
+        estimate: compsEstimate,
+        compsIndicated: { min: 4_800_000, median: 5_200_000, max: 5_600_000 },
+        taxInputs: EMPTY_TAX_INPUTS,
+        // e.g. an unrealistically low cap-rate entry inflating the income
+        // value far above the CAD value — this must never raise the number.
+        moduleIndications: [{ source: "income", value: 192_500_000 }],
+      });
+      expect(a.indicatedValue).toBe(5_200_000); // unchanged, from comps
+      expect(a.valueBasisLabel).toBe("comparable sales");
+      expect(a.assumptions.some((s) => /Module 7/.test(s))).toBe(false);
+    });
+
+    it("with both income and improvement below baseline, the lower one wins", () => {
+      const a = computeSavingsAnalysis({
+        cadValue: 5_900_000,
+        taxYear: 2026,
+        cad: "Denton Central Appraisal District",
+        estimate: compsEstimate,
+        compsIndicated: { min: 4_800_000, median: 5_200_000, max: 5_600_000 },
+        taxInputs: EMPTY_TAX_INPUTS,
+        moduleIndications: [
+          { source: "income", value: 4_900_000 },
+          { source: "improvement", value: 4_300_000 },
+        ],
+      });
+      expect(a.indicatedValue).toBe(4_300_000);
+      expect(a.valueBasisLabel).toBe("improvement condition");
+    });
   });
 });

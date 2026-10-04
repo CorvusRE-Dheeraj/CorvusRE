@@ -75,8 +75,14 @@ function emptyState(): DpIntakeState {
         ? crypto.randomUUID()
         : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     property: {},
-    project: {},
-    design: {},
+    // CorvusDP is commercial-only — sector used to be a user-picked toggle
+    // (commercial/residential) on both wizards' first project step; that
+    // choice was removed per direct product decision, but sector is still a
+    // real field downstream (analysis.ts, fees.ts, reports, dashboard
+    // subtitles), so it defaults to "commercial" here rather than being left
+    // unset.
+    project: { sector: "commercial" },
+    design: { sector: "commercial" },
     step: 0,
   };
 }
@@ -95,8 +101,11 @@ export function readDpIntake(): DpIntakeState {
       ...emptyState(),
       ...parsed,
       property: { ...(parsed.property ?? {}) },
-      project: { ...(parsed.project ?? {}) },
-      design: { ...(parsed.design ?? {}) },
+      // sector defaults to "commercial" (see emptyState) for a session saved
+      // before that default existed and never set one — an already-saved
+      // value (including a pre-existing "residential" one) still wins.
+      project: { sector: "commercial", ...(parsed.project ?? {}) },
+      design: { sector: "commercial", ...(parsed.design ?? {}) },
     };
   } catch {
     return emptyState();

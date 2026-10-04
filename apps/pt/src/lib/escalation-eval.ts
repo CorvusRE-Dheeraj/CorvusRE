@@ -10,7 +10,12 @@
 // nothing in the output is model-generated.
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
-import { getEffectiveTaxRate } from "./texas-tax-rates";
+import {
+  classifyPropertyCategory,
+  getAssessmentRatioInfo,
+  getEffectiveTaxRate,
+  IAAO_COD_CEILING,
+} from "./texas-tax-rates";
 
 export const DISCLAIMER =
   "This is an evaluation of remedies that may be available for your case under the Texas " +
@@ -49,14 +54,82 @@ export type EscalationOption = {
   recommended: boolean;
 };
 
+// The statistical case that this CAD's assessments don't track real market
+// value — the Texas Comptroller's own published ratio study (Tax Code
+// 5.10), not an AI claim or a customer's opinion. Previously this evidence
+// (texas-tax-rates.ts's getAssessmentRatioInfo) was only used pre-filing,
+// in the success-probability score and the savings-estimate narrative —
+// never carried forward to the point a user is actually deciding whether to
+// escalate past a denied ARB hearing, which is exactly when "prove this
+// isn't just my opinion" matters most.
+export type MarketDisconnectEvidence = {
+  available: boolean;
+  cad: string | null;
+  category: "residential" | "commercial" | null;
+  medianPct: number | null;
+  cod: number | null;
+  codCeiling: number | null;
+  overCeiling: boolean;
+  // Always populated — explains either the finding or why there isn't one
+  // (no CAD/category match in the published study).
+  narrative: string;
+  sourceUrl: string;
+};
+
 export type EscalationEvaluation = {
   available: boolean;
   // Why the panel is (or isn't) showing — always populated.
   availabilityBasis: string;
   headline: string;
   disclaimer: string;
+  marketDisconnectEvidence: MarketDisconnectEvidence;
   options: EscalationOption[];
 };
+
+function buildMarketDisconnectEvidence(property: PropertyRecord): MarketDisconnectEvidence {
+  const category = classifyPropertyCategory(property.propertyType);
+  const resolvedCategory = category === "unknown" ? null : category;
+  const ratioInfo = getAssessmentRatioInfo(property.cad, category);
+  const sourceUrl = "https://comptroller.texas.gov/taxes/property-tax/ratio-study/";
+  if (!ratioInfo) {
+    return {
+      available: false,
+      cad: property.cad ?? null,
+      category: resolvedCategory,
+      medianPct: null,
+      cod: null,
+      codCeiling: null,
+      overCeiling: false,
+      narrative: property.cad
+        ? `No published Comptroller ratio study is on file yet for ${property.cad} in this property category.`
+        : "No county is on file for this property yet, so no ratio study can be matched.",
+      sourceUrl,
+    };
+  }
+  const ceiling = resolvedCategory ? IAAO_COD_CEILING[resolvedCategory] : null;
+  const overCeiling = ratioInfo.codOverCeiling > 0;
+  const narrative = overCeiling
+    ? `${property.cad}'s own most recently published Comptroller ratio study shows a coefficient of ` +
+      `dispersion of ${ratioInfo.cod.toFixed(1)}% for ${resolvedCategory} property — ${ratioInfo.codOverCeiling.toFixed(1)} points above the ` +
+      `IAAO's ${ceiling?.toFixed(1)}% standard ceiling. That's the statistical definition of an equal-and-uniform ` +
+      `problem: similar properties aren't being assessed at a consistent fraction of value, which is the real, ` +
+      `citable basis for a §41.43(b) equal-and-uniform argument — not just an opinion that the process feels unfair.`
+    : `${property.cad}'s own most recently published Comptroller ratio study shows a coefficient of dispersion of ` +
+      `${ratioInfo.cod.toFixed(1)}% for ${resolvedCategory} property — within the IAAO's ${ceiling?.toFixed(1)}% standard ` +
+      `ceiling. The countywide study doesn't show a systemic dispersion problem for this property type; an ` +
+      `equal-and-uniform argument here would need comps specific to this property, not the countywide study.`;
+  return {
+    available: true,
+    cad: property.cad ?? null,
+    category: resolvedCategory,
+    medianPct: ratioInfo.medianPct,
+    cod: ratioInfo.cod,
+    codCeiling: ceiling,
+    overCeiling,
+    narrative,
+    sourceUrl,
+  };
+}
 
 // ── Statutory dataset ────────────────────────────────────────────────────
 // Regular binding arbitration deposit schedule — Comptroller Form AP-219,
@@ -424,6 +497,7 @@ export function evaluateEscalation(
     availabilityBasis,
     headline,
     disclaimer: DISCLAIMER,
+    marketDisconnectEvidence: buildMarketDisconnectEvidence(property),
     options,
   };
 }

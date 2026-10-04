@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Upload,
@@ -18,18 +18,25 @@ import {
 import {
   updateIntake,
   resetIntake,
+  cadRecordToIntakePatch,
   classifyAndStoreDocument,
+  currency,
   type PropertyKind,
 } from "@/lib/intake-store";
+import type { CadRecord } from "@/lib/cad-lookup";
+import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
+import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { LiveSearchLoader } from "@/components/LiveSearchLoader";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { MapPinPicker } from "@/components/MapPinPicker";
 import { HeroBackground } from "@/components/HeroBackground";
 import { MicButton } from "@/components/MicButton";
 import { AnimatedSteps } from "@/components/AnimatedSteps";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { ProductPreview } from "@/components/ProductPreview";
 import { HouseIllustration } from "@/assets/illustrations/house";
-import { WavingBearIllustration } from "@/assets/illustrations/waving-bear";
+import { WavingRobotIllustration } from "@/assets/illustrations/waving-robot";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
@@ -54,6 +61,12 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
+const STEP_GRADIENTS = [
+  "from-sky-500 to-blue-600",
+  "from-violet-500 to-fuchsia-600",
+  "from-emerald-500 to-teal-600",
+];
+
 function Home() {
   const navigate = useNavigate();
   // Already a signed-in user (so already a beta user) — the promo banner's
@@ -70,6 +83,92 @@ function Home() {
   // much here: this is the address that gets carried forward into /intake.
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [pickingOnMap, setPickingOnMap] = useState(false);
+  // Live CAD matches under the address box, debounced — same feature and
+  // same cadLookupPreview() call as intake.tsx's own live dropdown (see its
+  // comment); this is the OTHER place a user types a property address, and
+  // it was missing this entirely until now. Picking a match here skips
+  // straight to the Confirm step on /intake instead of re-running the
+  // lookup there — see selectLiveMatch below.
+  const [liveMatches, setLiveMatches] = useState<UnifiedMatch[]>([]);
+  const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
+  const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
+  const liveMatchRequestRef = useRef(0);
+  // CorvusPT serves commercial only — but a row doesn't KNOW it's
+  // residential until its CAD record resolves, so filtering those rows out
+  // entirely made a real suggestion visibly flash in (while still
+  // "pending") and then vanish the instant it classified as residential —
+  // found live ("I need to see that suggestion, but... gray out the
+  // residential ones" instead of hiding them, same treatment as the
+  // Residential tab itself above the search box). Every row is kept now;
+  // isResidentialMatch below is checked per row at render time instead, to
+  // style it grayed-out/unselectable rather than removing it.
+  function isResidentialMatch(m: UnifiedMatch): boolean {
+    return Boolean(m.record) && classifyPropertyCategory(m.record!.propertyType) === "residential";
+  }
+
+  // Lowered from 8 — found live chasing "I want to see ALL the addresses,
+  // like Google Maps": Google's own search box starts suggesting after just
+  // a few characters, and the old 8-char floor meant the dropdown stayed
+  // blank through most of a short address or name. 4 is still long enough
+  // to avoid firing a real search on "123" or "wal".
+  const MIN_LIVE_SEARCH_LENGTH = 4;
+  const LIVE_SEARCH_DEBOUNCE_MS = 500;
+  useEffect(() => {
+    const q = address.trim();
+    if (q.length < MIN_LIVE_SEARCH_LENGTH) {
+      setLiveMatches([]);
+      setLiveMatchesOpen(false);
+      setLiveMatchesLoading(false);
+      return;
+    }
+    const requestId = ++liveMatchRequestRef.current;
+    setLiveMatchesLoading(true);
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      // Streaming, not atomic — found live chasing a real "why does it take
+      // 7 seconds to show the Braum's locations I can already see on
+      // Google Maps?" report: unifiedPropertySearch now calls back with
+      // whatever's been found so far every time a new sub-search resolves,
+      // instead of making the caller wait on the slowest one. Each callback
+      // just replaces the displayed list wholesale (it's already the full
+      // current best list, deduped+filtered) and opens the dropdown on the
+      // very first one, so the user sees the fast result immediately and
+      // watches slower ones join it, rather than a blank dropdown the whole
+      // time. unifiedPropertySearch itself caps the total wait at 3 minutes and
+      // discards anything slower than that.
+      unifiedPropertySearch(
+        q,
+        (results) => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatches(results);
+          setLiveMatchesOpen(true);
+        },
+        controller.signal,
+      )
+        .then(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          // Nothing ever came in (a genuine zero-match search) — still open
+          // the dropdown so it shows the "no matches" row + manual-search
+          // fallback button, rather than rendering nothing at all (see the
+          // panel's own comment below for why that silence was itself a
+          // bug).
+          setLiveMatchesOpen(true);
+        })
+        .catch(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesOpen(true);
+        })
+        .finally(() => {
+          if (liveMatchRequestRef.current !== requestId) return;
+          setLiveMatchesLoading(false);
+        });
+    }, LIVE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   // Shared by the form's own submit and by picking an address suggestion
   // directly (see onPlaceSelected below) — takes the address as a parameter
@@ -81,6 +180,37 @@ function Home() {
     resetIntake();
     updateIntake({ address: addr.trim(), propertyKind });
     navigate({ to: "/intake" });
+  }
+
+  // A live match was picked directly — skip the address-validation round
+  // trip entirely: store the full real record (same field mapping
+  // intake.tsx's applyCadRecord uses) and land straight on /intake's
+  // Confirm step, which already resumes there whenever accountNumber+cad
+  // are set (see its own mount effect).
+  function selectLiveMatch(record: CadRecord) {
+    if (classifyPropertyCategory(record.propertyType) === "residential") return;
+    setLiveMatchesOpen(false);
+    resetIntake();
+    updateIntake({ propertyKind });
+    updateIntake(cadRecordToIntakePatch(record, record.propertyAddress.trim() || address.trim()));
+    navigate({ to: "/intake" });
+  }
+
+  // A dropdown row was clicked. Most rows already have a resolved CAD
+  // record (selectLiveMatch's fast path above). A row still "pending" or
+  // settled at "none" — a real Google-known address we just don't have
+  // county parcel data for yet/at all — has no record to jump straight in
+  // with, so it falls back to the exact same manual-resolution flow typing
+  // a full address and submitting already uses: goToIntake runs the real
+  // (non-preview) cadLookup on /intake's mount, which is slower but still
+  // works for an address outside this fast preview path.
+  function selectMatch(m: UnifiedMatch) {
+    if (m.record) {
+      selectLiveMatch(m.record);
+    } else {
+      setLiveMatchesOpen(false);
+      goToIntake(m.address);
+    }
   }
 
   const submit = (e: React.FormEvent) => {
@@ -139,7 +269,7 @@ function Home() {
             <h1 className="font-serif text-3xl sm:text-4xl md:text-6xl font-semibold leading-[1.15] md:leading-[1.1]">
               AI Property Tax Management
               <br className="hidden md:block" />{" "}
-              <span className="text-emerald-600 dark:text-emerald-400">Protest and Save</span>
+              <span className="text-emerald-700 dark:text-emerald-400">Protest and Save</span>
             </h1>
             <p className="mt-3 text-lg sm:text-xl font-medium text-foreground/80">
               From Notice to Savings.
@@ -156,9 +286,10 @@ function Home() {
                       aria-checked={false}
                       disabled
                       title="Residential — coming soon"
-                      className="rounded-full px-4 py-1.5 text-sm font-medium capitalize text-muted-foreground/40 cursor-not-allowed"
+                      className="rounded-full px-4 py-1.5 text-sm font-medium capitalize text-muted-foreground/70 cursor-not-allowed"
                     >
                       {kind}
+                      <span className="ml-1 text-[10px] font-semibold normal-case">(soon)</span>
                     </button>
                   ) : (
                     <button
@@ -181,11 +312,11 @@ function Home() {
             </div>
 
             <div className="relative mt-3">
-              {/* Teddy pops up out of the search box's own top-left corner (the
+              {/* AI robot pops up out of the search box's own top-left corner (the
               box is the "doorway" now, not a separate graphic beside it) —
               same one-time emerge animation as before, reused as-is. */}
               <div className="hidden sm:block absolute -top-16 -left-14 z-10" aria-hidden="true">
-                <WavingBearIllustration className="h-24 w-auto hero-bear-emerge" />
+                <WavingRobotIllustration className="h-24 w-auto hero-mascot-emerge" />
                 <div className="hero-bubble absolute -top-4 left-[105%] w-36 text-left">
                   Hi! 👋 Type your address, or upload.
                 </div>
@@ -202,16 +333,150 @@ function Home() {
                   placeholder={`Enter a ${propertyKind} property address in Texas`}
                   className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground px-4 py-3 outline-none rounded-lg"
                   ariaLabel={`${propertyKind === "commercial" ? "Commercial" : "Residential"} property address`}
+                  // Always on — this component's own plain-text suggestion
+                  // list is now fully superseded by the unified live-match
+                  // panel below, which already folds Google's own
+                  // suggestions INTO its search (see unifiedPropertySearch in
+                  // lib/unified-search.ts): each Google candidate is resolved
+                  // to a real address and run through CAD lookup, so the one
+                  // panel shows real, parcel-grounded results regardless of
+                  // whether the match came from the typed text directly or
+                  // via a Google-resolved business name.
+                  suppressSuggestions
                 />
                 <MicButton onResult={setAddress} />
                 <button
                   type="submit"
                   disabled={resolvingAddress}
-                  className="btn-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-accent !rounded-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {resolvingAddress ? "Resolving…" : "Start Free AI Property Review"}
                 </button>
               </form>
+
+              {liveMatchesLoading && liveMatches.length === 0 && (
+                <LiveSearchLoader className="mt-3 px-1" query={address} />
+              )}
+
+              {liveMatchesOpen && (
+                <div className="mt-2 max-h-[26rem] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-card text-left shadow-sm">
+                  {liveMatchesLoading && (
+                    <div className="border-b border-border px-4 py-2.5">
+                      <LiveSearchLoader query={address} />
+                    </div>
+                  )}
+                  {liveMatches.length === 0 && !liveMatchesLoading && (
+                    // A settled search that genuinely found nothing at all —
+                    // not even a bare Google-known address, since those now
+                    // show up as their own "none" row below instead of
+                    // being dropped. Still gives a next step rather than
+                    // silence.
+                    <p className="px-4 py-3 text-sm text-muted-foreground">
+                      No matching addresses found for "{address.trim()}".
+                    </p>
+                  )}
+                  {/* Raised from 6 — every real Google match is now its own
+                  row (see unifiedPropertySearch), not just the ones that
+                  happened to resolve to a CAD record, so there's genuinely
+                  more worth showing; the container above scrolls instead of
+                  growing the page unboundedly. */}
+                  {liveMatches.slice(0, 10).map((m, i) => {
+                    const residential = isResidentialMatch(m);
+                    // Same grayed-out, non-clickable treatment as a
+                    // residential row — found live ("denver walmart" shown
+                    // under a "Searching Dallas County records…" spinner for
+                    // a real Colorado address): a row we already know is out
+                    // of coverage is shown, not hidden, but never
+                    // selectable, with its own plain reason instead of
+                    // residential's.
+                    const disabled = residential || m.cadStatus === "unsupported";
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => !disabled && selectMatch(m)}
+                        title={
+                          residential
+                            ? "Residential — coming soon"
+                            : disabled
+                              ? "We don't cover this county yet"
+                              : undefined
+                        }
+                        className={`row-hover block w-full px-4 py-3 text-left ${
+                          i > 0 ? "border-t border-border" : ""
+                        } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+                      >
+                        {/* Shown only for a result found by following a Google
+                        suggestion to its real address first (see
+                        unifiedPropertySearch) — ties the store/business name
+                        the user actually searched for back to the row below
+                        it, instead of just a bare address they typed a name
+                        to find. */}
+                        {m.googleLabel && (
+                          <div
+                            className={`truncate text-xs font-semibold ${disabled ? "text-muted-foreground" : "text-accent"}`}
+                          >
+                            {m.googleLabel}
+                          </div>
+                        )}
+                        <div
+                          className={`truncate text-sm font-semibold uppercase tracking-tight ${disabled ? "text-muted-foreground" : ""}`}
+                        >
+                          {m.address}
+                        </div>
+                        {residential ? (
+                          // Shown, not hidden — found live ("I need to see
+                          // that suggestion, but it's residential... gray it
+                          // out" instead of it flashing in while pending and
+                          // vanishing the instant it classifies): same
+                          // "(soon)" language as the Residential tab above
+                          // the search box, not a silently dropped row.
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            Residential — coming soon
+                          </div>
+                        ) : m.cadStatus === "unsupported" ? (
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            We don't cover this county yet
+                          </div>
+                        ) : m.record ? (
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            <span className="font-bold text-foreground">
+                              PARCEL: {m.record.accountNumber ?? "—"}
+                            </span>
+                            {" · "}
+                            {m.record.cad}
+                            {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+                          </div>
+                        ) : m.cadStatus === "pending" ? (
+                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Looking up county parcel…
+                          </div>
+                        ) : (
+                          // "none" — a real address (Google found it) with no
+                          // county parcel on file for it. Still selectable:
+                          // picking it runs the normal, slower manual
+                          // resolution flow instead of this fast preview path.
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            No county parcel on file — tap to continue anyway
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLiveMatchesOpen(false);
+                      goToIntake(address);
+                    }}
+                    className="block w-full border-t border-border bg-accent px-4 py-3 text-center text-sm font-semibold text-accent-foreground"
+                  >
+                    Don't see your address? Click here.
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 flex flex-wrap justify-center gap-3">
@@ -286,10 +551,21 @@ function Home() {
         <div className="mt-12 grid gap-8 md:grid-cols-3">
           {PROCESS_STEPS.map((step, i) => (
             <ScrollReveal key={step.title} delay={i * 150} className="text-center">
-              <span
-                className={`mx-auto grid h-14 w-14 place-items-center rounded-full ${step.color.bg} ${step.color.text}`}
-              >
-                <step.icon className="h-6 w-6" />
+              <span className="relative mx-auto grid h-16 w-16 place-items-center">
+                {i < PROCESS_STEPS.length - 1 && (
+                  <span
+                    aria-hidden
+                    className="absolute left-full top-1/2 hidden h-0.5 w-[calc(100%+4rem)] -translate-y-1/2 bg-gradient-to-r from-accent/50 to-transparent md:block"
+                  />
+                )}
+                <span
+                  className={`relative grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br shadow-md transition-transform hover:-translate-y-1 hover:rotate-3 ${STEP_GRADIENTS[i % STEP_GRADIENTS.length]} text-white`}
+                >
+                  <step.icon className="h-7 w-7" />
+                  <span className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-background text-xs font-bold text-foreground shadow ring-1 ring-border">
+                    {i + 1}
+                  </span>
+                </span>
               </span>
               <h3 className="mt-4 font-serif text-lg font-semibold">{step.title}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
@@ -305,6 +581,8 @@ function Home() {
           </Link>
         </div>
       </section>
+
+      <ProductPreview />
 
       {/* How CorvusPT Helps You Save — real, existing services only (no stats,
         no testimonials — see plan notes on why those are out of scope). A

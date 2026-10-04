@@ -1,3 +1,5 @@
+import { centerInStrip } from "@/lib/scroll-into-strip";
+import { GLOSSARY_MAP } from "@/lib/glossary";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
@@ -27,10 +29,39 @@ const NAV = [
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
   { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
-  { to: "/dashboard/deadlines", label: "Deadlines", icon: CalendarClock, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
 ] as const;
+
+// Each tab has its own colour: a tinted icon at rest, and a matching gradient pill when
+// it's the open page (the same colours as the page's banner). Full class strings so
+// Tailwind can see them.
+const TAB_COLOR: Record<string, { icon: string; active: string }> = {
+  "/dashboard": {
+    icon: "text-emerald-700",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-teal-700",
+  },
+  "/dashboard/properties": {
+    icon: "text-emerald-700",
+    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-sky-700",
+  },
+  "/dashboard/bpp-accounts": {
+    icon: "text-sky-700",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
+  },
+  "/dashboard/documents": {
+    icon: "text-sky-700",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
+  },
+  "/dashboard/calendar": {
+    icon: "text-violet-700",
+    active: "data-[status=active]:from-violet-600 data-[status=active]:to-fuchsia-700",
+  },
+  "/dashboard/tax-bills": {
+    icon: "text-teal-600",
+    active: "data-[status=active]:from-teal-600 data-[status=active]:to-blue-700",
+  },
+};
 
 // Pages that keep their own full-width marketing/tooling layout instead of the
 // account sidebar: the home page (explicitly excluded), the admin workspace
@@ -79,6 +110,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const transitionRef = usePageTransitionReplay(pathname);
+  const tabBarRef = useRef<HTMLElement>(null);
+  // On a narrow screen the tab strip scrolls sideways — keep the current page's tab in view.
+  useEffect(() => {
+    centerInStrip(
+      tabBarRef.current,
+      tabBarRef.current?.querySelector<HTMLElement>("[data-status=active]") ?? null,
+    );
+  }, [pathname, user]);
 
   if (loading || !user || !shouldShowShell(pathname)) {
     return (
@@ -89,13 +128,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="w-full px-6 py-10 sm:px-10 lg:px-16">
+    <div className="w-full px-3 py-6 sm:px-10 sm:py-10 lg:px-16">
       <div className="grid grid-cols-1 gap-2">
         {/* Sticks just under SiteNav's own sticky header (top-16 matches its
             h-16) so this tab bar stays reachable on long pages (Properties,
             Documents) instead of scrolling away — bg-background keeps page
             content from showing through once it's actually stuck. */}
-        <nav className="sticky top-16 z-30 flex min-w-0 justify-center gap-1 overflow-x-auto bg-background pb-2 pt-2">
+        <nav
+          ref={tabBarRef}
+          aria-label="Dashboard sections"
+          className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2"
+        >
           {NAV.map((item) => {
             const Icon = item.icon;
             if (item.locked) {
@@ -103,6 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   key={item.to}
                   type="button"
+                  title={`${item.label} is coming soon.${item.label.includes("BPP") ? " " + GLOSSARY_MAP.BPP : ""}`}
                   onClick={() =>
                     toast(`${item.label} is coming soon`, {
                       description: "This section is still under development — check back soon.",
@@ -116,15 +160,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </button>
               );
             }
+            const color = TAB_COLOR[item.to];
             return (
               <Link
                 key={item.to}
                 to={item.to}
-                className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
-                activeProps={{ className: "bg-nav-highlight text-nav-highlight-foreground" }}
+                className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
                 activeOptions={{ exact: item.to === "/dashboard" }}
               >
-                <Icon className="h-4 w-4" />
+                <Icon
+                  className={`h-4 w-4 transition-colors group-data-[status=active]:text-white ${color?.icon ?? ""}`}
+                />
                 {item.label}
               </Link>
             );

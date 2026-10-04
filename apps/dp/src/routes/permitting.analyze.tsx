@@ -8,7 +8,6 @@ import {
   updateDpIntake,
   type DpIntakeState,
   type ProjectIntent,
-  type PropertySector,
 } from "@/lib/dp-intake";
 import { runPermittingAnalysis } from "@/lib/analysis";
 import { generateFeasibilitySummary, type FeasibilitySummary } from "@/lib/ai";
@@ -362,22 +361,19 @@ function ProjectStep({
             ))}
           </div>
         </div>
+        {/* CorvusDP is commercial-only — the residential option that used to
+            sit next to this was removed per direct product decision ("we
+            will just work with commercial projects"). Sector is still a
+            field downstream (analysis.ts, fees.ts, reports) so it's kept set
+            to "commercial" rather than dropped, just no longer a user
+            choice — a single non-interactive chip, not a button, since
+            there's nothing left to toggle. */}
         <div>
           <div className="text-sm font-medium">Sector</div>
           <div className="mt-2 flex gap-2">
-            {(["commercial", "residential"] as PropertySector[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => patch({ project: { sector: s } })}
-                className={`rounded-lg border px-4 py-2 text-sm font-medium capitalize transition-colors ${
-                  pr.sector === s
-                    ? "border-accent bg-accent text-accent-foreground"
-                    : "border-border hover:bg-secondary"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            <span className="rounded-lg border border-accent bg-accent px-4 py-2 text-sm font-medium capitalize text-accent-foreground">
+              Commercial
+            </span>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">

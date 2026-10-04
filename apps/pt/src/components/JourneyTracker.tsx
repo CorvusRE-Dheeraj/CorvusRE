@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { readIntake, classifyAndStoreDocument, type IntakeState } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
@@ -36,14 +36,24 @@ const STATUS_RANK: Record<ProtestStatus, number> = {
   filed: 2,
   under_review: 3,
   offer_received: 3,
-  hearing_scheduled: 4,
+  // A scheduled hearing is still the "Track" stage; Decision only completes once a decision exists.
+  hearing_scheduled: 3,
   decision_received: 4,
   appealing: 4,
   arbitrating: 4,
   resolved: 5,
 };
 
-type Action = { label: string; to?: string; upload?: boolean; protestLaunch?: boolean };
+// `locked` disables the action entirely and shows why on hover/focus — used
+// for a service that isn't open yet, as opposed to `protestLaunch`'s paid
+// gate, which is a real click that leads to an authorization flow.
+type Action = {
+  label: string;
+  to?: string;
+  upload?: boolean;
+  protestLaunch?: boolean;
+  locked?: string;
+};
 type StepMessage = { title: string; actions?: Action[] };
 
 // `state` reflects only the CURRENT browser session's intake flow, which resets
@@ -174,7 +184,11 @@ function getMessage(currentStep: number, allDone: boolean): StepMessage | null {
         title: "Ready to save on your property taxes? Choose a service to get started.",
         actions: [
           { label: "Protest My Property", to: "/property-protest", protestLaunch: true },
-          { label: "File BPP Rendition", to: "/bpp-rendition" },
+          {
+            label: "File BPP Rendition",
+            to: "/bpp-rendition",
+            locked: "Coming soon — BPP rendition filing isn't open yet.",
+          },
         ],
       };
     case 7:
@@ -205,7 +219,10 @@ function shortAddress(address: string): string {
     .trim();
 }
 
-export function JourneyTracker() {
+// propertyId pins the tracker to one property (View Case, the AI Report's
+// modules) — it then shows THAT property's journey with no picker, instead of
+// defaulting to the first property in the list like the Properties page does.
+export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [state, setState] = useState<IntakeState>({ previewsUsed: [] });
@@ -315,6 +332,10 @@ export function JourneyTracker() {
     statusFilter === "all" ? properties : properties.filter((p) => statusOf(p) === statusFilter);
   const visibleProperties = matches.length > 0 ? matches : properties;
 
+  // Pinned to a property that isn't loaded (yet, or not this user's) — show
+  // nothing rather than a different property's journey.
+  if (propertyId && !properties.some((p) => p.id === propertyId)) return null;
+
   // Nobody has a saved property yet — one generic tracker driven purely by
   // whatever the current browser session's in-progress intake flow has done so
   // far, since there's no per-property case to show progress for.
@@ -342,7 +363,10 @@ export function JourneyTracker() {
   // "Choose Service". Switch properties via the address dropdown below.
   // `visibleProperties[0]` is always defined here (hasSavedProperty guard
   // above), and covers the active property being filtered out or deleted.
-  const activeProperty = visibleProperties.find((p) => p.id === activeId) ?? visibleProperties[0];
+  const activeProperty =
+    (propertyId ? properties.find((p) => p.id === propertyId) : undefined) ??
+    visibleProperties.find((p) => p.id === activeId) ??
+    visibleProperties[0];
   const activeProtest = protests.find((pr) => pr.propertyId === activeProperty.id);
   const activeRank = activeProtest ? STATUS_RANK[activeProtest.status] : 0;
   // Only trust this session's real intake signals (no document uploaded, no
@@ -383,7 +407,7 @@ export function JourneyTracker() {
           }}
         />
       )}
-      {properties.length > 1 && (
+      {properties.length > 1 && !propertyId && (
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <label htmlFor="journey-property" className="sr-only">
             Property
@@ -491,7 +515,11 @@ export function JourneyBlock({
         </div>
       </div>
 
-      <ol className="mt-5 flex items-start overflow-x-auto pb-1">
+      <ol
+        tabIndex={0}
+        aria-label="Journey steps"
+        className="mt-5 flex items-start overflow-x-auto pb-1"
+      >
         {STEP_LABELS.flatMap((label, i) => {
           const done = steps[i];
           const skipped = !!skippedSteps?.[i];
@@ -568,7 +596,18 @@ export function JourneyBlock({
           {visibleActions.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {visibleActions.map((a) =>
-                a.protestLaunch && onProtestClick ? (
+                a.locked ? (
+                  <button
+                    key={a.label}
+                    type="button"
+                    disabled
+                    title={a.locked}
+                    aria-label={`${a.label} — ${a.locked}`}
+                    className="btn-outline text-sm py-2 cursor-not-allowed opacity-60"
+                  >
+                    <Lock className="h-3.5 w-3.5" aria-hidden /> {a.label}
+                  </button>
+                ) : a.protestLaunch && onProtestClick ? (
                   <button
                     key={a.label}
                     type="button"

@@ -8,7 +8,7 @@ import { getErrorMessage } from "@/lib/error-message";
 // Shown once to a signed-in user with no name on file — the case for anyone
 // who arrived via the shared cross-door identity sign-in (/auth/) rather than
 // CorvusDP's own sign-up form, which is the only place that ever asks for a
-// name. mint-door-session (see supabase-dp/functions/mint-door-session)
+// name. mint-door-session (see supabase/dp/functions/mint-door-session)
 // auto-provisions a bare CorvusDP account the first time a given identity
 // email bridges in, so this is the only place that account's real profile
 // ever gets filled in.

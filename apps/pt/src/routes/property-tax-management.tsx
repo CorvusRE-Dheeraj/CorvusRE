@@ -103,7 +103,7 @@ function Page() {
                   >
                     <cap.icon className="h-5 w-5" />
                   </div>
-                  <h3 className="mt-3 font-semibold">{cap.title}</h3>
+                  <h2 className="mt-3 font-semibold">{cap.title}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{cap.description}</p>
                 </div>
               </ScrollReveal>

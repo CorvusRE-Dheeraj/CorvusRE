@@ -72,7 +72,6 @@ export function AdminCaseProgressModal({
             protestId={protest.id}
             caseData={caseData}
             onReload={load}
-            allowEvidenceUpload={false}
           />
           <DocumentsSection
             userId={userId}

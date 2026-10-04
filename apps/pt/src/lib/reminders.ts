@@ -11,6 +11,14 @@ export type Reminder = {
   remindOn: string; // YYYY-MM-DD
   note: string;
   done: boolean;
+  // Explicitly acknowledged as missed — set by setReminderMissed, cleared
+  // whenever done is set true. Distinct from "just overdue": a reminder past
+  // its date with this still null is auto-treated as missed for DISPLAY too
+  // (see fromReminder() in tax-calendar.ts) so an old, ignored reminder
+  // never silently reads as "Done" — but this field is what lets the owner
+  // mark one missed explicitly (even before its date) rather than only ever
+  // toggling done/not-done.
+  missedAt: string | null;
   // 'system' = created automatically (e.g. the weekly property-base-data
   // refresh noticed the CAD data changed).
   source: "manual" | "assistant" | "system";
@@ -23,6 +31,7 @@ type Row = {
   remind_on: string;
   note: string;
   done: boolean;
+  missed_at: string | null;
   source: string;
   created_at: string;
 };
@@ -33,14 +42,17 @@ const fromRow = (r: Row): Reminder => ({
   remindOn: r.remind_on,
   note: r.note,
   done: r.done,
+  missedAt: r.missed_at,
   source: r.source === "assistant" || r.source === "system" ? r.source : "manual",
   createdAt: r.created_at,
 });
 
+const SELECT_COLUMNS = "id, property_id, remind_on, note, done, missed_at, source, created_at";
+
 export async function listReminders(userId: string): Promise<Reminder[]> {
   const { data, error } = await supabase
     .from("user_reminders")
-    .select("id, property_id, remind_on, note, done, source, created_at")
+    .select(SELECT_COLUMNS)
     .eq("user_id", userId)
     .order("remind_on", { ascending: true });
   if (error || !data) return [];
@@ -65,14 +77,46 @@ export async function addReminder(
       note: input.note.trim(),
       source: input.source ?? "manual",
     })
-    .select("id, property_id, remind_on, note, done, source, created_at")
+    .select(SELECT_COLUMNS)
     .single();
   if (error) throw error;
   return fromRow(data as Row);
 }
 
 export async function setReminderDone(id: string, done: boolean): Promise<void> {
-  const { error } = await supabase.from("user_reminders").update({ done }).eq("id", id);
+  // Marking done also clears any explicit "missed" mark — the two are
+  // mutually exclusive end states.
+  const { error } = await supabase
+    .from("user_reminders")
+    .update({ done, missed_at: done ? null : undefined })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// Explicitly marks a reminder missed (or clears that mark) — separate from
+// setReminderDone so the Calendar page can offer "Completed" and "Missed" as
+// two distinct actions instead of one done/not-done toggle. Setting missed
+// also clears `done`, since a reminder can't be both.
+export async function setReminderMissed(id: string, missed: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("user_reminders")
+    .update({ missed_at: missed ? new Date().toISOString() : null, done: missed ? false : undefined })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// Edits a reminder the owner already added — the Calendar page's edit form, and its
+// drag-to-reschedule (only ever a reminder; every other calendar entry is a real county/case
+// fact and stays read-only there).
+export async function updateReminder(
+  id: string,
+  patch: { remindOn?: string; note?: string; propertyId?: string | null },
+): Promise<void> {
+  const update: Record<string, string | null> = {};
+  if (patch.remindOn !== undefined) update.remind_on = patch.remindOn;
+  if (patch.note !== undefined) update.note = patch.note.trim();
+  if (patch.propertyId !== undefined) update.property_id = patch.propertyId;
+  const { error } = await supabase.from("user_reminders").update(update).eq("id", id);
   if (error) throw error;
 }
 

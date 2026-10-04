@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AiReportRouteImport } from './routes/ai-report'
+import { Route as AppointmentRouteImport } from './routes/appointment'
 import { Route as BppRenditionRouteImport } from './routes/bpp-rendition'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DocumentReviewRouteImport } from './routes/document-review'
@@ -43,6 +44,7 @@ import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard
 import { Route as DashboardLayoutSavingsRouteImport } from './routes/dashboard/_layout.savings'
 import { Route as DashboardLayoutSettingsRouteImport } from './routes/dashboard/_layout.settings'
 import { Route as DashboardLayoutTaxBillsRouteImport } from './routes/dashboard/_layout.tax-bills'
+import { Route as DashboardLayoutTaxUpdatesRouteImport } from './routes/dashboard/_layout.tax-updates'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -62,6 +64,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
 const AiReportRoute = AiReportRouteImport.update({
   id: '/ai-report',
   path: '/ai-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppointmentRoute = AppointmentRouteImport.update({
+  id: '/appointment',
+  path: '/appointment',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BppRenditionRoute = BppRenditionRouteImport.update({
@@ -220,12 +227,19 @@ const DashboardLayoutTaxBillsRoute = DashboardLayoutTaxBillsRouteImport.update({
   path: '/tax-bills',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutTaxUpdatesRoute =
+  DashboardLayoutTaxUpdatesRouteImport.update({
+    id: '/tax-updates',
+    path: '/tax-updates',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -255,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -262,6 +277,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -290,6 +306,7 @@ export interface FileRoutesByTo {
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard': typeof DashboardLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -298,6 +315,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
+  '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
@@ -327,6 +345,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/savings': typeof DashboardLayoutSavingsRoute
   '/dashboard/_layout/settings': typeof DashboardLayoutSettingsRoute
   '/dashboard/_layout/tax-bills': typeof DashboardLayoutTaxBillsRoute
+  '/dashboard/_layout/tax-updates': typeof DashboardLayoutTaxUpdatesRoute
   '/dashboard/_layout/': typeof DashboardLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -336,6 +355,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -365,6 +385,7 @@ export interface FileRouteTypes {
     | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
+    | '/dashboard/tax-updates'
     | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -372,6 +393,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -400,6 +422,7 @@ export interface FileRouteTypes {
     | '/dashboard/savings'
     | '/dashboard/settings'
     | '/dashboard/tax-bills'
+    | '/dashboard/tax-updates'
     | '/dashboard'
   id:
     | '__root__'
@@ -407,6 +430,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-login'
     | '/ai-report'
+    | '/appointment'
     | '/bpp-rendition'
     | '/contact'
     | '/document-review'
@@ -436,6 +460,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/savings'
     | '/dashboard/_layout/settings'
     | '/dashboard/_layout/tax-bills'
+    | '/dashboard/_layout/tax-updates'
     | '/dashboard/_layout/'
   fileRoutesById: FileRoutesById
 }
@@ -444,6 +469,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AiReportRoute: typeof AiReportRoute
+  AppointmentRoute: typeof AppointmentRoute
   BppRenditionRoute: typeof BppRenditionRoute
   ContactRoute: typeof ContactRoute
   DocumentReviewRoute: typeof DocumentReviewRoute
@@ -490,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-report'
       fullPath: '/ai-report'
       preLoaderRoute: typeof AiReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/appointment': {
+      id: '/appointment'
+      path: '/appointment'
+      fullPath: '/appointment'
+      preLoaderRoute: typeof AppointmentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/bpp-rendition': {
@@ -702,6 +735,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutTaxBillsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/tax-updates': {
+      id: '/dashboard/_layout/tax-updates'
+      path: '/tax-updates'
+      fullPath: '/dashboard/tax-updates'
+      preLoaderRoute: typeof DashboardLayoutTaxUpdatesRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
   }
 }
 
@@ -719,6 +759,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutSavingsRoute: typeof DashboardLayoutSavingsRoute
   DashboardLayoutSettingsRoute: typeof DashboardLayoutSettingsRoute
   DashboardLayoutTaxBillsRoute: typeof DashboardLayoutTaxBillsRoute
+  DashboardLayoutTaxUpdatesRoute: typeof DashboardLayoutTaxUpdatesRoute
   DashboardLayoutIndexRoute: typeof DashboardLayoutIndexRoute
 }
 
@@ -736,6 +777,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutSavingsRoute: DashboardLayoutSavingsRoute,
   DashboardLayoutSettingsRoute: DashboardLayoutSettingsRoute,
   DashboardLayoutTaxBillsRoute: DashboardLayoutTaxBillsRoute,
+  DashboardLayoutTaxUpdatesRoute: DashboardLayoutTaxUpdatesRoute,
   DashboardLayoutIndexRoute: DashboardLayoutIndexRoute,
 }
 
@@ -748,6 +790,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   AdminLoginRoute: AdminLoginRoute,
   AiReportRoute: AiReportRoute,
+  AppointmentRoute: AppointmentRoute,
   BppRenditionRoute: BppRenditionRoute,
   ContactRoute: ContactRoute,
   DocumentReviewRoute: DocumentReviewRoute,

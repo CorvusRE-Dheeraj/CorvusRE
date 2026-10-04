@@ -51,6 +51,8 @@ import {
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminBetaFeedback } from "@/components/AdminBetaFeedback";
+import { AdminAppointments } from "@/components/AdminAppointments";
+import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
 import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/CopyButton";
@@ -74,6 +76,8 @@ type AdminTab =
   | "invited"
   | "beta"
   | "beta_feedback"
+  | "appointments"
+  | "support"
   | "activity"
   | "settings";
 
@@ -553,6 +557,8 @@ function AdminPanel() {
     },
     { key: "beta", label: "Beta Signups", count: betaLeadsLoading ? null : betaLeads.length },
     { key: "beta_feedback", label: "Beta Feedback", count: null },
+    { key: "appointments", label: "Appointments", count: null },
+    { key: "support", label: "Support", count: null },
     { key: "activity", label: "Activity Log", count: auditLogLoading ? null : auditLog.length },
     { key: "settings", label: "Settings", count: null },
   ];
@@ -766,7 +772,8 @@ function AdminPanel() {
           <h2 className="font-serif text-xl font-semibold">Beta Signups</h2>
           <p className="text-sm text-muted-foreground">
             Everyone who submitted the "Request Beta Access" form on the hub site. Most recent
-            first.
+            first. People who tick "join as a beta tester" when creating an account are not listed
+            here: they appear under Users with the Beta plan.
           </p>
           <div className="mt-4 grid gap-2">
             {betaLeadsLoading ? (
@@ -790,6 +797,9 @@ function AdminPanel() {
       )}
 
       {activeTab === "beta_feedback" && <AdminBetaFeedback />}
+
+      {activeTab === "appointments" && <AdminAppointments />}
+      {activeTab === "support" && <AdminSupportEscalations />}
 
       {activeTab === "activity" && (
         <section className="mt-8">

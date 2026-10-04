@@ -1055,3 +1055,214 @@ header .container-page {
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
+
+/* Permitting Train-Track Map (/dashboard/track-map). A rail runs through each
+   station slot and bleeds into the grid gap, so every row of stations reads
+   as one continuous line even after the grid wraps. */
+.track-rail {
+  position: absolute;
+  left: -0.75rem;
+  right: -0.75rem;
+  top: 1.1rem;
+  height: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(#566777, #566777) top / 100% 3px no-repeat,
+    linear-gradient(#566777, #566777) bottom / 100% 3px no-repeat,
+    repeating-linear-gradient(90deg, #b9c4ce 0 3px, transparent 3px 14px);
+  opacity: 0.85;
+}
+/* The vertical bridge between two route sections — same rail/sleeper
+   language as .track-rail, rotated, so the line reads as continuing from
+   one route's box down into the next rather than stopping at the border. */
+.track-link {
+  position: relative;
+  width: 14px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #566777, #566777) left / 3px 100% no-repeat,
+    linear-gradient(90deg, #566777, #566777) right / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, #b9c4ce 0 3px, transparent 3px 14px);
+  opacity: 0.85;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .track-train {
+    animation: track-chug 1.6s ease-in-out infinite;
+  }
+  .track-smoke {
+    animation: track-smoke 2.4s ease-out infinite;
+  }
+}
+@keyframes track-chug {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -2px, 0);
+  }
+}
+@keyframes track-smoke {
+  0% {
+    opacity: 0.7;
+    transform: translate3d(0, 0, 0) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-10px, -14px, 0) scale(1.4);
+  }
+}
+
+/* Train journey (TrainJourney on the Track Map). Static styles first; every
+   animation is in the prefers-reduced-motion: no-preference block below, so
+   with reduced motion the scene is a still picture with the train parked. */
+.journey-sky {
+  background: linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 55%, #fef3c7 100%);
+}
+.journey-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.journey-rails {
+  background:
+    linear-gradient(#475569, #475569) top / 100% 3px no-repeat,
+    linear-gradient(#475569, #475569) bottom / 100% 3px no-repeat,
+    repeating-linear-gradient(90deg, #78716c 0 5px, transparent 5px 18px);
+}
+.journey-wheel {
+  background: conic-gradient(#334155 0 12.5%, #e2e8f0 0 25%, #334155 0 37.5%, #e2e8f0 0 50%, #334155 0 62.5%, #e2e8f0 0 75%, #334155 0 87.5%, #e2e8f0 0);
+}
+.journey-puff {
+  opacity: 0;
+}
+.journey-loading span {
+  display: inline-block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .journey-train {
+    transition: left 3.6s cubic-bezier(0.35, 0.05, 0.25, 1);
+  }
+  /* Rock each car, not the train itself: the train is positioned with
+     Tailwind -translate-x-full (the CSS translate property), which a
+     translate/transform animation on it would override. */
+  .journey-train.is-moving > * {
+    animation: journey-rock 0.35s ease-in-out infinite;
+  }
+  .journey-train.is-moving > :nth-child(even) {
+    animation-delay: 0.12s;
+  }
+  .journey-train.is-moving .journey-wheel {
+    animation: journey-spin 0.45s linear infinite;
+  }
+  .journey-wheel {
+    animation: journey-spin 2.4s linear infinite;
+    animation-play-state: paused;
+  }
+  .journey-puff {
+    animation: journey-puff 2.1s ease-out infinite;
+  }
+  .journey-cloud {
+    animation: journey-drift linear infinite alternate;
+  }
+  .journey-signal {
+    animation: journey-signal 1.1s ease-in-out infinite;
+  }
+  .journey-led {
+    animation: journey-led 1.4s steps(2, jump-none) infinite;
+  }
+  .journey-cell {
+    animation: journey-cell 0.4s ease-out both;
+  }
+  .journey-crate {
+    opacity: 0;
+    transform: translate3d(0, -40px, 0);
+  }
+  .journey-crate.is-loaded {
+    animation: journey-crate-drop 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) forwards;
+  }
+  .journey-loading span {
+    animation: journey-dot 1.2s ease-in-out infinite;
+  }
+  .journey-loading span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .journey-loading span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+@keyframes journey-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes journey-rock {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -1.5px, 0);
+  }
+}
+@keyframes journey-puff {
+  0% {
+    opacity: 0.85;
+    transform: translate3d(0, 0, 0) scale(0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-34px, -46px, 0) scale(2.4);
+  }
+}
+@keyframes journey-drift {
+  from {
+    translate: -30px 0;
+  }
+  to {
+    translate: 60px 0;
+  }
+}
+@keyframes journey-signal {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(251 191 36 / 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgb(251 191 36 / 0);
+  }
+}
+@keyframes journey-led {
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes journey-cell {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+}
+@keyframes journey-crate-drop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -40px, 0);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes journey-dot {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}

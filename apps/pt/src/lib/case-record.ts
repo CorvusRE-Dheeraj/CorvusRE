@@ -186,7 +186,7 @@ export function getCaseRecord(protest: ProtestRecord, opts: Opts): CaseRecordIte
       id: "informal_result",
       label: "Informal result — accepted or rejected",
       stage: "informal",
-      status: ["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus)
+      status: ["accepted", "rejected", "no_informal_available", "completed"].includes(protest.informalStatus)
         ? "on_file"
         : "outstanding",
       detail: `Informal status: ${protest.informalStatus}.`,

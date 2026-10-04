@@ -39,11 +39,28 @@ export type CalendarEvent = {
   linkTo: string;
   /** True once the event is behind us in a way that no longer needs action (paid, closed, past). */
   resolved: boolean;
+  // Reminders only: explicitly acknowledged as missed, or past its date and
+  // never marked done — see fromReminder() below. Undefined for every other
+  // event type (a real county/case fact just shows "Past due" instead, via
+  // DaysLeftBadge's plain days-left branch).
+  missed?: boolean;
+  // Overrides the generic "Done" badge text when `resolved` is true but a
+  // more specific word is honest ("Settled" for a protest deadline whose
+  // case already closed, vs. just letting the date pass) — see
+  // DaysLeftBadge in the Calendar page.
+  resolvedLabel?: string;
+  // A short plain-language reason shown under the date when `resolved` (or
+  // `missed`) needs explaining — e.g. why a protest deadline reads Done
+  // despite still being in the future. See EventRow in the Calendar page.
+  resolvedNote?: string;
   // The property address (or BPP business name) alone, no event-type prefix
   // — same value title's already built from, kept separate so the
   // month-grid can show it directly under each event without parsing it
   // back out of title's "Event type — X" string.
   propertyLabel: string;
+  // Start time as written on the county notice, for hearings / informal reviews that
+  // have one — feeds the one-hour-before alert (see hour-alert.ts).
+  time?: string | null;
 };
 
 export const EVENT_TYPE_LABEL: Record<CalendarEventType, string> = {
@@ -77,18 +94,30 @@ function toIsoDate(value: string): string {
   return value.length >= 10 ? value.slice(0, 10) : value;
 }
 
-function fromProperty(p: PropertyRecord, taxBillPropertyIds: Set<string>): CalendarEvent[] {
+export function fromProperty(
+  p: PropertyRecord,
+  taxBillPropertyIds: Set<string>,
+  // Properties whose current-cycle protest already settled — see
+  // getCalendarEvents. The county's own deadline date doesn't move once a
+  // case resolves early (e.g. at the informal review, well before the
+  // formal deadline), so without this a settled property kept showing
+  // "N days left" right up to that date as if the deadline still mattered.
+  propertiesWithResolvedCurrentProtest: Set<string>,
+): CalendarEvent[] {
   const events: CalendarEvent[] = [];
   if (p.protestDeadline) {
+    const settled = propertiesWithResolvedCurrentProtest.has(p.id);
     events.push({
       id: `protest-deadline:${p.id}`,
       date: toIsoDate(p.protestDeadline),
       type: "protest_deadline",
-      title: `Protest deadline — ${p.address}`,
+      title: settled ? `Protest settled — ${p.address}` : `Protest deadline — ${p.address}`,
       amount: null,
       propertyId: p.id,
       linkTo: "/dashboard/properties",
-      resolved: new Date(p.protestDeadline) < new Date(),
+      resolved: settled || new Date(p.protestDeadline) < new Date(),
+      resolvedLabel: settled ? "Settled" : undefined,
+      resolvedNote: settled ? "Case closed — no further action needed." : undefined,
       propertyLabel: p.address,
     });
   }
@@ -161,6 +190,7 @@ function fromProtest(
       linkTo: "/dashboard/properties",
       resolved: new Date(pr.informalReviewDate) < new Date(),
       propertyLabel: address,
+      time: pr.informalReviewTime ?? null,
     });
   }
   if (pr.status === "hearing_scheduled" && pr.hearingDate) {
@@ -174,6 +204,7 @@ function fromProtest(
       linkTo: "/dashboard/properties",
       resolved: new Date(pr.hearingDate) < new Date(),
       propertyLabel: address,
+      time: pr.hearingTime ?? null,
     });
   }
   if (pr.arbDecisionDate) {
@@ -310,18 +341,28 @@ function fromBppAccount(account: BppAccountRecord, now: Date): CalendarEvent[] {
   return events;
 }
 
-function fromReminder(r: Reminder, properties: PropertyRecord[]): CalendarEvent {
+export function fromReminder(r: Reminder, properties: PropertyRecord[]): CalendarEvent {
   const property = r.propertyId ? properties.find((p) => p.id === r.propertyId) : undefined;
   const propertyLabel = property?.address ?? "Personal reminder";
+  // `resolved` means "done" ONLY here — it used to also fold in "past its
+  // date", which made an ignored, never-addressed reminder display exactly
+  // the same as one the owner actually completed (strikethrough + a green
+  // "Done" pill either way). `missed` is the real, separate state: either
+  // explicitly acknowledged (missedAt) or, failing that, past its date and
+  // never marked done — see DaysLeftBadge/EventRow in the Calendar page for
+  // how the two now render differently.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dateIso = r.remindOn.slice(0, 10);
   return {
     id: `reminder-${r.id}`,
-    date: r.remindOn.slice(0, 10),
+    date: dateIso,
     type: "reminder",
     title: `Reminder — ${r.note}`,
     amount: null,
     propertyId: r.propertyId,
     linkTo: property ? `/dashboard/case?propertyId=${property.id}` : "/dashboard/calendar",
-    resolved: r.done || r.remindOn.slice(0, 10) < new Date().toISOString().slice(0, 10),
+    resolved: r.done,
+    missed: !r.done && (r.missedAt != null || dateIso < todayIso),
     propertyLabel,
   };
 }
@@ -347,9 +388,18 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
       .filter((p) => p.taxYear != null && p.taxYear >= currentYear && p.propertyId)
       .map((p) => p.propertyId as string),
   );
+  // Same current-cycle filter, narrowed to ones that already closed —
+  // see fromProperty's own doc comment on why the deadline event needs this.
+  const propertiesWithResolvedCurrentProtest = new Set(
+    protests
+      .filter(
+        (p) => p.status === "resolved" && p.taxYear != null && p.taxYear >= currentYear && p.propertyId,
+      )
+      .map((p) => p.propertyId as string),
+  );
 
   const events: CalendarEvent[] = [
-    ...properties.flatMap((p) => fromProperty(p, taxBillPropertyIds)),
+    ...properties.flatMap((p) => fromProperty(p, taxBillPropertyIds, propertiesWithResolvedCurrentProtest)),
     ...protests.flatMap((pr) => fromProtest(pr, properties, propertiesWithCurrentProtest)),
     ...taxBills.flatMap((b) => fromTaxBill(b, properties)),
     ...bppAccounts.flatMap((a) => fromBppAccount(a, now)),

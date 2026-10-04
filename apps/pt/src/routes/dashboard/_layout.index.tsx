@@ -1,3 +1,5 @@
+import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
+import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -52,6 +54,7 @@ import {
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { listDocuments, type DocumentRecord } from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
 import { askRouter } from "@/lib/ask-router";
@@ -65,8 +68,13 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
-import { getMyFeedbackResponse } from "@/lib/beta-feedback";
+import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
+import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
+import { MyAppointments } from "@/components/MyAppointments";
+import { GettingStarted } from "@/components/GettingStarted";
+import { PageHero } from "@/components/PageHero";
+import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
@@ -126,6 +134,12 @@ function Overview() {
   const nudgedHearingProtestId = useRef<string | null>(null);
   const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
 
+  // Brand-new accounts (nothing added yet) get the quick tour once.
+  useEffect(() => {
+    if (!loaded || properties.length > 0 || protests.length > 0) return;
+    return maybeStartTour();
+  }, [loaded, properties.length, protests.length]);
+
   useEffect(() => {
     if (!user) return;
     let dismissed = false;
@@ -140,7 +154,9 @@ function Overview() {
     // part of that cohort, same reasoning as SiteChrome's sign-out/tab-close
     // prompts.
     Promise.all([getMyBilling(user.id), getMyFeedbackResponse(user.id)])
-      .then(([billing, r]) => setShowFeedbackBanner(billing.plan === "beta" && !r?.completedAt))
+      .then(([billing, r]) =>
+        setShowFeedbackBanner(billing.plan === "beta" && !isFormV2Complete(r)),
+      )
       .catch(() => {
         // Fail closed here (unlike SiteChrome's sign-out prompt): an
         // unprompted banner on a page every user sees is worth skipping on
@@ -234,29 +250,80 @@ function Overview() {
     [protests, properties, bppAccounts],
   );
 
+  // Same "already settled" signal getCalendarEvents/fromProperty use for the
+  // full Calendar page — without it, a protest deadline kept showing here as
+  // a plain pending date forever, even after the case actually resolved,
+  // since the county's deadline date itself never moves once a case closes.
+  const propertiesWithResolvedCurrentProtest = new Set(
+    protests
+      .filter(
+        (pr) =>
+          pr.status === "resolved" && pr.taxYear != null && pr.taxYear >= CURRENT_TAX_YEAR && pr.propertyId,
+      )
+      .map((pr) => pr.propertyId as string),
+  );
+  // `resolved` (a real settlement/payment/etc.) drops the row from this
+  // widget entirely once it's true — a closed case doesn't need to keep
+  // occupying a "Deadlines" slot forever, same call as ProtestVerdictCard's
+  // own "done" cases. `missed` is the opposite kind of "not upcoming
+  // anymore": the date passed with NOTHING resolved (never filed, never
+  // paid) — that's worth a red flag, not a quiet green checkmark, since
+  // conflating "passed" with "done" would hide a real missed deadline.
   const deadlines = properties
     .filter((p) => !!p.protestDeadline)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.protestDeadline as string),
-      label: "Protest deadline",
-    }));
+    .map((p) => {
+      const settled = propertiesWithResolvedCurrentProtest.has(p.id);
+      const past = new Date(p.protestDeadline as string) < new Date();
+      return {
+        property: p,
+        when: new Date(p.protestDeadline as string),
+        label: settled
+          ? "Protest settled"
+          : past
+            ? "Protest deadline passed — no case on file"
+            : "Protest deadline",
+        resolved: settled,
+        missed: !settled && past,
+      };
+    });
   const bills = properties
     .filter((p) => !!p.paymentDueDate && !p.paidAt)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.paymentDueDate as string),
-      label: "Tax bill due",
-    }));
+    .map((p) => {
+      const past = new Date(p.paymentDueDate as string) < new Date();
+      return {
+        property: p,
+        when: new Date(p.paymentDueDate as string),
+        label: past ? "Tax bill overdue" : "Tax bill due",
+        resolved: false,
+        missed: past,
+      };
+    });
   const hearingDates = protests
     .filter((pr) => pr.status === "hearing_scheduled" && !!pr.hearingDate)
-    .map((pr) => ({
-      property: properties.find((p) => p.id === pr.propertyId),
-      when: new Date(pr.hearingDate as string),
-      label: "ARB hearing",
-    }))
-    .filter((h): h is { property: PropertyRecord; when: Date; label: string } => !!h.property);
+    .map((pr) => {
+      const when = new Date(pr.hearingDate as string);
+      const past = when < new Date();
+      return {
+        property: properties.find((p) => p.id === pr.propertyId),
+        when,
+        label: past ? "ARB hearing date passed — check status" : "ARB hearing",
+        resolved: false,
+        missed: past,
+      };
+    })
+    .filter(
+      (
+        h,
+      ): h is {
+        property: PropertyRecord;
+        when: Date;
+        label: string;
+        resolved: boolean;
+        missed: boolean;
+      } => !!h.property,
+    );
   const upcoming = [...deadlines, ...bills, ...hearingDates]
+    .filter((u) => !u.resolved)
     .sort((a, b) => a.when.getTime() - b.when.getTime())
     .slice(0, 4);
 
@@ -376,17 +443,38 @@ function Overview() {
 
   return (
     <div className="dashboard-contrast grid grid-cols-1 min-w-0 gap-6">
-      <div>
-        <span className="badge-soft">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" /> AI is watching your properties
-        </span>
-        <h1 className="mt-3 font-serif text-3xl font-bold">
-          Welcome back{firstName ? `, ${firstName}` : ""}.
-        </h1>
-        <p className="text-muted-foreground">
-          Pick any entry point below — AI figures out the right workflow.
-        </p>
-      </div>
+      <PageHero
+        icon={HeroWelcomeIcon}
+        title={`${loaded && properties.length === 0 && protests.length === 0 ? "Welcome" : "Welcome back"}${firstName ? `, ${firstName}` : ""}.`}
+        tone="emerald"
+        subtitle={
+          loaded && properties.length > 0
+            ? "Here is where your properties stand and what to do next."
+            : "New here? Start with the checklist below. Everything else is one click away."
+        }
+        stats={
+          loaded
+            ? [
+                { label: "Properties", value: properties.length },
+                {
+                  label: "Open cases",
+                  value: protests.filter((p) => p.status !== "resolved").length,
+                },
+                {
+                  label: "Lifetime savings",
+                  value: lifetimeSavings,
+                  format: (n) => compactCurrency(n),
+                },
+              ]
+            : undefined
+        }
+        badges={
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime-300" /> AI is watching
+            your properties
+          </span>
+        }
+      />
 
       {nudge && urgentProperties.length > 0 && (
         <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
@@ -422,18 +510,22 @@ function Overview() {
         </div>
       )}
 
-      {showFeedbackBanner && (
+      {showFeedbackBanner && properties.length > 0 && (
         <div className="card-elev p-4 flex items-start gap-3">
           <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">Help us make Corvus better</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              You're one of our beta testers — 7-10 minutes, and it directly shapes what we build
+              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
               next.
             </p>
-            <Link to="/dashboard/feedback" className="btn-outline text-sm mt-3 inline-flex">
+            <button
+              type="button"
+              onClick={openFeedbackWidget}
+              className="btn-outline text-sm mt-3 inline-flex"
+            >
               Give Feedback
-            </Link>
+            </button>
           </div>
           <button
             onClick={dismissFeedbackBanner}
@@ -443,6 +535,26 @@ function Overview() {
             <X className="h-4 w-4" />
           </button>
         </div>
+      )}
+
+      {loaded && (
+        <ProtestVerdictCard
+          properties={properties}
+          protests={protests}
+          healthScores={healthScores}
+          onOpenReport={openAiReport}
+        />
+      )}
+
+      <MyAppointments />
+
+      {loaded && (
+        <GettingStarted
+          properties={properties.length}
+          documents={documents.length}
+          protests={protests.length}
+          resolved={protests.filter((p) => p.status === "resolved").length}
+        />
       )}
 
       {/* Entry points */}
@@ -614,7 +726,7 @@ function Overview() {
       {/* Stats */}
       <div>
         <h2 className="font-serif text-xl font-bold">Your Portfolio at a Glance</h2>
-        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Properties"
             value={loaded ? properties.length : null}
@@ -692,7 +804,7 @@ function Overview() {
             <div className="card-elev p-5 min-w-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold">Deadlines</h3>
-                <Link to="/dashboard/deadlines" className="text-xs text-accent hover:underline">
+                <Link to="/dashboard/calendar" className="text-xs text-accent hover:underline">
                   View all
                 </Link>
               </div>
@@ -701,14 +813,23 @@ function Overview() {
                   {upcoming.map((u, i) => (
                     <div
                       key={i}
-                      className="flex items-center justify-between gap-2 text-sm min-w-0"
+                      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm min-w-0 ${
+                        u.missed ? "-mx-2 bg-destructive/10" : ""
+                      }`}
                     >
-                      <span className="truncate min-w-0">
+                      <span className={`truncate min-w-0 ${u.missed ? "text-destructive" : ""}`}>
                         {u.label} — {u.property.address}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {u.when.toLocaleDateString()}
-                      </span>
+                      {u.missed ? (
+                        <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-destructive">
+                          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                          Passed
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {u.when.toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -748,10 +869,16 @@ function StatCard({
 }) {
   const content = (
     <>
-      <span className={`grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}>
+      <span
+        aria-hidden
+        className={`tu-glow pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl ${color.bg}`}
+      />
+      <span
+        className={`relative grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}
+      >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
+      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -770,7 +897,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev flex min-h-[11rem] flex-col p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -779,7 +906,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev flex min-h-[11rem] flex-col p-5"
+      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
@@ -809,13 +936,25 @@ function PortfolioValueChart({
   properties: PropertyRecord[];
   onOpenReport: (p: PropertyRecord) => void;
 }) {
+  // On a wide screen show each full address on one line; on a phone there is no room, so
+  // keep the short, wrapped form.
+  const [wide, setWide] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const data = properties
     .filter((p) => p.totalValue != null)
     .sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0))
     .slice(0, 8)
     .map((p) => ({
       id: p.id,
-      name: p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
+      name: !wide && p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
       value: p.totalValue ?? 0,
       property: p,
     }));
@@ -831,10 +970,16 @@ function PortfolioValueChart({
         <YAxis
           type="category"
           dataKey="name"
-          width={160}
+          width={
+            wide
+              ? Math.min(340, Math.max(160, Math.max(...data.map((d) => d.name.length)) * 6.6))
+              : 160
+          }
           tickLine={false}
           axisLine={false}
-          tick={(props) => <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} />}
+          tick={(props) => (
+            <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} oneLine={wide} />
+          )}
         />
         <Bar
           dataKey="value"
@@ -874,12 +1019,13 @@ function PortfolioAxisTick(
   } & {
     data: { name: string; property: PropertyRecord }[];
     onOpenReport: (p: PropertyRecord) => void;
+    oneLine?: boolean;
   },
 ) {
   const { x = 0, y = 0, payload, data, onOpenReport } = props;
   const row = data.find((d) => d.name === payload?.value);
   if (!row) return null;
-  const lines = row.name.split(/(?<=,)\s+/);
+  const lines = props.oneLine ? [row.name] : row.name.split(/(?<=,)\s+/);
   return (
     <text
       x={x}
@@ -934,22 +1080,25 @@ function ProtestStatusChart({
   return (
     <>
       <div className="mt-3 grid grid-cols-[7rem_1fr] items-center gap-3">
-        <ResponsiveContainer width="100%" height={110}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={30}
-              outerRadius={50}
-              paddingAngle={2}
-            >
-              {data.map((d) => (
-                <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
+        {/* The legend beside the ring lists the same numbers as text. */}
+        <div aria-hidden="true" inert>
+          <ResponsiveContainer width="100%" height={110}>
+            <PieChart accessibilityLayer={false}>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={30}
+                outerRadius={50}
+                paddingAngle={2}
+              >
+                {data.map((d) => (
+                  <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="grid gap-1.5">
           {data.map((d) => (
             <div key={d.status} className="flex items-center gap-2 text-sm">

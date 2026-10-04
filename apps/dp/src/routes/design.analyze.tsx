@@ -8,7 +8,6 @@ import {
   type DpIntakeState,
   type DesignScope,
   type DesignRequirements,
-  type PropertySector,
 } from "@/lib/dp-intake";
 import { generateDesignBrief, scopeLabel, type DesignBrief } from "@/lib/design";
 import { generateDesignNarrative, type DesignNarrative } from "@/lib/ai";
@@ -174,22 +173,17 @@ function DesignAnalyze() {
       {step === 1 && (
         <Section title="Type of project">
           <div className="grid gap-5">
+            {/* CorvusDP is commercial-only -- see permitting.analyze.tsx's
+                identical change for the full rationale. Sector stays a real
+                field (design.ts, fees.ts, saved design_requests rows, the
+                dashboard subtitle at line ~349 below) but is no longer a
+                user choice. */}
             <div>
               <div className="text-sm font-medium">Sector</div>
               <div className="mt-2 flex gap-2">
-                {(["commercial", "residential"] as PropertySector[]).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => patch({ design: { sector: s } })}
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium capitalize transition-colors ${
-                      d.sector === s
-                        ? "border-accent bg-accent text-accent-foreground"
-                        : "border-border hover:bg-secondary"
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
+                <span className="rounded-lg border border-accent bg-accent px-4 py-2 text-sm font-medium capitalize text-accent-foreground">
+                  Commercial
+                </span>
               </div>
             </div>
             <div>
