@@ -1880,6 +1880,91 @@ async function queryKaufman(address: string, mode: QueryMode = "exact"): Promise
   }
 }
 
+// Nueces (Corpus Christi) — added per the Oct 2026 competitive analysis
+// (Priority #5: geographic coverage is a real, named gap against both
+// Ownwell's 9 states and O'Connor's 45). Found live via ArcGIS Online's own
+// public item search (sharing/rest/search), not guessed — Nueces CAD's
+// public map viewer (gis.bisclient.com/nuecescad) is the same BIS platform
+// already used for Grayson/Kaufman/Fort Bend, but its own TLS cert has
+// expired, so the usual "follow the viewer to its config" approach didn't
+// work; searching ArcGIS Online's public index for "Nueces CAD parcels"
+// surfaced the real, live, independently-hosted FeatureServer below
+// directly. Confirmed live: real commercial parcels with populated land/
+// improvement/market values, and the house-number + street-core WHERE
+// clause correctly matches a real known parcel (1429 Laguna Shores Rd,
+// Corpus Christi -> prop_id 200099368).
+const NUECES_URL =
+  "https://services6.arcgis.com/j94FvPaik4etwHFk/ArcGIS/rest/services/NuecesCADWebService/FeatureServer/0/query";
+const NUECES_OUT_FIELDS =
+  "file_as_name,situs_num,situs_street_prefx,situs_street,situs_street_sufix,situs_city,land_val,imprv_val,market,prop_id,geo_id,owner_tax_yr,legal_desc,abs_subdv_cd,legal_acreage";
+
+async function queryNueces(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+  let features: Array<{ attributes: Record<string, string | number | null> }>;
+  if (mode === "name") {
+    const nq = parseNameQuery(address);
+    if (!nq?.name) return [];
+    features = await ownerNameFeatures(
+      NUECES_URL,
+      "file_as_name",
+      NUECES_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
+  } else {
+    const parsed = parseAddressForQuery(address, mode);
+    if (!parsed) return [];
+    const core = coreStreetName(parsed.street);
+    const streetClause = coreClauseOr("situs_street", core);
+    const where =
+      mode === "nearby"
+        ? `(${streetClause})`
+        : `situs_num = '${parsed.house}' AND (${streetClause})`;
+    const url =
+      `${NUECES_URL}?where=${encodeURIComponent(where)}` +
+      `&outFields=${NUECES_OUT_FIELDS}` +
+      `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
+      "&returnGeometry=false&f=json";
+    features = await fetchFeatures(url);
+  }
+  // This layer's own geometry means the SAME real parcel can come back as
+  // several duplicate feature rows (confirmed live: one real account
+  // returned 5 times) — left as-is rather than de-duped here, since
+  // Deno.serve's own distinctAccounts grouping (keyed by accountNumber)
+  // already collapses exactly this case for every county, not just this one.
+  return features.map(({ attributes: attrs }) => {
+    const streetParts = [
+      attrs.situs_num,
+      attrs.situs_street_prefx,
+      attrs.situs_street,
+      attrs.situs_street_sufix,
+    ]
+      .map((v) => (typeof v === "string" ? v.trim() : v))
+      .filter(Boolean)
+      .join(" ");
+    return applyStructureDetail(
+      {
+        ownerName: (attrs.file_as_name as string)?.trim() || null,
+        propertyAddress: streetParts
+          ? attrs.situs_city
+            ? `${streetParts}, ${attrs.situs_city}`
+            : streetParts
+          : address,
+        cad: "Nueces County Appraisal District",
+        accountNumber: attrs.prop_id != null ? String(attrs.prop_id) : null,
+        propertyType: null,
+        landValue: parseMoneyField(attrs.land_val),
+        improvementValue: parseMoneyField(attrs.imprv_val),
+        totalValue: parseMoneyField(attrs.market),
+        taxYear: attrs.owner_tax_yr != null ? parseInt(String(attrs.owner_tax_yr), 10) : null,
+        legalDescription: (attrs.legal_desc as string)?.trim() || null,
+        subdivision: (attrs.abs_subdv_cd as string)?.trim() || null,
+        geoId: (attrs.geo_id as string)?.trim() || null,
+      },
+      attrs,
+    );
+  });
+}
+
 // --- Direct account-number lookup (Phase 8, 2026-09-03) --------------------
 // A user who can't find their property in the address/nearby results (a
 // genuinely common real case — a bare-road commercial address with no house
@@ -3192,6 +3277,7 @@ const ALL_COUNTY_QUERIES = [
   queryBexar,
   queryDallas,
   queryKaufman,
+  queryNueces,
 ];
 
 // Maps Google's own `administrative_area_level_2` ("Denton County") to the
@@ -3215,6 +3301,7 @@ const COUNTY_QUERY_BY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> 
   bexar: queryBexar,
   dallas: queryDallas,
   kaufman: queryKaufman,
+  nueces: queryNueces,
 };
 
 function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {

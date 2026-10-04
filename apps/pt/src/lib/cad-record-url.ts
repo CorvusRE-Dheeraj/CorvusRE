@@ -79,6 +79,9 @@ export const CAD_SEARCH_HOMEPAGE: Record<string, string> = {
   "Tarrant Appraisal District": "https://www.tad.org",
   "Travis Central Appraisal District": "https://www.traviscad.org",
   "Williamson Central Appraisal District": "https://search.wcad.org",
+  // Confirmed live (200) — no guessed sub-path (see this file's own
+  // discipline above), just the bare real homepage, same as Bexar's entry.
+  "Nueces County Appraisal District": "https://nuecescad.net",
 };
 
 // The 3 TrueProdigy-platform counties (see the comment above) all share the
@@ -157,9 +160,14 @@ export function isDirectCadRecordUrl(cad: string): boolean {
 // that could silently drift out of sync with it (the same class of bug as
 // the $699/$799 pricing mismatch: two copies of one fact, only one updated).
 // Used by intake.tsx to tell "this county genuinely isn't supported yet"
-// apart from "supported county, just no record found for this address."
+// apart from "supported county, just no record found for this address".
+// Strips an optional "Central" OR "County" qualifier before "Appraisal
+// District" — added "County" when Nueces's own real official name turned
+// out to be "Nueces County Appraisal District" (not "...Central...", the
+// first 12 counties' shared convention), rather than renaming it to
+// something less accurate just to fit the old regex.
 export const SUPPORTED_COUNTY_NAMES = new Set(
   Object.keys(CAD_SEARCH_HOMEPAGE).map((cad) =>
-    cad.replace(/\s*(Central\s+)?Appraisal District$/i, "").trim(),
+    cad.replace(/\s*(Central|County)?\s*Appraisal District$/i, "").trim(),
   ),
 );

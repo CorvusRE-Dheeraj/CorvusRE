@@ -36,7 +36,7 @@ export type HealthScoreSignals = {
 export type HealthScoreComputed = {
   score: number;
   confidencePct: number;
-  scoreBreakdown: { label: string; score: number }[];
+  scoreBreakdown: { label: string; score: number; reason: string }[];
   dataSufficient: boolean;
 };
 
@@ -110,32 +110,70 @@ export function computeHealthScore(s: HealthScoreSignals): HealthScoreComputed {
 
   // --- scoreBreakdown: labelled 0-100 sub-scores over the same signals ----
   // Only labels the data can actually speak to (mirrors the edge function's
-  // BREAKDOWN_LABELS allow-list).
-  const scoreBreakdown: { label: string; score: number }[] = [
-    { label: "CAD Valuation", score: clamp(0, 100, Math.round(50 + (gap ?? 0) * 1.6 + cod * 1.2)) },
+  // BREAKDOWN_LABELS allow-list). Each entry's `reason` is a plain-language
+  // sentence built from the exact same variable the score above used for
+  // that same factor — never a separate computation, so the sentence and
+  // the number can never say two different things.
+  const scoreBreakdown: { label: string; score: number; reason: string }[] = [
+    {
+      label: "CAD Valuation",
+      score: clamp(0, 100, Math.round(50 + (gap ?? 0) * 1.6 + cod * 1.2)),
+      reason:
+        gap != null && cod > 0
+          ? `Comps suggest ${gap > 0 ? "an overvaluation" : "you're fairly valued"} of about ${Math.abs(Math.round(gap))}%, and assessments in this area vary more than the state standard allows.`
+          : gap != null
+            ? `Comparable properties indicate your assessed value may be ${gap > 0 ? `${Math.round(gap)}% too high` : `close to or under market (${Math.round(Math.abs(gap))}% below comps)`}.`
+            : cod > 0
+              ? "Assessments for similar properties in this area vary more than the state's own uniformity standard allows — an equity issue independent of your own value."
+              : "Not enough comparable-sales or equity data yet to assess this factor confidently.",
+    },
   ];
   if (compCount >= 3) {
     scoreBreakdown.push({
       label: "Comparable Properties",
       score: clamp(0, 100, Math.round(50 + (gap ?? 0) * 1.8)),
+      reason: `Based on ${compCount} comparable ${compCount === 1 ? "property" : "properties"}, your assessed value is ${
+        gap != null && gap > 0
+          ? `about ${Math.round(gap)}% above the indicated market value.`
+          : gap != null
+            ? `about ${Math.round(Math.abs(gap))}% at or below the indicated market value.`
+            : "roughly in line with the indicated market value."
+      }`,
     });
   } else if (compCount > 0) {
-    scoreBreakdown.push({ label: "Comparable Properties", score: 40 });
+    scoreBreakdown.push({
+      label: "Comparable Properties",
+      score: 40,
+      reason: `Only ${compCount} comparable ${compCount === 1 ? "property was" : "properties were"} found — too few to weigh heavily on their own.`,
+    });
   }
   if (trend.jumpTriggered) {
     const jp = trend.jumpPct != null ? Math.round(trend.jumpPct * 100) : 12;
     scoreBreakdown.push({
       label: "Historical Valuation",
       score: clamp(0, 100, Math.round(60 + jp / 2)),
+      reason: `Your assessed value jumped about ${jp}% this year — well beyond your property's own trailing trend.`,
     });
   } else if (histYears >= 2) {
-    scoreBreakdown.push({ label: "Historical Valuation", score: 45 });
+    scoreBreakdown.push({
+      label: "Historical Valuation",
+      score: 45,
+      reason:
+        trend.trailingCagrPct != null && trend.trailingCagrPct > 0.08
+          ? `No single-year jump, but your value has climbed an average of ${Math.round(trend.trailingCagrPct * 100)}%/year over ${histYears} years — a notably steep sustained pace.`
+          : `No unusual jump or sustained climb across ${histYears} years of history — this factor is currently neutral.`,
+    });
   }
 
   if (ev && ev.strength > 0 && ev.valueGapPct != null) {
     scoreBreakdown.push({
       label: "Owner Evidence",
       score: clamp(0, 100, Math.round(50 + ev.valueGapPct * 2.2)),
+      reason: `The evidence you've uploaded indicates your property may be ${
+        ev.valueGapPct > 0
+          ? `overvalued by about ${Math.round(ev.valueGapPct)}%`
+          : `fairly valued (about ${Math.round(Math.abs(ev.valueGapPct))}% at or below assessment)`
+      }, weighted at ${Math.round(ev.strength * 100)}% confidence based on what was uploaded.`,
     });
   }
 

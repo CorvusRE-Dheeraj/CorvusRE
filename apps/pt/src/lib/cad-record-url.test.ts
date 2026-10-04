@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { getCadRecordUrl, isDirectCadRecordUrl, CAD_SEARCH_HOMEPAGE } from "./cad-record-url";
+import {
+  getCadRecordUrl,
+  isDirectCadRecordUrl,
+  CAD_SEARCH_HOMEPAGE,
+  SUPPORTED_COUNTY_NAMES,
+} from "./cad-record-url";
 
 describe("getCadRecordUrl", () => {
   it("returns Bexar's real deep-link pattern", () => {
@@ -102,5 +107,26 @@ describe("isDirectCadRecordUrl", () => {
     expect(isDirectCadRecordUrl("Collin Central Appraisal District")).toBe(false);
     expect(isDirectCadRecordUrl("Harris Central Appraisal District")).toBe(false);
     expect(isDirectCadRecordUrl("Fort Bend Central Appraisal District")).toBe(false);
+  });
+});
+
+describe("SUPPORTED_COUNTY_NAMES", () => {
+  // Nueces (added per the Oct 2026 competitive analysis, Priority #5) is the
+  // first supported county whose real official name uses "County Appraisal
+  // District" rather than "Central Appraisal District" — this regression
+  // guards the name-stripping regex that had to learn a second qualifier
+  // word for it.
+  it("strips 'County Appraisal District' the same way it strips 'Central Appraisal District'", () => {
+    expect(SUPPORTED_COUNTY_NAMES.has("Nueces")).toBe(true);
+  });
+
+  it("still strips every existing county's own real name correctly", () => {
+    for (const name of ["Bexar", "Collin", "Fort Bend", "Tarrant", "Harris"]) {
+      expect(SUPPORTED_COUNTY_NAMES.has(name)).toBe(true);
+    }
+  });
+
+  it("Nueces has a real homepage fallback", () => {
+    expect(CAD_SEARCH_HOMEPAGE["Nueces County Appraisal District"]).toBe("https://nuecescad.net");
   });
 });

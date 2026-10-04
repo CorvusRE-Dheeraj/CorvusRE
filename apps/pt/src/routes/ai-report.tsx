@@ -9234,15 +9234,23 @@ function SpeedometerGauge({ value, size = "md" }: { value: number; size?: "sm" |
   );
 }
 
+// Each item's reason line is shown directly under its bar now — found live
+// chasing real beta feedback ("I don't trust the estimate yet," "more
+// explanation of the reasoning," asked independently by every one of 3 real
+// testers): a bare "CAD Valuation 62/100" with no sentence attached gave no
+// way to tell WHY, short of hunting for the same numbers somewhere else in
+// the report. b.reason is deterministic (see computeHealthScore), built
+// from the exact same variable that produced b.score, so it can never say
+// something the number doesn't back up.
 function ScoreBreakdownList({ breakdown }: { breakdown: HealthScoreBreakdownEntry[] }) {
   if (breakdown.length === 0) return null;
   return (
-    <div className="grid gap-2.5">
+    <div className="grid gap-3">
       {breakdown.map((b) => {
         const Icon = breakdownIcon(b.label);
         return (
-          <div key={b.label} className="flex items-center gap-2.5">
-            <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div key={b.label} className="flex items-start gap-2.5">
+            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-muted-foreground">{b.label}</span>
@@ -9256,6 +9264,7 @@ function ScoreBreakdownList({ breakdown }: { breakdown: HealthScoreBreakdownEntr
                   style={{ width: `${b.score}%`, backgroundColor: scoreColor(b.score) }}
                 />
               </div>
+              {b.reason && <p className="mt-1 text-xs text-muted-foreground">{b.reason}</p>}
             </div>
           </div>
         );

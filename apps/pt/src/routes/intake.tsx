@@ -118,15 +118,18 @@ function Intake() {
   const [liveMatchesLoading, setLiveMatchesLoading] = useState(false);
   const [liveMatchesOpen, setLiveMatchesOpen] = useState(false);
   const liveMatchRequestRef = useRef(0);
-  // CorvusPT serves commercial only, and a disabled/grayed residential row in
-  // this list is just noise the user can't act on — drop them rather than
-  // show them unselectably. Only ever excludes a row we KNOW is residential
-  // (a resolved CAD record says so) — a still-"pending"/"none" Google-only
-  // row has no propertyType to check yet, and the right default there is to
-  // show it, not hide a real address just because we haven't classified it.
-  const liveMatchesCommercial = liveMatches.filter(
-    (m) => !m.record || classifyPropertyCategory(m.record.propertyType) !== "residential",
-  );
+  // CorvusPT serves commercial only — but a row doesn't KNOW it's
+  // residential until its CAD record resolves, so filtering those rows out
+  // entirely made a real suggestion visibly flash in (while still
+  // "pending") and then vanish the instant it classified as residential —
+  // found live ("I need to see that suggestion, but... gray out the
+  // residential ones" instead of hiding them, same treatment as the
+  // Residential tab itself above the search box). Every row is kept now;
+  // isResidentialMatch below is checked per row at render time instead, to
+  // style it grayed-out/unselectable rather than removing it.
+  function isResidentialMatch(m: UnifiedMatch): boolean {
+    return Boolean(m.record) && classifyPropertyCategory(m.record!.propertyType) === "residential";
+  }
   const [pickingOnMap, setPickingOnMap] = useState(false);
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("commercial");
   const [noticeName, setNoticeName] = useState<string | null>(null);
@@ -742,7 +745,7 @@ function Intake() {
                   <LiveSearchLoader />
                 </div>
               )}
-              {liveMatchesCommercial.length === 0 && !liveMatchesLoading && (
+              {liveMatches.length === 0 && !liveMatchesLoading && (
                 // A settled search that genuinely found nothing at all — not
                 // even a bare Google-known address, since those now show up
                 // as their own "none" row below instead of being dropped.
@@ -756,51 +759,88 @@ function Intake() {
               resolve to a CAD record, so there's genuinely more worth
               showing; the container above scrolls instead of growing the
               page unboundedly. */}
-              {liveMatchesCommercial.slice(0, 10).map((m, i) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => selectMatch(m)}
-                  className={`row-hover block w-full px-4 py-3 text-left ${
-                    i > 0 ? "border-t border-border" : ""
-                  }`}
-                >
-                  {/* Shown only for a result found by following a Google
-                  suggestion to its real address first (see
-                  unifiedPropertySearch) — ties the store/business name the
-                  user actually searched for back to the row below it,
-                  instead of just a bare address they typed a name to
-                  find. */}
-                  {m.googleLabel && (
-                    <div className="truncate text-xs font-semibold text-accent">{m.googleLabel}</div>
-                  )}
-                  <div className="truncate text-sm font-semibold uppercase tracking-tight">
-                    {m.address}
-                  </div>
-                  {m.record ? (
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      <span className="font-bold text-foreground">
-                        PARCEL: {m.record.accountNumber ?? "—"}
-                      </span>
-                      {" · "}
-                      {m.record.cad}
-                      {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+              {liveMatches.slice(0, 10).map((m, i) => {
+                const residential = isResidentialMatch(m);
+                // Same grayed-out, non-clickable treatment as a residential
+                // row — found live ("denver walmart" shown under a
+                // "Searching Dallas County records…" spinner for a real
+                // Colorado address): a row we already know is out of
+                // coverage is shown, not hidden, but never selectable, with
+                // its own plain reason instead of residential's.
+                const disabled = residential || m.cadStatus === "unsupported";
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => !disabled && selectMatch(m)}
+                    title={
+                      residential
+                        ? "Residential — coming soon"
+                        : disabled
+                          ? "We don't cover this county yet"
+                          : undefined
+                    }
+                    className={`row-hover block w-full px-4 py-3 text-left ${
+                      i > 0 ? "border-t border-border" : ""
+                    } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+                  >
+                    {/* Shown only for a result found by following a Google
+                    suggestion to its real address first (see
+                    unifiedPropertySearch) — ties the store/business name the
+                    user actually searched for back to the row below it,
+                    instead of just a bare address they typed a name to
+                    find. */}
+                    {m.googleLabel && (
+                      <div
+                        className={`truncate text-xs font-semibold ${disabled ? "text-muted-foreground" : "text-accent"}`}
+                      >
+                        {m.googleLabel}
+                      </div>
+                    )}
+                    <div
+                      className={`truncate text-sm font-semibold uppercase tracking-tight ${disabled ? "text-muted-foreground" : ""}`}
+                    >
+                      {m.address}
                     </div>
-                  ) : m.cadStatus === "pending" ? (
-                    <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Looking up county parcel…
-                    </div>
-                  ) : (
-                    // "none" — a real address (Google found it) with no
-                    // county parcel on file for it. Still selectable: picking
-                    // it runs the normal, slower manual resolution flow.
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      No county parcel on file — tap to continue anyway
-                    </div>
-                  )}
-                </button>
-              ))}
+                    {residential ? (
+                      // Shown, not hidden — found live ("I need to see that
+                      // suggestion, but it's residential... gray it out"
+                      // instead of it flashing in while pending and
+                      // vanishing the instant it classifies): same "(soon)"
+                      // language as the Residential tab above the search box.
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        Residential — coming soon
+                      </div>
+                    ) : m.cadStatus === "unsupported" ? (
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        We don't cover this county yet
+                      </div>
+                    ) : m.record ? (
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        <span className="font-bold text-foreground">
+                          PARCEL: {m.record.accountNumber ?? "—"}
+                        </span>
+                        {" · "}
+                        {m.record.cad}
+                        {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+                      </div>
+                    ) : m.cadStatus === "pending" ? (
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Looking up county parcel…
+                      </div>
+                    ) : (
+                      // "none" — a real address (Google found it) with no
+                      // county parcel on file for it. Still selectable: picking
+                      // it runs the normal, slower manual resolution flow.
+                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                        No county parcel on file — tap to continue anyway
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 onClick={() => {

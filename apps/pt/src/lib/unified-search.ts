@@ -84,6 +84,7 @@
 // discarded, not awaited further).
 import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
 import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
+import { SUPPORTED_COUNTY_NAMES } from "./cad-record-url";
 
 // Google Text Search itself returns up to ~20 for a loosely-matched query —
 // bounded well below that (each candidate fires its own real CAD lookup),
@@ -93,7 +94,58 @@ import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 const MAX_GOOGLE_CANDIDATES = 15;
 const MAX_RESULTS = 20;
 
-export type CadStatus = "pending" | "found" | "none";
+export type CadStatus = "pending" | "found" | "none" | "unsupported";
+
+// Found live: searching "denver walmart" showed a real Colorado address
+// sitting under a "Searching Dallas County records…" spinner for a long
+// time before settling — a county-by-county CAD sweep was being run
+// against an address we can never possibly serve. candidate.county (from
+// Google's own addressComponents, already fetched for the county-hint
+// optimization above — no extra network call needed here) is checked
+// against SUPPORTED_COUNTY_NAMES, the same list intake.tsx's own
+// "We don't cover X County yet" modal already uses, before a CAD lookup is
+// even attempted. An unrecognized/unparseable county (Google omitted it,
+// or it's a form SUPPORTED_COUNTY_NAMES doesn't recognize) still gets the
+// benefit of the doubt and proceeds normally — this only ever skips a
+// lookup when we're confident it's out of coverage, never a maybe.
+function isSupportedCounty(county: string | undefined): boolean {
+  if (!county) return true;
+  return SUPPORTED_COUNTY_NAMES.has(county.replace(/\s*County$/i, "").trim());
+}
+
+// Every other US state's 2-letter code — found live chasing a second,
+// related report ("2770 West Evans Avenue, Denver, CO 80219" typed
+// directly, not via a Google suggestion, showed a confident-looking but
+// completely WRONG Bexar County match): the direct-search path has no
+// concept of state at all, since our own address parser only ever extracts
+// house number + street CORE and sweeps all 12 Texas counties for it —
+// "Evans" + "2770" genuinely collided with a real, unrelated San Antonio
+// street. Google's county hint (isSupportedCounty above) only covers the
+// Google-resolved candidates, not whatever the user typed directly, so this
+// checks the raw typed text itself for an explicit non-Texas state before
+// ever attempting that sweep. Deliberately only acts on a CONFIDENT, clearly
+// state-coded address ("..., CO 80219" or "..., Colorado") — anything
+// ambiguous (no comma-state pattern at all, e.g. a bare business name) just
+// proceeds normally, same "only skip when we're sure" principle as
+// isSupportedCounty.
+const NON_TEXAS_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+  "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+  "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+  "OR", "PA", "RI", "SC", "SD", "TN", "UT", "VT", "VA", "WA", "WV", "WI",
+  "WY", "DC",
+]);
+
+function detectNonTexasState(query: string): boolean {
+  // The LAST ", XX" in the text is the one that actually sits in the
+  // state position ("123 Texas St, Denver, CO" has "Texas" as a street
+  // name earlier but the real state code at the end) — matched with a word
+  // boundary after it so "CO" doesn't also match inside "CO2" or similar.
+  const matches = [...query.matchAll(/,\s*([A-Za-z]{2})\b/g)];
+  if (matches.length === 0) return false;
+  const code = matches[matches.length - 1][1].toUpperCase();
+  return NON_TEXAS_STATE_CODES.has(code);
+}
 
 export type UnifiedMatch = {
   // Stable row identity — a Google candidate's own place id (falls back to
@@ -303,20 +355,32 @@ export async function unifiedPropertySearch(
   // (more authoritative) data instead of creating a second one; its
   // googleLabel, if any, is untouched (upsert's Object.assign only
   // overwrites fields actually present in the patch).
-  const direct = lookupRecords(query)
-    .then((records) => {
-      for (const record of records) {
-        const key = cadKey(record);
-        const existingRowId = rowIdByCadKey.get(key);
-        if (existingRowId) {
-          upsert(existingRowId, { address: record.propertyAddress, record, cadStatus: "found" });
-        } else {
-          rowIdByCadKey.set(key, key);
-          upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
-        }
-      }
-    })
-    .catch(() => {});
+  const direct = detectNonTexasState(query)
+    ? Promise.resolve().then(() => {
+        // A real "..., CO 80219"-style address typed directly — never
+        // worth sweeping all 12 Texas counties for, since it's confidently
+        // not in Texas at all. Its own row id doubles as its cadKey so a
+        // later Google candidate resolving to something real at this same
+        // text (unlikely, but matches every other row's dedup convention)
+        // still merges onto it rather than duplicating.
+        const key = `direct:${query}`;
+        rowIdByCadKey.set(key, key);
+        upsert(key, { address: query.trim(), cadStatus: "unsupported" });
+      })
+    : lookupRecords(query)
+        .then((records) => {
+          for (const record of records) {
+            const key = cadKey(record);
+            const existingRowId = rowIdByCadKey.get(key);
+            if (existingRowId) {
+              upsert(existingRowId, { address: record.propertyAddress, record, cadStatus: "found" });
+            } else {
+              rowIdByCadKey.set(key, key);
+              upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
+            }
+          }
+        })
+        .catch(() => {});
 
   const viaGoogle = GOOGLE_API_KEY
     ? fetchGoogleTextSearch(query, signal)
@@ -325,6 +389,24 @@ export async function unifiedPropertySearch(
           await Promise.all(
             candidates.map(async (candidate) => {
               const googleRowId = `google:${candidate.placeId ?? candidate.address}`;
+
+              if (!isSupportedCounty(candidate.county)) {
+                // Known to be out of coverage (a real Colorado Walmart, not
+                // a Texas one) — shown, not hidden (same "show it, don't
+                // drop it" principle as every other row here), but never
+                // even attempts a CAD lookup: that lookup would only ever
+                // come back empty after real latency against counties we
+                // don't serve, which is exactly what "it's taking a long
+                // time searching Dallas County" turned out to be for an
+                // out-of-state address.
+                upsert(googleRowId, {
+                  address: candidate.address,
+                  googleLabel: candidate.label,
+                  cadStatus: "unsupported",
+                });
+                return;
+              }
+
               // Shown immediately — this is the actual fix for "I don't
               // see all the addresses": a real Google match is a visible
               // row the instant it's found, not only once/if a CAD record
