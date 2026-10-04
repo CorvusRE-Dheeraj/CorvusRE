@@ -13,7 +13,7 @@ import {
   type PlanValue,
   type Tier,
 } from "@/lib/billing";
-import { ShieldCheck, CalendarCheck, FileCheck2 } from "lucide-react";
+import { ShieldCheck, CalendarCheck, FileCheck2, Scale } from "lucide-react";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -282,12 +282,13 @@ function Page() {
         </ScrollReveal>
       </div>
 
-      {/* Added per the same analysis (Priority #4): these are real, already-
-      built parts of the CorvusPT-Managed workflow — the pricing page is
+      {/* Added per the same analysis (Priorities #4 and #9): these are real,
+      already-built parts of the CorvusPT workflow — the pricing page is
       where a prospect is actively comparing options, so it's the right
-      place to say plainly what control they keep. */}
+      place to say plainly what control they keep and what happens if a
+      hearing doesn't go their way. */}
       <div className="container-page mt-8">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ScrollReveal className="card-elev p-5">
             <CalendarCheck className="h-5 w-5 text-accent" aria-hidden="true" />
             <h3 className="mt-2 font-serif text-base font-semibold">You see your own hearing date</h3>
@@ -310,6 +311,16 @@ function Page() {
             <p className="mt-1 text-sm text-muted-foreground">
               Every comp and document behind your case is in your own case's Evidence section —
               not a black box you have to request access to.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal delay={300} className="card-elev p-5">
+            <Scale className="h-5 w-5 text-accent" aria-hidden="true" />
+            <h3 className="mt-2 font-serif text-base font-semibold">
+              Binding arbitration, automatically tracked
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              If your hearing doesn't go your way, Texas law (Tax Code §41A) lets you escalate to
+              binding arbitration — CorvusPT tracks your eligibility, deadline, and deposit for you.
             </p>
           </ScrollReveal>
         </div>
@@ -414,6 +425,15 @@ function Page() {
                     >
                       Add a Property to Subscribe
                     </Link>
+                    {/* Priority #6 — stated before a visitor subscribes, not
+                    just in the after-the-fact "Manage Billing" panel above:
+                    a surprise renewal bill is the single most common
+                    complaint in this industry (see the Oct 2026 competitive
+                    analysis), and this is a plain monthly subscription, not
+                    a one-time fee. */}
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                      Billed monthly. Cancel anytime from Manage Billing — no long-term contract.
+                    </p>
                   </ScrollReveal>
                 );
               })}
