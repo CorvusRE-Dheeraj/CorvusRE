@@ -8,7 +8,7 @@ vi.mock("./google-places", () => ({
   GOOGLE_API_KEY: "test-key",
 }));
 
-import { unifiedPropertySearch, type UnifiedMatch } from "./unified-search";
+import { unifiedPropertySearch, guessLikelyCountyName, type UnifiedMatch } from "./unified-search";
 import { cadLookupPreview } from "./cad-lookup";
 import { fetchGoogleTextSearch } from "./google-places";
 import type { CadRecord, CadLookupResult } from "./cad-lookup";
@@ -248,7 +248,11 @@ describe("unifiedPropertySearch", () => {
 
     await runSearch("tacobell denton");
 
-    expect(cadLookupPreview).toHaveBeenCalledWith("681 Fort Worth Dr, Denton, TX", "Denton County");
+    expect(cadLookupPreview).toHaveBeenCalledWith(
+      "681 Fort Worth Dr, Denton, TX",
+      "Denton County",
+      undefined,
+    );
   });
 
   it("merges a Google candidate onto a direct-search row for the same parcel, not a duplicate", async () => {
@@ -359,5 +363,21 @@ describe("unifiedPropertySearch", () => {
     expect(final[0].cadStatus).toBe("unsupported");
     expect(final[0].record).toBeUndefined();
     expect(cadLookupPreview).not.toHaveBeenCalled();
+  });
+});
+
+describe("guessLikelyCountyName", () => {
+  // Backs LiveSearchLoader's "show the real likely county instead of
+  // cycling through all 13" behavior — found live ("searching Collin
+  // County" shown for a typed "walmart dallas" read as random and wrong).
+  it("recognizes a known city anywhere in the query", () => {
+    expect(guessLikelyCountyName("walmart dallas")).toBe("Dallas");
+    expect(guessLikelyCountyName("dental frisco")).toBe("Collin");
+    expect(guessLikelyCountyName("braums denton west univ dr")).toBe("Denton");
+  });
+
+  it("returns null for an unrecognized or empty query, never a wrong guess", () => {
+    expect(guessLikelyCountyName("some random business")).toBeNull();
+    expect(guessLikelyCountyName("")).toBeNull();
   });
 });

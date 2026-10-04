@@ -407,6 +407,7 @@ const MULTI_WORD_CITIES = [
   "highland village",
   "north richland hills",
   "lake dallas",
+  "corpus christi",
 ];
 
 // A short, deliberately non-exhaustive allowlist of single-word Texas city
@@ -953,20 +954,45 @@ async function fetchFeatures(
 // tiebreak in JS afterward (see findByName below), reusing cityOf/
 // cityMatches — the same city-is-a-preference-not-a-filter approach that
 // already works correctly for address search.
-function ownerNameFeatures(
+async function ownerNameFeatures(
   url: string,
   ownerField: string,
   outFields: string,
   name: string,
   limit: number | null,
 ): Promise<Array<{ attributes: Record<string, string | number | null> }>> {
-  const where = nameSearchVariants(name)
+  const limitParam = limit != null ? `&resultRecordCount=${limit}` : "";
+  const variants = nameSearchVariants(name);
+  const buildUrl = (where: string) =>
+    `${url}?where=${encodeURIComponent(where)}&outFields=${outFields}${limitParam}&returnGeometry=false&f=json`;
+
+  // Try a prefix-anchored LIKE ("WAL-MART%") before the substring LIKE
+  // ("%WAL-MART%") this used to send unconditionally. Confirmed live against
+  // every ArcGIS backend tested (Harris: 4.4s -> 1.2s; Denton: 1.2s -> 0.3s,
+  // both repeatable) that a leading wildcard forces a full table scan no
+  // backend here can index, while the owner-name field's own index (most of
+  // these are the primary ownership-search field for the county's public
+  // site) serves a prefix match directly. Harris is the one where this is
+  // the difference between a search that feels broken (7+s through our own
+  // edge function) and a fast one, but it's not a one-county fix: an
+  // unhinted business-name search sweeps all 13 counties concurrently and
+  // waits on the slowest, so Harris's substring-scan time was previously the
+  // effective floor for every business-name search, hinted or not. Owner
+  // names here are both short and start with the brand (WAL-MART, not "...
+  // WAL-MART..."), so the prefix case covers the overwhelmingly common real
+  // query. Only fall back to the slower substring scan when the prefix
+  // attempt genuinely comes back empty, so a name that isn't at the start of
+  // the field (rare) still gets found, just without the speedup.
+  const prefixWhere = variants
+    .map((v) => `UPPER(${ownerField}) LIKE UPPER('${escapeSqlString(v)}%')`)
+    .join(" OR ");
+  const prefixHits = await fetchFeatures(buildUrl(prefixWhere));
+  if (prefixHits.length > 0) return prefixHits;
+
+  const substringWhere = variants
     .map((v) => `UPPER(${ownerField}) LIKE UPPER('%${escapeSqlString(v)}%')`)
     .join(" OR ");
-  const limitParam = limit != null ? `&resultRecordCount=${limit}` : "";
-  return fetchFeatures(
-    `${url}?where=${encodeURIComponent(where)}&outFields=${outFields}${limitParam}&returnGeometry=false&f=json`,
-  );
+  return fetchFeatures(buildUrl(substringWhere));
 }
 
 // A failed tight nearby match can take as long as a real one on some
@@ -3176,6 +3202,36 @@ async function findNearby(
 // Kaufman's only source is a third-party vendor's free-text keyword search
 // whose exact field names for a name search aren't confirmed — safer to
 // return nothing there than guess at an unverified query shape.
+// Tarrant's own owner-name search is structurally, consistently slow —
+// confirmed live (11-15s, repeatedly, isolated to Tarrant alone via an
+// explicit hint) — because its backend has no pagination support at all
+// (see queryTarrant's own comment: "Pagination is not supported... always
+// returns every matching row unbounded"), so a broad name LIKE-scan has no
+// way to cap the transfer at the API level the way every other county's
+// name search can. Found chasing a direct "don't just fix one record, think
+// universally" report: Travis and Kaufman's OWN query functions have no
+// "name" mode branch at all (confirmed live: an explicit single-county hint
+// to either still took ~11s) — they return empty almost instantly, which
+// correctly triggers the hinted-attempt-wasn't-confident fallback to the
+// full 13-county sweep, and THAT sweep's total time is bounded by whichever
+// county is slowest — Tarrant, every time. So Tarrant's own ~15s cost was
+// really a tax on every business-name search that falls back to a full
+// sweep, not just Tarrant's own searches.
+//
+// Only applied when Tarrant is one of SEVERAL counties being tried
+// (countyQueries.length > 1) — capping it tightly there is a clear win,
+// since the other dozen counties' own real, fast answers shouldn't wait on
+// Tarrant's slowest-in-the-room cost. Caught live before shipping the
+// naive always-cap version: when Tarrant is hinted alone (a real
+// "<business> fort worth" search, where Tarrant genuinely is the right
+// answer), capping it tightly just means that one attempt fails its own
+// cap, THEN pays for a second, equally-capped Tarrant attempt inside the
+// full-sweep fallback — slower overall (16.5s measured) than the original
+// uncapped 15.5s, for the one case that most needed Tarrant's own real
+// answer. Left uncapped (the full queryTimeoutMs) in that single-county
+// case, where there's no other county to usefully fall back to anyway.
+const TARRANT_NAME_QUERY_TIMEOUT_MS = 8000;
+
 async function findByName(
   countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
   nameQuery: string,
@@ -3183,9 +3239,13 @@ async function findByName(
   queryTimeoutMs: number,
 ): Promise<CadRecord[]> {
   const results = await Promise.allSettled(
-    countyQueries.map((query) =>
-      withTimeout(query(nameQuery, "name"), queryTimeoutMs, [] as CadRecord[]),
-    ),
+    countyQueries.map((query) => {
+      const timeoutMs =
+        query === queryTarrant && countyQueries.length > 1
+          ? Math.min(queryTimeoutMs, TARRANT_NAME_QUERY_TIMEOUT_MS)
+          : queryTimeoutMs;
+      return withTimeout(query(nameQuery, "name"), timeoutMs, [] as CadRecord[]);
+    }),
   );
   // Each county's own mapper falls back to `propertyAddress ?? address` when
   // a record's real situs is missing — a reasonable display fallback for an
@@ -3310,6 +3370,104 @@ function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]
   return COUNTY_QUERY_BY_HINT[key];
 }
 
+// Same idea as Google's own countyHint above, for the ONE path that never
+// gets one: a search typed directly (not resolved through a Google
+// candidate — see unified-search.ts's "direct" branch) never carried a
+// county hint at all, so "walmart dallas" or "dental frisco" always swept
+// every one of the 13 supported counties concurrently, even though the
+// typed text itself names a real, usually unambiguous city. Found live
+// ("instead of searching all the counties, search directly in the
+// respective county based on the keyword").
+//
+// Maps each city already recognized by KNOWN_SINGLE_WORD_CITIES/
+// MULTI_WORD_CITIES above (reused rather than a second hand-maintained
+// list) to its PRIMARY supported county — a handful of these cities
+// genuinely straddle two counties (Frisco: Collin/Denton; Carrollton:
+// Denton/Dallas/Collin; Celina: Collin/Denton; Grand Prairie: Dallas/
+// Tarrant) and this only ever picks one. That's safe, not a correctness
+// risk: countyQueryForHint's own caller already falls back to the full
+// sweep whenever the hinted county isn't a confident match (see
+// isConfidentMatch) — a wrong guess here only ever costs one extra,
+// usually-fast single-county query before landing on the right answer the
+// same way an un-hinted search always did, it never excludes the real
+// county from being tried.
+const CITY_TO_COUNTY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
+  "fort worth": queryTarrant,
+  "san antonio": queryBexar,
+  "the colony": queryDenton,
+  "flower mound": queryDenton,
+  "round rock": queryWilliamson,
+  "sugar land": queryFortBend,
+  "missouri city": queryFortBend,
+  "grand prairie": queryDallas,
+  "little elm": queryDenton,
+  "highland village": queryDenton,
+  "north richland hills": queryTarrant,
+  "lake dallas": queryDenton,
+  "corpus christi": queryNueces,
+  denton: queryDenton,
+  houston: queryHarris,
+  dallas: queryDallas,
+  plano: queryCollin,
+  frisco: queryCollin,
+  mckinney: queryCollin,
+  allen: queryCollin,
+  carrollton: queryDenton,
+  lewisville: queryDenton,
+  wylie: queryCollin,
+  celina: queryCollin,
+  garland: queryDallas,
+  mesquite: queryDallas,
+  irving: queryDallas,
+  arlington: queryTarrant,
+  austin: queryTravis,
+  sherman: queryGrayson,
+  denison: queryGrayson,
+  conroe: queryMontgomery,
+  katy: queryHarris,
+  georgetown: queryWilliamson,
+  humble: queryHarris,
+  spring: queryHarris,
+  stafford: queryFortBend,
+  aubrey: queryDenton,
+  porter: queryMontgomery,
+  crandall: queryKaufman,
+  forney: queryKaufman,
+  montgomery: queryMontgomery,
+  euless: queryTarrant,
+  hurst: queryTarrant,
+  bedford: queryTarrant,
+  colleyville: queryTarrant,
+  southlake: queryTarrant,
+  keller: queryTarrant,
+  burleson: queryTarrant,
+  haslet: queryTarrant,
+  roanoke: queryDenton,
+  grapevine: queryTarrant,
+};
+
+// Tries the same two interpretations the rest of this file already uses to
+// find a city in free text — parseNameQuery's (a business name + city, no
+// house number) and parseHouseAndStreet's own cityStateZip tail (a real
+// address) — and looks the result up in CITY_TO_COUNTY_HINT. Returns
+// undefined (full sweep, exactly today's behavior) whenever neither
+// interpretation finds a recognized city, rather than guessing.
+function countyQueryFromQueryText(
+  address: string,
+): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+  const nameCity = parseNameQuery(address)?.city;
+  if (nameCity) {
+    const hit = CITY_TO_COUNTY_HINT[nameCity.toLowerCase().trim()];
+    if (hit) return hit;
+  }
+  const addressCity = parseHouseAndStreet(address)?.cityStateZip;
+  if (addressCity) {
+    const hit = CITY_TO_COUNTY_HINT[guessCity(addressCity).toLowerCase().trim()];
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 type LookupResult =
   | { matched: false; nearby: CadRecord[] }
   | { matched: true; record: CadRecord }
@@ -3324,8 +3482,24 @@ type LookupResult =
 // anything else (including a non-empty "nearby" guess) still falls back to
 // ALL_COUNTY_QUERIES, discarding the hinted attempt entirely, so a bad hint
 // can only cost a little time, never a real match.
-function isConfidentMatch(r: LookupResult): boolean {
-  return r.matched === true || r.matched === "multiple";
+//
+// isNameQuery changes what counts as confident for a business-name search
+// specifically — found live chasing a real report ("walmart dallas" still
+// took 13.8s with a hint in place): findByName() STRUCTURALLY only ever
+// returns `{matched: false, nearby: [...]}`, win or lose — it has no
+// "matched: true" shape to produce, since a name search is inherently a
+// list of candidates, not one exact row. The strict check above treated
+// every one of its results as "not confident," so the hinted single-county
+// attempt was discarded and the full sweep ran anyway EVERY time for a
+// name search, making the whole optimization a no-op for exactly the kind
+// of query ("<business> <city>") most live searches actually are. A
+// non-empty name-mode result from the hinted county doesn't carry the
+// address-mode risk above: it's a real owner-name match from that ONE
+// county's own search, not a fuzzy cross-county proximity guess, so it's
+// trustworthy on its own.
+function isConfidentMatch(r: LookupResult, isNameQuery: boolean): boolean {
+  if (r.matched === true || r.matched === "multiple") return true;
+  return isNameQuery && r.matched === false && r.nearby.length > 0;
 }
 
 // The full address-lookup sweep, parameterized by WHICH county query
@@ -3340,6 +3514,20 @@ async function runLookup(
   address: string,
   queryTimeoutMs: number,
   countyQueriesInOrder: typeof ALL_COUNTY_QUERIES,
+  // Found live chasing a real report ("2930 West University Drive, Denton"
+  // took 33-38s even with the right county hinted and Denton's own raw
+  // ArcGIS endpoint independently confirmed to answer in 3.6s at that exact
+  // moment): enrichRecord() used to run unconditionally after every match,
+  // including every live-search-dropdown preview, even though enrichment's
+  // own TrueProdigy call makes a FRESH, uncached auth round-trip every
+  // single time (getTrueProdigyToken has no caching at all) before even
+  // starting its own search+deeds fetches — three real external network
+  // calls the dropdown doesn't need at all, just to show deed history and
+  // building class the user hasn't asked to see yet. Skipped entirely for a
+  // preview lookup now; the authoritative, non-preview call this same
+  // function serves for "Validate address" (or picking a suggestion) still
+  // enriches the one property actually chosen, same as before.
+  preview = false,
 ): Promise<LookupResult> {
   // A business/owner name ("Walmart Denton"), not a street address at all —
   // neither parseHouseAndStreet nor its bare-road sibling parseStreetOnly
@@ -3526,7 +3714,7 @@ async function runLookup(
               parsedForCity && !c.propertyAddress.includes(",")
                 ? { ...c, propertyAddress: `${c.propertyAddress}, ${parsedForCity.cityStateZip}` }
                 : c;
-            return enrichRecord(withCity);
+            return preview ? withCity : enrichRecord(withCity);
           }),
         );
         return { matched: "multiple", options };
@@ -3566,7 +3754,7 @@ async function runLookup(
       return { matched: false, nearby };
     }
 
-    record = await enrichRecord(record);
+    if (!preview) record = await enrichRecord(record);
 
     return { matched: true, record };
 }
@@ -3611,15 +3799,24 @@ Deno.serve(async (req: Request) => {
     // that made this check deliberately stricter than "came back empty" —
     // only an actual exact/multiple match short-circuits the full sweep; a
     // wrong or stale hint can only cost a little time, never a real match.
-    const hintedQuery = countyQueryForHint(body.countyHint);
+    //
+    // Google's own structured hint is preferred when the caller sent one;
+    // CITY_TO_COUNTY_HINT (countyQueryFromQueryText) only runs as a fallback
+    // for the one path that never gets one — a search typed directly, not
+    // resolved through a Google candidate (see that function's own comment).
+    const hintedQuery = countyQueryForHint(body.countyHint) ?? countyQueryFromQueryText(address);
+    // Same test runLookup itself uses internally to choose its name-search
+    // branch — computed here too so isConfidentMatch knows which shape of
+    // "confident" applies to this particular query.
+    const isNameQuery = !parseAddressForQuery(address, "nearby");
     let result: LookupResult;
     if (hintedQuery) {
-      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery]);
-      result = isConfidentMatch(hinted)
+      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery], preview);
+      result = isConfidentMatch(hinted, isNameQuery)
         ? hinted
-        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
     } else {
-      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES);
+      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
     }
 
     return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
