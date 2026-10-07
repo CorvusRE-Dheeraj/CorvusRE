@@ -3,6 +3,7 @@ import { centerInStrip } from "@/lib/scroll-into-strip";
 import { GLOSSARY_MAP } from "@/lib/glossary";
 import { NextRequiredAction, PipelineStepper } from "@/components/CasePipeline";
 import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
+import { MockHearing } from "@/components/MockHearing";
 import { casePipeline, localTodayIso, type NoticeFiling } from "@/lib/case-pipeline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -975,6 +976,12 @@ export function CaseDetailView({
                 evidenceDocuments={evidenceDocuments}
                 settlementAgreement={settlementAgreement}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <MockHearing
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceFiles={evidenceDocuments.map((d) => d.fileName)}
               />
             </div>
           )}

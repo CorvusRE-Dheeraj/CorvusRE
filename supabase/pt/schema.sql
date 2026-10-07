@@ -3088,3 +3088,27 @@ create policy "Admins can view all CAD evidence reviews"
 -- adjustments, income assumptions) — the CAD evidence-response analysis
 -- (_shared/cad-evidence-analysis.ts) is computed from it.
 alter table public.cad_evidence_reviews add column if not exists extraction jsonb;
+
+-- ARB mock hearings: practice sessions against the AI district appraiser and
+-- panel (hearing-simulator edge function). The transcript and the debrief
+-- are kept so the owner can review a run before the real hearing.
+create table if not exists public.mock_hearings (
+  id uuid primary key default gen_random_uuid(),
+  protest_id uuid not null references public.protests (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  difficulty text not null default 'typical' check (difficulty in ('cooperative', 'typical', 'tough')),
+  transcript jsonb not null default '[]'::jsonb,
+  debrief jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists mock_hearings_protest_idx on public.mock_hearings (protest_id, created_at desc);
+alter table public.mock_hearings enable row level security;
+drop policy if exists "Users manage their own mock hearings" on public.mock_hearings;
+create policy "Users manage their own mock hearings"
+  on public.mock_hearings for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all mock hearings" on public.mock_hearings;
+create policy "Admins can view all mock hearings"
+  on public.mock_hearings for select using (public.is_admin());
