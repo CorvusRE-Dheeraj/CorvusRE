@@ -250,6 +250,9 @@ function CadEvidenceReviewPanel({
   const [review, setReview] = useState<StoredCadEvidenceReview | null>(null);
   const [facts, setFacts] = useState<Facts | null>(null);
   const [range, setRange] = useState<{ low: number; high: number } | null>(null);
+  // Set when the range is only estimated from the savings figure, not the
+  // property's Commercial Valuation.
+  const [rangeEstimated, setRangeEstimated] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
@@ -286,19 +289,19 @@ function CadEvidenceReviewPanel({
         noi: inc?.noi ?? null,
         capRatePct: inc?.capRatePct ?? null,
       });
-      setRange(
-        decisionCard({
-          cadValue: protest.originalValue ?? property.totalValue,
-          effectiveTaxRate: getEffectiveTaxRate(property.cad),
-          healthScore: null,
-          worksheet: worksheet?.summary ?? null,
-          estimatedSavings: property.estimatedSavings,
-          protest: null,
-          cadReview: null,
-          annualCost: null,
-          arbitration: null,
-        }).supportable,
-      );
+      const dc = decisionCard({
+        cadValue: protest.originalValue ?? property.totalValue,
+        effectiveTaxRate: getEffectiveTaxRate(property.cad),
+        healthScore: null,
+        worksheet: worksheet?.summary ?? null,
+        estimatedSavings: property.estimatedSavings,
+        protest: null,
+        cadReview: null,
+        annualCost: null,
+        arbitration: null,
+      });
+      setRange(dc.supportable);
+      setRangeEstimated(!worksheet?.summary && !!dc.supportable);
     });
   }, [property, protest.id, protest.originalValue]);
 
@@ -380,7 +383,13 @@ function CadEvidenceReviewPanel({
               </strong>
               {analysis.comparison.gapToHigh > 0
                 ? ` — the district is ${analysis.comparison.gapPct}% above the top of that range.`
-                : " — the district's value is within your range."}
+                : " — the district's value is at or below the top of your range."}
+              {rangeEstimated && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Range estimated from your savings figure — run the Commercial Valuation in the
+                  property&apos;s report for the full six-approach range.
+                </div>
+              )}
             </div>
           ) : analysis.proposedValue != null ? (
             <div className="rounded-md bg-secondary/60 p-3">

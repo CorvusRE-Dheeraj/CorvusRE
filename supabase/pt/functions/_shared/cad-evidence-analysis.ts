@@ -390,10 +390,14 @@ export function analyzeCadEvidence(
       address: c.address,
       kind: c.kind,
       value,
-      pricePerSf:
-        value && c.buildingSqft
-          ? Math.round((value / c.buildingSqft) * 100) / 100
-          : null,
+      // The comp's own price per SF — its actual sale (or appraised) value,
+      // never the district's adjusted figure, which is restated for the subject.
+      pricePerSf: (() => {
+        const own = c.salePrice ?? c.appraisedValue ?? c.adjustedValue;
+        return own && c.buildingSqft
+          ? Math.round((own / c.buildingSqft) * 100) / 100
+          : null;
+      })(),
       sizeDiffPct,
       ageDiffYears,
       saleMonthsBeforeValuation: saleMonths,
