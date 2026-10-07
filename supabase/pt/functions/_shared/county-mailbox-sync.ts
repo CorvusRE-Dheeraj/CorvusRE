@@ -170,6 +170,10 @@ export async function fileCountyEmail(
   admin: SupabaseClient,
   properties: MailboxProperty[],
   mail: IncomingCountyEmail,
+  // A dedicated address only counties are given (county-mail-inbound): an
+  // unrecognized sender is still kept for staff rather than dropped — the
+  // district may write from a domain the matcher doesn't know.
+  opts: { keepUnknownSenders?: boolean } = {},
 ): Promise<"filed" | "queued" | "ignored"> {
   const { data: seen } = await admin
     .from("county_emails")
@@ -198,8 +202,12 @@ export async function fileCountyEmail(
   }
 
   const senderCounty = countyForDomain(senderDomain(mail.from), DOMAINS);
-  const match = matchCountyMail({ subject: mail.subject, text: mail.text }, senderCounty, properties);
-  if (match.kind === "not_county") return "ignored";
+  const found = matchCountyMail({ subject: mail.subject, text: mail.text }, senderCounty, properties);
+  if (found.kind === "not_county" && !opts.keepUnknownSenders) return "ignored";
+  const match =
+    found.kind === "not_county"
+      ? ({ kind: "county_unmatched", county: "unknown sender" } as const)
+      : found;
 
   const owner = match.kind === "matched" ? match.userId : null;
   const safeId = mail.messageId.replace(/[^\w.-]+/g, "_");

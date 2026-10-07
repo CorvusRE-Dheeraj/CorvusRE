@@ -12,6 +12,9 @@ export type CadEvidenceRequestInput = {
   taxYear: number | null;
   ownerName: string | null;
   replyEmail: string | null;
+  // Copied on the request, so the district's reply also files itself under
+  // the case (CorvusPT's county address).
+  copyEmail?: string | null;
   today?: Date;
 };
 
@@ -41,7 +44,11 @@ export function cadEvidenceRequestLetter(input: CadEvidenceRequestInput): string
     "I have filed a notice of protest for the property above. Under Texas Property Tax Code §41.461, please provide a copy of the data, schedules, formulas, and all other information the chief appraiser plans to introduce at the hearing to establish any matter at issue, at least 14 days before my hearing.",
     "",
     input.replyEmail
-      ? `Please send it to ${input.replyEmail}, or to the mailing address on file for this account.`
+      ? `Please send it to ${input.replyEmail}${
+          input.copyEmail && input.copyEmail !== input.replyEmail
+            ? `, copying ${input.copyEmail}`
+            : ""
+        }, or to the mailing address on file for this account.`
       : "Please send it to the mailing address on file for this account.",
     "",
     "Sincerely,",

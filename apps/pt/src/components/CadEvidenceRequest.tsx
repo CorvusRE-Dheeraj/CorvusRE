@@ -7,6 +7,7 @@ import { setCadEvidenceReceived, setCadEvidenceRequested } from "@/lib/protest-c
 import { cadEvidenceRequestLetter, cadEvidenceRequestSubject } from "@/lib/cad-evidence-request";
 import { getCountyProtestInfo } from "@/lib/county-protest-info";
 import { getErrorMessage } from "@/lib/error-message";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -31,13 +32,17 @@ export function CadEvidenceRequest({
   // The district's own confirmed filing email only — never the ARB contact,
   // since this request goes to the chief appraiser, not the review board.
   const to = county?.filingMethod.email.address ?? null;
+  const managed = property.planTier === "corvusrf_managed";
   const input = {
     cadName: property.cad,
     address: property.address,
     accountNumber: property.accountNumber,
     taxYear: protest.taxYear ?? property.taxYear,
     ownerName: property.ownerName,
-    replyEmail: userEmail,
+    // Expert/Managed: the district answers CorvusPT, the agent. Owner-managed:
+    // the owner, with CorvusPT copied so the reply is filed automatically.
+    replyEmail: managed ? CORVUSPT_COUNTY_EMAIL : userEmail,
+    copyEmail: CORVUSPT_COUNTY_EMAIL,
   };
   const letter = cadEvidenceRequestLetter(input);
   const subject = cadEvidenceRequestSubject(input);
@@ -152,7 +157,7 @@ export function CadEvidenceRequest({
               <Copy className="h-4 w-4" aria-hidden="true" /> Copy letter
             </button>
             <a
-              href={`mailto:${to ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(letter)}`}
+              href={`mailto:${to ?? ""}?cc=${encodeURIComponent(CORVUSPT_COUNTY_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(letter)}`}
               className="btn-outline inline-flex items-center gap-1.5 text-sm"
             >
               <Mail className="h-4 w-4" aria-hidden="true" /> Email it{to ? ` to ${to}` : ""}

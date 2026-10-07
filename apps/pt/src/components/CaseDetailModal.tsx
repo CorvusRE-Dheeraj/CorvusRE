@@ -220,6 +220,11 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { CalendarDays, Scale } from "lucide-react";
 import { PageHero } from "@/components/PageHero";
 import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+
+// Every county email CorvusPT drafts copies its county address, so replies
+// file themselves under the case (see county-mail-inbound).
+const COUNTY_REPLY_LINE = `Please include ${CORVUSPT_COUNTY_EMAIL} on any reply about this protest.`;
 
 // --- Tabbed filing workflow -------------------------------------------------
 // The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
@@ -2479,9 +2484,11 @@ function FilingSubmissionFlow({
   const emailDraft = buildFilingEmailDraft(docLabel, property);
   const emailAddress = countyInfo?.filingMethod.email.address ?? null;
   const mailtoHref = emailAddress
-    ? `mailto:${encodeURIComponent(emailAddress)}?subject=${encodeURIComponent(
+    ? `mailto:${encodeURIComponent(emailAddress)}?cc=${encodeURIComponent(
+        CORVUSPT_COUNTY_EMAIL,
+      )}&subject=${encodeURIComponent(
         emailSubjectInput || emailDraft.subject,
-      )}&body=${encodeURIComponent(emailDraft.body)}`
+      )}&body=${encodeURIComponent(`${emailDraft.body}\n\n${COUNTY_REPLY_LINE}`)}`
     : null;
   const canConfirm = hasFilingReferenceNumber(submission) || proofDocs.length > 0;
   // The submit form (method-specific input + proof + "Mark as Submitted")

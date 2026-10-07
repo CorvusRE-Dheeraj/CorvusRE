@@ -91,7 +91,8 @@ function AdminPanel() {
   // Back from connecting the county mailbox (Google redirects here with
   // ?mailbox_connected / ?mailbox_error) — land on that tab, not Financials.
   const [activeTab, setActiveTab] = useState<AdminTab>(() =>
-    typeof window !== "undefined" && /[?&]mailbox_(connected|error)=/.test(window.location.search)
+    typeof window !== "undefined" &&
+    /[?&](mailbox_(connected|error)=|tab=county_mail\b)/.test(window.location.search)
       ? "county_mail"
       : "financials",
   );
