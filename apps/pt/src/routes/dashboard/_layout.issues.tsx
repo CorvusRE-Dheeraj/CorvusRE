@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, ShieldAlert, Sparkles, Trash2, Upload } from "lucide-react";
+import { CalendarClock, CheckCircle2, ShieldAlert, Sparkles, Trash2, Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { getDocumentUrl, type DocumentRecord } from "@/lib/documents";
 import {
   ISSUE_CATEGORIES,
+  HEADS_UP_DAYS,
   ISSUE_STATUSES,
+  upcomingIssueDates,
   analyzeIssueNotice,
   attachIssueDocument,
   generateIssueGuidance,
@@ -48,6 +50,20 @@ const fmtDate = (d: string | null) =>
         year: "numeric",
       })
     : null;
+const DATE_FIELDS = [
+  { key: "deadline", label: "Deadline" },
+  { key: "inspectionDate", label: "Inspection" },
+  { key: "courtDate", label: "Court date" },
+  { key: "fineDue", label: "Fine due" },
+] as const;
+type DateKey = (typeof DATE_FIELDS)[number]["key"];
+
+const localTodayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const daysUntil = (iso: string, todayIso: string) =>
+  Math.round((Date.parse(`${iso}T12:00:00Z`) - Date.parse(`${todayIso}T12:00:00Z`)) / 86_400_000);
 const usd = (n: number | null) => (n == null ? null : `$${n.toLocaleString("en-US")}`);
 
 // The dashboard's Property Issues tab: every city/county notice, violation or
@@ -75,6 +91,8 @@ function PropertyIssues() {
 
   const open = issues.filter((i) => i.status !== "resolved");
   const resolved = issues.filter((i) => i.status === "resolved");
+  const today = localTodayIso();
+  const upcoming = upcomingIssueDates(issues, today);
 
   const replace = (next: PropertyIssue) =>
     setIssues((cur) => cur.map((i) => (i.id === next.id ? next : i)));
@@ -121,6 +139,44 @@ function PropertyIssues() {
               }}
               onUpdated={replace}
             />
+          )}
+
+          {upcoming.length > 0 && (
+            <section className="card-elev p-5" aria-labelledby="issue-deadlines">
+              <h2 id="issue-deadlines" className="flex items-center gap-2 font-semibold">
+                <CalendarClock className="h-4 w-4 text-rose-700" aria-hidden="true" />
+                Upcoming deadlines
+              </h2>
+              <ul className="mt-3 grid gap-2">
+                {upcoming.slice(0, 6).map((d) => {
+                  const days = daysUntil(d.date, today);
+                  return (
+                    <li
+                      key={`${d.issue.id}-${d.kind}`}
+                      className="flex flex-wrap items-baseline justify-between gap-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-medium">{d.kind}</span> — {d.issue.title}
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          · {propertyById.get(d.issue.propertyId)?.address ?? "Property"}
+                        </span>
+                      </span>
+                      <span
+                        className={`whitespace-nowrap text-xs font-semibold ${days <= HEADS_UP_DAYS ? "text-destructive" : "text-muted-foreground"}`}
+                      >
+                        {fmtDate(d.date)} ·{" "}
+                        {days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Each date is on your Calendar, with an email reminder {HEADS_UP_DAYS} days before
+                and on the day.
+              </p>
+            </section>
           )}
 
           {open.length === 0 && properties.length > 0 && !adding && (
@@ -402,6 +458,17 @@ function IssueCard({
       .catch(() => {});
   }, [expanded, issue.id]);
 
+  async function setDate(key: DateKey, value: string | null) {
+    setBusy(key);
+    try {
+      onChange(await updatePropertyIssue(issue.id, { [key]: value }));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this date."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function getGuidance() {
     if (!property) return;
     setBusy("guidance");
@@ -459,11 +526,7 @@ function IssueCard({
 
   const facts: [string, string | null][] = [
     ["Issued", fmtDate(issue.issuedOn)],
-    ["Deadline", fmtDate(issue.deadline)],
-    ["Inspection", fmtDate(issue.inspectionDate)],
-    ["Court date", fmtDate(issue.courtDate)],
     ["Fine / amount due", usd(issue.fineAmount)],
-    ["Fine due", fmtDate(issue.fineDue)],
     ["From", issue.authority],
     ["Contact", issue.authorityContact],
   ];
@@ -527,6 +590,25 @@ function IssueCard({
                 </div>
               ))}
           </dl>
+          <div>
+            <div className="text-xs font-medium text-muted-foreground">
+              Key dates — reminders follow these
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {DATE_FIELDS.map((f) => (
+                <label key={f.key} className="grid gap-0.5 text-xs">
+                  {f.label}
+                  <input
+                    type="date"
+                    value={issue[f.key] ?? ""}
+                    disabled={busy === f.key || issue.status === "resolved"}
+                    onChange={(e) => void setDate(f.key, e.target.value || null)}
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-60"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
           {issue.consequences && (
             <p className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">If not resolved: </span>

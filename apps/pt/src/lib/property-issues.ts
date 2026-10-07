@@ -56,6 +56,7 @@ export type CostEstimate = {
 
 export type PropertyIssue = {
   id: string;
+  userId: string;
   propertyId: string;
   source: "manual" | "upload" | "city_data";
   externalRef: string | null;
@@ -83,6 +84,7 @@ export type PropertyIssue = {
 
 type Row = {
   id: string;
+  user_id: string;
   property_id: string;
   source: PropertyIssue["source"];
   external_ref: string | null;
@@ -109,11 +111,12 @@ type Row = {
 };
 
 const COLUMNS =
-  "id, property_id, source, external_ref, category, title, description, issued_on, deadline, inspection_date, court_date, fine_amount, fine_due, required_action, authority, authority_contact, consequences, guidance, cost_estimate, provider_types, status, source_document_id, resolved_at, created_at";
+  "id, user_id, property_id, source, external_ref, category, title, description, issued_on, deadline, inspection_date, court_date, fine_amount, fine_due, required_action, authority, authority_contact, consequences, guidance, cost_estimate, provider_types, status, source_document_id, resolved_at, created_at";
 
 function fromRow(r: Row): PropertyIssue {
   return {
     id: r.id,
+    userId: r.user_id,
     propertyId: r.property_id,
     source: r.source,
     externalRef: r.external_ref,
@@ -210,8 +213,19 @@ export async function createPropertyIssue(
     .select(COLUMNS)
     .single();
   if (error) throw error;
-  return fromRow(data as Row);
+  const issue = fromRow(data as Row);
+  await syncIssueReminders(issue).catch(() => {});
+  return issue;
 }
+
+const REMINDER_FIELDS: (keyof IssueFields)[] = [
+  "deadline",
+  "inspectionDate",
+  "courtDate",
+  "fineDue",
+  "status",
+  "title",
+];
 
 export async function updatePropertyIssue(id: string, fields: IssueFields): Promise<PropertyIssue> {
   const row = toRow(fields);
@@ -225,7 +239,94 @@ export async function updatePropertyIssue(id: string, fields: IssueFields): Prom
     .select(COLUMNS)
     .single();
   if (error) throw error;
-  return fromRow(data as Row);
+  const issue = fromRow(data as Row);
+  if (REMINDER_FIELDS.some((k) => k in fields)) await syncIssueReminders(issue).catch(() => {});
+  return issue;
+}
+
+// The dates on an issue that need a reminder, with how to word them.
+const ISSUE_DATES = [
+  { key: "deadline", label: "Deadline" },
+  { key: "inspectionDate", label: "Inspection" },
+  { key: "courtDate", label: "Court date" },
+  { key: "fineDue", label: "Fine due" },
+] as const;
+
+export const HEADS_UP_DAYS = 3;
+
+export type IssueDate = { kind: string; date: string; issue: PropertyIssue };
+
+// Every upcoming date across open issues, soonest first — the tab's
+// "Upcoming deadlines" strip.
+export function upcomingIssueDates(issues: PropertyIssue[], todayIso: string): IssueDate[] {
+  const out: IssueDate[] = [];
+  for (const issue of issues) {
+    if (issue.status === "resolved") continue;
+    for (const d of ISSUE_DATES) {
+      const date = issue[d.key];
+      if (date && date >= todayIso) out.push({ kind: d.label, date, issue });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const addDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// The reminders an issue should have: a heads-up a few days before each
+// date and one on the day. None once it's resolved, none for past dates.
+export function planIssueReminders(
+  issue: PropertyIssue,
+  todayIso: string,
+): { remindOn: string; note: string }[] {
+  if (issue.status === "resolved") return [];
+  const plan: { remindOn: string; note: string }[] = [];
+  for (const d of ISSUE_DATES) {
+    const date = issue[d.key];
+    if (!date || date < todayIso) continue;
+    const headsUp = addDays(date, -HEADS_UP_DAYS);
+    if (headsUp > todayIso) {
+      plan.push({
+        remindOn: headsUp,
+        note: `Property issue: ${d.label.toLowerCase()} in ${HEADS_UP_DAYS} days — ${issue.title}`,
+      });
+    }
+    plan.push({
+      remindOn: date,
+      note: `Property issue: ${d.label.toLowerCase()} today — ${issue.title}`,
+    });
+  }
+  return plan;
+}
+
+// Replaces the issue's pending reminders (done/missed ones are history and
+// stay). They appear on the Calendar and in the emailed deadline reminders.
+export async function syncIssueReminders(issue: PropertyIssue): Promise<void> {
+  const { error: delError } = await supabase
+    .from("user_reminders")
+    .delete()
+    .eq("property_issue_id", issue.id)
+    .eq("done", false)
+    .is("missed_at", null);
+  if (delError) throw delError;
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const plan = planIssueReminders(issue, todayIso);
+  if (plan.length === 0) return;
+  const { error } = await supabase.from("user_reminders").insert(
+    plan.map((p) => ({
+      user_id: issue.userId,
+      property_id: issue.propertyId,
+      property_issue_id: issue.id,
+      remind_on: p.remindOn,
+      note: p.note,
+      source: "system",
+    })),
+  );
+  if (error) throw error;
 }
 
 export async function deletePropertyIssue(id: string): Promise<void> {
