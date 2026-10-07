@@ -6,6 +6,7 @@ import { evidenceItemSlug } from "./evidence-categorize";
 import type { PropertyRecord } from "./properties";
 import type { EvidenceAnalysis, DocumentStatus } from "./protest-reason";
 import type { EvidenceCategory, EvidenceItem } from "./ai-report-modules";
+import type { WorksheetSummary } from "./valuation-worksheet";
 
 // Compiles a property's real uploaded protest-evidence documents into one
 // organized, downloadable PDF — Module 8's "Download Evidence Packet". Real
@@ -56,6 +57,15 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
 // Small stateful cursor so each section below can just say how much text it
 // wants to write, rather than every call site tracking its own y-position —
 // starts a fresh page whenever the current one runs out of room.
+// The standard PDF fonts only encode WinAnsi — swap the few math symbols the
+// valuation steps use for plain equivalents rather than fail the packet.
+export function pdfSafe(s: string): string {
+  return s
+    .replace(/\u2212/g, "-")
+    .replace(/\u2192/g, "->")
+    .replace(/[^\x20-\xff\u2013\u2014\u2018\u2019\u201c\u201d\u2022\u20ac]/g, "");
+}
+
 class PageWriter {
   doc: PDFDocument;
   page: ReturnType<PDFDocument["addPage"]>;
@@ -185,6 +195,9 @@ export async function buildEvidencePacket(
   // defaulted to []) so an older caller not yet passing this still compiles
   // and simply gets every document filed under "Supporting Documents."
   items: EvidenceItem[] = [],
+  // The owner's saved Commercial Valuation worksheet (valuation-worksheet.ts)
+  // — adds a Commercial Valuation Summary page when present.
+  valuation: WorksheetSummary | null = null,
 ): Promise<Uint8Array> {
   const packet = await PDFDocument.create();
   const w = await PageWriter.create(packet);
@@ -313,6 +326,45 @@ export async function buildEvidencePacket(
         "appraisal district's website or notice for how to submit this packet.",
       { size: 9.5, color: MUTED },
     );
+  }
+
+  // ---- Commercial Valuation Summary — every approach the owner ran in the
+  // AI Report, with its math, against the county's value.
+  if (valuation && valuation.approaches.some((a) => a.status !== "needs_data")) {
+    const vw = await PageWriter.create(packet);
+    vw.text("Commercial Valuation Summary", { size: 14, bold: true, color: ACCENT, gap: 4 });
+    vw.text(
+      "Prepared from the county record, comparable properties, the owner's documents and inputs. " +
+        "Estimates in support of the protest, not an appraisal.",
+      { size: 9.5, color: MUTED, gap: 8 },
+    );
+    if (valuation.cadValue != null) {
+      vw.text(`County appraised value: ${currency(valuation.cadValue)}`, {
+        size: 11,
+        bold: true,
+        gap: 2,
+      });
+    }
+    if (valuation.lowest) {
+      vw.text(
+        pdfSafe(
+          `Lowest supported value: ${currency(valuation.lowest.value)} (${valuation.lowest.name})`,
+        ),
+        { size: 11, bold: true, gap: 8 },
+      );
+    }
+    for (const a of valuation.approaches) {
+      const result =
+        a.status === "indicated" && a.indicatedValue != null
+          ? currency(a.indicatedValue)
+          : a.status === "supports_cad"
+            ? "supports the county's value"
+            : "not enough data";
+      vw.rule();
+      vw.text(pdfSafe(`${a.name}: ${result}`), { size: 11, bold: true, gap: 3 });
+      for (const step of a.steps) vw.text(pdfSafe(step), { size: 9.5, gap: 1 });
+      vw.spacer(4);
+    }
   }
 
   // ---- Each included document: a divider page, then its real pages —

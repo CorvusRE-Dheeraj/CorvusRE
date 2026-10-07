@@ -55,6 +55,11 @@ export type IntakeState = {
   legalDescription?: string | null;
   subdivision?: string | null;
   geoId?: string | null;
+  // Structure detail from the county record, when its layer publishes it —
+  // lets the Commercial Valuation panel run Cost / Sales before the
+  // property's base data is fetched (or for a guest, who has none).
+  buildingSqft?: number | null;
+  yearBuilt?: number | null;
   mailingAddress?: string | null;
   ownershipPct?: number | null;
   protestStatus?: string | null;
@@ -164,6 +169,8 @@ export function cadRecordToIntakePatch(
     legalDescription: record.legalDescription ?? undefined,
     subdivision: record.subdivision ?? undefined,
     geoId: record.geoId ?? undefined,
+    buildingSqft: record.buildingSqft ?? undefined,
+    yearBuilt: record.yearBuilt ?? undefined,
     mailingAddress: record.mailingAddress ?? undefined,
     ownershipPct: record.ownershipPct ?? undefined,
     protestStatus: record.protestStatus ?? undefined,

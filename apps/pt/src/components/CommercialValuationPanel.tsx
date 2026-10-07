@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Calculator,
@@ -25,6 +25,12 @@ import {
   type ApproachResult,
   type Impairment,
 } from "@/lib/commercial-valuation";
+import {
+  getValuationWorksheet,
+  saveValuationWorksheet,
+  type WorksheetInputs,
+  type WorksheetSummary,
+} from "@/lib/valuation-worksheet";
 
 const ICON: Record<ApproachId, typeof Scale> = {
   income: Calculator,
@@ -37,39 +43,52 @@ const ICON: Record<ApproachId, typeof Scale> = {
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
-type Saved = {
-  vacancyPct?: number | null;
-  expenseRatioPct?: number | null;
-  capRatePct?: number | null;
-  costPerSqft?: number | null;
-  economicLifeYears?: number;
-  impairments?: Impairment[];
-};
+type Saved = WorksheetInputs;
 
-// A per-viewer what-if scratchpad (sliders, cost inputs, impairment list) —
-// browser storage, wrapped so private windows still work.
-function useSaved(propertyId: string | null): [Saved, (patch: Saved) => void] {
-  const key = propertyId ? `corvuspt:valuation:${propertyId}` : null;
+// The owner's inputs (sliders, cost per SF, impairments). Signed in: saved to
+// the case (public.valuation_worksheets) so they follow the owner across
+// devices and feed the evidence packet. A guest: browser storage, wrapped so
+// a private window still works.
+function useSaved(
+  userId: string | null,
+  propertyId: string | null,
+): [Saved, (patch: Saved) => void, boolean] {
+  const localKey = propertyId ? `corvuspt:valuation:${propertyId}` : null;
   const [saved, setSaved] = useState<Saved>({});
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    if (!key) return;
+    setLoaded(false);
+    if (!propertyId) {
+      setLoaded(true);
+      return;
+    }
+    if (userId) {
+      getValuationWorksheet(propertyId)
+        .then((w) => setSaved(w?.inputs ?? {}))
+        .catch(() => setSaved({}))
+        .finally(() => setLoaded(true));
+      return;
+    }
     try {
-      setSaved(JSON.parse(localStorage.getItem(key) ?? "{}") as Saved);
+      setSaved(JSON.parse(localStorage.getItem(localKey ?? "") ?? "{}") as Saved);
     } catch {
       setSaved({});
     }
-  }, [key]);
+    setLoaded(true);
+  }, [userId, propertyId, localKey]);
   const update = (patch: Saved) =>
     setSaved((cur) => {
       const next = { ...cur, ...patch };
-      try {
-        if (key) localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        // per-viewer convenience only
+      if (!userId && localKey) {
+        try {
+          localStorage.setItem(localKey, JSON.stringify(next));
+        } catch {
+          // per-viewer convenience only
+        }
       }
       return next;
     });
-  return [saved, update];
+  return [saved, update, loaded];
 }
 
 // "Make commercial valuation visibly commercial": the six paths a commercial
@@ -78,6 +97,7 @@ function useSaved(propertyId: string | null): [Saved, (patch: Saved) => void] {
 // with its own inputs, math and indicated value, side by side against the
 // county's. See lib/commercial-valuation.ts.
 export function CommercialValuationPanel({
+  userId,
   propertyId,
   cadValue,
   landValue,
@@ -91,6 +111,8 @@ export function CommercialValuationPanel({
   onAddIncomeData,
   onAddSales,
 }: {
+  // Signed-in owner — inputs and results are saved to the case.
+  userId: string | null;
   propertyId: string | null;
   cadValue: number | null;
   landValue: number | null;
@@ -104,7 +126,7 @@ export function CommercialValuationPanel({
   onAddIncomeData?: () => void;
   onAddSales?: () => void;
 }) {
-  const [saved, update] = useSaved(propertyId);
+  const [saved, update, loaded] = useSaved(userId, propertyId);
   const [open, setOpen] = useState<ApproachId | null>(null);
   const currentYear = new Date().getFullYear();
   const baseExpenseRatio = income.opexRatioPct;
@@ -162,6 +184,41 @@ export function CommercialValuationPanel({
   ];
   const rec = reconcile(ordered, cadValue);
   const scaleMax = Math.max(cadValue ?? 0, ...rec.indicated.map((x) => x.value)) * 1.05 || 1;
+
+  // Save the inputs and what each approach indicates (the evidence packet's
+  // Commercial Valuation Summary reads this), a moment after the last change.
+  const summaryDigest = JSON.stringify([
+    saved,
+    cadValue,
+    ordered.map((r) => [r.id, r.status, r.indicatedValue, r.steps]),
+  ]);
+  const lastSaved = useRef<string | null>(null);
+  useEffect(() => {
+    if (!userId || !propertyId || !loaded) return;
+    if (lastSaved.current === summaryDigest) return;
+    const t = setTimeout(() => {
+      const summary: WorksheetSummary = {
+        cadValue,
+        approaches: ordered.map((r) => ({
+          id: r.id,
+          name: r.name,
+          status: r.status,
+          indicatedValue: r.indicatedValue,
+          steps: r.steps,
+        })),
+        lowest: rec.lowest ? { name: rec.lowest.name, value: rec.lowest.value } : null,
+        computedAt: new Date().toISOString(),
+      };
+      saveValuationWorksheet(userId, propertyId, saved, summary)
+        .then(() => {
+          lastSaved.current = summaryDigest;
+        })
+        .catch((err) => console.error("Could not save the valuation worksheet:", err));
+    }, 1200);
+    return () => clearTimeout(t);
+    // summaryDigest captures everything the save writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryDigest, userId, propertyId, loaded]);
 
   return (
     <section aria-labelledby="commercial-valuation" className="mt-6 card-elev p-5 md:p-6">
@@ -316,6 +373,7 @@ export function CommercialValuationPanel({
       <p className="mt-4 text-xs text-muted-foreground">
         Indicated values are computed from your county record, comparable properties, sales you add
         and the figures you enter — estimates to support your protest, not an appraisal.
+        {userId ? " Saved to this property and included in your evidence packet." : ""}
       </p>
     </section>
   );

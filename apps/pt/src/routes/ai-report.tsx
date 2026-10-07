@@ -158,6 +158,7 @@ import {
 import { moduleSourceFacts } from "@/lib/module-source-facts";
 import { PropertyTaxHistory } from "@/components/HistoricPropertyTaxSection";
 import { CommercialValuationPanel } from "@/components/CommercialValuationPanel";
+import { getValuationWorksheet } from "@/lib/valuation-worksheet";
 import { listProtests, requestProtest, type ProtestRecord } from "@/lib/protests";
 import { generateCasePrep } from "@/lib/protest-case";
 import { getCaseNextAction, type CaseNextAction } from "@/lib/case-next-action";
@@ -3361,6 +3362,7 @@ function Report() {
               county itself codes as residential. */}
           {classifyPropertyCategory(state.propertyType) !== "residential" && (
             <CommercialValuationPanel
+              userId={user?.id ?? null}
               propertyId={resolvedProperty?.id ?? null}
               cadValue={state.totalValue ?? null}
               landValue={state.landValue ?? null}
@@ -3368,8 +3370,8 @@ function Report() {
               acres={
                 compsMap.data?.subject?.legalAcreage ?? baseData?.snapshot.cad?.lotSizeAcres ?? null
               }
-              buildingSqft={baseData?.snapshot.cad?.buildingSqft ?? null}
-              yearBuilt={baseData?.snapshot.cad?.yearBuilt ?? null}
+              buildingSqft={baseData?.snapshot.cad?.buildingSqft ?? state.buildingSqft ?? null}
+              yearBuilt={baseData?.snapshot.cad?.yearBuilt ?? state.yearBuilt ?? null}
               income={incomeComputed}
               compStats={
                 compsMap.data
@@ -11457,11 +11459,13 @@ function ModulePreviewContent({
         setDownloadingPacket(true);
         setPacketError(null);
         try {
+          const worksheet = await getValuationWorksheet(resolvedProperty.id).catch(() => null);
           const bytes = await buildEvidencePacket(
             resolvedProperty,
             protestEvidenceDocs,
             analysis.documentFindings,
             d.items,
+            worksheet?.summary ?? null,
           );
           const filenameBase = resolvedProperty.accountNumber ?? resolvedProperty.id;
           downloadPdf(bytes, `Evidence-Packet-${filenameBase}.pdf`);
