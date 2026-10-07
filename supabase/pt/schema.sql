@@ -3172,3 +3172,151 @@ create policy "Users manage their own street view comparisons"
   on public.streetview_conditions for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- ── Team access: property managers and CPA / controllers ─────────────────
+-- An owner invites someone to their account with a role:
+--   property_manager — works the cases (properties, protests, documents,
+--     evidence, hearing prep) on the properties assigned to them;
+--   cpa — read-only: properties, cases, tax bills, documents, valuations.
+-- Neither can see billing or sign legal documents for the owner. Members
+-- reach the owner's rows through the additive policies below (the owners'
+-- own policies are untouched); the app switches its effective account to
+-- the owner while a member works there.
+create table if not exists public.account_members (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  member_id uuid references auth.users (id) on delete cascade,
+  email text not null,
+  role text not null check (role in ('property_manager', 'cpa')),
+  property_ids uuid[], -- null = every property, including ones added later
+  status text not null default 'invited' check (status in ('invited', 'active', 'revoked')),
+  invite_token text not null default encode(extensions.gen_random_bytes(18), 'hex'),
+  invited_at timestamptz not null default now(),
+  accepted_at timestamptz,
+  unique (owner_id, email)
+);
+create index if not exists account_members_member_idx on public.account_members (member_id) where status = 'active';
+alter table public.account_members enable row level security;
+drop policy if exists "Owners manage their team" on public.account_members;
+create policy "Owners manage their team" on public.account_members for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id and member_id is distinct from owner_id);
+drop policy if exists "Members see their own memberships" on public.account_members;
+create policy "Members see their own memberships" on public.account_members for select
+  using (auth.uid() = member_id);
+
+-- Does the signed-in user have member access to this owner's property?
+-- prop null = a row not tied to one property: only members scoped to every property.
+create or replace function public.member_access(owner uuid, prop uuid, need_write boolean)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.account_members m
+    where m.owner_id = owner
+      and m.member_id = auth.uid()
+      and m.status = 'active'
+      and (m.property_ids is null or (prop is not null and prop = any (m.property_ids)))
+      and (not need_write or m.role = 'property_manager')
+  );
+$$;
+
+create or replace function public.member_access_protest(owner uuid, protest uuid, need_write boolean)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.member_access(owner, (select p.property_id from public.protests p where p.id = protest), need_write);
+$$;
+
+-- Accept an invite: the signed-in user's email must match the invite.
+create or replace function public.accept_account_invite(token text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  row_id uuid;
+begin
+  update public.account_members m
+     set member_id = auth.uid(), status = 'active', accepted_at = now()
+   where m.invite_token = token
+     and m.status = 'invited'
+     and lower(m.email) = lower((select u.email from auth.users u where u.id = auth.uid()))
+     and m.owner_id <> auth.uid()
+  returning m.id into row_id;
+  return row_id;
+end;
+$$;
+revoke all on function public.accept_account_invite(text) from public;
+grant execute on function public.accept_account_invite(text) to authenticated;
+
+-- The owner's name for the account switcher.
+drop policy if exists "Members can view the owner's profile" on public.profiles;
+create policy "Members can view the owner's profile" on public.profiles for select
+  using (exists (
+    select 1 from public.account_members m
+    where m.owner_id = profiles.id and m.member_id = auth.uid() and m.status = 'active'
+  ));
+
+-- Member policies: read for every member, write for property managers.
+do $do$
+declare
+  t text;
+  prop_tables text[] := array[
+    'documents', 'tax_bills', 'valuation_worksheets', 'comp_selections', 'income_analysis',
+    'module_data_overrides', 'module_results', 'savings_tax_inputs', 'property_issues',
+    'property_ai_scores', 'property_base_data', 'assessment_changes', 'user_reminders',
+    'county_emails', 'protests'];
+  prop_write text[] := array[
+    'documents', 'tax_bills', 'valuation_worksheets', 'comp_selections', 'income_analysis',
+    'module_data_overrides', 'module_results', 'savings_tax_inputs', 'property_issues',
+    'property_ai_scores', 'user_reminders', 'protests'];
+  protest_tables text[] := array[
+    'cad_evidence_reviews', 'case_audit_events', 'decision_notices', 'hearing_notices',
+    'mock_hearings', 'protest_evidence_items', 'protest_form_submissions', 'settlement_agreements'];
+  protest_write text[] := array[
+    'cad_evidence_reviews', 'case_audit_events', 'decision_notices', 'hearing_notices',
+    'mock_hearings', 'protest_evidence_items', 'protest_form_submissions'];
+begin
+  foreach t in array prop_tables loop
+    execute format('drop policy if exists "Members read" on public.%I', t);
+    execute format('create policy "Members read" on public.%I for select using (public.member_access(user_id, property_id, false))', t);
+  end loop;
+  foreach t in array prop_write loop
+    execute format('drop policy if exists "Property managers write" on public.%I', t);
+    execute format('create policy "Property managers write" on public.%I for insert with check (public.member_access(user_id, property_id, true))', t);
+    execute format('drop policy if exists "Property managers update" on public.%I', t);
+    execute format('create policy "Property managers update" on public.%I for update using (public.member_access(user_id, property_id, true)) with check (public.member_access(user_id, property_id, true))', t);
+  end loop;
+  foreach t in array protest_tables loop
+    execute format('drop policy if exists "Members read" on public.%I', t);
+    execute format('create policy "Members read" on public.%I for select using (public.member_access_protest(user_id, protest_id, false))', t);
+  end loop;
+  foreach t in array protest_write loop
+    execute format('drop policy if exists "Property managers write" on public.%I', t);
+    execute format('create policy "Property managers write" on public.%I for insert with check (public.member_access_protest(user_id, protest_id, true))', t);
+    execute format('drop policy if exists "Property managers update" on public.%I', t);
+    execute format('create policy "Property managers update" on public.%I for update using (public.member_access_protest(user_id, protest_id, true)) with check (public.member_access_protest(user_id, protest_id, true))', t);
+  end loop;
+end
+$do$;
+
+-- Properties themselves.
+drop policy if exists "Members read" on public.properties;
+create policy "Members read" on public.properties for select using (public.member_access(user_id, id, false));
+drop policy if exists "Property managers update" on public.properties;
+create policy "Property managers update" on public.properties for update
+  using (public.member_access(user_id, id, true)) with check (public.member_access(user_id, id, true));
+
+-- Owner-keyed rows with no property: members scoped to every property.
+drop policy if exists "Members read" on public.streetview_conditions;
+create policy "Members read" on public.streetview_conditions for select using (public.member_access(user_id, null, false));
+drop policy if exists "Property managers write" on public.streetview_conditions;
+create policy "Property managers write" on public.streetview_conditions for all
+  using (public.member_access(user_id, null, true)) with check (public.member_access(user_id, null, true));
+
+-- Documents in storage live under the owner's id; the documents table above
+-- already limits which files a member can find.
+drop policy if exists "Members can view the owner's documents" on storage.objects;
+create policy "Members can view the owner's documents" on storage.objects for select
+  using (bucket_id = 'documents' and exists (
+    select 1 from public.account_members m
+    where m.owner_id::text = (storage.foldername(name))[1] and m.member_id = auth.uid() and m.status = 'active'));
+drop policy if exists "Property managers can upload the owner's documents" on storage.objects;
+create policy "Property managers can upload the owner's documents" on storage.objects for insert
+  with check (bucket_id = 'documents' and exists (
+    select 1 from public.account_members m
+    where m.owner_id::text = (storage.foldername(name))[1] and m.member_id = auth.uid()
+      and m.status = 'active' and m.role = 'property_manager'));

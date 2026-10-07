@@ -231,7 +231,19 @@ function writeColumnsPref(cols: PropertyColumnKey[]) {
 function Properties() {
   const navigate = useNavigate();
   const { checkout } = Route.useSearch();
-  const { user } = useAuth();
+  const { user, workspace } = useAuth();
+  // A team member works the owner's cases but doesn't add properties or start
+  // the owner's paid plan — those stay with the owner.
+  const isMember = !!workspace;
+  function openProtest(p: PropertyRecord) {
+    if (isMember) {
+      toast.info(
+        `Activating a case starts ${workspace!.ownerName}'s subscription for it, so the owner does that from their own login.`,
+      );
+      return;
+    }
+    setProtestingProperty(p);
+  }
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -848,7 +860,7 @@ function Properties() {
               >
                 {bulkDeleting ? "Deleting…" : "Delete"}
               </button>
-              {stripeConfigured && subscribableSelected.length > 0 && (
+              {stripeConfigured && !isMember && subscribableSelected.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setBulkOpen(true)}
@@ -869,19 +881,23 @@ function Properties() {
               </button>
             </div>
           )}
-          <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
-            Bulk Upload
-          </button>
-          <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
-            Add Ownerships
-          </button>
-          <Link
-            to="/intake"
-            onClick={() => resetIntake()}
-            className="btn-primary btn-primary-hover"
-          >
-            Add another property
-          </Link>
+          {!isMember && (
+            <>
+              <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
+                Bulk Upload
+              </button>
+              <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
+                Add Ownerships
+              </button>
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover"
+              >
+                Add another property
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -933,7 +949,7 @@ function Properties() {
       )}
 
       {!propertiesLoading && screening && (
-        <PortfolioScreening screening={screening} onActivate={setProtestingProperty} />
+        <PortfolioScreening screening={screening} onActivate={openProtest} />
       )}
 
       {!propertiesLoading && properties.length > 0 && (
@@ -1178,7 +1194,7 @@ function Properties() {
                             compact
                             onDocuments={() => setDocsProperty(p)}
                             onAuthorize={() => setAuthorizingProperty(p)}
-                            onProtest={() => setProtestingProperty(p)}
+                            onProtest={() => openProtest(p)}
                             onResume={() => handleResumeSubscription(p)}
                             onCancel={() => handleCancelSubscription(p)}
                             onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1257,7 +1273,7 @@ function Properties() {
                       pipeline={pipelineFor(p)}
                       today={today}
                       propertyId={p.id}
-                      onStart={() => setProtestingProperty(p)}
+                      onStart={() => openProtest(p)}
                       lockedHint={
                         existingProtest && !isPaid
                           ? "Subscribe to this property to open its case and continue."
@@ -1290,7 +1306,7 @@ function Properties() {
                       subscribing={subscribing}
                       onDocuments={() => setDocsProperty(p)}
                       onAuthorize={() => setAuthorizingProperty(p)}
-                      onProtest={() => setProtestingProperty(p)}
+                      onProtest={() => openProtest(p)}
                       onResume={() => handleResumeSubscription(p)}
                       onCancel={() => handleCancelSubscription(p)}
                       onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1539,10 +1555,7 @@ function PropertyActionsMenu({
       <DropdownMenuContent align="end" className="w-56">
         {existingProtest && isPaid && (
           <DropdownMenuItem asChild>
-            <Link
-              to="/dashboard/case"
-              search={{ propertyId: p.id }}
-            >
+            <Link to="/dashboard/case" search={{ propertyId: p.id }}>
               <Gavel className="mr-2 h-4 w-4" /> View Case
             </Link>
           </DropdownMenuItem>

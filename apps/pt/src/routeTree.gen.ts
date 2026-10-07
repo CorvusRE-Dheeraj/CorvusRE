@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AiReportRouteImport } from './routes/ai-report'
@@ -51,6 +52,11 @@ import { Route as DashboardLayoutTaxUpdatesRouteImport } from './routes/dashboar
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptInviteRoute = AcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -249,6 +255,7 @@ const DashboardLayoutTaxUpdatesRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -289,6 +296,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -329,6 +337,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -371,6 +380,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -411,6 +421,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -450,6 +461,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -491,6 +503,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AcceptInviteRoute: typeof AcceptInviteRoute
   AdminRoute: typeof AdminRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AiReportRoute: typeof AiReportRoute
@@ -520,6 +533,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accept-invite': {
+      id: '/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/accept-invite'
+      preLoaderRoute: typeof AcceptInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -830,6 +850,7 @@ const DashboardLayoutRouteWithChildren = DashboardLayoutRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AcceptInviteRoute: AcceptInviteRoute,
   AdminRoute: AdminRoute,
   AdminLoginRoute: AdminLoginRoute,
   AiReportRoute: AiReportRoute,

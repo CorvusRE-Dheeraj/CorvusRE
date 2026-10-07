@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { TeamAccess } from "@/components/TeamAccess";
 import { supabase } from "@/lib/supabase";
 import {
   getMyProfile,
@@ -417,6 +418,8 @@ function Settings() {
           </label>
         </div>
       )}
+
+      {!loading && user && <TeamAccess ownerId={user.id} />}
 
       {!loading && (
         <div className="mt-8 card-elev p-6">
