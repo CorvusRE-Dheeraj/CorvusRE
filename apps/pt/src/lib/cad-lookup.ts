@@ -120,7 +120,7 @@ export async function cadLookupPreview(
   );
 }
 
-// Search-box ID search: a Property ID or Geographic ID / account number typed
+// Search-box ID search: a Property ID or Geographic ID typed
 // with no county — every county's matching record (a short numeric ID can
 // exist in several), each carrying both IDs. See cad-lookup's idSearch.
 export async function cadSearchById(id: string, signal?: AbortSignal): Promise<CadRecord[]> {
