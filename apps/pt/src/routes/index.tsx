@@ -448,7 +448,9 @@ function Home() {
                             />
                             {" · "}
                             {m.record.cad}
-                            {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+                            {(m.record.totalValue ?? 0) > 0 && (
+                              <> · {currency(m.record.totalValue)}</>
+                            )}
                           </div>
                         ) : m.cadStatus === "pending" ? (
                           <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
