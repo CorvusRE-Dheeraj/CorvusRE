@@ -73,6 +73,21 @@ export type DecisionCard = {
   } | null;
 };
 
+// How much weight an ARB tends to give each valuation approach, 0-1: the
+// county's own roll (equal & uniform) and the owner's actual income carry the
+// most; an owner-estimated replacement cost the least. Ranks the arguments.
+export const APPROACH_WEIGHT: Record<string, number> = {
+  equity: 1,
+  income: 1,
+  sales: 0.9,
+  land: 0.85,
+  impairments: 0.75,
+  cost: 0.6,
+};
+
+// Weighted gap below the county for an argument to count toward the range.
+export const MEANINGFUL_GAP = 0.04;
+
 // Opening a little below the supportable floor leaves room to negotiate.
 export const OPENING_DISCOUNT = 0.015;
 // Where in the supportable range a negotiated outcome is estimated to land:
@@ -99,6 +114,15 @@ function supportableRange(i: DecisionCardInput): {
         a.indicatedValue < cad,
     )
     .sort((a, b) => (a.indicatedValue as number) - (b.indicatedValue as number));
+  // A weak argument (under 4% below the county, weighted) shouldn't stretch the
+  // range you defend — use Moderate-or-stronger ones when there are any.
+  const meaningful = below.filter(
+    (a) =>
+      cad != null &&
+      ((cad - (a.indicatedValue as number)) / cad) * (APPROACH_WEIGHT[a.id] ?? 0.5) >=
+        MEANINGFUL_GAP,
+  );
+  if (meaningful.length > 0) below.splice(0, below.length, ...meaningful);
   if (below.length >= 1 && cad != null) {
     const values = below.map((a) => a.indicatedValue as number);
     const low = values[0];
@@ -110,7 +134,15 @@ function supportableRange(i: DecisionCardInput): {
         below.length > 1
           ? `Lowest to highest of the ${below.length} valuation approaches that come in under the county`
           : `${below[0].name}, with a 7% band above it`,
-      args: below.slice(0, 2).map((a) => a.name),
+      // Strongest first: how far under the county, weighted by approach.
+      args: [...below]
+        .sort(
+          (a, b) =>
+            ((cad - (b.indicatedValue as number)) / cad) * (APPROACH_WEIGHT[b.id] ?? 0.5) -
+            ((cad - (a.indicatedValue as number)) / cad) * (APPROACH_WEIGHT[a.id] ?? 0.5),
+        )
+        .slice(0, 2)
+        .map((a) => a.name),
     };
   }
   // No worksheet yet: the intake savings estimate implies one supportable value.
@@ -197,10 +229,10 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
         low: Math.round(Math.max(0, offerValue - range.high) * rate),
         high: Math.round(Math.max(0, offerValue - range.low) * rate),
       };
-      if (offerValue <= range.low) {
+      if (likely != null && offerValue <= likely) {
         decision = "Accept";
         reasoning =
-          "The offer is at or below the low end of what your evidence supports — an ARB hearing is unlikely to do better.";
+          "The offer is at or better than Corvus's estimated likely outcome — an ARB hearing is unlikely to do better.";
       } else if (offerValue > range.high * 1.05) {
         decision = "Proceed to ARB";
         reasoning = `The offer is well above what your evidence supports. Going to the ARB could save another ${usd(additional.low)}–${usd(additional.high)} a year.`;

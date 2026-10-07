@@ -61,8 +61,8 @@ import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/prot
 import { listNoticeFilings } from "@/lib/protest-form-submissions";
 import { casePipeline, localTodayIso, type NoticeFiling, type Urgency } from "@/lib/case-pipeline";
 import { NextRequiredAction } from "@/components/CasePipeline";
-import { CorvusDecisionCard } from "@/components/CorvusDecisionCard";
-import { decisionCard } from "@/lib/decision-card";
+import { ProtestIntelligenceCard } from "@/components/ProtestIntelligenceCard";
+import { protestIntelligence } from "@/lib/protest-intelligence";
 import { listValuationSummaries, type WorksheetSummary } from "@/lib/valuation-worksheet";
 import { listCadEvidenceReviews, type StoredCadEvidenceReview } from "@/lib/cad-evidence-review";
 import { evaluateArbitrationEligibility } from "@/lib/arbitration";
@@ -274,7 +274,7 @@ function Overview() {
       property,
       pipeline,
       hasCase: !!pr,
-      card: decisionCard({
+      intel: protestIntelligence({
         cadValue: property.totalValue,
         effectiveTaxRate: getEffectiveTaxRate(property.cad),
         healthScore: healthScores[property.id]?.score ?? null,
@@ -283,6 +283,14 @@ function Overview() {
         protest: pr,
         cadReview: review,
         annualCost,
+        scoreFactors: healthScores[property.id]?.factors ?? [],
+        evidenceDocuments: documents
+          .filter(
+            (d) =>
+              d.propertyId === property.id && d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE,
+          )
+          .map((d) => d.fileName),
+        cadArguesFor: review?.cadIndicatedValue ?? null,
         arbitration: arb
           ? {
               eligible:
@@ -636,14 +644,14 @@ function Overview() {
       )}
 
       {loaded && decisionCards.length > 0 && (
-        <section aria-labelledby="corvus-decisions" className="grid gap-3">
-          <h2 id="corvus-decisions" className="font-serif text-2xl font-semibold">
-            Corvus Decisions
+        <section aria-labelledby="protest-intelligence" className="grid gap-3">
+          <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
+            Protest Intelligence
           </h2>
-          {decisionCards.slice(0, 5).map(({ property, pipeline, card, hasCase }, i) => (
-            <CorvusDecisionCard
+          {decisionCards.slice(0, 5).map(({ property, pipeline, intel, hasCase }, i) => (
+            <ProtestIntelligenceCard
               key={property.id}
-              card={card}
+              intel={intel}
               next={pipeline.next}
               address={property.address}
               propertyId={property.id}
