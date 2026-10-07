@@ -7,18 +7,13 @@ import {
 import type { ProtestRecord } from "@/lib/protests";
 import type { PropertyRecord } from "@/lib/properties";
 
-// Drives ProtestAuthorizationFlow once per property in sequence, rather than
-// merging multiple properties into one signature — each property's
-// "Appointment of Agent" is a real, separate legal document scoped to that
-// one CAD account, so batching still means N real authorizations, just
-// walked through back-to-back in one sitting instead of the user having to
-// re-open this flow from the properties list N separate times. Owner-
-// identity fields (name/contact/entity info) carry forward automatically
-// between properties via CarriedOwnerInfo; purchase-timing and the
-// signature itself are asked fresh per property since those are genuinely
-// property-specific. `key={current.id}` below forces a full remount of
-// ProtestAuthorizationFlow for each property so its internal form state
-// never leaks between them.
+// Drives ProtestAuthorizationFlow once per property in sequence — each
+// property's Appointment of Agent is still its own record scoped to that one
+// CAD account, so batching means N real authorizations, each executed with the
+// one Engagement Packet signature (signed once, up front, if it isn't on file).
+// The entity answers carry forward between properties via CarriedOwnerInfo.
+// `key={current.id}` below forces a full remount of ProtestAuthorizationFlow for
+// each property so its internal form state never leaks between them.
 export function BulkProtestAuthorizationFlow({
   userId,
   properties,

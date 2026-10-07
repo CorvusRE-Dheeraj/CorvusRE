@@ -25,47 +25,87 @@ export const TIER_LABEL: Record<Tier, string> = {
   corvusrf_managed: "CorvusPT-Managed",
 };
 
-// Property-value-tiered pricing — each paid tier has 3 monthly price points
-// instead of one flat per-property rate, keyed by which value bracket a
-// given property falls in. The real amount charged is computed dynamically by
-// create-checkout-session (Stripe price_data, not a fixed Price ID) — these
-// numbers are for display/estimate only, kept in sync by hand with that
-// function's own copy of the same math (Deno functions can't import from
-// src/lib).
-export type PropertyValueBracket = "under2m" | "mid2m10m" | "over10m";
+// Property pricing (Oct 2026 revision): one fixed plan for properties up to
+// $5M — $299/mo, billed annually as $3,588/yr — and custom pricing at $5M+.
+// The real amount charged is computed by create-checkout-session (Stripe
+// price_data, not a fixed Price ID) — these numbers are for display/estimate
+// only, kept in sync by hand with supabase/pt/functions/_shared/pricing.ts
+// and discounts.ts (Deno functions can't import from src/lib).
+export type PropertyValueBracket = "upTo5m";
 
-// "over10m" now means the capped $10M-$25M bracket, not open-ended — anything
-// above $25M moved to CUSTOM_TIER below, which isn't part of this bracket
-// system (no checkout).
 export const VALUE_BRACKETS: { value: PropertyValueBracket; label: string }[] = [
+  { value: "upTo5m", label: "$1M - $5M" },
+];
+
+// Monthly-equivalent list price; charged x12 once a year. Both tiers share
+// it — the revised pricing sets one price regardless of who files.
+export const TIER_BRACKET_PRICES: Record<Tier, Record<PropertyValueBracket, number>> = {
+  owner_managed: { upTo5m: 299 },
+  corvusrf_managed: { upTo5m: 299 },
+};
+
+// The pre-revision monthly brackets. Grandfathered subscriptions still carry
+// these bracket keys and prices — kept only so the Billing page can label
+// and list-price them.
+export const LEGACY_VALUE_BRACKETS: { value: string; label: string }[] = [
   { value: "under2m", label: "$0 - $2M" },
   { value: "mid2m10m", label: "$2M - $10M" },
   { value: "over10m", label: "$10M - $25M" },
 ];
-
-export const TIER_BRACKET_PRICES: Record<Tier, Record<PropertyValueBracket, number>> = {
+export const LEGACY_TIER_BRACKET_PRICES: Record<Tier, Record<string, number>> = {
   owner_managed: { under2m: 99, mid2m10m: 299, over10m: 499 },
   corvusrf_managed: { under2m: 199, mid2m10m: 499, over10m: 799 },
 };
 
-// Non-metered — shown on /pricing as a third, always-visible card with a
-// "Contact Us" link instead of Subscribe. Never enters checkout or the DB.
+// At or above this a property is custom-priced: shown on /pricing as a
+// "Contact Us" card, and refused by checkout. Never enters checkout or the DB.
+export const CUSTOM_PRICING_THRESHOLD = 5_000_000;
 export const CUSTOM_TIER = {
-  label: "$25M+",
+  label: "$5M+",
   tag: "Custom pricing",
-  blurb: "Portfolios above $25M per property are priced individually — talk to us.",
+  blurb: "Tailored based on property value, portfolio size, and requirements.",
 };
 
-// A property's own real value classifies it into a bracket automatically —
-// no self-declared quantity picker anymore (each property gets its own
-// subscription; see create-property-checkout-session). Same $2M/$10M
-// boundaries as VALUE_BRACKETS above. Mirrored by hand into
-// create-checkout-session/index.ts, which can't import this file.
-export function bracketForValue(value: number | null | undefined): PropertyValueBracket {
-  if (value == null) return "under2m";
-  if (value < 2_000_000) return "under2m";
-  if (value < 10_000_000) return "mid2m10m";
-  return "over10m";
+export function isCustomPricedValue(value: number | null | undefined): boolean {
+  return value != null && value >= CUSTOM_PRICING_THRESHOLD;
+}
+
+// Every checkout-eligible property falls in the one bracket — callers that
+// can start a checkout check isCustomPricedValue first. Mirrored by hand in
+// _shared/pricing.ts.
+export function bracketForValue(_value: number | null | undefined): PropertyValueBracket {
+  return "upTo5m";
+}
+
+export function propertyAnnualPrice(
+  tier: Tier,
+  bracket: PropertyValueBracket,
+  isAdditionalInBracket: boolean,
+): number {
+  return Math.round(propertyMonthlyPrice(tier, bracket, isAdditionalInBracket) * 12 * 100) / 100;
+}
+
+// 50% off the first year for anyone who subscribes before Feb 1 2027
+// (midnight US Central). Franchise owners instead get 50% off for as long as
+// they subscribe. The two don't stack — see _shared/discounts.ts, which
+// applies whichever one as a Stripe coupon at checkout.
+export const LAUNCH_DISCOUNT = 0.5;
+export const LAUNCH_DISCOUNT_DEADLINE = new Date("2027-02-01T06:00:00Z");
+export const FRANCHISE_DISCOUNT = 0.5;
+
+export function isLaunchDiscountActive(now: Date = new Date()): boolean {
+  return now < LAUNCH_DISCOUNT_DEADLINE;
+}
+
+export type CheckoutDiscount = { kind: "franchise" | "launch"; percentOff: number };
+
+export function checkoutDiscountFor(
+  isFranchiseOwner: boolean,
+  now: Date = new Date(),
+): CheckoutDiscount | null {
+  if (isFranchiseOwner) return { kind: "franchise", percentOff: FRANCHISE_DISCOUNT };
+  if (isLaunchDiscountActive(now)) return { kind: "launch", percentOff: LAUNCH_DISCOUNT };
+  return null;
 }
 
 // 1st property in a bracket is full price; every additional property a
@@ -167,8 +207,8 @@ export async function resumeBppSubscription(bppAccountId: string): Promise<void>
 
 export const PLAN_OPTIONS: { value: PlanValue; label: string }[] = [
   { value: "free_ai_review", label: "Free AI Review" },
-  { value: "owner_managed", label: "Owner-Managed ($99–$499/mo/property, by value)" },
-  { value: "corvusrf_managed", label: "CorvusPT-Managed ($199–$799/mo/property, by value)" },
+  { value: "owner_managed", label: "Owner-Managed ($299/mo/property, billed annually)" },
+  { value: "corvusrf_managed", label: "CorvusPT-Managed ($299/mo/property, billed annually)" },
   { value: "beta", label: "Beta (free, full access)" },
 ];
 
@@ -273,7 +313,9 @@ export async function resumePropertySubscription(propertyId: string): Promise<vo
 export async function switchPropertyPlan(
   propertyId: string,
   tier: Tier,
-): Promise<{ tier: Tier; bracket: PropertyValueBracket; amountCents: number }> {
+  // bracket may be a legacy key — a grandfathered monthly subscription keeps
+  // its pre-revision bracket on a switch (see switch-property-plan).
+): Promise<{ tier: Tier; bracket: string; amountCents: number }> {
   return invokeEdgeFunction("switch-property-plan", { propertyId, tier });
 }
 
@@ -295,6 +337,9 @@ export type MySubscription = {
   amountCents: number | null;
   currency: string;
   interval: string;
+  // Launch / franchise coupon on the subscription, if any — amountCents is
+  // the pre-coupon list price.
+  discountName: string | null;
   quantity: number;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;

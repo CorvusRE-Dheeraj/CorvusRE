@@ -30,10 +30,47 @@ Rules:
 - dateObserved: the most relevant date actually printed/written on the document (e.g. a signature date, a postmark date, a confirmation timestamp), in whatever format it's actually shown, or null if no date is visible.
 - dateYearPlausible: compare the year in dateObserved (if any) against the case's expected tax year and today's real-world date context — true if it's a sensible, current/recent year for this filing, false if it looks stale (an old prior year) or otherwise implausible, null if there's no date to judge.
 - notes: 1-2 plain sentences on anything a property owner should double-check about this specific document — or "Looks consistent with a filed protest." if nothing looks off. Never invent a concern that isn't grounded in what's actually visible.
+- proofKind: which ONE kind of proof this document actually is, judged from its visible content:
+  "portal_confirmation" (a county online-portal confirmation page or confirmation number),
+  "county_ack_email" (an email FROM the appraisal district acknowledging receipt),
+  "sent_email_record" (the owner's own sent email to the county),
+  "receipt" (a scanned or photographed receipt not covered by a more specific kind),
+  "screenshot" (a screenshot of an online submission that isn't clearly a portal confirmation),
+  "mail_receipt" (a post-office mailing receipt), "certified_mail_receipt" (a USPS certified-mail receipt, PS Form 3800, or green card PS Form 3811),
+  "delivery_record" (a carrier tracking/delivery status page or delivery confirmation),
+  "stamped_copy" (a copy of a filed form bearing the appraisal district's received/date stamp),
+  "in_person_receipt" (a receipt or acknowledgement handed over at the district's office),
+  "county_request" (a county notice or response asking for more information), or "other".
+- confirmationNumber: a portal confirmation / reference / receipt number exactly as printed, or null if none is visible.
+- trackingNumber: a mail tracking or certified-mail article number exactly as printed, or null if none is visible.
 - findings must have exactly one entry per document provided, in the same order, using the exact fileName given for each.
 - overallAssessment: 1-2 sentences summarizing across all documents together — plain prose, no markdown.
 - This is advisory information for the property owner to review themselves — never claim certainty beyond what's actually visible, and never state that the protest "was" or "was not" filed; that determination belongs to the owner alone.
-- Return ONLY a JSON object matching this exact shape: {"findings":[{"fileName":"...","hasVisibleSignature":<true|false>,"signatureNameObserved":<string|null>,"dateObserved":<string|null>,"dateYearPlausible":<true|false|null>,"notes":"..."}],"overallAssessment":"..."}`;
+- Return ONLY a JSON object matching this exact shape: {"findings":[{"fileName":"...","hasVisibleSignature":<true|false>,"signatureNameObserved":<string|null>,"dateObserved":<string|null>,"dateYearPlausible":<true|false|null>,"notes":"...","proofKind":"<one of the kinds above>","confirmationNumber":<string|null>,"trackingNumber":<string|null>}],"overallAssessment":"..."}`;
+
+// Kept in step with PROOF_KINDS in apps/pt/src/lib/proof-kinds.ts and the
+// documents.proof_kind check constraint — anything else from the model is "other".
+const PROOF_KINDS = new Set([
+  "portal_confirmation",
+  "county_ack_email",
+  "sent_email_record",
+  "receipt",
+  "screenshot",
+  "mail_receipt",
+  "certified_mail_receipt",
+  "delivery_record",
+  "stamped_copy",
+  "in_person_receipt",
+  "county_request",
+  "other",
+]);
+
+// A printed reference number: letters, digits and common separators only.
+function referenceNumber(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return /^[A-Za-z0-9][A-Za-z0-9 \-#./]{2,59}$/.test(s) ? s : null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -115,6 +152,9 @@ Deno.serve(async (req: Request) => {
         dateObserved?: string | null;
         dateYearPlausible?: boolean | null;
         notes?: string;
+        proofKind?: string;
+        confirmationNumber?: string | null;
+        trackingNumber?: string | null;
       }>;
       overallAssessment?: string;
     };
@@ -138,6 +178,10 @@ Deno.serve(async (req: Request) => {
             dateYearPlausible:
               typeof f.dateYearPlausible === "boolean" ? f.dateYearPlausible : null,
             notes: typeof f.notes === "string" ? f.notes.slice(0, 300) : "",
+            proofKind:
+              typeof f.proofKind === "string" && PROOF_KINDS.has(f.proofKind) ? f.proofKind : "other",
+            confirmationNumber: referenceNumber(f.confirmationNumber),
+            trackingNumber: referenceNumber(f.trackingNumber),
           }))
         : [],
       overallAssessment:

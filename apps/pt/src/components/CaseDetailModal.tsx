@@ -93,10 +93,20 @@ import {
   getDocumentUrl,
   SETTLEMENT_DOCUMENT_TYPE,
   DECISION_DOCUMENT_TYPE,
+  setDocumentProofKind,
+  setDocumentType,
   type DocumentRecord,
 } from "@/lib/documents";
+import { COUNTY_EMAIL_DOCUMENT_TYPE } from "@/lib/county-email";
 import { getCadRecordUrl } from "@/lib/cad-record-url";
 import { verifyFilingProof, type FilingProofVerification } from "@/lib/filing-proof";
+import { useCountyProcedures } from "@/lib/county-procedures";
+import {
+  PROOF_KINDS,
+  PROOF_KINDS_BY_METHOD,
+  uspsTrackingUrl,
+  type ProofKind,
+} from "@/lib/proof-kinds";
 import {
   extractHearingNotice,
   saveHearingNotice,
@@ -458,6 +468,10 @@ export function CaseDetailView({
   // correct/confirm a missing identity field (see PreFilingGate) right
   // where Corvus flags it as blocking, without leaving this modal.
   const [property, setProperty] = useState<PropertyRecord>(propertyProp);
+  // For a county without a hand-researched entry, loads what AI read off the
+  // district's own site; this re-renders the case once it arrives, so every
+  // getCountyProtestInfo() below picks it up.
+  useCountyProcedures(property.cad);
   const [acknowledging, setAcknowledging] = useState(false);
   // The step-by-step filing workflow opens in its own focused popup.
   const [filingOpen, setFilingOpen] = useState(false);
@@ -2019,6 +2033,8 @@ const EMPTY_FORM_SUBMISSION: FormSubmission = {
   submittedAt: null,
   filingConfirmedAt: null,
   additionalRequestedAt: null,
+  additionalRequestNote: null,
+  mailDeliveredAt: null,
   rejectedAt: null,
   reminderFrequency: null,
   lastReminderSentAt: null,
@@ -2107,6 +2123,11 @@ function FilingSubmissionFlow({
   const [trackingInput, setTrackingInput] = useState("");
   const [emailRecipientInput, setEmailRecipientInput] = useState("");
   const [emailSubjectInput, setEmailSubjectInput] = useState("");
+  const [showCountyRequest, setShowCountyRequest] = useState(false);
+  const [countyRequestNote, setCountyRequestNote] = useState("");
+  // County emails read from CorvusPT's agent mailbox (county-email.ts) for this
+  // property — any of them can be attached as proof in one step.
+  const [countyEmailDocs, setCountyEmailDocs] = useState<DocumentRecord[]>([]);
   const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
@@ -2115,11 +2136,17 @@ function FilingSubmissionFlow({
     Promise.all([
       getSubmission(protest.id, formType),
       getFilingProofDocumentsFor(userId, property.id, formType),
+      listDocuments(userId),
     ])
-      .then(([s, docs]) => {
+      .then(([s, docs, all]) => {
         if (!live) return;
         setSubmission(s);
         setProofDocs(docs);
+        setCountyEmailDocs(
+          all.filter(
+            (d) => d.propertyId === property.id && d.documentType === COUNTY_EMAIL_DOCUMENT_TYPE,
+          ),
+        );
         setConfNumInput(s?.filingConfirmationNumber ?? "");
         setTrackingInput(s?.mailTrackingNumber ?? "");
         setEmailRecipientInput(s?.emailRecipient ?? countyInfo?.filingMethod.email.address ?? "");
@@ -2220,11 +2247,97 @@ function FilingSubmissionFlow({
     setCheckingProof(true);
     setProofCheckError(null);
     try {
-      setProofCheck(await verifyFilingProof(property, docs));
+      const result = await verifyFilingProof(property, docs);
+      setProofCheck(result);
+      // Suggestions, never decisions: label proof the owner hasn't labeled yet
+      // (they can change it), and pre-fill — not save — an empty confirmation /
+      // tracking number the AI could actually read.
+      for (const f of result.findings) {
+        const doc = docs.find((d) => d.fileName === f.fileName);
+        if (doc && !doc.proofKind) {
+          setDocumentProofKind(doc.id, f.proofKind)
+            .then(() =>
+              setProofDocs((cur) =>
+                cur.map((d) => (d.id === doc.id ? { ...d, proofKind: f.proofKind } : d)),
+              ),
+            )
+            .catch((err) => console.error("Could not label proof:", err));
+        }
+      }
+      const conf = result.findings.find((f) => f.confirmationNumber)?.confirmationNumber;
+      if (conf && !confNumInput.trim()) setConfNumInput(conf);
+      const track = result.findings.find((f) => f.trackingNumber)?.trackingNumber;
+      if (track && !trackingInput.trim()) setTrackingInput(track);
+      if ((conf && !confNumInput.trim()) || (track && !trackingInput.trim())) {
+        toast.info("Found a reference number in your proof — review it and press Save.");
+      }
     } catch (err) {
       setProofCheckError(getErrorMessage(err, "Could not check this proof."));
     } finally {
       setCheckingProof(false);
+    }
+  }
+
+  // Moves a county email (received in the agent mailbox) into this document's proof (re-filing it under
+  // this form's proof type) and runs the same AI check an upload gets.
+  async function attachCountyEmail(docId: string) {
+    const doc = countyEmailDocs.find((d) => d.id === docId);
+    if (!doc) return;
+    try {
+      const type = filingProofDocumentType(formType);
+      await setDocumentType(doc.id, type);
+      const moved = { ...doc, documentType: type };
+      setCountyEmailDocs((cur) => cur.filter((d) => d.id !== doc.id));
+      const next = [...proofDocs, moved];
+      setProofDocs(next);
+      handleCheckProof(next);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not attach this email."));
+    }
+  }
+
+  async function changeProofKind(doc: DocumentRecord, kind: ProofKind) {
+    setProofDocs((cur) => cur.map((d) => (d.id === doc.id ? { ...d, proofKind: kind } : d)));
+    try {
+      await setDocumentProofKind(doc.id, kind);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this label."));
+    }
+  }
+
+  async function saveDeliveredDate(value: string) {
+    setSavingField("delivered");
+    try {
+      // A date input gives "YYYY-MM-DD" — stored as noon UTC so it reads as the
+      // same calendar day in any US timezone.
+      const at = value ? new Date(`${value}T12:00:00Z`).toISOString() : null;
+      await saveFilingProofFields(userId, protest.id, formType, { mailDeliveredAt: at });
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), mailDeliveredAt: at }));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  // The county came back wanting more — any document, not just Evidence. The
+  // request itself can be attached below as "County request for more information".
+  async function handleCountyRequest() {
+    setConfirming(true);
+    try {
+      const note = countyRequestNote.trim() || null;
+      const at = await requestAdditionalInfo(userId, protest.id, formType, note);
+      setSubmission((s) => ({
+        ...(s ?? EMPTY_FORM_SUBMISSION),
+        additionalRequestedAt: at,
+        additionalRequestNote: note,
+      }));
+      setShowCountyRequest(false);
+      toast.info(`Logged — ${docLabel} shows as Additional Information Requested.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -2333,14 +2446,35 @@ function FilingSubmissionFlow({
   // submitted, or bounced back (rejected / additional info requested).
   const canEditSubmission =
     status === "method_chosen" || status === "rejected" || status === "additional_requested";
+  // The kinds that fit this method first, then the rest.
+  const preferredKinds = method ? PROOF_KINDS_BY_METHOD[method] : [];
+  const proofKindOptions = [
+    ...PROOF_KINDS.filter((k) => preferredKinds.includes(k.id)),
+    ...PROOF_KINDS.filter((k) => !preferredKinds.includes(k.id)),
+  ];
 
   const proofBlock = (
     <div className="mt-3">
       {proofDocs.length > 0 && (
-        <ul className="mb-2 grid gap-1 text-xs">
+        <ul className="mb-2 grid gap-1.5 text-xs">
           {proofDocs.map((doc) => (
-            <li key={doc.id} className="text-foreground">
-              {doc.fileName}
+            <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-foreground">{doc.fileName}</span>
+              <select
+                value={doc.proofKind ?? ""}
+                onChange={(e) => changeProofKind(doc, e.target.value as ProofKind)}
+                aria-label={`What kind of proof is ${doc.fileName}?`}
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+              >
+                <option value="" disabled>
+                  What kind of proof is this?
+                </option>
+                {proofKindOptions.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
             </li>
           ))}
         </ul>
@@ -2362,6 +2496,21 @@ function FilingSubmissionFlow({
           }}
         />
       </label>
+      {countyEmailDocs.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && attachCountyEmail(e.target.value)}
+          aria-label="Attach a county email as proof"
+          className="ml-2 rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+        >
+          <option value="">Attach a county email…</option>
+          {countyEmailDocs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.fileName}
+            </option>
+          ))}
+        </select>
+      )}
       {checkingProof && (
         <p className="mt-2 text-xs text-muted-foreground">Checking what this shows…</p>
       )}
@@ -2659,6 +2808,16 @@ function FilingSubmissionFlow({
               </button>
             </div>
           </label>
+          {trackingInput.trim() && (
+            <a
+              href={uspsTrackingUrl(trackingInput)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-fit text-xs text-accent underline"
+            >
+              Track with USPS
+            </a>
+          )}
           {proofBlock}
           <button
             type="button"
@@ -2721,6 +2880,95 @@ function FilingSubmissionFlow({
           </button>
         </div>
       )}
+
+      {/* Mailed: the tracking number shows it was sent; the delivery date is
+          the carrier's own word that it arrived. */}
+      {method === "mail" &&
+        submission?.mailTrackingNumber &&
+        (status === "awaiting_confirmation" || status === "confirmed") && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border p-3 text-xs">
+            <span>
+              Tracking {submission.mailTrackingNumber} ·{" "}
+              <a
+                href={uspsTrackingUrl(submission.mailTrackingNumber)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline"
+              >
+                Track with USPS
+              </a>
+            </span>
+            <label className="flex items-center gap-2">
+              Delivered on
+              <input
+                type="date"
+                defaultValue={submission.mailDeliveredAt?.slice(0, 10) ?? ""}
+                onBlur={(e) => {
+                  const next = e.target.value;
+                  if (next !== (submission.mailDeliveredAt?.slice(0, 10) ?? ""))
+                    saveDeliveredDate(next);
+                }}
+                disabled={savingField === "delivered"}
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+              />
+            </label>
+          </div>
+        )}
+
+      {status === "additional_requested" && submission?.additionalRequestNote && (
+        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
+          <span className="font-semibold">What the county asked for:</span>{" "}
+          {submission.additionalRequestNote}
+        </p>
+      )}
+
+      {/* The county came back wanting more — note what they asked for and
+          attach their notice. Evidence has its own request flow below. */}
+      {formType !== "evidence" &&
+        (status === "awaiting_confirmation" || status === "confirmed") &&
+        (showCountyRequest ? (
+          <div className="mt-3 grid gap-2 rounded-md border border-border p-3 text-xs">
+            <label className="grid gap-1">
+              What did {property.cad ?? "the county"} ask for?
+              <textarea
+                value={countyRequestNote}
+                onChange={(e) => setCountyRequestNote(e.target.value)}
+                rows={2}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+            </label>
+            <p className="text-muted-foreground">
+              Attach their notice or email below, labeled &ldquo;County request for more
+              information&rdquo;.
+            </p>
+            {proofBlock}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCountyRequest}
+                disabled={confirming}
+                className="btn-accent text-xs py-1.5 disabled:opacity-60"
+              >
+                {confirming ? "Saving…" : "Log County Request"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCountyRequest(false)}
+                className="btn-outline text-xs py-1.5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowCountyRequest(true)}
+            className="mt-2 text-xs text-accent hover:underline"
+          >
+            County asked for more information?
+          </button>
+        ))}
 
       {/* Once anyone marks it submitted, the same "now what" block applies
           regardless of method — the only real difference is what confirmation

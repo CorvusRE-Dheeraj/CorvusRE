@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
       list = await stripe.subscriptions.list({
         customer: profile.stripe_customer_id,
         status: "all",
-        expand: ["data.default_payment_method"],
+        expand: ["data.default_payment_method", "data.discounts"],
         limit: 100,
       });
     } catch (e) {
@@ -131,6 +131,12 @@ Deno.serve(async (req: Request) => {
           amountCents: price?.unit_amount ?? null,
           currency: price?.currency ?? "usd",
           interval: price?.recurring?.interval ?? "month",
+          // Launch / franchise coupon, if any — amountCents above is the
+          // pre-coupon list price.
+          discountName:
+            (s.discounts ?? [])
+              .map((d) => (typeof d === "object" ? d.coupon?.name : null))
+              .find((n): n is string => !!n) ?? null,
           quantity: item?.quantity ?? 1,
           currentPeriodEnd: toIso(s.current_period_end),
           cancelAtPeriodEnd: s.cancel_at_period_end,

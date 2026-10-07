@@ -21,6 +21,10 @@ const {
   resumePropertySubscription,
   bracketForValue,
   propertyMonthlyPrice,
+  propertyAnnualPrice,
+  isCustomPricedValue,
+  isLaunchDiscountActive,
+  checkoutDiscountFor,
 } = await import("./billing");
 
 describe("getMyBilling", () => {
@@ -117,28 +121,52 @@ describe("resumePropertySubscription", () => {
   });
 });
 
-describe("bracketForValue", () => {
-  it("classifies by the real $2M/$10M boundaries", () => {
-    expect(bracketForValue(1_500_000)).toBe("under2m");
-    expect(bracketForValue(2_000_000)).toBe("mid2m10m");
-    expect(bracketForValue(9_999_999)).toBe("mid2m10m");
-    expect(bracketForValue(10_000_000)).toBe("over10m");
-    expect(bracketForValue(50_000_000)).toBe("over10m");
+describe("bracketForValue / isCustomPricedValue", () => {
+  it("puts every checkout-eligible property in the one fixed-price bracket", () => {
+    expect(bracketForValue(1_500_000)).toBe("upTo5m");
+    expect(bracketForValue(4_999_999)).toBe("upTo5m");
+    expect(bracketForValue(null)).toBe("upTo5m");
   });
 
-  it("defaults to the cheapest bracket for a missing value, never a guess upward", () => {
-    expect(bracketForValue(null)).toBe("under2m");
-    expect(bracketForValue(undefined)).toBe("under2m");
+  it("treats $5M and up as custom-priced, and a missing value as not", () => {
+    expect(isCustomPricedValue(4_999_999)).toBe(false);
+    expect(isCustomPricedValue(5_000_000)).toBe(true);
+    expect(isCustomPricedValue(null)).toBe(false);
+    expect(isCustomPricedValue(undefined)).toBe(false);
   });
 });
 
-describe("propertyMonthlyPrice", () => {
-  it("charges full price for a customer's first property in a bracket", () => {
-    expect(propertyMonthlyPrice("owner_managed", "under2m", false)).toBe(99);
+describe("propertyMonthlyPrice / propertyAnnualPrice", () => {
+  it("is $299/mo, billed as $3,588/yr, for both tiers", () => {
+    expect(propertyMonthlyPrice("owner_managed", "upTo5m", false)).toBe(299);
+    expect(propertyAnnualPrice("owner_managed", "upTo5m", false)).toBe(3588);
+    expect(propertyAnnualPrice("corvusrf_managed", "upTo5m", false)).toBe(3588);
   });
 
   it("discounts 15% for an additional property in the same bracket", () => {
-    // 799 * 0.85 = 679.15
-    expect(propertyMonthlyPrice("corvusrf_managed", "over10m", true)).toBeCloseTo(679.15, 5);
+    // 299 * 0.85 = 254.15/mo -> 3049.80/yr
+    expect(propertyMonthlyPrice("owner_managed", "upTo5m", true)).toBeCloseTo(254.15, 5);
+    expect(propertyAnnualPrice("owner_managed", "upTo5m", true)).toBeCloseTo(3049.8, 5);
+  });
+});
+
+describe("checkoutDiscountFor", () => {
+  const beforeDeadline = new Date("2027-01-31T12:00:00Z");
+  // Feb 1 2027 00:00 US Central = 06:00 UTC
+  const atDeadline = new Date("2027-02-01T06:00:00Z");
+
+  it("gives the 50% first-year launch discount only before Feb 1 2027", () => {
+    expect(isLaunchDiscountActive(beforeDeadline)).toBe(true);
+    expect(isLaunchDiscountActive(atDeadline)).toBe(false);
+    expect(checkoutDiscountFor(false, beforeDeadline)).toEqual({ kind: "launch", percentOff: 0.5 });
+    expect(checkoutDiscountFor(false, atDeadline)).toBeNull();
+  });
+
+  it("gives franchise owners 50% off instead of (not on top of) the launch discount", () => {
+    expect(checkoutDiscountFor(true, beforeDeadline)).toEqual({
+      kind: "franchise",
+      percentOff: 0.5,
+    });
+    expect(checkoutDiscountFor(true, atDeadline)).toEqual({ kind: "franchise", percentOff: 0.5 });
   });
 });

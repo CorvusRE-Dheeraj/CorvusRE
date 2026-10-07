@@ -3,7 +3,8 @@
 // Price is computed via ../_shared/pricing.ts and passed to Stripe as
 // price_data (ad hoc, no pre-created Price/Product needed), so the
 // 15%-off-2nd-property discount can be applied without a separate fixed Price
-// per case. bulk-subscribe uses the same helper.
+// per case. bulk-subscribe uses the same helper. Billed yearly since the Oct
+// 2026 pricing revision; $5M+ properties are custom-priced and refused here.
 //
 // One real, independent Stripe subscription per PROPERTY (not one shared
 // subscription with bracket quantities, as before) — see the property-level
@@ -14,12 +15,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import {
+  annualUnitAmountCents,
   bracketForValue,
+  isCustomPricedValue,
   isTier,
   subscriptionProductName,
-  unitAmountCents,
   type Tier,
 } from "../_shared/pricing.ts";
+import { checkoutCouponFor } from "../_shared/discounts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,6 +106,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (isCustomPricedValue(property.total_value as number | null)) {
+      return new Response(
+        JSON.stringify({
+          error: "Properties valued at $5M+ have custom pricing — please contact us to subscribe.",
+        }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
     const bracket = bracketForValue(property.total_value as number | null);
 
     // Real 2nd-property-in-this-bracket discount check — count this
@@ -122,17 +134,21 @@ Deno.serve(async (req: Request) => {
     // hosted billing portal (product name only); also set as the subscription
     // description for portals/emails that surface it. See ../_shared/pricing.ts.
     const address = ((property.address as string | null) ?? "").trim();
-    const unitAmount = unitAmountCents(tier, bracket, isAdditionalInBracket);
+    const unitAmount = annualUnitAmountCents(tier, bracket, isAdditionalInBracket);
     const name = subscriptionProductName(tier, bracket, address, isAdditionalInBracket);
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, is_franchise_owner")
       .eq("id", user.id)
       .single();
 
     const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
     const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+
+    // Billed annually: Checkout shows the full $3,588/yr, then the launch or
+    // franchise coupon as its own line (see ../_shared/discounts.ts).
+    const discount = await checkoutCouponFor(stripe, profile?.is_franchise_owner === true);
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -142,11 +158,12 @@ Deno.serve(async (req: Request) => {
           price_data: {
             currency: "usd",
             unit_amount: unitAmount,
-            recurring: { interval: "month" },
+            recurring: { interval: "year" },
             product_data: { name, metadata: { tier, bracket } },
           },
         },
       ],
+      ...(discount ? { discounts: [{ coupon: discount.couponId }] } : {}),
       client_reference_id: user.id,
       customer: profile?.stripe_customer_id ?? undefined,
       customer_email: profile?.stripe_customer_id ? undefined : (user.email ?? undefined),

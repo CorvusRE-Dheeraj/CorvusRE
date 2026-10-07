@@ -2,6 +2,22 @@ import { useEffect, useRef, useState } from "react";
 
 export type SignatureValue = { type: "draw"; data: string } | { type: "type"; data: string };
 
+// Read-only rendering of a saved signature — the same script style SignaturePad
+// previews a typed one in, or the drawn PNG itself.
+export function SignaturePreview({
+  value,
+  className,
+}: {
+  value: SignatureValue;
+  className?: string;
+}) {
+  return value.type === "draw" ? (
+    <img src={value.data} alt="Your signature" className={`h-14 w-auto ${className ?? ""}`} />
+  ) : (
+    <span className={`font-serif text-2xl italic ${className ?? ""}`}>{value.data}</span>
+  );
+}
+
 // Draw (HTML canvas, exported as a PNG data URL) or Type (plain text, rendered in a
 // cursive font as a preview) signature capture — mirrors the two-tab pattern used by
 // e-signature flows generally. `onChange` fires with null whenever there's nothing
@@ -9,12 +25,18 @@ export type SignatureValue = { type: "draw"; data: string } | { type: "type"; da
 // on a non-null value rather than tracking their own "has signed" flag.
 export function SignaturePad({
   expectedName,
+  adoptName,
   onChange,
 }: {
   expectedName?: string | null;
+  // When given, adds a "Use signature" option (the default) that signs with this
+  // name rendered in script — one click, no typing. Stored like a typed signature.
+  adoptName?: string;
   onChange: (value: SignatureValue | null) => void;
 }) {
-  const [mode, setMode] = useState<"draw" | "type">("type");
+  const [mode, setMode] = useState<"adopt" | "draw" | "type">(
+    adoptName !== undefined ? "adopt" : "type",
+  );
   const [typedName, setTypedName] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -24,8 +46,12 @@ export function SignaturePad({
     if (mode === "type") {
       onChange(typedName.trim() ? { type: "type", data: typedName.trim() } : null);
     }
+    if (mode === "adopt") {
+      const name = (adoptName ?? "").trim();
+      onChange(name ? { type: "type", data: name } : null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, typedName]);
+  }, [mode, typedName, adoptName]);
 
   function getCanvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current!;
@@ -61,7 +87,11 @@ export function SignaturePad({
   function endDraw() {
     if (!drawingRef.current) return;
     drawingRef.current = false;
-    onChange(hasDrawnRef.current ? { type: "draw", data: canvasRef.current!.toDataURL("image/png") } : null);
+    onChange(
+      hasDrawnRef.current
+        ? { type: "draw", data: canvasRef.current!.toDataURL("image/png") }
+        : null,
+    );
   }
 
   function clearDraw() {
@@ -73,16 +103,29 @@ export function SignaturePad({
     onChange(null);
   }
 
-  function switchMode(next: "draw" | "type") {
+  function switchMode(next: "adopt" | "draw" | "type") {
     setMode(next);
     if (next === "draw") {
-      onChange(hasDrawnRef.current ? { type: "draw", data: canvasRef.current!.toDataURL("image/png") } : null);
+      onChange(
+        hasDrawnRef.current
+          ? { type: "draw", data: canvasRef.current!.toDataURL("image/png") }
+          : null,
+      );
     }
   }
 
   return (
     <div>
       <div className="inline-flex rounded-md border border-border p-0.5 text-sm">
+        {adoptName !== undefined && (
+          <button
+            type="button"
+            onClick={() => switchMode("adopt")}
+            className={`rounded px-3 py-1.5 ${mode === "adopt" ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+          >
+            Use signature
+          </button>
+        )}
         <button
           type="button"
           onClick={() => switchMode("draw")}
@@ -105,7 +148,17 @@ export function SignaturePad({
         </p>
       )}
 
-      {mode === "type" ? (
+      {mode === "adopt" ? (
+        <div className="mt-2 flex h-24 items-center justify-center rounded-md border border-dashed border-border bg-secondary/30">
+          {(adoptName ?? "").trim() ? (
+            <span className="font-serif text-3xl italic">{adoptName}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Enter your name to generate your signature
+            </span>
+          )}
+        </div>
+      ) : mode === "type" ? (
         <div className="mt-2">
           <input
             value={typedName}
@@ -133,7 +186,11 @@ export function SignaturePad({
             onPointerLeave={endDraw}
             className="h-24 w-full touch-none rounded-md border border-dashed border-border bg-secondary/30"
           />
-          <button type="button" onClick={clearDraw} className="mt-1 text-xs text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={clearDraw}
+            className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+          >
             Clear
           </button>
         </div>

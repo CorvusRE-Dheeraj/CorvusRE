@@ -2761,3 +2761,267 @@ grant select, insert, update, delete on public.support_escalations to service_ro
 -- plus Google's Text Search — see that file's own comment for the current
 -- design. Left this note rather than scrubbing all trace of it, the same
 -- way other reverted features in this codebase stay documented.
+
+-- =========================================================================
+-- Franchise owners (Oct 2026 pricing revision) — an admin-verified flag that
+-- makes create-checkout-session / bulk-subscribe attach the 50%-off franchise
+-- coupon (supabase/pt/functions/_shared/discounts.ts). Set only through the
+-- admin-update-franchise-status edge function (service role); deliberately
+-- NOT added to the authenticated column grants above, so a customer can't
+-- flag themselves. Readable on their own row via the existing select policy.
+alter table public.profiles add column if not exists is_franchise_owner boolean not null default false;
+
+-- Savings Protection carry-forward (Oct 2026). Daily pg_cron -> net.http_post to the
+-- apply-tax-carry-forward edge function with the service-role key (same shape as
+-- auto-refile-cases). For each active annual property subscription renewing within
+-- 14 days, it compares the property's tax_bills.amount_due for the latest tax year
+-- with the year before: unchanged -> a one-time 100%-off coupon makes the renewal
+-- free; changed or missing -> the normal fee is charged. No new tables — the
+-- decision is stamped on the Stripe subscription's metadata. Schedule with:
+--
+--   select cron.schedule('apply-tax-carry-forward', '0 13 * * *', $$
+--     select net.http_post(
+--       url := '<project-url>/functions/v1/apply-tax-carry-forward',
+--       headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>',
+--                                     'Content-Type', 'application/json'),
+--       body := '{}'::jsonb);
+--   $$);
+
+-- =========================================================================
+-- Engagement packet (Oct 2026) — every agreement in one place, signed once.
+-- One row per signing of the packet (Terms & Privacy, Service Agreement,
+-- Appointment of Agent authorization, AI acknowledgement), with ONE signature
+-- the signer authorizes CorvusPT to apply to each property's Service Agreement
+-- and Appointment of Agent (Form 50-162) when they ask for a protest. Replaces
+-- the per-property agreement/AI-ack/signature steps in ProtestAuthorizationFlow
+-- and BppProtestFlow, and the LegalGate/ProfileGate pop-ups. Written only by the
+-- record-engagement-packet edge function (service role), which captures IP/UA
+-- server-side — users can read their own rows, never write them.
+create table if not exists public.engagement_packets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  packet_version text not null,
+  terms_version text not null,
+  privacy_version text not null,
+  service_agreement_version text not null,
+  ai_ack_version text not null,
+  signee_first_name text not null,
+  signee_last_name text not null,
+  signee_title text not null,
+  signee_role text not null check (signee_role in ('owner', 'representative')),
+  company_name text,
+  email text,
+  phone text not null,
+  signature_type text not null check (signature_type in ('draw', 'type')),
+  signature_data text not null,
+  consent_text text not null,
+  ip_address text,
+  user_agent text,
+  signed_at timestamptz not null default now()
+);
+
+create index if not exists engagement_packets_user_signed_idx
+  on public.engagement_packets (user_id, signed_at desc);
+
+alter table public.engagement_packets enable row level security;
+
+drop policy if exists "Users can view their own engagement packets" on public.engagement_packets;
+create policy "Users can view their own engagement packets"
+  on public.engagement_packets for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Admins can view all engagement packets" on public.engagement_packets;
+create policy "Admins can view all engagement packets"
+  on public.engagement_packets for select
+  using (public.is_admin());
+
+-- The per-property records filing still writes (so staff's Form 50-162 filler and
+-- each property's Documents copy are unchanged) now point at the packet whose
+-- signature they were executed with.
+alter table public.service_agreement_acceptances
+  add column if not exists engagement_packet_id uuid references public.engagement_packets (id) on delete set null;
+alter table public.protest_authorizations
+  add column if not exists engagement_packet_id uuid references public.engagement_packets (id) on delete set null;
+
+-- =========================================================================
+-- Submission & confirmation sources (Oct 2026). Each uploaded filing-proof
+-- document now says WHAT kind of proof it is — the AI proof check suggests it,
+-- the owner can change it — so a county acknowledgement email, a certified-mail
+-- receipt and a stamped copy aren't all just "proof". Kept in step with
+-- PROOF_KINDS in apps/pt/src/lib/proof-kinds.ts. A plain label on the owner's
+-- own file, so it joins the existing additive owner update grants above.
+alter table public.documents add column if not exists proof_kind text;
+alter table public.documents drop constraint if exists documents_proof_kind_check;
+alter table public.documents add constraint documents_proof_kind_check check (
+  proof_kind is null or proof_kind in (
+    'portal_confirmation', 'county_ack_email', 'sent_email_record', 'receipt',
+    'screenshot', 'mail_receipt', 'certified_mail_receipt', 'delivery_record',
+    'stamped_copy', 'in_person_receipt', 'county_request', 'other'
+  )
+);
+grant update (proof_kind) on public.documents to authenticated;
+
+-- Mail: when the carrier shows it delivered (the tracking number alone only
+-- shows it was sent). Any document: what the county asked for when it came back
+-- wanting more — the request itself can be attached as a 'county_request' proof.
+alter table public.protest_form_submissions add column if not exists mail_delivered_at timestamptz;
+alter table public.protest_form_submissions add column if not exists additional_request_note text;
+
+-- County protest procedures read by AI off each appraisal district's own website
+-- (retrieve-county-procedures; the "AI web/PDF retrieval" source), for counties
+-- without a hand-researched entry in apps/pt/src/lib/county-protest-info.ts.
+-- Public facts, shared by every user, refreshed after 90 days. `procedures` is
+-- null when the site couldn't be read. Written only by the edge function (service
+-- role); any signed-in user can read.
+create table if not exists public.county_procedures (
+  county_code text primary key,
+  cad_name text not null,
+  website text not null,
+  procedures jsonb,
+  retrieved_at timestamptz not null default now()
+);
+alter table public.county_procedures enable row level security;
+drop policy if exists "Signed-in users can read county procedures" on public.county_procedures;
+create policy "Signed-in users can read county procedures"
+  on public.county_procedures for select
+  to authenticated
+  using (true);
+
+-- =========================================================================
+-- County mailbox (Oct 2026): counties email CorvusPT's agent address
+-- (properties@srclandbuilding.com — on the Service Agreement and Form 50-162).
+-- An admin connects that Gmail account READ-ONLY (Google OAuth, scope
+-- gmail.readonly — county-mailbox-admin / county-mailbox-oauth-callback), and
+-- sync-county-mailbox (pg_cron, every 15 min) reads new mail, keeps only county
+-- mail (sent from an appraisal district's domain per the Comptroller directory,
+-- or quoting a customer's account number), and files each email + attachments as
+-- documents under the matching customer's property. Everything else in the
+-- inbox is never stored. Unmatched county mail waits in an admin queue.
+--
+-- One row, server-side only — the refresh token reads that mailbox, so no RLS
+-- policy grants anon/authenticated anything (service role only), same posture
+-- as google_calendar_connections.
+create table if not exists public.county_mailbox (
+  id boolean primary key default true check (id),
+  email text not null,
+  refresh_token text not null,
+  connected_by uuid references auth.users (id) on delete set null,
+  connected_at timestamptz not null default now(),
+  last_checked_at timestamptz,
+  last_error text
+);
+alter table public.county_mailbox enable row level security;
+
+-- The OAuth round-trip reuses google_oauth_states; `purpose` tells the two
+-- callbacks apart ('calendar' rows predate this column).
+alter table public.google_oauth_states add column if not exists purpose text not null default 'calendar';
+
+-- One row per county email read from the mailbox. user_id/property_id are null
+-- (status 'needs_property') until it's matched — automatically, or by an admin
+-- from the queue. Files live in the "documents" bucket: under <owner>/inbound/
+-- once matched (so the owner can open them), under county-mailbox/ until then.
+-- Written only by the server; owners see their own rows, admins see all.
+create table if not exists public.county_emails (
+  id uuid primary key default gen_random_uuid(),
+  message_id text not null unique,
+  from_address text,
+  subject text,
+  text_excerpt text,
+  received_at timestamptz not null default now(),
+  county text,
+  user_id uuid references auth.users (id) on delete cascade,
+  property_id uuid references public.properties (id) on delete set null,
+  status text not null default 'needs_property' check (status in ('filed', 'needs_property')),
+  match_reason text,
+  file_paths text[] not null default '{}',
+  file_names text[] not null default '{}',
+  document_ids uuid[] not null default '{}'
+);
+alter table public.county_emails enable row level security;
+drop policy if exists "Users can view their own county emails" on public.county_emails;
+create policy "Users can view their own county emails"
+  on public.county_emails for select using (auth.uid() = user_id);
+drop policy if exists "Admins can view all county emails" on public.county_emails;
+create policy "Admins can view all county emails"
+  on public.county_emails for select using (public.is_admin());
+
+-- Schedule (replace the placeholders):
+--   select cron.schedule('sync-county-mailbox', '*/15 * * * *', $$
+--     select net.http_post(
+--       url := '<project-url>/functions/v1/sync-county-mailbox',
+--       headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>',
+--                                     'Content-Type', 'application/json'),
+--       body := '{}'::jsonb);
+--   $$);
+
+-- =========================================================================
+-- Property Issues (Oct 2026): city/county notices, violations and other
+-- property issues an owner has to resolve — tracked per property with a status
+-- flow (new → action_required → service_scheduled → inspection_pending →
+-- resolved), the notice's extracted facts, AI guidance, cost guidance, linked
+-- proof documents and reminders. See apps/pt/src/lib/property-issues.ts.
+create table if not exists public.property_issues (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  property_id uuid not null references public.properties (id) on delete cascade,
+  -- 'manual' typed in, 'upload' read from an uploaded notice, 'city_data' fetched
+  -- from a city's open data (external_ref = that city's case number).
+  source text not null default 'manual' check (source in ('manual', 'upload', 'city_data')),
+  external_ref text,
+  category text not null default 'other' check (category in (
+    'dumping', 'grass', 'maintenance', 'court_order', 'code_offense',
+    'inspection', 'fine', 'compliance_deadline', 'other')),
+  title text not null,
+  description text,
+  issued_on date,
+  deadline date,
+  inspection_date date,
+  court_date date,
+  fine_amount numeric,
+  fine_due date,
+  required_action text,
+  authority text,
+  authority_contact text,
+  consequences text,
+  -- AI guidance and cost guidance, as produced by analyze-property-issue.
+  guidance jsonb,
+  cost_estimate jsonb,
+  provider_types text[] not null default '{}',
+  status text not null default 'new' check (status in (
+    'new', 'action_required', 'service_scheduled', 'inspection_pending', 'resolved')),
+  source_document_id uuid references public.documents (id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists property_issues_external_ref_key
+  on public.property_issues (property_id, source, external_ref) where external_ref is not null;
+create index if not exists property_issues_user_idx on public.property_issues (user_id, status);
+alter table public.property_issues enable row level security;
+drop policy if exists "Users manage their own property issues" on public.property_issues;
+create policy "Users manage their own property issues"
+  on public.property_issues for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all property issues" on public.property_issues;
+create policy "Admins can view all property issues"
+  on public.property_issues for select using (public.is_admin());
+
+-- Proof / notice documents belong to an issue; reminders for an issue's dates are
+-- replaced when its dates change and cleared when it's resolved.
+alter table public.documents
+  add column if not exists property_issue_id uuid references public.property_issues (id) on delete set null;
+grant update (property_issue_id) on public.documents to authenticated;
+alter table public.user_reminders
+  add column if not exists property_issue_id uuid references public.property_issues (id) on delete cascade;
+
+-- Property Issues auto-fetch: sync-city-code-cases adds open Austin Code
+-- Enforcement and Dallas 311 Code Compliance cases at each property's address
+-- (source 'city_data'). Schedule daily with the service-role key:
+--   select cron.schedule('sync-city-code-cases', '0 12 * * *', $$
+--     select net.http_post(
+--       url := '<project-url>/functions/v1/sync-city-code-cases',
+--       headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>',
+--                                     'Content-Type', 'application/json'),
+--       body := '{}'::jsonb);
+--   $$);

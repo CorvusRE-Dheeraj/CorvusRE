@@ -1,11 +1,10 @@
 import { invokeEdgeFunction } from "./edge-functions";
-import { supabase } from "./supabase";
 
 // Display copy of the CorvusPT Service Agreement. The STORED text on
 // acceptance comes from the server (supabase/functions/_shared/service-
 // agreement.ts) — keep the wording and SERVICE_AGREEMENT_VERSION identical
-// between the two by hand. This module is only what the owner reads in the
-// "agreement" step of ProtestAuthorizationFlow.
+// between the two by hand. This module is what the owner reads under "Read
+// full document" in the Engagement Packet (EngagementPacketForm).
 
 export const SERVICE_AGREEMENT_VERSION = "2026-09-07";
 
@@ -90,9 +89,6 @@ export const SERVICE_AGREEMENT_SECTIONS: AgreementSection[] = [
   },
 ];
 
-export const OWNER_ACCEPTANCE_TEXT =
-  "I confirm that I am the property owner or am legally authorized to act for the property owner. I have reviewed and agree to this CorvusPT Service Agreement, authorize CorvusPT to provide the property tax protest services described above, and understand that CorvusPT does not guarantee a property value reduction or tax savings.";
-
 export type ServiceAgreementAcceptance = {
   id: string;
   version: string;
@@ -100,35 +96,13 @@ export type ServiceAgreementAcceptance = {
   documentId: string | null;
 };
 
-// Records the acceptance server-side (canonical text + real IP) and files a
+// Records this property's agreement server-side (canonical text + real IP),
+// executed with the signed Engagement Packet's signature, and files a
 // downloadable copy under the property's Documents.
 export async function recordServiceAgreement(input: {
   propertyId: string;
   protestId?: string | null;
+  engagementPacketId?: string | null;
 }): Promise<ServiceAgreementAcceptance> {
   return invokeEdgeFunction<ServiceAgreementAcceptance>("record-service-agreement", input);
-}
-
-// The most recent Service Agreement the signed-in owner has already accepted
-// for this property, or null. Used by ProtestAuthorizationFlow to show the
-// agreement step ONCE per property — once it's on file, the flow skips
-// straight to owner details on every later visit (RLS restricts this to the
-// caller's own rows).
-export async function getServiceAgreementAcceptance(
-  propertyId: string,
-): Promise<ServiceAgreementAcceptance | null> {
-  const { data, error } = await supabase
-    .from("service_agreement_acceptances")
-    .select("id, agreement_version, accepted_at, document_id")
-    .eq("property_id", propertyId)
-    .order("accepted_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error || !data) return null;
-  return {
-    id: data.id as string,
-    version: data.agreement_version as string,
-    acceptedAt: data.accepted_at as string,
-    documentId: (data.document_id as string | null) ?? null,
-  };
 }

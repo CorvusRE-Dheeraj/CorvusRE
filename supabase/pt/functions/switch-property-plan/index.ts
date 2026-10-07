@@ -33,10 +33,12 @@ import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 import {
+  annualUnitAmountCents,
   bracketForValue,
   isTier,
+  legacyBracketForValue,
+  legacyMonthlyUnitAmountCents,
   subscriptionProductName,
-  unitAmountCents,
   type Tier,
 } from "../_shared/pricing.ts";
 
@@ -116,7 +118,13 @@ Deno.serve(async (req: Request) => {
     const item = subscription.items.data[0];
     if (!item) throw new Error("This subscription has no billable item to switch.");
 
-    const bracket = bracketForValue(property.total_value as number | null);
+    // A subscription from before the Oct 2026 pricing revision is still
+    // monthly on the old 3-bracket prices — keep it that way on a tier switch
+    // rather than silently converting it to an annual bill. Discounts
+    // (launch/franchise coupons) live on the subscription, so they carry over.
+    const isLegacyMonthly = item.price.recurring?.interval === "month";
+    const totalValue = property.total_value as number | null;
+    const bracket = isLegacyMonthly ? legacyBracketForValue(totalValue) : bracketForValue(totalValue);
 
     // Same real "already have another active sub in this tier+bracket"
     // discount check create-checkout-session uses — a switch shouldn't lose
@@ -133,7 +141,9 @@ Deno.serve(async (req: Request) => {
     const isAdditionalInBracket = (count ?? 0) > 0;
 
     const address = ((property.address as string | null) ?? "").trim();
-    const unitAmount = unitAmountCents(tier, bracket, isAdditionalInBracket);
+    const unitAmount = isLegacyMonthly
+      ? legacyMonthlyUnitAmountCents(tier, legacyBracketForValue(totalValue), isAdditionalInBracket)
+      : annualUnitAmountCents(tier, bracketForValue(totalValue), isAdditionalInBracket);
     const name = subscriptionProductName(tier, bracket, address, isAdditionalInBracket);
 
     // Unlike Checkout Sessions' line_items[].price_data (which accepts an
@@ -146,7 +156,7 @@ Deno.serve(async (req: Request) => {
     const newPrice = await stripe.prices.create({
       currency: "usd",
       unit_amount: unitAmount,
-      recurring: { interval: "month" },
+      recurring: { interval: isLegacyMonthly ? "month" : "year" },
       product_data: { name, metadata: { tier, bracket } },
     });
 

@@ -13,8 +13,10 @@ import {
   bulkSubscribe,
   bulkSubscribeSetup,
   bracketForValue,
-  propertyMonthlyPrice,
+  propertyAnnualPrice,
   formatMoney,
+  isCustomPricedValue,
+  isLaunchDiscountActive,
   TIER_BRACKET_PRICES,
   type BulkSubResult,
   type Tier,
@@ -27,18 +29,23 @@ const TIER_LABEL: Record<Tier, string> = {
   corvusrf_managed: "CorvusPT-Managed",
 };
 
-// Batch-aware price estimate: within each tier+bracket group the first
-// property is full price, the rest take the 15% additional-property discount.
-// Doesn't know about the customer's ALREADY-active properties in a bracket
-// (the server does and may discount more), so it's labeled an estimate.
+// Batch-aware ANNUAL price estimate (list price, before the launch/franchise
+// coupon): within each tier+bracket group the first property is full price,
+// the rest take the 15% additional-property discount. Doesn't know about the
+// customer's ALREADY-active properties in a bracket (the server does and may
+// discount more), so it's labeled an estimate.
 function estimateLines(properties: PropertyRecord[], tier: Tier) {
   const seenInBracket: Record<string, number> = {};
   return properties.map((p) => {
     const bracket = bracketForValue(p.totalValue);
     const n = seenInBracket[bracket] ?? 0;
     seenInBracket[bracket] = n + 1;
-    return { property: p, price: propertyMonthlyPrice(tier, bracket, n > 0) };
+    return { property: p, price: propertyAnnualPrice(tier, bracket, n > 0) };
   });
+}
+
+function usd(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 export function BulkSubscribeModal({
@@ -115,12 +122,22 @@ function BulkForm({
   const [tier, setTier] = useState<Tier>("owner_managed");
   const [submitting, setSubmitting] = useState(false);
 
-  const lines = useMemo(() => estimateLines(properties, tier), [properties, tier]);
+  // $5M+ is custom-priced — bulk-subscribe would refuse those anyway, so
+  // they're left out of the batch and called out instead.
+  const customPriced = useMemo(
+    () => properties.filter((p) => isCustomPricedValue(p.totalValue)),
+    [properties],
+  );
+  const subscribable = useMemo(
+    () => properties.filter((p) => !isCustomPricedValue(p.totalValue)),
+    [properties],
+  );
+  const lines = useMemo(() => estimateLines(subscribable, tier), [subscribable, tier]);
   const estTotal = lines.reduce((sum, l) => sum + l.price, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!stripe || !elements || submitting) return;
+    if (!stripe || !elements || submitting || subscribable.length === 0) return;
     setSubmitting(true);
     try {
       const { error, setupIntent } = await stripe.confirmSetup({
@@ -138,7 +155,7 @@ function BulkForm({
         return;
       }
       const { results } = await bulkSubscribe(
-        properties.map((p) => ({ propertyId: p.id, tier })),
+        subscribable.map((p) => ({ propertyId: p.id, tier })),
         paymentMethodId,
       );
       onDone(results);
@@ -174,7 +191,7 @@ function BulkForm({
                 {TIER_LABEL[t]}
               </span>
               <span className="text-muted-foreground pl-6 text-xs">
-                from ${formatMoney(TIER_BRACKET_PRICES[t].under2m)}/mo per property, by value
+                ${formatMoney(TIER_BRACKET_PRICES[t].upTo5m)}/mo per property, billed annually
               </span>
             </label>
           ))}
@@ -185,17 +202,28 @@ function BulkForm({
         {lines.map(({ property, price }) => (
           <li key={property.id} className="flex items-center justify-between gap-3">
             <span className="min-w-0 truncate">{property.address}</span>
-            <span className="text-muted-foreground shrink-0">${formatMoney(price)}/mo</span>
+            <span className="text-muted-foreground shrink-0">${usd(price)}/yr</span>
+          </li>
+        ))}
+        {customPriced.map((p) => (
+          <li key={p.id} className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground min-w-0 truncate">{p.address}</span>
+            <span className="text-muted-foreground shrink-0">$5M+ — custom, not included</span>
           </li>
         ))}
         <li className="border-border mt-1 flex items-center justify-between gap-3 border-t pt-2 font-medium">
           <span>Estimated total</span>
-          <span>${formatMoney(estTotal)}/mo</span>
+          <span>${usd(estTotal)}/yr</span>
         </li>
       </ul>
       <p className="text-muted-foreground -mt-2 text-[11px]">
-        Estimate — your first invoice reflects the exact amount, including any additional-property
-        discount for properties already in the same tier.
+        Estimate at list price — your first invoice reflects the exact amount, including any
+        additional-property discount for properties already in the same tier
+        {isLaunchDiscountActive()
+          ? ", and 50% off the first year for sign-ups before February 1, 2027"
+          : ""}
+        . Verified franchise owners get 50% off instead.
+        {customPriced.length > 0 && " Properties valued at $5M+ are custom-priced — contact us."}
       </p>
 
       <div className="grid gap-1.5">
@@ -205,12 +233,12 @@ function BulkForm({
 
       <button
         type="submit"
-        disabled={!stripe || submitting}
+        disabled={!stripe || submitting || subscribable.length === 0}
         className="btn-accent w-full text-sm disabled:opacity-60"
       >
         {submitting
           ? "Subscribing…"
-          : `Subscribe to ${properties.length} propert${properties.length === 1 ? "y" : "ies"} · ~$${formatMoney(estTotal)}/mo`}
+          : `Subscribe to ${subscribable.length} propert${subscribable.length === 1 ? "y" : "ies"} · ~$${usd(estTotal)}/yr`}
       </button>
     </form>
   );

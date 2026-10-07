@@ -21,6 +21,9 @@ import {
   syncMySubscriptions,
   bracketForValue,
   formatMoney,
+  isCustomPricedValue,
+  isLaunchDiscountActive,
+  propertyAnnualPrice,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
   type BillingInfo,
@@ -1241,61 +1244,91 @@ function Properties() {
             <p className="mt-1 text-sm text-muted-foreground">
               {protestingProperty.address} — choose how you want to run the protest.
             </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  {
-                    tier: "owner_managed" as const,
-                    tagline:
-                      "You file and attend; Corvus does the AI analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
-                  },
-                  {
-                    tier: "corvusrf_managed" as const,
-                    tagline:
-                      "Corvus handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
-                  },
-                ] as const
-              ).map(({ tier, tagline }) => {
-                const bracket = bracketForValue(protestingProperty.totalValue);
-                const isSubscribingThis =
-                  subscribing?.propertyId === protestingProperty.id && subscribing.tier === tier;
-                return (
-                  <div key={tier} className="flex flex-col rounded-lg border border-border p-4">
-                    <div className="text-sm font-semibold text-foreground">{TIER_LABEL[tier]}</div>
-                    <div className="mt-1 font-serif text-2xl font-bold">
-                      ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}
-                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    </div>
-                    <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
-                    {(() => {
-                      const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
-                      const est = protestingProperty.estimatedSavings;
-                      if (est == null || est <= 0 || est >= yearly) return null;
-                      return (
-                        <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-                          Heads up: this plan costs about {currency(yearly)} a year, but the
-                          estimated tax saving for this property is only {currency(est)} a year.
-                        </p>
-                      );
-                    })()}
-                    <button
-                      disabled={!!subscribing}
-                      onClick={async () => {
-                        await handleSubscribe(protestingProperty, tier);
-                        setProtestingProperty(null);
-                      }}
-                      className="btn-primary btn-primary-hover mt-3 disabled:opacity-60"
-                    >
-                      {isSubscribingThis ? "Redirecting…" : `Choose ${TIER_LABEL[tier]}`}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="mt-4 text-[11px] text-muted-foreground">
-              You'll be taken to Stripe to start the subscription for this property. You can cancel
-              anytime from this page.
-            </p>
+            {isCustomPricedValue(protestingProperty.totalValue) ? (
+              // $5M+ never reaches checkout (create-checkout-session refuses
+              // it too) — custom pricing is quoted by the team.
+              <div className="mt-5 rounded-lg border border-border p-4 text-sm">
+                <div className="font-semibold">Custom pricing</div>
+                <p className="mt-1 text-muted-foreground">
+                  Properties valued at $5M+ are priced based on property value, portfolio size, and
+                  requirements.
+                </p>
+                <Link to="/contact" className="btn-primary btn-primary-hover mt-3 inline-block">
+                  Contact Us
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        tier: "owner_managed" as const,
+                        tagline:
+                          "You file and attend; Corvus does the AI analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
+                      },
+                      {
+                        tier: "corvusrf_managed" as const,
+                        tagline:
+                          "Corvus handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
+                      },
+                    ] as const
+                  ).map(({ tier, tagline }) => {
+                    const bracket = bracketForValue(protestingProperty.totalValue);
+                    const isSubscribingThis =
+                      subscribing?.propertyId === protestingProperty.id &&
+                      subscribing.tier === tier;
+                    return (
+                      <div key={tier} className="flex flex-col rounded-lg border border-border p-4">
+                        <div className="text-sm font-semibold text-foreground">
+                          {TIER_LABEL[tier]}
+                        </div>
+                        <div className="mt-1 font-serif text-2xl font-bold">
+                          ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}
+                          <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Billed annually — $
+                          {propertyAnnualPrice(tier, bracket, false).toLocaleString("en-US")}/yr
+                        </div>
+                        <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
+                        {(() => {
+                          const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
+                          const est = protestingProperty.estimatedSavings;
+                          if (est == null || est <= 0 || est >= yearly) return null;
+                          return (
+                            <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                              Heads up: this plan costs about {currency(yearly)} a year, but the
+                              estimated tax saving for this property is only {currency(est)} a year.
+                            </p>
+                          );
+                        })()}
+                        <button
+                          disabled={!!subscribing}
+                          onClick={async () => {
+                            await handleSubscribe(protestingProperty, tier);
+                            setProtestingProperty(null);
+                          }}
+                          className="btn-primary btn-primary-hover mt-3 disabled:opacity-60"
+                        >
+                          {isSubscribingThis ? "Redirecting…" : `Choose ${TIER_LABEL[tier]}`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {isLaunchDiscountActive() && (
+                  <p className="mt-4 rounded-md border border-accent/40 bg-accent/10 p-2 text-xs">
+                    50% off your first year — applied at checkout for sign-ups before February 1,
+                    2027. Verified franchise owners get 50% off instead, every year.
+                  </p>
+                )}
+                <p className="mt-4 text-[11px] text-muted-foreground">
+                  You'll be taken to Stripe to start the annual subscription for this property. You
+                  can cancel anytime from this page.
+                </p>
+              </>
+            )}
           </div>
         </Modal>
       )}

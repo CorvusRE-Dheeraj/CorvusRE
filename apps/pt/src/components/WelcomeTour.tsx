@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { Building2, CalendarClock, FileText, Scale, Sparkles } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const KEY = "corvuspt.tourSeen";
 export const OPEN_TOUR_EVENT = "corvuspt:open-tour";
@@ -22,43 +21,84 @@ export function maybeStartTour(): () => void {
   return () => window.clearInterval(id);
 }
 
-const SLIDES = [
+// Each step points at a real element tagged `data-tour="<target>"` (AppShell's tab bar,
+// SiteChrome's header, the dashboard's Quick Actions). A step whose element isn't on
+// screen — the help button is hidden on phones, Add Property only exists on /dashboard
+// — is skipped rather than pointing at nothing. No target = a centered intro.
+type Step = { target?: string; text: string };
+const STEPS: Step[] = [
   {
-    icon: Sparkles,
-    tone: "from-emerald-600 to-teal-700",
-    title: "Welcome to CorvusPT",
-    body: "We help you check whether your property tax value is too high, and challenge it if it is. This 30-second tour shows you around.",
+    text: "Welcome to CorvusPT! Would you like a quick tour of what's in your dashboard?",
   },
   {
-    icon: Building2,
-    tone: "from-sky-700 to-blue-800",
-    title: "1. Add your property",
-    body: "Start with your address or your appraisal notice. Our AI pulls your county record and works out if you have a case.",
+    target: "add-property",
+    text: "Start here — add a property by address or appraisal notice, and our AI checks whether you have a case.",
   },
+  { target: "nav-properties", text: "All your properties are listed here." },
   {
-    icon: FileText,
-    tone: "from-amber-700 to-orange-800",
-    title: "2. Keep your papers in Documents",
-    body: "Upload your notice, photos and evidence. AI files each one under the right property so nothing gets lost.",
+    target: "nav-documents",
+    text: "Keep your notices, photos and evidence here — AI files each one under the right property.",
   },
-  {
-    icon: Scale,
-    tone: "from-violet-700 to-indigo-800",
-    title: "3. Follow your case",
-    body: "Each case shows one clear next step: prepare, file, talk to the county, attend a hearing, see the result.",
-  },
-  {
-    icon: CalendarClock,
-    tone: "from-rose-700 to-pink-800",
-    title: "4. We watch the dates for you",
-    body: "Deadlines and hearings show up in Deadlines and Calendar, and we remind you before each one. Stuck? Tap the ? at the top any time.",
-  },
+  { target: "nav-calendar", text: "Deadlines and hearings show up on your calendar." },
+  { target: "notifications", text: "We'll remind you here before every deadline and hearing." },
+  { target: "help", text: "Questions? Help, a plain-English glossary and this tour live here." },
+  { target: "profile", text: "View / update your contact information, billing and settings here." },
 ];
 
-// A short first-visit walkthrough. Shows once per browser, and can be reopened from the ? menu.
+function findTarget(step: Step): HTMLElement | null {
+  if (!step.target) return null;
+  const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? el : null;
+}
+
+function isAvailable(step: Step): boolean {
+  return !step.target || findTarget(step) !== null;
+}
+
+type Box = { top: number; left: number; width: number; height: number };
+const PAD = 8; // spotlight padding around the target
+const GAP = 96; // room between the spotlight and the caption for the arrow
+const DIM = "rgba(8, 15, 25, 0.82)";
+// Keeps the caption readable over whatever page text sits behind it.
+const CAPTION_SHADOW = "0 1px 3px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.7)";
+
+function toBox(r: DOMRect): Box {
+  return { top: r.top, left: r.left, width: r.width, height: r.height };
+}
+
+// A hand-drawn-looking arrow: a quadratic curve bowed to one side, with an open arrowhead
+// angled along the curve's tangent at the tip.
+function arrowPath(sx: number, sy: number, ex: number, ey: number): string {
+  const mx = (sx + ex) / 2;
+  const my = (sy + ey) / 2;
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const len = Math.hypot(dx, dy) || 1;
+  const bow = Math.min(48, len * 0.35);
+  const cx = mx + (-dy / len) * bow;
+  const cy = my + (dx / len) * bow;
+  const angle = Math.atan2(ey - cy, ex - cx);
+  const head = 14;
+  const spread = 0.5;
+  const h1x = ex - head * Math.cos(angle - spread);
+  const h1y = ey - head * Math.sin(angle - spread);
+  const h2x = ex - head * Math.cos(angle + spread);
+  const h2y = ey - head * Math.sin(angle + spread);
+  return `M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey} M ${h1x} ${h1y} L ${ex} ${ey} L ${h2x} ${h2y}`;
+}
+
+// A short first-visit walkthrough that dims the page and spotlights each part of the
+// dashboard in turn. Shows once per browser, and can be reopened from the ? menu.
 export function WelcomeTour() {
   const [open, setOpen] = useState(false);
   const [i, setI] = useState(0);
+  const [target, setTarget] = useState<Box | null>(null);
+  const [caption, setCaption] = useState<Box | null>(null);
+  const [viewport, setViewport] = useState({ w: 0, h: 0 });
+  const captionRef = useRef<HTMLDivElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const show = () => {
@@ -69,53 +109,197 @@ export function WelcomeTour() {
     return () => window.removeEventListener(OPEN_TOUR_EVENT, show);
   }, []);
 
-  function close() {
+  const close = useCallback(() => {
     setOpen(false);
     try {
       localStorage.setItem(KEY, "1");
     } catch {
       // harmless
     }
+  }, []);
+
+  const step = STEPS[i];
+  // Only look at the DOM while open — this component is also server-rendered, where
+  // there's no `document` at all.
+  const nextIndex = open ? STEPS.findIndex((s, n) => n > i && isAvailable(s)) : -1;
+  const last = nextIndex === -1;
+
+  function next() {
+    if (last) close();
+    else setI(nextIndex);
   }
 
-  const s = SLIDES[i];
-  const Icon = s.icon;
-  const last = i === SLIDES.length - 1;
-  return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
-      <DialogContent className="max-w-md overflow-hidden p-0">
-        <div className={`grid place-items-center bg-gradient-to-br ${s.tone} py-8 text-white`}>
-          <Icon className="h-12 w-12" />
+  // Bring the step's element into view (the tab strip scrolls sideways on phones).
+  useEffect(() => {
+    if (!open) return;
+    const el = findTarget(step);
+    if (el) {
+      // Center it vertically only when it's (partly) off screen — sticky header and tab
+      // bar items are already visible, and re-centering those would jump the page around.
+      const r = el.getBoundingClientRect();
+      const offScreen = r.top < 0 || r.bottom > window.innerHeight - 24;
+      el.scrollIntoView({
+        block: offScreen ? "center" : "nearest",
+        inline: "center",
+        behavior: "smooth",
+      });
+    }
+    nextRef.current?.focus();
+  }, [open, step]);
+
+  // Track the target and caption every frame while open — the header and tab bar are
+  // sticky, and the page may still be scrolling or loading, so a one-off measure drifts.
+  useLayoutEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const tick = () => {
+      const el = findTarget(step);
+      setTarget((prev) => {
+        const next = el ? toBox(el.getBoundingClientRect()) : null;
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      const c = captionRef.current?.getBoundingClientRect();
+      setCaption((prev) => {
+        const next = c ? toBox(c) : null;
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+      });
+      setViewport((prev) =>
+        prev.w === window.innerWidth && prev.h === window.innerHeight
+          ? prev
+          : { w: window.innerWidth, h: window.innerHeight },
+      );
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [open, step]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, close]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  const vw = viewport.w || window.innerWidth;
+  const vh = viewport.h || window.innerHeight;
+  const captionWidth = Math.min(340, vw - 32);
+
+  // Caption goes on whichever side of the target has more room, nudged toward the
+  // middle of the screen so the arrow curves in, like a hand-drawn pointer.
+  let captionStyle: React.CSSProperties;
+  let arrow: string | null = null;
+  if (target) {
+    const below = target.top + target.height / 2 < vh / 2;
+    const cx = target.left + target.width / 2;
+    const towardMiddle = cx < vw / 2 ? 70 : -70;
+    const left = Math.max(
+      16,
+      Math.min(vw - 16 - captionWidth, cx + towardMiddle - captionWidth / 2),
+    );
+    captionStyle = below
+      ? { top: target.top + target.height + PAD + GAP, left, width: captionWidth }
+      : { bottom: vh - (target.top - PAD - GAP), left, width: captionWidth };
+    if (caption) {
+      const sx = caption.left + caption.width / 2;
+      const sy = below ? caption.top - 10 : caption.top + caption.height + 10;
+      const ey = below ? target.top + target.height + PAD + 8 : target.top - PAD - 8;
+      arrow = arrowPath(sx, sy, cx, ey);
+    }
+  } else {
+    captionStyle = {
+      top: "50%",
+      left: "50%",
+      width: captionWidth,
+      transform: "translate(-50%, -50%)",
+    };
+  }
+
+  const available = STEPS.filter(isAvailable);
+  const position = available.indexOf(step) + 1;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="corvuspt-tour-text"
+      className="fixed inset-0 z-[200]"
+    >
+      {/* Swallows clicks on the dimmed page; the dimming itself is the spotlight's
+          giant shadow (or a plain fill on the intro step). */}
+      <div
+        className="absolute inset-0"
+        style={target ? undefined : { background: DIM }}
+        aria-hidden="true"
+      />
+      {target && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute rounded-xl motion-safe:transition-all motion-safe:duration-300"
+          style={{
+            top: target.top - PAD,
+            left: target.left - PAD,
+            width: target.width + PAD * 2,
+            height: target.height + PAD * 2,
+            boxShadow: `0 0 0 9999px ${DIM}, 0 0 22px 6px rgba(255, 255, 255, 0.55)`,
+          }}
+        />
+      )}
+      {arrow && (
+        <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full">
+          <path
+            d={arrow}
+            fill="none"
+            stroke="white"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      <div
+        ref={captionRef}
+        className="absolute text-center text-white"
+        style={{ ...captionStyle, textShadow: CAPTION_SHADOW }}
+      >
+        <p
+          id="corvuspt-tour-text"
+          className={`font-medium leading-snug drop-shadow ${target ? "text-lg" : "text-xl sm:text-2xl"}`}
+        >
+          {step.text}
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-4 text-base">
+          {!last ? (
+            <button
+              type="button"
+              onClick={close}
+              className="rounded px-1 font-medium text-sky-300 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+            >
+              Skip
+            </button>
+          ) : (
+            <span />
+          )}
+          {available.length > 1 && (
+            <span className="text-xs text-white/70">
+              {position} of {available.length}
+            </span>
+          )}
+          <button
+            ref={nextRef}
+            type="button"
+            onClick={next}
+            className="rounded px-1 font-medium text-sky-300 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          >
+            {last ? "Done" : i === 0 ? "Show me" : "Next"}
+          </button>
         </div>
-        <div className="p-6">
-          <DialogTitle className="font-serif text-xl">{s.title}</DialogTitle>
-          <DialogDescription className="mt-2 text-sm">{s.body}</DialogDescription>
-          <div className="mt-5 flex items-center justify-between">
-            <div className="flex gap-1.5" aria-hidden="true">
-              {SLIDES.map((_, n) => (
-                <span
-                  key={n}
-                  className={`h-1.5 w-5 rounded-full ${n === i ? "bg-foreground" : "bg-border"}`}
-                />
-              ))}
-            </div>
-            <div className="flex gap-2">
-              {!last && (
-                <button type="button" onClick={close} className="btn-outline text-sm">
-                  Skip
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => (last ? close() : setI(i + 1))}
-                className="btn-primary text-sm"
-              >
-                {last ? "Get started" : "Next"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body,
   );
 }

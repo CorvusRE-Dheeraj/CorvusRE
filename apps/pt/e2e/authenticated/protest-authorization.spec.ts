@@ -65,44 +65,34 @@ test.skip("signing the authorization and requesting a protest creates a case", a
   await requestFilingButton.waitFor({ state: "visible", timeout: 60_000 });
   await requestFilingButton.click();
 
-  // The dialog (Radix Dialog, see ProtestAuthorizationFlow.tsx) briefly
-  // re-renders its content as it finishes mounting/opening — interacting
-  // with a field before that settles gets it detached mid-fill. Waiting for
-  // the dialog's own heading avoids that race.
-  //
-  // Step 0: the Service Agreement — but it only shows ONCE per property.
-  // The CI account's service_agreement_acceptances rows are never cleaned up
-  // (immutable compliance record, no delete policy), so on any run after the
-  // first the flow opens straight on "Property Owner Details". Handle both.
-  const agreementHeading = page.getByRole("heading", { name: "CorvusPT Service Agreement" });
-  const ownerHeading = page.getByRole("heading", { name: "Property Owner Details" });
-  await expect(agreementHeading.or(ownerHeading).first()).toBeVisible();
-  if (await agreementHeading.isVisible()) {
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Agree & Continue" }).click();
+  // Every agreement is signed once, in the Engagement Packet. If the CI account
+  // has no current packet (first run, or after the packet version is bumped),
+  // filing first opens it as "Please complete the service agreement form" —
+  // sign it with the default "Use signature" option. On later runs the packet
+  // is already on file (engagement_packets is an immutable record) and the
+  // flow opens straight on "Start Protest". Handle both.
+  const packetHeading = page.getByRole("heading", {
+    name: "Please complete the service agreement form",
+  });
+  const startHeading = page.getByRole("heading", { name: "Start Protest" });
+  await expect(packetHeading.or(startHeading).first()).toBeVisible();
+  if (await packetHeading.isVisible()) {
+    const packet = page.getByRole("dialog", { name: /service agreement/i });
+    const fill = async (label: string, value: string) => {
+      const field = packet.getByLabel(label);
+      if (!(await field.inputValue())) await field.fill(value);
+    };
+    await fill("First name", "Test");
+    await fill("Last name", "User");
+    await fill("Title", "Owner");
+    await fill("Phone", "5555555555");
+    await packet.getByRole("button", { name: "Submit" }).click();
   }
 
-  await ownerHeading.waitFor({ state: "visible" });
+  // One confirm: the signature on file is applied to this property's Service
+  // Agreement and Appointment of Agent (Form 50-162).
+  await startHeading.waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Start Protest" }).click();
 
-  // Step 1: owner details — only email is prefilled from the account; first/
-  // last/phone start blank. Values are read into plain strings now since
-  // these inputs unmount once we move to the next step.
-  const firstNameField = page.getByLabel("First Name");
-  if (!(await firstNameField.inputValue())) await firstNameField.fill("Test");
-  const lastNameField = page.getByLabel("Last Name");
-  if (!(await lastNameField.inputValue())) await lastNameField.fill("User");
-  const phoneField = page.getByLabel("Phone Number");
-  if (!(await phoneField.inputValue())) await phoneField.fill("5555555555");
-  const fullName = `${await firstNameField.inputValue()} ${await lastNameField.inputValue()}`;
-  await page.getByRole("button", { name: "Next" }).click();
-
-  // Step 2: one combined screen — the AI acknowledgement checkbox (recorded
-  // on submit), the agent authorization checkbox, and the typed signature.
-  await page.getByRole("heading", { name: "Review & Sign" }).waitFor({ state: "visible" });
-  await page.getByRole("checkbox").nth(0).check(); // AI acknowledgement
-  await page.getByRole("checkbox").nth(1).check(); // agent authorization
-  await page.getByPlaceholder("Type your full legal name").fill(fullName);
-  await page.getByRole("button", { name: "Sign & Submit" }).click();
-
-  await expect(page.getByText(/Protest requested/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Protest started/i)).toBeVisible({ timeout: 15_000 });
 });

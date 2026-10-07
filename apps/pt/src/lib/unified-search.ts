@@ -82,7 +82,13 @@
 // once every sub-search is done (or the hard SEARCH_TIMEOUT_MS ceiling is
 // hit, whichever first — anything still pending past that point is
 // discarded, not awaited further).
-import { cadLookupPreview, type CadRecord, type CadLookupResult } from "./cad-lookup";
+import {
+  cadLookupPreview,
+  cadSearchById,
+  type CadRecord,
+  type CadLookupResult,
+} from "./cad-lookup";
+import { looksLikePropertyId } from "../../../../supabase/pt/functions/_shared/property-id";
 import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
 import { SUPPORTED_COUNTY_NAMES } from "./cad-record-url";
 
@@ -326,6 +332,22 @@ export async function unifiedPropertySearch(
   onUpdate: (matches: UnifiedMatch[]) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  // A Property ID or Geographic ID / account number from a notice, not an
+  // address: look it up across every county directly (Google and address
+  // matching have nothing to offer for "A1246A-000-0023-0000").
+  if (looksLikePropertyId(query)) {
+    const records = await cadSearchById(query.trim(), signal).catch(() => [] as CadRecord[]);
+    onUpdate(
+      records.map((record) => ({
+        id: cadKey(record),
+        address: record.propertyAddress || `Account #${record.accountNumber ?? query.trim()}`,
+        record,
+        cadStatus: "found" as const,
+      })),
+    );
+    return;
+  }
+
   const cityGuess = guessCityWord(query);
   const order: string[] = [];
   const byId = new Map<string, UnifiedMatch>();

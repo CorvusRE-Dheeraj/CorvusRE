@@ -6,11 +6,21 @@ import { uploadDocument, type DocumentRecord } from "./documents";
 import { setDocumentModules } from "./document-modules";
 import { buildTextPdf } from "./pdf-text";
 import type { PropertyRecord } from "./properties";
+import {
+  fetchPropertySources,
+  type AttomComp,
+  type AttomProperty,
+  type PropertySourcesResult,
+  type RegridParcel,
+} from "./property-sources";
+import { lookupOfficialTaxRates, type OfficialTaxRates } from "./tax-rates-official";
+import { formatFactValue, reconcileProperty, type Reconciliation } from "./property-reconcile";
 
 // The property's AI-fetched "base data" — one synthesized record per
-// property, assembled from what the app can PUBLICLY source from the
-// address alone (the structured CAD lookup, FEMA/USGS site data, and the
-// county's own record-page link). Stored as a PDF in the central Documents
+// property. The pipeline: Address → Geocode (caller's coords) → Regrid parcel →
+// CAD/county → ATTOM → other sources (FEMA/USGS, Texas Comptroller rates, the
+// county record page) → reconcile (property-reconcile.ts) → this central
+// document → every module. Stored as a PDF in the central Documents
 // repository, tagged "AI Fetched — Property Base Data" and to every module,
 // so it's the single foundation every module reads instead of the user
 // re-entering the same facts. See supabase/functions/
@@ -57,6 +67,15 @@ export type PropertyBaseSnapshot = {
   } | null;
   siteGis: SiteGisResult | null;
   recordUrl: string | null;
+  // The paid sources and the Comptroller's official rates — optional because
+  // snapshots stored before they existed don't have them. Reconciliation isn't
+  // stored: it's recomputed from these + `cad` (see reconcileSnapshot), so the
+  // weekly county refresh, which only replaces `cad`, is always reflected.
+  attom?: AttomProperty | null;
+  regrid?: RegridParcel | null;
+  attomComps?: AttomComp[];
+  sourceStatus?: PropertySourcesResult["status"];
+  officialRates?: OfficialTaxRates | null;
   // Which lookups actually returned something.
   sources: string[];
 };
@@ -116,6 +135,10 @@ export async function fetchPropertyBaseSnapshot(
 ): Promise<PropertyBaseSnapshot> {
   const sources: string[] = [];
 
+  // ATTOM + Regrid run alongside the county lookup — they only need the address
+  // and the geocoded point.
+  const paid = property.address ? fetchPropertySources(property.address, coords) : null;
+
   let record: CadRecord | null = null;
   if (property.cad && property.accountNumber) {
     record = await cadLookupByAccount(property.cad, property.accountNumber).catch(() => null);
@@ -125,6 +148,14 @@ export async function fetchPropertyBaseSnapshot(
     if (res && res.matched === true) record = res.record;
   }
   if (record) sources.push("county appraisal district");
+
+  const sourcesResult = paid ? await paid : null;
+  if (sourcesResult?.regrid) sources.push("Regrid parcel data");
+  if (sourcesResult?.attom) sources.push("ATTOM property data");
+  if (sourcesResult?.attomComps?.length) sources.push("ATTOM comparable sales");
+
+  const officialRates = await lookupOfficialTaxRates(record?.cad ?? property.cad, property.address);
+  if (officialRates) sources.push("Texas Comptroller tax rates");
 
   let siteGis: SiteGisResult | null = null;
   if (coords) {
@@ -150,7 +181,53 @@ export async function fetchPropertyBaseSnapshot(
       : null;
   if (recordUrl) sources.push("county record page");
 
-  return { fetchedAt: new Date().toISOString(), cad: trimCad(record), siteGis, recordUrl, sources };
+  return {
+    fetchedAt: new Date().toISOString(),
+    cad: trimCad(record),
+    siteGis,
+    recordUrl,
+    attom: sourcesResult?.attom ?? null,
+    regrid: sourcesResult?.regrid ?? null,
+    attomComps: sourcesResult?.attomComps ?? [],
+    sourceStatus: sourcesResult?.status,
+    officialRates,
+    sources,
+  };
+}
+
+// The cross-source record every module reads — recomputed, never stored.
+export function reconcileSnapshot(snapshot: PropertyBaseSnapshot): Reconciliation {
+  return reconcileProperty({
+    cad: snapshot.cad,
+    attom: snapshot.attom ?? null,
+    regrid: snapshot.regrid ?? null,
+    officialRates: snapshot.officialRates ?? null,
+  });
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  ok: "matched",
+  no_match: "no match for this address",
+  not_configured: "not connected yet",
+  error: "unavailable right now",
+};
+
+// "123 Main St, Dallas — sold $3,100,000 on 2024-05-01 · 24,000 SF ($129.17/SF) · 0.8 mi"
+export function compLine(c: AttomComp): string {
+  return [
+    `${c.address} — sold $${Math.round(c.saleAmount).toLocaleString("en-US")}${c.saleDate ? ` on ${c.saleDate}` : ""}`,
+    c.buildingSqft != null
+      ? `${Math.round(c.buildingSqft).toLocaleString("en-US")} SF${c.pricePerSqft != null ? ` ($${c.pricePerSqft.toFixed(2)}/SF)` : ""}`
+      : null,
+    c.yearBuilt != null ? `built ${c.yearBuilt}` : null,
+    c.distanceMiles != null ? `${c.distanceMiles.toFixed(1)} mi` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function pct(rate: number): string {
+  return `${(rate * 100).toFixed(3).replace(/\.?0+$/, "")}%`;
 }
 
 // The human-readable record rendered into the stored PDF.
@@ -166,6 +243,42 @@ export function buildBaseDataMarkdown(
       `${new Date(snapshot.fetchedAt).toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" })}. ` +
       `This is a convenience summary — verify every figure against your official appraisal notice.`,
   );
+  lines.push("");
+
+  // The reconciled record first — it's what every module should rely on.
+  const rec = reconcileSnapshot(snapshot);
+  const known = rec.facts.filter((f) => f.value != null);
+  lines.push("## Verified property facts (reconciled across sources)");
+  if (known.length === 0) {
+    lines.push("- No source returned property facts for this address yet.");
+  } else {
+    for (const f of known) {
+      const others = f.values
+        .slice(1)
+        .filter((v) => formatFactValue(f.unit, v.value) !== formatFactValue(f.unit, f.value));
+      lines.push(
+        `- ${f.label}: ${formatFactValue(f.unit, f.value)} (${f.source})` +
+          (others.length
+            ? ` — also reported: ${others.map((v) => `${formatFactValue(f.unit, v.value)} (${v.source})`).join(", ")}`
+            : "") +
+          // Plain text: the PDF's standard Helvetica can't encode symbols like ⚠.
+          (f.conflict ? " [sources disagree]" : ""),
+      );
+    }
+  }
+  if (rec.conflicts.length > 0) {
+    lines.push("");
+    lines.push("### Where sources disagree — verify against your appraisal notice");
+    for (const c of rec.conflicts) lines.push(`- ${c}`);
+  }
+  if (rec.taxRate) {
+    lines.push("");
+    lines.push(
+      rec.taxRate.kind === "actual"
+        ? `- Effective tax rate (ATTOM billed tax ÷ assessed value${rec.taxRate.taxYear ? `, ${rec.taxRate.taxYear}` : ""}): ${pct(rec.taxRate.rate)}`
+        : `- Known tax rate (Texas Comptroller ${rec.taxRate.year}): at least ${pct(rec.taxRate.rate)} — ${rec.taxRate.note}`,
+    );
+  }
   lines.push("");
 
   const c = snapshot.cad;
@@ -238,6 +351,51 @@ export function buildBaseDataMarkdown(
       ? `- ${snapshot.recordUrl}`
       : "- No direct county record link available for this appraisal district.",
   );
+
+  const r = snapshot.officialRates;
+  if (r) {
+    lines.push("");
+    lines.push(`## Official tax rates (Texas Comptroller, ${r.year})`);
+    lines.push(`- ${r.county.name} County: ${pct(r.county.rate)}`);
+    if (r.city) lines.push(`- City of ${r.city.name}: ${pct(r.city.rate)}`);
+    if (r.schoolDistricts)
+      lines.push(
+        `- School district: not identified from the address — the ${r.schoolDistricts.count} districts ` +
+          `based in this county range ${pct(r.schoolDistricts.min)}–${pct(r.schoolDistricts.max)}`,
+      );
+    lines.push("- College, hospital, MUD and other special districts are not included.");
+    lines.push(`- Source: ${r.sourceUrl}`);
+  }
+
+  const reg = snapshot.regrid;
+  if (reg?.regridPath) {
+    lines.push("");
+    lines.push("## Parcel (Regrid)");
+    lines.push(`- Parcel record: https://app.regrid.com${reg.regridPath}`);
+    if (reg.geometry) lines.push("- Parcel boundary on file (used for site and zoning analysis).");
+  }
+
+  const comps = snapshot.attomComps ?? [];
+  if (comps.length > 0) {
+    lines.push("");
+    lines.push("## Recent comparable sales (ATTOM)");
+    for (const c of comps) lines.push(`- ${compLine(c)}`);
+  }
+
+  if (snapshot.sourceStatus) {
+    lines.push("");
+    lines.push("## Data sources checked");
+    lines.push(
+      `- ATTOM: ${STATUS_LABEL[snapshot.sourceStatus.attom] ?? snapshot.sourceStatus.attom}`,
+    );
+    lines.push(
+      `- Regrid: ${STATUS_LABEL[snapshot.sourceStatus.regrid] ?? snapshot.sourceStatus.regrid}`,
+    );
+    if (snapshot.sourceStatus.attomComps)
+      lines.push(
+        `- ATTOM comparable sales: ${STATUS_LABEL[snapshot.sourceStatus.attomComps] ?? snapshot.sourceStatus.attomComps}`,
+      );
+  }
 
   return lines.join("\n");
 }

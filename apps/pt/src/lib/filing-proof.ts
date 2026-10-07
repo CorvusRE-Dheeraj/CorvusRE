@@ -2,6 +2,7 @@ import { getDocumentUrl, type DocumentRecord } from "./documents";
 import { invokeEdgeFunction } from "./edge-functions";
 import { bytesToBase64 } from "./pdf-utils";
 import type { PropertyRecord } from "./properties";
+import type { ProofKind } from "./proof-kinds";
 
 // Real uploaded proof-of-filing documents in, a real AI read of what's
 // actually visible out — see verify-filing-proof/index.ts for the prompt/
@@ -20,6 +21,11 @@ export type FilingProofFinding = {
   dateObserved: string | null;
   dateYearPlausible: boolean | null;
   notes: string;
+  // The AI's read of what kind of proof this is, and any reference number it
+  // can actually see — suggestions the owner can accept or change.
+  proofKind: ProofKind;
+  confirmationNumber: string | null;
+  trackingNumber: string | null;
 };
 
 export type FilingProofVerification = {

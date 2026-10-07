@@ -30,10 +30,12 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { LiveSearchLoader } from "@/components/LiveSearchLoader";
 import { useAuth } from "@/lib/auth";
 import { addProperty, findExistingProperty, type PropertyRecord } from "@/lib/properties";
-import { estimateSavings, type SavingsEstimate } from "@/lib/savings-estimate";
+import { estimateSavings, savingsPctOfBill, type SavingsEstimate } from "@/lib/savings-estimate";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { HouseIllustration } from "@/assets/illustrations/house";
 import { useFileDrop } from "@/hooks/use-file-drop";
+import { PropertyIds } from "@/components/PropertyIds";
+import { BPP_PROPERTY_TYPE } from "../../../../supabase/pt/functions/_shared/bexar-tax-office";
 
 export const Route = createFileRoute("/intake")({
   head: () => ({
@@ -60,7 +62,8 @@ type Step =
   | "notfound"
   | "multiple"
   | "classifying"
-  | "residential-blocked";
+  | "residential-blocked"
+  | "bpp-blocked";
 
 // Only called after cadLookup() itself already returned matched:false —
 // cadLookup has no way to say WHY (a genuinely unsupported county vs. a
@@ -334,6 +337,22 @@ function Intake() {
     // classification for the savings-estimate formula tier, so reuse it
     // rather than inventing a second, possibly-inconsistent check.
     if (requestIdRef.current !== requestId) return;
+    // A business personal property account (furniture, fixtures, equipment —
+    // listed beside the land/building account, e.g. from the Bexar tax office)
+    // isn't real estate: no savings estimate applies, and BPP protests are
+    // still coming soon (BPP Accounts tab is locked).
+    if (record.propertyType === BPP_PROPERTY_TYPE) {
+      setState(
+        updateIntake({
+          address: resolvedAddress,
+          cad: record.cad,
+          accountNumber: record.accountNumber ?? undefined,
+          propertyType: record.propertyType,
+        }),
+      );
+      setStep("bpp-blocked");
+      return;
+    }
     if (classifyPropertyCategory(record.propertyType) === "residential") {
       setState(
         updateIntake({
@@ -369,6 +388,24 @@ function Intake() {
   // nicety now, not a correctness requirement, since the estimate would
   // come out identical either way.
   async function computeSavingsAndAdvance(next: IntakeState, requestId: number) {
+    // Is this property already on the user's account (same CAD account, or
+    // the same address however it's typed)? Checked first, in parallel with
+    // the estimate, so the notice is up before they can click Continue —
+    // whether they got here by address search or the manual account lookup.
+    if (user && next.address) {
+      findExistingProperty(user.id, {
+        address: next.address,
+        cad: next.cad,
+        accountNumber: next.accountNumber,
+      })
+        .then((existing) => {
+          if (requestIdRef.current !== requestId) return;
+          setAlreadySaved(existing);
+          if (existing)
+            toast("You've already added this property", { description: existing.address });
+        })
+        .catch((err) => console.error(err));
+    }
     const savingsKey =
       next.cad && next.accountNumber ? `${next.cad}::${next.accountNumber}` : next.address;
     let nextSavings: SavingsEstimate;
@@ -391,18 +428,6 @@ function Intake() {
     if (requestIdRef.current !== requestId) return;
     setSavings(nextSavings);
     setStep(nextSavings ? "savings" : "confirm");
-    // Check whether this exact CAD record is already on the user's account —
-    // shown as a notice on the confirm screen instead of letting them hit
-    // "Confirm Property" again for something already saved.
-    if (user && next.address) {
-      findExistingProperty(user.id, {
-        address: next.address,
-        cad: next.cad,
-        accountNumber: next.accountNumber,
-      })
-        .then(setAlreadySaved)
-        .catch((err) => console.error(err));
-    }
   }
 
   async function runValidation(addr: string) {
@@ -767,7 +792,11 @@ function Intake() {
                 // Colorado address): a row we already know is out of
                 // coverage is shown, not hidden, but never selectable, with
                 // its own plain reason instead of residential's.
-                const disabled = residential || m.cadStatus === "unsupported";
+                // Business personal property rows (see _shared/bexar-tax-office.ts):
+                // shown with their IDs, labelled BPP, grayed out until BPP
+                // protests open.
+                const bpp = m.record?.propertyType === BPP_PROPERTY_TYPE;
+                const disabled = residential || bpp || m.cadStatus === "unsupported";
                 return (
                   <button
                     key={m.id}
@@ -775,11 +804,13 @@ function Intake() {
                     disabled={disabled}
                     onClick={() => !disabled && selectMatch(m)}
                     title={
-                      residential
-                        ? "Residential — coming soon"
-                        : disabled
-                          ? "We don't cover this county yet"
-                          : undefined
+                      bpp
+                        ? "Business personal property — coming soon"
+                        : residential
+                          ? "Residential — coming soon"
+                          : disabled
+                            ? "We don't cover this county yet"
+                            : undefined
                     }
                     className={`row-hover block w-full px-4 py-3 text-left ${
                       i > 0 ? "border-t border-border" : ""
@@ -818,12 +849,14 @@ function Intake() {
                       </div>
                     ) : m.record ? (
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                        <span className="font-bold text-foreground">
-                          PARCEL: {m.record.accountNumber ?? "—"}
-                        </span>
+                        <PropertyIds
+                          accountNumber={m.record.accountNumber}
+                          geoId={m.record.geoId}
+                          propertyType={m.record.propertyType}
+                        />
                         {" · "}
                         {m.record.cad}
-                        {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
+                        {(m.record.totalValue ?? 0) > 0 && <> · {currency(m.record.totalValue)}</>}
                       </div>
                     ) : m.cadStatus === "pending" ? (
                       <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -992,7 +1025,8 @@ function Intake() {
                   // commercial properties, so a residential one is shown but
                   // disabled rather than left clickable into a dead end.
                   const category = classifyPropertyCategory(r.propertyType);
-                  const isResidential = category === "residential";
+                  const isBpp = r.propertyType === BPP_PROPERTY_TYPE;
+                  const isResidential = category === "residential" || isBpp;
                   return (
                     <button
                       key={i}
@@ -1001,7 +1035,9 @@ function Intake() {
                       disabled={isResidential}
                       title={
                         isResidential
-                          ? "Residential — CorvusPT currently serves commercial properties only"
+                          ? isBpp
+                            ? "Business personal property — coming soon"
+                            : "Residential — CorvusPT currently serves commercial properties only"
                           : undefined
                       }
                       className={`row-hover flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-left ${
@@ -1031,7 +1067,11 @@ function Intake() {
                                 : "bg-secondary text-muted-foreground"
                           }`}
                         >
-                          {category === "unknown" ? "Type unknown" : category}
+                          {isBpp
+                            ? "BPP · coming soon"
+                            : category === "unknown"
+                              ? "Type unknown"
+                              : category}
                         </span>
                         {!isResidential && (
                           <span className="text-sm font-semibold text-accent">Check this →</span>
@@ -1068,7 +1108,8 @@ function Intake() {
               // (for transparency: the user should still see it exists) but
               // disabled rather than left clickable into a dead end.
               const category = classifyPropertyCategory(r.propertyType);
-              const isResidential = category === "residential";
+              const isBpp = r.propertyType === BPP_PROPERTY_TYPE;
+              const isResidential = category === "residential" || isBpp;
               const recordUrl = getCadRecordUrl(r);
               return (
                 <div
@@ -1100,7 +1141,11 @@ function Intake() {
                             : "bg-secondary text-muted-foreground"
                       }`}
                     >
-                      {category === "unknown" ? "Type unknown" : category}
+                      {isBpp
+                        ? "BPP · coming soon"
+                        : category === "unknown"
+                          ? "Type unknown"
+                          : category}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1110,7 +1155,9 @@ function Intake() {
                       disabled={isResidential}
                       title={
                         isResidential
-                          ? "Residential — CorvusPT currently serves commercial properties only"
+                          ? isBpp
+                            ? "Business personal property — coming soon"
+                            : "Residential — CorvusPT currently serves commercial properties only"
                           : undefined
                       }
                       className="btn-primary btn-primary-hover text-sm py-1.5 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1154,6 +1201,26 @@ function Intake() {
         </section>
       )}
 
+      {step === "bpp-blocked" && (
+        <section className="mt-8 card-elev p-6">
+          <h2 className="font-serif text-xl font-semibold">
+            This is a business personal property account.
+          </h2>
+          <p className="mt-1 text-muted-foreground">
+            Account {state.accountNumber ?? ""} at {state.address ?? "this address"} covers the
+            business&apos;s furniture, fixtures, equipment and supplies — taxed separately from the
+            land and building. Protests for business personal property are coming soon to CorvusPT.
+            To protest the land and building, pick that account from the search results for this
+            address.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setStep("address")} className="btn-outline">
+              Back to Search
+            </button>
+          </div>
+        </section>
+      )}
+
       {step === "savings" && state.address && savings && (
         <section className="mt-8 card-elev overflow-hidden">
           <div className="bg-accent/10 px-6 pt-10 pb-8 text-center">
@@ -1177,6 +1244,19 @@ function Intake() {
                 <p className="mt-1 font-serif text-5xl font-bold text-accent">
                   {currency(savings.amount)}
                 </p>
+                {/* The same savings as a share of this year's estimated bill
+                    (the "Est. Tax Bill This Year" figure below). */}
+                {savingsPctOfBill(savings.amount, state.totalValue, savings.effectiveTaxRatePct) !=
+                  null && (
+                  <p className="mt-1 inline-block rounded-full bg-accent/15 px-3 py-0.5 text-sm font-semibold text-accent">
+                    {savingsPctOfBill(
+                      savings.amount,
+                      state.totalValue,
+                      savings.effectiveTaxRatePct,
+                    )!.toFixed(1)}
+                    % off your tax bill
+                  </p>
+                )}
               </>
             ) : (
               // A real analysis that lands on $0 isn't a failure — it means
@@ -1195,7 +1275,7 @@ function Intake() {
             <p className="mt-2 text-sm text-muted-foreground">{state.address}</p>
             {state.accountNumber && (
               <p className="text-xs font-medium text-muted-foreground">
-                PARCEL: {state.accountNumber}
+                <PropertyIds accountNumber={state.accountNumber} geoId={state.geoId} />
               </p>
             )}
 
@@ -1508,7 +1588,7 @@ function Intake() {
 function Stepper({ step }: { step: Step }) {
   const items = [
     ["Address", ["address"]],
-    ["Validate", ["validating", "notfound", "multiple", "residential-blocked"]],
+    ["Validate", ["validating", "notfound", "multiple", "residential-blocked", "bpp-blocked"]],
     ["Savings", ["savings"]],
     ["Confirm", ["confirm"]],
   ] as const;

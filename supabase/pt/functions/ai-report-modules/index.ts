@@ -1462,8 +1462,11 @@ function buildRecord(input: ModulesInput): string {
   }
   if (Array.isArray(input.authoritativeFacts) && input.authoritativeFacts.length > 0) {
     lines.push(
-      `Facts the app has ALREADY established for this property (real, computed — treat as ` +
-        `authoritative; use to mark items Verified):\n` +
+      // Sent to every module now (see apps/pt/src/lib/module-source-facts.ts), each fact
+      // tagged with its source — county, Regrid, ATTOM, Texas Comptroller.
+      `Facts the app has ALREADY established for this property from real data sources (each ` +
+        `tagged with its source — treat as authoritative over your own assumptions, ground your ` +
+        `analysis in them, and in an evidence checklist use them to mark items Verified):\n` +
         input.authoritativeFacts.map((f) => `- ${f}`).join("\n"),
     );
   }

@@ -2,6 +2,7 @@ import type { ValueSignal } from "./evidence-value";
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { FormType } from "./protest-form-submissions";
+import { isProofKind, type ProofKind } from "./proof-kinds";
 
 // Any change to the documents table (upload, delete, restore, rename, retag,
 // evidence flag) broadcasts this so every view that holds its own copy of the
@@ -123,6 +124,9 @@ export type DocumentRecord = {
   // What this file says about the property's value, read once by extract-evidence-value and
   // stored. null = not read yet. See evidence-value.ts.
   valueSignal?: ValueSignal | null;
+  // For filing-proof documents: what kind of proof this is (see proof-kinds.ts).
+  // null = not labeled yet. Optional for the same reason as the fields above.
+  proofKind?: ProofKind | null;
 };
 
 type DocumentRow = {
@@ -147,10 +151,11 @@ type DocumentRow = {
   edited_from: string | null;
   modules: string[] | null;
   value_signal: ValueSignal | null;
+  proof_kind: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, file_name, storage_path, document_type, uploaded_at, category, source, ai_verdict, ai_notes, ai_cross_refs, ai_checked_at, suggested_name, deleted_at, use_as_evidence, duplicate_of, dup_reviewed, ai_explanation, edited_from, modules, value_signal";
+  "id, property_id, file_name, storage_path, document_type, uploaded_at, category, source, ai_verdict, ai_notes, ai_cross_refs, ai_checked_at, suggested_name, deleted_at, use_as_evidence, duplicate_of, dup_reviewed, ai_explanation, edited_from, modules, value_signal, proof_kind";
 
 function fromRow(row: DocumentRow): DocumentRecord {
   return {
@@ -175,6 +180,7 @@ function fromRow(row: DocumentRow): DocumentRecord {
     editedFrom: row.edited_from,
     modules: row.modules ?? [],
     valueSignal: row.value_signal ?? null,
+    proofKind: isProofKind(row.proof_kind) ? row.proof_kind : null,
   };
 }
 
@@ -564,6 +570,14 @@ export async function setDocumentType(id: string, documentType: string): Promise
     .from("documents")
     .update({ document_type: documentType })
     .eq("id", id);
+  if (error) throw error;
+  notifyDocumentsChanged();
+}
+
+// Labels a filing-proof document with what kind of proof it is (or clears it).
+// documents.proof_kind is owner-updatable — a label on their own file.
+export async function setDocumentProofKind(id: string, kind: ProofKind | null): Promise<void> {
+  const { error } = await supabase.from("documents").update({ proof_kind: kind }).eq("id", id);
   if (error) throw error;
   notifyDocumentsChanged();
 }

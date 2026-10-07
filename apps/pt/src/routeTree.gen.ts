@@ -31,6 +31,7 @@ import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
+import { Route as DashboardLayoutAgreementsRouteImport } from './routes/dashboard/_layout.agreements'
 import { Route as DashboardLayoutBillingRouteImport } from './routes/dashboard/_layout.billing'
 import { Route as DashboardLayoutBppAccountsRouteImport } from './routes/dashboard/_layout.bpp-accounts'
 import { Route as DashboardLayoutBppIntakeRouteImport } from './routes/dashboard/_layout.bpp-intake'
@@ -39,6 +40,7 @@ import { Route as DashboardLayoutCaseRouteImport } from './routes/dashboard/_lay
 import { Route as DashboardLayoutDeadlinesRouteImport } from './routes/dashboard/_layout.deadlines'
 import { Route as DashboardLayoutDocumentsRouteImport } from './routes/dashboard/_layout.documents'
 import { Route as DashboardLayoutFeedbackRouteImport } from './routes/dashboard/_layout.feedback'
+import { Route as DashboardLayoutIssuesRouteImport } from './routes/dashboard/_layout.issues'
 import { Route as DashboardLayoutPropertiesRouteImport } from './routes/dashboard/_layout.properties'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutSavingsRouteImport } from './routes/dashboard/_layout.savings'
@@ -156,6 +158,12 @@ const DashboardLayoutIndexRoute = DashboardLayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutAgreementsRoute =
+  DashboardLayoutAgreementsRouteImport.update({
+    id: '/agreements',
+    path: '/agreements',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutBillingRoute = DashboardLayoutBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -198,6 +206,11 @@ const DashboardLayoutDocumentsRoute =
 const DashboardLayoutFeedbackRoute = DashboardLayoutFeedbackRouteImport.update({
   id: '/feedback',
   path: '/feedback',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
+const DashboardLayoutIssuesRoute = DashboardLayoutIssuesRouteImport.update({
+  id: '/issues',
+  path: '/issues',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
 const DashboardLayoutPropertiesRoute =
@@ -256,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -264,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/feedback': typeof DashboardLayoutFeedbackRoute
+  '/dashboard/issues': typeof DashboardLayoutIssuesRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
@@ -293,6 +308,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -301,6 +317,7 @@ export interface FileRoutesByTo {
   '/dashboard/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/feedback': typeof DashboardLayoutFeedbackRoute
+  '/dashboard/issues': typeof DashboardLayoutIssuesRoute
   '/dashboard/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/savings': typeof DashboardLayoutSavingsRoute
@@ -332,6 +349,7 @@ export interface FileRoutesById {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/_layout/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/_layout/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/_layout/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/_layout/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -340,6 +358,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/deadlines': typeof DashboardLayoutDeadlinesRoute
   '/dashboard/_layout/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/_layout/feedback': typeof DashboardLayoutFeedbackRoute
+  '/dashboard/_layout/issues': typeof DashboardLayoutIssuesRoute
   '/dashboard/_layout/properties': typeof DashboardLayoutPropertiesRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/savings': typeof DashboardLayoutSavingsRoute
@@ -372,6 +391,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard'
+    | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
     | '/dashboard/bpp-intake'
@@ -380,6 +400,7 @@ export interface FileRouteTypes {
     | '/dashboard/deadlines'
     | '/dashboard/documents'
     | '/dashboard/feedback'
+    | '/dashboard/issues'
     | '/dashboard/properties'
     | '/dashboard/referrals'
     | '/dashboard/savings'
@@ -409,6 +430,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/tax-payment'
     | '/terms'
+    | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
     | '/dashboard/bpp-intake'
@@ -417,6 +439,7 @@ export interface FileRouteTypes {
     | '/dashboard/deadlines'
     | '/dashboard/documents'
     | '/dashboard/feedback'
+    | '/dashboard/issues'
     | '/dashboard/properties'
     | '/dashboard/referrals'
     | '/dashboard/savings'
@@ -447,6 +470,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard/_layout'
+    | '/dashboard/_layout/agreements'
     | '/dashboard/_layout/billing'
     | '/dashboard/_layout/bpp-accounts'
     | '/dashboard/_layout/bpp-intake'
@@ -455,6 +479,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/deadlines'
     | '/dashboard/_layout/documents'
     | '/dashboard/_layout/feedback'
+    | '/dashboard/_layout/issues'
     | '/dashboard/_layout/properties'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/savings'
@@ -644,6 +669,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutIndexRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/agreements': {
+      id: '/dashboard/_layout/agreements'
+      path: '/agreements'
+      fullPath: '/dashboard/agreements'
+      preLoaderRoute: typeof DashboardLayoutAgreementsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/billing': {
       id: '/dashboard/_layout/billing'
       path: '/billing'
@@ -700,6 +732,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutFeedbackRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/issues': {
+      id: '/dashboard/_layout/issues'
+      path: '/issues'
+      fullPath: '/dashboard/issues'
+      preLoaderRoute: typeof DashboardLayoutIssuesRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/properties': {
       id: '/dashboard/_layout/properties'
       path: '/properties'
@@ -746,6 +785,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardLayoutRouteChildren {
+  DashboardLayoutAgreementsRoute: typeof DashboardLayoutAgreementsRoute
   DashboardLayoutBillingRoute: typeof DashboardLayoutBillingRoute
   DashboardLayoutBppAccountsRoute: typeof DashboardLayoutBppAccountsRoute
   DashboardLayoutBppIntakeRoute: typeof DashboardLayoutBppIntakeRoute
@@ -754,6 +794,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutDeadlinesRoute: typeof DashboardLayoutDeadlinesRoute
   DashboardLayoutDocumentsRoute: typeof DashboardLayoutDocumentsRoute
   DashboardLayoutFeedbackRoute: typeof DashboardLayoutFeedbackRoute
+  DashboardLayoutIssuesRoute: typeof DashboardLayoutIssuesRoute
   DashboardLayoutPropertiesRoute: typeof DashboardLayoutPropertiesRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutSavingsRoute: typeof DashboardLayoutSavingsRoute
@@ -764,6 +805,7 @@ interface DashboardLayoutRouteChildren {
 }
 
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
+  DashboardLayoutAgreementsRoute: DashboardLayoutAgreementsRoute,
   DashboardLayoutBillingRoute: DashboardLayoutBillingRoute,
   DashboardLayoutBppAccountsRoute: DashboardLayoutBppAccountsRoute,
   DashboardLayoutBppIntakeRoute: DashboardLayoutBppIntakeRoute,
@@ -772,6 +814,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutDeadlinesRoute: DashboardLayoutDeadlinesRoute,
   DashboardLayoutDocumentsRoute: DashboardLayoutDocumentsRoute,
   DashboardLayoutFeedbackRoute: DashboardLayoutFeedbackRoute,
+  DashboardLayoutIssuesRoute: DashboardLayoutIssuesRoute,
   DashboardLayoutPropertiesRoute: DashboardLayoutPropertiesRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutSavingsRoute: DashboardLayoutSavingsRoute,

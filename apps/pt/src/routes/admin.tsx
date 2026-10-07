@@ -7,6 +7,7 @@ import {
   listAllUsers,
   updateUserPlan,
   updateUserAdminStatus,
+  updateUserFranchiseStatus,
   deleteUserAccount,
   impersonateUser,
   createUserAccount,
@@ -52,6 +53,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminBetaFeedback } from "@/components/AdminBetaFeedback";
 import { AdminAppointments } from "@/components/AdminAppointments";
+import { AdminCountyMailbox } from "@/components/AdminCountyMailbox";
 import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
 import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,6 +79,7 @@ type AdminTab =
   | "beta"
   | "beta_feedback"
   | "appointments"
+  | "county_mail"
   | "support"
   | "activity"
   | "settings";
@@ -85,7 +88,13 @@ function AdminPanel() {
   const nav = useNavigate();
   const { user, loading } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>("financials");
+  // Back from connecting the county mailbox (Google redirects here with
+  // ?mailbox_connected / ?mailbox_error) — land on that tab, not Financials.
+  const [activeTab, setActiveTab] = useState<AdminTab>(() =>
+    typeof window !== "undefined" && /[?&]mailbox_(connected|error)=/.test(window.location.search)
+      ? "county_mail"
+      : "financials",
+  );
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -280,6 +289,27 @@ function AdminPanel() {
     } catch (err) {
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, isAdmin: !makeAdmin } : u)));
       toast.error(err instanceof Error ? err.message : "Could not update admin status.");
+    }
+  }
+
+  async function handleToggleFranchise(userId: string, makeFranchise: boolean) {
+    const target = users.find((u) => u.id === userId);
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, isFranchiseOwner: makeFranchise } : u)),
+    );
+    try {
+      await updateUserFranchiseStatus(userId, makeFranchise, { targetEmail: target?.email });
+      toast.success(
+        makeFranchise
+          ? "Marked as franchise owner — 50% off new subscriptions."
+          : "Franchise owner status removed.",
+      );
+      refreshAuditLog();
+    } catch (err) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isFranchiseOwner: !makeFranchise } : u)),
+      );
+      toast.error(err instanceof Error ? err.message : "Could not update franchise status.");
     }
   }
 
@@ -515,6 +545,7 @@ function AdminPanel() {
                 onToggleExpand={() => setExpandedId(expandedId === u.id ? null : u.id)}
                 onPlanChange={(plan) => handlePlanChange(u.id, plan)}
                 onToggleAdmin={(makeAdmin) => handleToggleAdmin(u.id, makeAdmin)}
+                onToggleFranchise={(makeFranchise) => handleToggleFranchise(u.id, makeFranchise)}
                 onDelete={() => handleDeleteUser(u.id)}
                 onImpersonate={() => handleImpersonateUser(u.id)}
                 delayMs={Math.min(i * 40, 320)}
@@ -558,6 +589,7 @@ function AdminPanel() {
     { key: "beta", label: "Beta Signups", count: betaLeadsLoading ? null : betaLeads.length },
     { key: "beta_feedback", label: "Beta Feedback", count: null },
     { key: "appointments", label: "Appointments", count: null },
+    { key: "county_mail", label: "County Mail", count: null },
     { key: "support", label: "Support", count: null },
     { key: "activity", label: "Activity Log", count: auditLogLoading ? null : auditLog.length },
     { key: "settings", label: "Settings", count: null },
@@ -799,6 +831,7 @@ function AdminPanel() {
       {activeTab === "beta_feedback" && <AdminBetaFeedback />}
 
       {activeTab === "appointments" && <AdminAppointments />}
+      {activeTab === "county_mail" && <AdminCountyMailbox />}
       {activeTab === "support" && <AdminSupportEscalations />}
 
       {activeTab === "activity" && (
@@ -1616,6 +1649,7 @@ function UserRow({
   onToggleExpand,
   onPlanChange,
   onToggleAdmin,
+  onToggleFranchise,
   onDelete,
   onImpersonate,
   delayMs = 0,
@@ -1636,6 +1670,7 @@ function UserRow({
   onToggleExpand: () => void;
   onPlanChange: (plan: PlanValue) => void;
   onToggleAdmin: (makeAdmin: boolean) => void;
+  onToggleFranchise: (makeFranchise: boolean) => void;
   onDelete: () => void;
   onImpersonate: () => void;
   delayMs?: number;
@@ -1687,6 +1722,9 @@ function UserRow({
               {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
               {record.isAdmin && (
                 <span className="ml-2 badge-soft text-[10px] align-middle">Admin</span>
+              )}
+              {record.isFranchiseOwner && (
+                <span className="ml-2 badge-soft-warning text-[10px] align-middle">Franchise</span>
               )}
             </h3>
             {subLine && <p className="text-sm text-muted-foreground">{subLine}</p>}
@@ -1748,6 +1786,14 @@ function UserRow({
               {record.isAdmin ? "Remove Admin" : "Make Admin"}
             </button>
           )}
+          {/* Verified franchise owners get 50% off every NEW property
+              subscription (applied as a Stripe coupon at checkout). */}
+          <button
+            onClick={() => onToggleFranchise(!record.isFranchiseOwner)}
+            className="btn-outline text-sm"
+          >
+            {record.isFranchiseOwner ? "Remove Franchise" : "Mark Franchise Owner"}
+          </button>
           {!isSelf && (
             <button onClick={onDelete} className="btn-outline text-sm text-destructive">
               Delete User

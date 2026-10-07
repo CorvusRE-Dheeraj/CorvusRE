@@ -1,7 +1,8 @@
 // Deploy via CLI: `supabase functions deploy record-service-agreement`.
 //
-// Records an Owner's acceptance of the CorvusPT Service Agreement (the
-// "Agree & Continue" step in ProtestAuthorizationFlow). Writes happen here,
+// Records the CorvusPT Service Agreement for one property when its owner asks for
+// a protest — executed with the signature from their signed Engagement Packet
+// (engagementPacketId), which authorizes applying it to each property. Writes happen here,
 // not from the client, so the stored agreement text is the canonical
 // server-side template filled with the property's real fields, and the IP /
 // user-agent are captured from the request rather than trusted from the
@@ -24,9 +25,12 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { propertyId, protestId } = (await req.json()) as {
+    const { propertyId, protestId, engagementPacketId } = (await req.json()) as {
       propertyId?: string;
       protestId?: string | null;
+      // The signed Engagement Packet whose signature executes this property's
+      // agreement (see record-engagement-packet). Verified to be the caller's own.
+      engagementPacketId?: string | null;
     };
     if (typeof propertyId !== "string" || !propertyId) {
       return new Response(JSON.stringify({ error: "propertyId is required" }), {
@@ -69,6 +73,23 @@ Deno.serve(async (req: Request) => {
         status: 404,
         headers: corsHeaders,
       });
+    }
+
+    let packetId: string | null = null;
+    if (typeof engagementPacketId === "string" && engagementPacketId) {
+      const { data: packet } = await adminClient
+        .from("engagement_packets")
+        .select("id")
+        .eq("id", engagementPacketId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!packet) {
+        return new Response(JSON.stringify({ error: "Signed agreement not found." }), {
+          status: 404,
+          headers: corsHeaders,
+        });
+      }
+      packetId = packet.id as string;
     }
 
     const { data: profile } = await adminClient
@@ -145,6 +166,7 @@ Deno.serve(async (req: Request) => {
         agreement_version: SERVICE_AGREEMENT_VERSION,
         agreement_text: agreementText,
         document_id: documentId,
+        engagement_packet_id: packetId,
         ip_address: ipAddress,
         user_agent: userAgent,
         accepted_at: acceptedAt,

@@ -120,6 +120,18 @@ export async function cadLookupPreview(
   );
 }
 
+// Search-box ID search: a Property ID or Geographic ID typed
+// with no county — every county's matching record (a short numeric ID can
+// exist in several), each carrying both IDs. See cad-lookup's idSearch.
+export async function cadSearchById(id: string, signal?: AbortSignal): Promise<CadRecord[]> {
+  const res = await invokeEdgeFunction<{ records: CadRecord[] }>(
+    "cad-lookup",
+    { idSearch: id },
+    signal,
+  );
+  return res.records ?? [];
+}
+
 // A direct, exact lookup by account/parcel number for a single named county —
 // bypasses address parsing entirely (see queryByAccountNumber's own comment
 // in the edge function). Used by the "Didn't find your property? Enter
