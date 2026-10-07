@@ -233,6 +233,7 @@ import { LoadingLine } from "@/components/LoadingLine";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { PropertyImage } from "@/components/PropertyImage";
+import { StreetViewComparison } from "@/components/StreetViewComparison";
 import {
   hashModuleInput,
   getCachedModuleResult,
@@ -10094,6 +10095,14 @@ function Module5Content({
           ))}
         </div>
       </div>
+
+      {/* Street View: the visible exterior against the nearest comparables. */}
+      <StreetViewComparison
+        address={state.address}
+        cad={state.cad}
+        accountNumber={state.accountNumber}
+        totalValue={state.totalValue}
+      />
 
       {/* 2. What May Be Affecting Its Value — real AI-grounded findings only. */}
       {affectingValue.length > 0 && (

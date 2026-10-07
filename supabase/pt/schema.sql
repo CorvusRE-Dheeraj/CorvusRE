@@ -3152,3 +3152,23 @@ create policy "Admins can view all assessment changes"
   on public.assessment_changes for select using (public.is_admin());
 -- Last time the monitor re-read this property's county record.
 alter table public.properties add column if not exists assessment_checked_at timestamptz;
+
+-- Street View condition comparisons (streetview-condition edge function):
+-- the subject's and nearby comparables' visible exterior condition, rated
+-- from Street View and compared. Kept per owner and county account so the
+-- AI Report shows the last run instead of re-fetching and re-rating.
+create table if not exists public.streetview_conditions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  cad text not null,
+  account_number text not null,
+  comparison jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, cad, account_number)
+);
+alter table public.streetview_conditions enable row level security;
+drop policy if exists "Users manage their own street view comparisons" on public.streetview_conditions;
+create policy "Users manage their own street view comparisons"
+  on public.streetview_conditions for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
