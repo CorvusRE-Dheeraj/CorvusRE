@@ -2953,3 +2953,64 @@ create policy "Admins can view all county emails"
 --                                     'Content-Type', 'application/json'),
 --       body := '{}'::jsonb);
 --   $$);
+
+-- =========================================================================
+-- Property Issues (Oct 2026): city/county notices, violations and other
+-- property issues an owner has to resolve — tracked per property with a status
+-- flow (new → action_required → service_scheduled → inspection_pending →
+-- resolved), the notice's extracted facts, AI guidance, cost guidance, linked
+-- proof documents and reminders. See apps/pt/src/lib/property-issues.ts.
+create table if not exists public.property_issues (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  property_id uuid not null references public.properties (id) on delete cascade,
+  -- 'manual' typed in, 'upload' read from an uploaded notice, 'city_data' fetched
+  -- from a city's open data (external_ref = that city's case number).
+  source text not null default 'manual' check (source in ('manual', 'upload', 'city_data')),
+  external_ref text,
+  category text not null default 'other' check (category in (
+    'dumping', 'grass', 'maintenance', 'court_order', 'code_offense',
+    'inspection', 'fine', 'compliance_deadline', 'other')),
+  title text not null,
+  description text,
+  issued_on date,
+  deadline date,
+  inspection_date date,
+  court_date date,
+  fine_amount numeric,
+  fine_due date,
+  required_action text,
+  authority text,
+  authority_contact text,
+  consequences text,
+  -- AI guidance and cost guidance, as produced by analyze-property-issue.
+  guidance jsonb,
+  cost_estimate jsonb,
+  provider_types text[] not null default '{}',
+  status text not null default 'new' check (status in (
+    'new', 'action_required', 'service_scheduled', 'inspection_pending', 'resolved')),
+  source_document_id uuid references public.documents (id) on delete set null,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists property_issues_external_ref_key
+  on public.property_issues (property_id, source, external_ref) where external_ref is not null;
+create index if not exists property_issues_user_idx on public.property_issues (user_id, status);
+alter table public.property_issues enable row level security;
+drop policy if exists "Users manage their own property issues" on public.property_issues;
+create policy "Users manage their own property issues"
+  on public.property_issues for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all property issues" on public.property_issues;
+create policy "Admins can view all property issues"
+  on public.property_issues for select using (public.is_admin());
+
+-- Proof / notice documents belong to an issue; reminders for an issue's dates are
+-- replaced when its dates change and cleared when it's resolved.
+alter table public.documents
+  add column if not exists property_issue_id uuid references public.property_issues (id) on delete set null;
+grant update (property_issue_id) on public.documents to authenticated;
+alter table public.user_reminders
+  add column if not exists property_issue_id uuid references public.property_issues (id) on delete cascade;
