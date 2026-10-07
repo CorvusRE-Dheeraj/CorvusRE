@@ -3112,3 +3112,43 @@ create policy "Users manage their own mock hearings"
 drop policy if exists "Admins can view all mock hearings" on public.mock_hearings;
 create policy "Admins can view all mock hearings"
   on public.mock_hearings for select using (public.is_admin());
+
+-- Annual "assessment changed" monitoring (monitor-assessments edge function,
+-- weekly): every change the job finds in a property's county value — a new
+-- tax year's notice value or a revision — is logged here, emailed to the
+-- owner and shown in the dashboard until they've seen it.
+create table if not exists public.assessment_changes (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references public.properties (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('new_year', 'revised')),
+  tax_year integer not null,
+  prior_year integer,
+  prior_value numeric,
+  new_value numeric not null,
+  change_pct numeric,
+  level text,
+  protest_deadline_estimate date,
+  detected_at timestamptz not null default now(),
+  emailed_at timestamptz,
+  seen_at timestamptz
+);
+create unique index if not exists assessment_changes_once
+  on public.assessment_changes (property_id, tax_year, new_value);
+create index if not exists assessment_changes_user_idx
+  on public.assessment_changes (user_id, detected_at desc);
+alter table public.assessment_changes enable row level security;
+drop policy if exists "Users read their own assessment changes" on public.assessment_changes;
+create policy "Users read their own assessment changes"
+  on public.assessment_changes for select using (auth.uid() = user_id);
+drop policy if exists "Users mark their own assessment changes seen" on public.assessment_changes;
+create policy "Users mark their own assessment changes seen"
+  on public.assessment_changes for update
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+revoke update on public.assessment_changes from authenticated;
+grant update (seen_at) on public.assessment_changes to authenticated;
+drop policy if exists "Admins can view all assessment changes" on public.assessment_changes;
+create policy "Admins can view all assessment changes"
+  on public.assessment_changes for select using (public.is_admin());
+-- Last time the monitor re-read this property's county record.
+alter table public.properties add column if not exists assessment_checked_at timestamptz;

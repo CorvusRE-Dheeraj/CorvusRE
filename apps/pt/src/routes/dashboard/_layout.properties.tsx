@@ -46,6 +46,7 @@ import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import { CasePreviewFor } from "@/components/CasePreview";
 import { PortfolioScreening } from "@/components/PortfolioScreening";
+import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
 import { screenPortfolio } from "@/lib/portfolio-screening";
 import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
@@ -920,6 +921,16 @@ function Properties() {
         onOpenChange={setBulkOpen}
         onDone={handleBulkDone}
       />
+
+      {!propertiesLoading && user && properties.length > 0 && (
+        <div className="mt-6">
+          <AssessmentChangesBanner
+            userId={user.id}
+            properties={properties}
+            onReview={openAiReport}
+          />
+        </div>
+      )}
 
       {!propertiesLoading && screening && (
         <PortfolioScreening screening={screening} onActivate={setProtestingProperty} />

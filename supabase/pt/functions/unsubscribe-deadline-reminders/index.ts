@@ -36,6 +36,9 @@ function page(title: string, body: string, status = 200): Response {
 
 Deno.serve(async (req: Request) => {
   const token = new URL(req.url).searchParams.get("token");
+  // kind=assessment turns off the assessment-change alerts (monitor-assessments)
+  // instead of the deadline reminders — same token, same no-login link.
+  const assessment = new URL(req.url).searchParams.get("kind") === "assessment";
   if (!token) {
     return page("Link incomplete", "This unsubscribe link is missing its token.", 400);
   }
@@ -58,9 +61,22 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const prefs = { ...(profile.notification_prefs ?? {}), deadline_reminders_email: false };
-  await admin.from("profiles").update({ notification_prefs: prefs }).eq("id", profile.id);
+  const prefs = {
+    ...(profile.notification_prefs ?? {}),
+    ...(assessment
+      ? { assessment_alerts_email: false }
+      : { deadline_reminders_email: false }),
+  };
+  await admin
+    .from("profiles")
+    .update({ notification_prefs: prefs })
+    .eq("id", profile.id);
 
+  if (assessment)
+    return page(
+      "You're unsubscribed",
+      "You won't get any more assessment-change emails. Changes still appear on your CorvusPT dashboard, and you can turn the emails back on any time under Settings → Notification Preferences.",
+    );
   return page(
     "You're unsubscribed",
     "You won't get any more deadline or hearing-date reminder emails. You can turn them back on any time from CorvusPT under Settings → Notification Preferences.",

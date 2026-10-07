@@ -45,6 +45,7 @@ import {
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { useSavingsBackfill } from "@/hooks/use-savings-backfill";
 import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
+import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import {
   getEffectiveTaxRate,
@@ -585,6 +586,10 @@ function Overview() {
           </span>
         }
       />
+
+      {loaded && user && properties.length > 0 && (
+        <AssessmentChangesBanner userId={user.id} properties={properties} onReview={openAiReport} />
+      )}
 
       {loaded && nextActions.length > 0 && (
         <section aria-label="Next required actions" className="grid gap-3">
