@@ -3281,7 +3281,7 @@ function Report() {
                       >
                         {subscribingTier === tier
                           ? "Redirecting…"
-                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo, billed annually`}
+                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "Expert/Managed Help"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo, billed annually`}
                       </button>
                     );
                   })}

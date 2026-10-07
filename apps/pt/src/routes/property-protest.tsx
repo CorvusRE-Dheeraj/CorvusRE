@@ -15,10 +15,10 @@ export const Route = createFileRoute("/property-protest")({
       {
         name: "description",
         content:
-          "AI-driven Texas real property protest: comp analysis, evidence packet, deadline tracking, and CorvusPT-managed filing and hearings.",
+          "AI-driven Texas real property protest: comp analysis, evidence packet and deadline tracking — file it yourself with Owner-Managed CorvusPT, or have our team file and represent you with Expert/Managed Help.",
       },
       { property: "og:title", content: "AI-driven Texas Property Protest" },
-      { property: "og:description", content: "AI evidence + human-managed filing and hearings." },
+      { property: "og:description", content: "AI evidence. You file it — or our team does." },
     ],
   }),
   component: Page,
@@ -112,7 +112,8 @@ function Page() {
   const bullets = [
     "AI reviews CAD value against comparable sales and equity comps.",
     "AI Evidence Builder assembles a hearing-ready packet.",
-    "CorvusPT staff files, communicates with county, and represents at hearings.",
+    "Owner-Managed CorvusPT: you file and attend the hearing, with AI-prepared evidence and step-by-step instructions.",
+    "Expert/Managed Help: CorvusPT's team files, communicates with the county, and represents you at the hearing.",
     "Deadline engine tracks your protest window automatically.",
   ];
   return (
@@ -120,11 +121,12 @@ function Page() {
       <div className="max-w-3xl">
         <span className="badge-soft">Real Property Protest</span>
         <h1 className="mt-3 text-4xl md:text-5xl font-semibold">
-          Protest with AI evidence. Filed and defended by humans.
+          Protest with AI evidence. File it yourself — or let our team.
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
-          AI handles research, comps, and evidence. CorvusPT handles filing, county communication,
-          hearings, and settlement.
+          AI handles research, comps, and evidence. Then you choose who files: you, with
+          Owner-Managed CorvusPT, or CorvusPT&apos;s team, with Expert/Managed Help — which handles
+          filing, county communication, hearings, and settlement.
         </p>
         <ul className="mt-6 grid gap-3">
           {bullets.map((b, i) => (
@@ -198,11 +200,7 @@ function ProtestedPropertyCard({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Link
-          to="/dashboard/case"
-          search={{ propertyId: property.id }}
-          className="btn-outline"
-        >
+        <Link to="/dashboard/case" search={{ propertyId: property.id }} className="btn-outline">
           View Case
         </Link>
         <button type="button" onClick={goToModules} className="btn-outline">

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ScrollReveal } from "@/components/ScrollReveal";
+import { ServiceLanes } from "@/components/ServiceLanes";
 
 export const Route = createFileRoute("/how-it-works")({
   head: () => ({
@@ -8,7 +9,7 @@ export const Route = createFileRoute("/how-it-works")({
       {
         name: "description",
         content:
-          "See how CorvusPT combines AI analysis with CorvusPT staff review to protest values, file BPP, track deadlines, and manage Texas property tax savings.",
+          "See how CorvusPT works: a free AI property review, then either protest it yourself with Owner-Managed CorvusPT or have our team file and represent you with Expert/Managed Help.",
       },
       { property: "og:title", content: "How CorvusPT works" },
       {
@@ -43,8 +44,8 @@ const STEPS = [
   },
   {
     n: 5,
-    t: "Corvus AI or Our Team Handles the Protest",
-    d: "Depending on your subscription, Corvus AI or our team handles the filing and county communication. You'll always see your own hearing date, and nothing is settled without your approval first.",
+    t: "You File — or Our Team Does",
+    d: "With Owner-Managed CorvusPT, you file, attend the hearing and talk to the county, using the evidence and step-by-step instructions the AI prepares. With Expert/Managed Help, CorvusPT's team files, talks to the county and represents you — and nothing is settled without your approval.",
   },
   {
     n: 6,
@@ -88,6 +89,17 @@ function HowItWorks() {
             </li>
           ))}
         </ol>
+
+        {/* Step 5's choice, spelled out — see lib/service-lanes.ts. */}
+        <div className="mt-14">
+          <h2 className="font-serif text-3xl font-semibold">Three ways to work with CorvusPT</h2>
+          <p className="mt-2 text-muted-foreground">
+            Each lane is its own workflow. Pick one — you can always move up a lane later.
+          </p>
+          <div className="mt-6">
+            <ServiceLanes />
+          </div>
+        </div>
 
         <ScrollReveal>
           <div className="mt-12 card-elev p-8 bg-primary text-primary-foreground">

@@ -699,7 +699,7 @@ function AdminPanel() {
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Customers on the CorvusPT Managed plan, filed on their behalf.
+            Customers on the Expert/Managed Help plan, filed on their behalf.
           </p>
           {renderUserRows(corvusManagedUsers)}
         </div>

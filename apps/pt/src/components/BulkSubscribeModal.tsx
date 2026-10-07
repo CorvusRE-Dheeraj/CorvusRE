@@ -26,7 +26,7 @@ import { getErrorMessage } from "@/lib/error-message";
 
 const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
+  corvusrf_managed: "Expert/Managed Help",
 };
 
 // Batch-aware ANNUAL price estimate (list price, before the launch/franchise

@@ -17,7 +17,7 @@ export type LegacyBracket = "under2m" | "mid2m10m" | "over10m";
 
 export const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
+  corvusrf_managed: "Expert/Managed Help",
 };
 
 export const BRACKET_LABEL: Record<Bracket | LegacyBracket, string> = {
