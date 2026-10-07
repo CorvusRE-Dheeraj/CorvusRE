@@ -45,6 +45,9 @@ import {
 import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import { CasePreviewFor } from "@/components/CasePreview";
+import { PortfolioScreening } from "@/components/PortfolioScreening";
+import { screenPortfolio } from "@/lib/portfolio-screening";
+import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { renderInline as renderMarkdownInline } from "@/components/MarkdownLite";
@@ -237,6 +240,7 @@ function Properties() {
   // ACTION (case-pipeline.ts) — keyed by protest id.
   const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
+  const [scoresLoaded, setScoresLoaded] = useState(false);
   const [authorizingProperty, setAuthorizingProperty] = useState<PropertyRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [ownershipsOpen, setOwnershipsOpen] = useState(false);
@@ -305,7 +309,8 @@ function Properties() {
       .catch((err) => console.error(err));
     listHealthScores(uid)
       .then(setHealthScores)
-      .catch((err) => console.error(err));
+      .catch((err) => console.error(err))
+      .finally(() => setScoresLoaded(true));
     listDocuments(uid)
       .then(setDocuments)
       .catch((err) => console.error("Could not load documents for the Evidence column:", err));
@@ -375,6 +380,15 @@ function Properties() {
   useEffect(() => writePref(LS_FILTER, statusFilter), [statusFilter]);
 
   useSavingsBackfill(properties, setProperties);
+  // Scores the properties the screening needs — only once the stored scores
+  // have loaded, so it never recomputes one that's already on file.
+  useHealthScoreBackfill(scoresLoaded ? properties : [], healthScores, setHealthScores);
+
+  // Free portfolio screening: every property not yet activated.
+  const screening = useMemo(() => {
+    const unactivated = properties.filter((p) => !isBeta && p.subscriptionStatus !== "active");
+    return unactivated.length >= 2 ? screenPortfolio(unactivated, healthScores) : null;
+  }, [properties, healthScores, isBeta]);
 
   // Starts a real, one-click checkout for exactly this property — see
   // startPropertyCheckout in billing.ts. Opens in a new tab (newTab: true)
@@ -906,6 +920,10 @@ function Properties() {
         onOpenChange={setBulkOpen}
         onDone={handleBulkDone}
       />
+
+      {!propertiesLoading && screening && (
+        <PortfolioScreening screening={screening} onActivate={setProtestingProperty} />
+      )}
 
       {!propertiesLoading && properties.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">

@@ -32,9 +32,9 @@ export const SERVICE_LANES: ServiceLane[] = [
     name: "Free Property Review",
     tagline: "Find out if you're overpaying.",
     price: "Free",
-    priceNote: "No card required · one property",
+    priceNote: "No card required · screen your whole portfolio",
     buying:
-      "An AI review of your property's assessed value against your county's official record and comparable properties, with an estimate of what a protest could save.",
+      "An AI review of each property's assessed value against your county's official record and comparable properties, with an estimate of what a protest could save. Add your whole portfolio and Corvus screens it into high-priority, moderate and probably-not-worth-it cases — you pay only to activate the ones you choose.",
     whoFiles: "Nothing is filed — this is a review only.",
     whoAppears: "No hearing.",
     whoCommunicates: "No one contacts the county.",
