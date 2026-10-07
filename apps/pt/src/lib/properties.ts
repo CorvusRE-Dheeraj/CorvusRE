@@ -146,19 +146,91 @@ export async function listProperties(userId: string): Promise<PropertyRecord[]> 
 // match). Returns the existing row as-is rather than updating it, since
 // properties intentionally have no update policy — re-deriving fresher data
 // means deleting and re-adding, not silently overwriting what's on file.
+//
+// Both keys are compared normalized, not raw: the same record comes back as
+// "Kaufman CAD" or "Kaufman", and the same address as
+// "601 RIDGECREST RD, FORNEY TX 75126" or "601 Ridgecrest Road, Forney, TX
+// 75126" depending on the source — an exact match missed real duplicates.
 export async function findExistingProperty(
   userId: string,
-  property: { address: string; cad?: string; accountNumber?: string },
+  property: { address: string; cad?: string | null; accountNumber?: string | null },
 ): Promise<PropertyRecord | null> {
-  let query = supabase.from("properties").select(SELECT_COLUMNS).eq("user_id", userId);
-  query =
-    property.accountNumber && property.cad
-      ? query.eq("cad", property.cad).eq("account_number", property.accountNumber)
-      : query.ilike("address", property.address.trim());
-  const { data, error } = await query.limit(1);
+  const { data, error } = await supabase
+    .from("properties")
+    .select(SELECT_COLUMNS)
+    .eq("user_id", userId);
   if (error) throw error;
-  const row = (data as PropertyRow[])[0];
+  const row = (data as PropertyRow[]).find((r) =>
+    isSameProperty(property, {
+      address: r.address,
+      cad: r.cad,
+      accountNumber: r.account_number,
+    }),
+  );
   return row ? fromRow(row) : null;
+}
+
+type PropertyKey = { address: string; cad?: string | null; accountNumber?: string | null };
+
+const normCad = (c: string) =>
+  c
+    .toLowerCase()
+    .replace(/appraisal district|central|county|\bcad\b/g, "")
+    .replace(/[^a-z]/g, "");
+const normAccount = (a: string) =>
+  a
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/^0+/, "");
+
+const STREET_SUFFIX: Record<string, string> = {
+  ROAD: "RD",
+  STREET: "ST",
+  AVENUE: "AVE",
+  DRIVE: "DR",
+  BOULEVARD: "BLVD",
+  LANE: "LN",
+  COURT: "CT",
+  CIRCLE: "CIR",
+  PARKWAY: "PKWY",
+  HIGHWAY: "HWY",
+  PLACE: "PL",
+  TRAIL: "TRL",
+  FREEWAY: "FWY",
+  NORTH: "N",
+  SOUTH: "S",
+  EAST: "E",
+  WEST: "W",
+};
+
+// "601 Ridgecrest Road, Forney, TX 75126, USA" → "601 RIDGECREST RD|75126".
+export function addressMatchKey(address: string): string | null {
+  const upper = address.toUpperCase();
+  const street = upper.split(",")[0];
+  const tokens = street
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => STREET_SUFFIX[t] ?? t);
+  if (tokens.length < 2 || !/^\d/.test(tokens[0])) return null;
+  const zip = upper.match(/\b(\d{5})(?:-\d{4})?\s*(?:,\s*USA)?\s*$/)?.[1] ?? "";
+  return `${tokens.join(" ")}|${zip}`;
+}
+
+export function isSameProperty(a: PropertyKey, b: PropertyKey): boolean {
+  if (a.accountNumber && b.accountNumber) {
+    const sameAccount = normAccount(a.accountNumber) === normAccount(b.accountNumber);
+    // Same account number in the same appraisal district is the same record;
+    // without both districts, an account match alone is too weak to trust.
+    if (a.cad && b.cad) return sameAccount && normCad(a.cad) === normCad(b.cad);
+    if (sameAccount) return true;
+  }
+  const ka = addressMatchKey(a.address);
+  const kb = addressMatchKey(b.address);
+  if (!ka || !kb) return a.address.trim().toLowerCase() === b.address.trim().toLowerCase();
+  const [sa, za] = ka.split("|");
+  const [sb, zb] = kb.split("|");
+  return sa === sb && (!za || !zb || za === zb);
 }
 
 export async function addProperty(

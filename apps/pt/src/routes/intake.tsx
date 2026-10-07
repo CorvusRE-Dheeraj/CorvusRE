@@ -369,6 +369,24 @@ function Intake() {
   // nicety now, not a correctness requirement, since the estimate would
   // come out identical either way.
   async function computeSavingsAndAdvance(next: IntakeState, requestId: number) {
+    // Is this property already on the user's account (same CAD account, or
+    // the same address however it's typed)? Checked first, in parallel with
+    // the estimate, so the notice is up before they can click Continue —
+    // whether they got here by address search or the manual account lookup.
+    if (user && next.address) {
+      findExistingProperty(user.id, {
+        address: next.address,
+        cad: next.cad,
+        accountNumber: next.accountNumber,
+      })
+        .then((existing) => {
+          if (requestIdRef.current !== requestId) return;
+          setAlreadySaved(existing);
+          if (existing)
+            toast("You've already added this property", { description: existing.address });
+        })
+        .catch((err) => console.error(err));
+    }
     const savingsKey =
       next.cad && next.accountNumber ? `${next.cad}::${next.accountNumber}` : next.address;
     let nextSavings: SavingsEstimate;
@@ -391,18 +409,6 @@ function Intake() {
     if (requestIdRef.current !== requestId) return;
     setSavings(nextSavings);
     setStep(nextSavings ? "savings" : "confirm");
-    // Check whether this exact CAD record is already on the user's account —
-    // shown as a notice on the confirm screen instead of letting them hit
-    // "Confirm Property" again for something already saved.
-    if (user && next.address) {
-      findExistingProperty(user.id, {
-        address: next.address,
-        cad: next.cad,
-        accountNumber: next.accountNumber,
-      })
-        .then(setAlreadySaved)
-        .catch((err) => console.error(err));
-    }
   }
 
   async function runValidation(addr: string) {
