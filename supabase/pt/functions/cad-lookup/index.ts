@@ -16,6 +16,7 @@
 // queryBexar) and has no land/improvement split, only a combined total. Addresses
 // outside these eleven counties correctly fall through to "not matched" rather than
 // returning fabricated data.
+import { ID_SEARCH_TIMEOUT_MS, looksLikePropertyId } from "../_shared/property-id.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -140,6 +141,20 @@ const STRUCTURE_FIELDS_BY_CAD: Record<
 
 // The extra comma-separated outFields each county needs, derived from the map
 // above. Append to a county's existing outFields string.
+// The county's Geographic ID — the account number printed on its appraisal
+// notices and tax bills — where its parcel layer publishes it alongside the
+// internal Property ID we key on (Denton pid 34086 = geo A1246A-000-0023-0000).
+// Dallas/Tarrant/Harris key on the account number itself, so they have one ID.
+// Verified live against each layer, Oct 2026.
+const GEO_FIELD_BY_CAD: Record<string, string> = {
+  "Denton Central Appraisal District": "geoID",
+  "Collin Central Appraisal District": "geoID",
+  "Travis Central Appraisal District": "geo_id",
+  "Grayson Central Appraisal District": "GeoId",
+  "Bexar Appraisal District": "PAMaps.dbo.web_map_property.geo_id",
+  "Nueces County Appraisal District": "geo_id",
+};
+
 function structureOutFields(cad: string): string {
   const f = STRUCTURE_FIELDS_BY_CAD[cad];
   if (!f) return "";
@@ -153,6 +168,11 @@ function applyStructureDetail(
   record: CadRecord,
   attrs: Record<string, string | number | null | undefined>,
 ): CadRecord {
+  const geoField = GEO_FIELD_BY_CAD[record.cad];
+  const geoRaw = geoField ? attrs[geoField] : null;
+  if (!record.geoId && geoRaw != null && String(geoRaw).trim()) {
+    record = { ...record, geoId: String(geoRaw).trim() };
+  }
   const f = STRUCTURE_FIELDS_BY_CAD[record.cad];
   if (!f) return record;
   const num = (key?: string): number | null => {
@@ -1081,7 +1101,7 @@ async function nearbyFeaturesWithFallback(
 const COLLIN_URL =
   "https://services2.arcgis.com/uXyoacYrZTPTKD3R/ArcGIS/rest/services/CCAD_Parcel_Feature_Set/FeatureServer/4/query";
 const COLLIN_OUT_FIELDS =
-  "ownerName,situsConcat,currValLand,currValImprv,currValAppraised,currValYear,prevValLand,prevValImprv,prevValAppraised,prevValYear,PROP_ID,propType,propSubType,propCategoryCode,propYear,imprvMainArea,imprvYearBuilt,imprvClassCd,landSizeAcres,landSizeSqft";
+  "ownerName,situsConcat,currValLand,currValImprv,currValAppraised,currValYear,prevValLand,prevValImprv,prevValAppraised,prevValYear,PROP_ID,propType,propSubType,propCategoryCode,propYear,imprvMainArea,imprvYearBuilt,imprvClassCd,landSizeAcres,landSizeSqft,geoID";
 
 async function queryCollin(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
@@ -1228,7 +1248,7 @@ function acresFromLegalText(legal: string | null | undefined): number | null {
 
 const DENTON_URL = "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels_FC/MapServer/0/query";
 const DENTON_OUT_FIELDS =
-  "name,situs_full_address,landHSValue,landNHSValue,improvementValue,ownerMarketValue,pid,pYear,propType,stateCodes,imprvMainArea,imprvActualYearBuilt,imprvClasses,legalAcreage,land_sqft";
+  "name,situs_full_address,landHSValue,landNHSValue,improvementValue,ownerMarketValue,pid,pYear,propType,stateCodes,imprvMainArea,imprvActualYearBuilt,imprvClasses,legalAcreage,land_sqft,geoID";
 
 async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
   // Denton County's own GIS (gis.dentoncounty.gov) — full ~382k-parcel countywide
@@ -1584,7 +1604,7 @@ async function queryWilliamson(address: string, mode: QueryMode = "exact"): Prom
 const GRAYSON_URL =
   "https://services1.arcgis.com/EVxyUkKpll765a5X/arcgis/rest/services/Grayson_Appraisal_Parcel_Map_WFL1/FeatureServer/13/query";
 const GRAYSON_OUT_FIELDS =
-  "OwnerName,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,LandValue,ImprovementValue,MarketValue,PropertyNumber,Year,LegalAcreage";
+  "OwnerName,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,LandValue,ImprovementValue,MarketValue,PropertyNumber,Year,LegalAcreage,GeoId";
 
 async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
@@ -1661,7 +1681,7 @@ async function queryTravis(address: string, mode: QueryMode = "exact"): Promise<
   const url =
     "https://gis.traviscountytx.gov/server1/rest/services/Boundaries_and_Jurisdictions/TCAD_public/MapServer/0/query" +
     `?where=${encodeURIComponent(where)}` +
-    "&outFields=situs_num,situs_street_prefx,situs_street,situs_street_suffix,situs_city,PROP_ID,tcad_acres" +
+    "&outFields=situs_num,situs_street_prefx,situs_street,situs_street_suffix,situs_city,PROP_ID,tcad_acres,geo_id" +
     `&resultRecordCount=${mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT}` +
     "&returnGeometry=false&f=json";
 
@@ -1728,6 +1748,7 @@ const BCAD_FIELDS = {
   taxYear: "PAMaps.dbo.web_map_property.prop_val_yr",
   propType: "PAMaps.dbo.web_map_property.prop_type_desc",
   propId: "PAMaps.DBO.ParcelFabric_Parcels.PROP_ID",
+  geoId: "PAMaps.dbo.web_map_property.geo_id",
 };
 
 const BEXAR_URL = "https://maps.bcad.org/arcgis/rest/services/PAMapSearch/MapServer/6/query";
@@ -1773,6 +1794,7 @@ async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<C
     improvementValue: null,
     totalValue: parseDollarString(attrs[BCAD_FIELDS.appraisedVal]),
     taxYear: attrs[BCAD_FIELDS.taxYear] != null ? Number(attrs[BCAD_FIELDS.taxYear]) : null,
+    geoId: (attrs[BCAD_FIELDS.geoId] as string)?.trim() || null,
   }));
 }
 
@@ -2269,6 +2291,7 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
       improvementValue: null,
       totalValue: parseDollarString(attrs[BCAD_FIELDS.appraisedVal]),
       taxYear: attrs[BCAD_FIELDS.taxYear] != null ? Number(attrs[BCAD_FIELDS.taxYear]) : null,
+    geoId: (attrs[BCAD_FIELDS.geoId] as string)?.trim() || null,
     }),
   },
   {
@@ -2301,18 +2324,29 @@ async function queryArcgisAccount(
   config: ArcgisAccountConfig,
   accountNumber: string,
 ): Promise<CadRecord | null> {
+  // Matches the county's Property ID, or its Geographic ID / account number
+  // (GEO_FIELD_BY_CAD) — whichever one the owner has from their notice.
+  const geoField = GEO_FIELD_BY_CAD[config.cad];
+  const geoWhere = geoField
+    ? `UPPER(${geoField}) = UPPER('${escapeSqlString(accountNumber)}')`
+    : null;
   let where: string;
   if (config.mode === "numeric") {
     // Only Denton and Travis (see the long comment above) — never build an
     // unquoted numeric SQL fragment from unvalidated input.
-    if (!/^\d+$/.test(accountNumber)) return null;
-    where = `${config.idField} = ${accountNumber}`;
+    if (/^\d+$/.test(accountNumber)) {
+      where = `${config.idField} = ${accountNumber}${geoWhere ? ` OR ${geoWhere}` : ""}`;
+    } else if (geoWhere) {
+      where = geoWhere;
+    } else {
+      return null;
+    }
   } else {
-    where = `UPPER(${config.idField}) = UPPER('${escapeSqlString(accountNumber)}')`;
+    where = `UPPER(${config.idField}) = UPPER('${escapeSqlString(accountNumber)}')${geoWhere ? ` OR ${geoWhere}` : ""}`;
   }
-  // Pull the county's structure / lot fields in the same query when its layer
-  // has them (see STRUCTURE_FIELDS_BY_CAD) — no extra request.
-  const extra = structureOutFields(config.cad);
+  // Pull the county's structure / lot fields (STRUCTURE_FIELDS_BY_CAD) and its
+  // Geographic ID in the same query — no extra request.
+  const extra = [structureOutFields(config.cad), geoField].filter(Boolean).join(",");
   const url =
     `${config.url}?where=${encodeURIComponent(where)}` +
     `&outFields=${config.outFields}${extra ? `,${extra}` : ""}&returnGeometry=false&f=json`;
@@ -3774,6 +3808,26 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: corsHeaders,
       });
+    }
+
+    // ID search from the search box: the owner typed a Property ID or a
+    // Geographic ID / account number from their notice, county unknown — try
+    // it against every county's parcel layer at once. A short numeric ID can
+    // genuinely exist in several counties; every hit is returned with its
+    // county so the owner picks theirs. No enrichment (dropdown speed).
+    if (typeof body.idSearch === "string") {
+      const id = body.idSearch.trim();
+      if (!looksLikePropertyId(id)) {
+        return new Response(JSON.stringify({ records: [] }), { status: 200, headers: corsHeaders });
+      }
+      const settled = await Promise.all([
+        ...ARCGIS_ACCOUNT_LOOKUP.map((config) =>
+          withTimeout(queryArcgisAccount(config, id), ID_SEARCH_TIMEOUT_MS, null),
+        ),
+        withTimeout(queryKaufmanByAccount(id), ID_SEARCH_TIMEOUT_MS, null),
+      ]);
+      const records = settled.filter((r): r is CadRecord => r !== null);
+      return new Response(JSON.stringify({ records }), { status: 200, headers: corsHeaders });
     }
 
     const rawAddress = body.address;

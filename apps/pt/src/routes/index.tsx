@@ -40,6 +40,7 @@ import { WavingRobotIllustration } from "@/assets/illustrations/waving-robot";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
+import { PropertyIds } from "@/components/PropertyIds";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -441,9 +442,10 @@ function Home() {
                           </div>
                         ) : m.record ? (
                           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                            <span className="font-bold text-foreground">
-                              PARCEL: {m.record.accountNumber ?? "—"}
-                            </span>
+                            <PropertyIds
+                              accountNumber={m.record.accountNumber}
+                              geoId={m.record.geoId}
+                            />
                             {" · "}
                             {m.record.cad}
                             {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}

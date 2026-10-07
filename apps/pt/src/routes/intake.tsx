@@ -34,6 +34,7 @@ import { estimateSavings, savingsPctOfBill, type SavingsEstimate } from "@/lib/s
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { HouseIllustration } from "@/assets/illustrations/house";
 import { useFileDrop } from "@/hooks/use-file-drop";
+import { PropertyIds } from "@/components/PropertyIds";
 
 export const Route = createFileRoute("/intake")({
   head: () => ({
@@ -824,9 +825,10 @@ function Intake() {
                       </div>
                     ) : m.record ? (
                       <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                        <span className="font-bold text-foreground">
-                          PARCEL: {m.record.accountNumber ?? "—"}
-                        </span>
+                        <PropertyIds
+                          accountNumber={m.record.accountNumber}
+                          geoId={m.record.geoId}
+                        />
                         {" · "}
                         {m.record.cad}
                         {m.record.totalValue != null && <> · {currency(m.record.totalValue)}</>}
@@ -1214,7 +1216,7 @@ function Intake() {
             <p className="mt-2 text-sm text-muted-foreground">{state.address}</p>
             {state.accountNumber && (
               <p className="text-xs font-medium text-muted-foreground">
-                PARCEL: {state.accountNumber}
+                <PropertyIds accountNumber={state.accountNumber} geoId={state.geoId} />
               </p>
             )}
 
