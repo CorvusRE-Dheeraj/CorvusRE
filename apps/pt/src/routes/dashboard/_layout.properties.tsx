@@ -44,6 +44,7 @@ import {
 } from "@/lib/case-pipeline";
 import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
+import { CasePreviewFor } from "@/components/CasePreview";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { renderInline as renderMarkdownInline } from "@/components/MarkdownLite";
@@ -1283,12 +1284,19 @@ function Properties() {
       )}
 
       {protestingProperty && (
-        <Modal onClose={() => setProtestingProperty(null)}>
+        <Modal wide onClose={() => setProtestingProperty(null)}>
           <div className="p-6">
             <h2 className="font-serif text-xl font-bold">Protest this property</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {protestingProperty.address} — choose how you want to run the protest.
+              Here&apos;s what Corvus found for {protestingProperty.address}. Review it, then choose
+              how you want to run the protest.
             </p>
+            <div className="mt-4">
+              <CasePreviewFor
+                property={protestingProperty}
+                score={healthScores[protestingProperty.id] ?? null}
+              />
+            </div>
             {isCustomPricedValue(protestingProperty.totalValue) ? (
               // $5M+ never reaches checkout (create-checkout-session refuses
               // it too) — custom pricing is quoted by the team.
