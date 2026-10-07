@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { estimateSavings } from "./savings-estimate";
+import { estimateSavings, savingsPctOfBill } from "./savings-estimate";
 import { getComps } from "./cad-comps";
 
 vi.mock("./cad-comps", () => ({
@@ -151,5 +151,16 @@ describe("estimateSavings", () => {
     const first = await estimateSavings(input);
     const second = await estimateSavings(input);
     expect(first).toEqual(second);
+  });
+});
+
+describe("savingsPctOfBill", () => {
+  it("is the savings as a share of value × effective rate", () => {
+    // $900,000 at 1.8% → $16,200 bill; $852 saved ≈ 5.3%.
+    expect(savingsPctOfBill(852, 900_000, 1.8)?.toFixed(1)).toBe("5.3");
+  });
+  it("is null without a bill or savings", () => {
+    expect(savingsPctOfBill(852, null, 1.8)).toBeNull();
+    expect(savingsPctOfBill(0, 900_000, 1.8)).toBeNull();
   });
 });

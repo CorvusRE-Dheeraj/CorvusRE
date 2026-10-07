@@ -30,7 +30,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { LiveSearchLoader } from "@/components/LiveSearchLoader";
 import { useAuth } from "@/lib/auth";
 import { addProperty, findExistingProperty, type PropertyRecord } from "@/lib/properties";
-import { estimateSavings, type SavingsEstimate } from "@/lib/savings-estimate";
+import { estimateSavings, savingsPctOfBill, type SavingsEstimate } from "@/lib/savings-estimate";
 import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { HouseIllustration } from "@/assets/illustrations/house";
 import { useFileDrop } from "@/hooks/use-file-drop";
@@ -1183,6 +1183,19 @@ function Intake() {
                 <p className="mt-1 font-serif text-5xl font-bold text-accent">
                   {currency(savings.amount)}
                 </p>
+                {/* The same savings as a share of this year's estimated bill
+                    (the "Est. Tax Bill This Year" figure below). */}
+                {savingsPctOfBill(savings.amount, state.totalValue, savings.effectiveTaxRatePct) !=
+                  null && (
+                  <p className="mt-1 inline-block rounded-full bg-accent/15 px-3 py-0.5 text-sm font-semibold text-accent">
+                    {savingsPctOfBill(
+                      savings.amount,
+                      state.totalValue,
+                      savings.effectiveTaxRatePct,
+                    )!.toFixed(1)}
+                    % off your tax bill
+                  </p>
+                )}
               </>
             ) : (
               // A real analysis that lands on $0 isn't a failure — it means
