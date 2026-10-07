@@ -35,7 +35,7 @@ export const Route = createFileRoute("/dashboard/_layout/billing")({
 
 const TIER_LABEL: Record<string, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
+  corvusrf_managed: "Expert/Managed Help",
 };
 
 const BRACKET_LABEL: Record<string, string> = Object.fromEntries(

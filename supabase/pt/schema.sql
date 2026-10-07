@@ -3025,3 +3025,36 @@ alter table public.user_reminders
 --                                     'Content-Type', 'application/json'),
 --       body := '{}'::jsonb);
 --   $$);
+
+-- =========================================================================
+-- Case pipeline (Oct 2026): every property's protest runs Case Readiness →
+-- File Protest → Confirm Filing → Request CAD Evidence → Informal → ARB →
+-- Decision → Appeal Decision → Close Case, with one NEXT REQUIRED ACTION shown
+-- at all times (apps/pt/src/lib/case-pipeline.ts). Every stage reads facts the
+-- case already records except "Request CAD Evidence": the owner's written
+-- request for the district's hearing evidence (Tax Code §41.461) and when that
+-- evidence arrived. Owners update their own protests row (existing policy).
+alter table public.protests add column if not exists cad_evidence_requested_at timestamptz;
+alter table public.protests add column if not exists cad_evidence_received_at timestamptz;
+
+-- Commercial valuation worksheet (Oct 2026): the owner's inputs to the AI
+-- Report's six-approach Commercial Valuation panel (income what-ifs, cost per
+-- SF, economic life, impairments with cost to cure) and the resulting
+-- per-approach summary, so they follow the owner across devices and feed the
+-- evidence packet's "Commercial Valuation Summary" page. One row per property.
+create table if not exists public.valuation_worksheets (
+  property_id uuid primary key references public.properties (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  inputs jsonb not null default '{}'::jsonb,
+  summary jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.valuation_worksheets enable row level security;
+drop policy if exists "Users manage their own valuation worksheets" on public.valuation_worksheets;
+create policy "Users manage their own valuation worksheets"
+  on public.valuation_worksheets for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all valuation worksheets" on public.valuation_worksheets;
+create policy "Admins can view all valuation worksheets"
+  on public.valuation_worksheets for select using (public.is_admin());

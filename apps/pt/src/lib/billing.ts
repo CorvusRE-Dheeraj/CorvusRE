@@ -22,7 +22,7 @@ export type Tier = "owner_managed" | "corvusrf_managed";
 // can't import from src/lib).
 export const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
+  corvusrf_managed: "Expert/Managed Help",
 };
 
 // Property pricing (Oct 2026 revision): one fixed plan for properties up to
@@ -207,8 +207,8 @@ export async function resumeBppSubscription(bppAccountId: string): Promise<void>
 
 export const PLAN_OPTIONS: { value: PlanValue; label: string }[] = [
   { value: "free_ai_review", label: "Free AI Review" },
-  { value: "owner_managed", label: "Owner-Managed ($299/mo/property, billed annually)" },
-  { value: "corvusrf_managed", label: "CorvusPT-Managed ($299/mo/property, billed annually)" },
+  { value: "owner_managed", label: "Owner-Managed CorvusPT ($299/mo/property, billed annually)" },
+  { value: "corvusrf_managed", label: "Expert/Managed Help ($299/mo/property, billed annually)" },
   { value: "beta", label: "Beta (free, full access)" },
 ];
 

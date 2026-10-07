@@ -51,3 +51,9 @@ export const assignCountyEmail = (emailId: string, propertyId: string) =>
   call<{ ok: boolean }>("assign", { emailId, propertyId });
 
 export const disconnectCountyMailbox = () => call<{ ok: boolean }>("disconnect");
+
+// CorvusPT's own address for county correspondence — Resend inbound on
+// inbox.corvusre.com, read by county-mail-inbound. Given to appraisal districts
+// as the agent's email and copied on every email CorvusPT drafts to a county,
+// so county replies file themselves under the right case.
+export const CORVUSPT_COUNTY_EMAIL = "county@inbox.corvusre.com";

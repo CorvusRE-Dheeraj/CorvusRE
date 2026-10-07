@@ -1,7 +1,9 @@
 import { CasePhaseGuide } from "@/components/CasePhaseGuide";
 import { centerInStrip } from "@/lib/scroll-into-strip";
 import { GLOSSARY_MAP } from "@/lib/glossary";
-import { CaseNextStepCard, nextStepFor } from "@/components/CaseNextStepCard";
+import { NextRequiredAction, PipelineStepper } from "@/components/CasePipeline";
+import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
+import { casePipeline, localTodayIso, type NoticeFiling } from "@/lib/case-pipeline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
@@ -218,6 +220,11 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { CalendarDays, Scale } from "lucide-react";
 import { PageHero } from "@/components/PageHero";
 import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+
+// Every county email CorvusPT drafts copies its county address, so replies
+// file themselves under the case (see county-mail-inbound).
+const COUNTY_REPLY_LINE = `Please include ${CORVUSPT_COUNTY_EMAIL} on any reply about this protest.`;
 
 // --- Tabbed filing workflow -------------------------------------------------
 // The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
@@ -381,6 +388,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
   "case-hearing-notice": "hearing",
+  "case-cad-evidence": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
   "case-escalation": "decision",
@@ -455,11 +463,16 @@ export function CaseDetailView({
   property: propertyProp,
   protest,
   onBack,
+  initialAnchor,
+  userEmail = null,
 }: {
   userId: string;
   property: PropertyRecord;
   protest: ProtestRecord;
   onBack: () => void;
+  // Opens straight at this section (a NEXT REQUIRED ACTION link).
+  initialAnchor?: string;
+  userEmail?: string | null;
 }) {
   const [caseData, setCaseData] = useState<ProtestCase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -481,6 +494,9 @@ export function CaseDetailView({
   // conflated with "filed." Lifted here (not local to DocumentsSection) so
   // CorvusGuidancePanel/NextStepFooter can give correct guidance too.
   const [noticeSignedAt, setNoticeSignedAt] = useState<string | null>(null);
+  // The Notice of Protest's full filing timestamps — what the case pipeline
+  // reads for File Protest / Confirm Filing (see case-pipeline.ts).
+  const [noticeFiling, setNoticeFiling] = useState<NoticeFiling | null>(null);
   // Real "Protest Evidence"-tagged documents for this property — evidence
   // now uploads exclusively through Module 8 (ai-report.tsx), not a
   // checklist inside this modal (see CasePlanSection's "Upload Evidence —
@@ -505,15 +521,22 @@ export function CaseDetailView({
       .then(setCaseData)
       .catch((err) => toast.error(err instanceof Error ? err.message : "Could not load this case."))
       .finally(() => setLoading(false));
-    getSubmission(protest.id, "notice_of_protest")
-      .then((s) => setNoticeSignedAt(s?.signedAt ?? null))
-      .catch((err) => console.error("Could not load Notice of Protest signing status:", err));
+    loadNoticeFiling();
     getProtestEvidenceDocuments(userId, property.id)
       .then(setEvidenceDocuments)
       .catch((err) => console.error("Could not load this case's evidence documents:", err));
     getLatestSettlementAgreement(protest.id)
       .then(setSettlementAgreement)
       .catch((err) => console.error("Could not load this case's settlement agreement:", err));
+  }
+
+  function loadNoticeFiling() {
+    getSubmission(protest.id, "notice_of_protest")
+      .then((s) => {
+        setNoticeSignedAt(s?.signedAt ?? null);
+        setNoticeFiling(s);
+      })
+      .catch((err) => console.error("Could not load Notice of Protest signing status:", err));
   }
 
   useEffect(load, [protest.id]);
@@ -598,6 +621,32 @@ export function CaseDetailView({
   // Which of the two escalation tabs a generic "open appeal / arbitration" link goes to.
   const escalationTab: CaseTabId = current.escalationPath === "appeal" ? "court" : "arbitration";
 
+  const filingWasOpen = useRef(false);
+  useEffect(() => {
+    if (filingWasOpen.current && !filingOpen) loadNoticeFiling();
+    filingWasOpen.current = filingOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filingOpen]);
+
+  // A NEXT REQUIRED ACTION link from another page lands on its section once.
+  const openedAnchor = useRef(false);
+  useEffect(() => {
+    if (loading || !initialAnchor || openedAnchor.current) return;
+    openedAnchor.current = true;
+    navigateTo(initialAnchor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, initialAnchor]);
+
+  const today = localTodayIso();
+  const pipeline = casePipeline({
+    protest: current,
+    notice: noticeFiling,
+    protestDeadline: property.protestDeadline,
+    cadName: property.cad,
+    managed: property.planTier === "corvusrf_managed",
+    today,
+  });
+
   function handleTabClick(id: CaseTabId) {
     if (caseTabUnlocked(id, current, needsGuidanceAck, noticeSigned)) {
       setActiveTab(id);
@@ -667,27 +716,19 @@ export function CaseDetailView({
         </div>
       ) : (
         <>
-          <CaseNextStepCard
-            step={nextStepFor(current.status, {
-              needsGuidanceAck,
-              noticeSigned,
-              informalStatus: current.informalStatus,
-            })}
-            activeTab={activeTab}
-            onGo={handleTabClick}
-            onFocus={(focus) => {
-              if (focus === "filing") {
-                setFilingOpen(true);
-                return;
-              }
-              const id = {
-                informal: "case-informal-review",
-                hearing: "case-hearing-notice",
-                decision: "case-decision-notice",
-              }[focus];
-              document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-          />
+          {/* Case Readiness → … → Close Case, and the one NEXT REQUIRED ACTION
+              that moves it forward (case-pipeline.ts) — always at the top. */}
+          <div className="mt-4 grid gap-3">
+            <NextRequiredAction
+              pipeline={pipeline}
+              today={today}
+              propertyId={property.id}
+              onGo={navigateTo}
+            />
+            <div className="card-elev min-w-0 p-4">
+              <PipelineStepper pipeline={pipeline} />
+            </div>
+          </div>
           {(() => {
             // Viewing a later phase than the one the case is actually in: say so, and
             // say what is still open, so nobody wonders why an earlier step keeps blinking.
@@ -905,6 +946,13 @@ export function CaseDetailView({
           {/* --- Formal Hearing --- */}
           {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
+              {/* Request CAD Evidence comes before the hearing itself. */}
+              <CadEvidenceRequest
+                property={property}
+                protest={current}
+                userEmail={userEmail}
+                onChange={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
               <FormalHearingActions
                 userId={userId}
                 protest={current}
@@ -2436,9 +2484,11 @@ function FilingSubmissionFlow({
   const emailDraft = buildFilingEmailDraft(docLabel, property);
   const emailAddress = countyInfo?.filingMethod.email.address ?? null;
   const mailtoHref = emailAddress
-    ? `mailto:${encodeURIComponent(emailAddress)}?subject=${encodeURIComponent(
+    ? `mailto:${encodeURIComponent(emailAddress)}?cc=${encodeURIComponent(
+        CORVUSPT_COUNTY_EMAIL,
+      )}&subject=${encodeURIComponent(
         emailSubjectInput || emailDraft.subject,
-      )}&body=${encodeURIComponent(emailDraft.body)}`
+      )}&body=${encodeURIComponent(`${emailDraft.body}\n\n${COUNTY_REPLY_LINE}`)}`
     : null;
   const canConfirm = hasFilingReferenceNumber(submission) || proofDocs.length > 0;
   // The submit form (method-specific input + proof + "Mark as Submitted")

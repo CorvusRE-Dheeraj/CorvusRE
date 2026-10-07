@@ -35,6 +35,14 @@ import { BulkSubscribeModal } from "@/components/BulkSubscribeModal";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
 import { useSavingsBackfill } from "@/hooks/use-savings-backfill";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
+import { listNoticeFilings } from "@/lib/protest-form-submissions";
+import {
+  casePipeline,
+  localTodayIso,
+  type NextAction,
+  type NoticeFiling,
+} from "@/lib/case-pipeline";
+import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -224,6 +232,9 @@ function Properties() {
   const [listError, setListError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
+  // Each case's Notice of Protest filing timestamps, for its NEXT REQUIRED
+  // ACTION (case-pipeline.ts) — keyed by protest id.
+  const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
   const [authorizingProperty, setAuthorizingProperty] = useState<PropertyRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -286,7 +297,10 @@ function Properties() {
       )
       .finally(() => setPropertiesLoading(false));
     listProtests(uid)
-      .then(setProtests)
+      .then((list) => {
+        setProtests(list);
+        return listNoticeFilings(list.map((pr) => pr.id)).then(setNoticeFilings);
+      })
       .catch((err) => console.error(err));
     listHealthScores(uid)
       .then(setHealthScores)
@@ -622,6 +636,20 @@ function Properties() {
 
   // Per-property values both the card and the compact row need. Kept in one
   // place so the two renderers can't drift.
+  const today = localTodayIso();
+  // Case Readiness → … → Close Case for one property, and its next action.
+  function pipelineFor(p: PropertyRecord) {
+    const pr = protests.find((x) => x.propertyId === p.id) ?? null;
+    return casePipeline({
+      protest: pr,
+      notice: pr ? (noticeFilings.get(pr.id) ?? null) : null,
+      protestDeadline: p.protestDeadline,
+      cadName: p.cad,
+      managed: p.planTier === "corvusrf_managed",
+      today,
+    });
+  }
+
   function rowInfo(p: PropertyRecord) {
     const existingProtest = protests.find((pr) => pr.propertyId === p.id);
     const canReFile =
@@ -1082,7 +1110,10 @@ function Properties() {
                           />
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-medium">{p.address}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium">{p.address}</div>
+                        <NextActionLine next={pipelineFor(p).next} />
+                      </td>
                       {visibleColumnOptions.map((c) => (
                         <td key={c.key} className="whitespace-nowrap px-3 py-2.5">
                           {columnCell(c.key, p)}
@@ -1189,6 +1220,20 @@ function Properties() {
                         savingsBasis={p.savingsBasis}
                       />
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <NextRequiredAction
+                      compact
+                      pipeline={pipelineFor(p)}
+                      today={today}
+                      propertyId={p.id}
+                      onStart={() => setProtestingProperty(p)}
+                      lockedHint={
+                        existingProtest && !isPaid
+                          ? "Subscribe to this property to open its case and continue."
+                          : undefined
+                      }
+                    />
                   </div>
                   <div className="mt-4 flex gap-2 flex-wrap items-center">
                     <button onClick={() => openAiReport(p)} className="btn-outline">
@@ -1815,6 +1860,32 @@ function PropertyCardSkeleton() {
         <Skeleton className="h-9 w-20" />
         <Skeleton className="h-9 w-20" />
       </div>
+    </div>
+  );
+}
+
+const NEXT_LINE_TONE: Record<NextAction["urgency"], string> = {
+  overdue: "text-destructive font-semibold",
+  urgent: "text-destructive",
+  soon: "text-warning-foreground",
+  normal: "text-muted-foreground",
+};
+
+// The table view's one-line NEXT REQUIRED ACTION under each address.
+function NextActionLine({ next }: { next: NextAction }) {
+  return (
+    <div className={`mt-0.5 text-xs ${NEXT_LINE_TONE[next.urgency]}`}>
+      <span className="font-semibold uppercase tracking-wide">Next:</span> {next.title}
+      {next.dueDate && (
+        <>
+          {" "}
+          · {next.urgency === "overdue" ? "overdue since" : "by"}{" "}
+          {new Date(`${next.dueDate}T12:00:00`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </>
+      )}
     </div>
   );
 }

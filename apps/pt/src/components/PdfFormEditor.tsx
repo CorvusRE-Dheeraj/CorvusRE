@@ -14,6 +14,7 @@ import type { ProtestStatus } from "@/lib/protests";
 import { Modal } from "@/components/Modal";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
 
 function fieldInputId(name: string): string {
   return `pdf-field-${name.replace(/[^a-zA-Z0-9]+/g, "-")}`;
@@ -553,8 +554,9 @@ function buildFilingMailto(countyInfo: CountyProtestInfo, docLabel: string): str
   const subject = `${docLabel} — ${countyInfo.cad}`;
   const body = `Please find my ${docLabel} attached. (Attach your downloaded, signed PDF to this email before sending — it isn't included automatically.)${
     countyInfo.filingMethod.email.notes ? `\n\n${countyInfo.filingMethod.email.notes}` : ""
-  }`;
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }\n\nPlease include ${CORVUSPT_COUNTY_EMAIL} on any reply about this protest.`;
+  // CorvusPT's county address is copied so replies file themselves under the case.
+  return `mailto:${encodeURIComponent(to)}?cc=${encodeURIComponent(CORVUSPT_COUNTY_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function FieldSectionView({

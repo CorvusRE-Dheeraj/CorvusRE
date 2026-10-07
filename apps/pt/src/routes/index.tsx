@@ -42,6 +42,7 @@ import { ICON_COLORS } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import { PropertyIds } from "@/components/PropertyIds";
 import { BPP_PROPERTY_TYPE } from "../../../../supabase/pt/functions/_shared/bexar-tax-office";
+import { ServiceLanes } from "@/components/ServiceLanes";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -594,6 +595,25 @@ function Home() {
         </div>
       </section>
 
+      {/* The three lanes, kept separate so a visitor knows in seconds what
+          they're buying and who files, appears and talks to the county —
+          see lib/service-lanes.ts. */}
+      <section className="container-page py-14 md:py-20">
+        <div className="mx-auto max-w-2xl text-center">
+          <span className="badge-soft">Choose Your Lane</span>
+          <h2 className="mt-3 font-serif text-3xl md:text-4xl font-semibold">
+            Three Ways to Work With CorvusPT
+          </h2>
+          <p className="mt-3 text-muted-foreground">
+            Start with a free review. Then protest it yourself with our AI, or have our team do it
+            for you.
+          </p>
+        </div>
+        <div className="mt-10">
+          <ServiceLanes />
+        </div>
+      </section>
+
       <ProductPreview />
 
       {/* How CorvusPT Helps You Save — real, existing services only (no stats,
@@ -660,7 +680,7 @@ const PROCESS_STEPS = [
   {
     title: "AI reviews your case",
     description:
-      "Ten AI modules analyze value, comps, and evidence, while CorvusPT staff handle filing and the county.",
+      "Ten AI modules analyze value, comps, and evidence. Then you choose: file it yourself, or have our team handle it.",
     icon: Sparkles,
     color: ICON_COLORS[1], // violet — AI at work
   },
@@ -676,7 +696,7 @@ const SAVE_FEATURES = [
   {
     title: "Property Tax Protest",
     description:
-      "AI-backed evidence and CorvusPT staff filing to challenge an overvalued assessment.",
+      "AI-backed evidence to challenge an overvalued assessment — filed by you, or by our team.",
     icon: Scale,
     to: "/property-protest",
     color: ICON_COLORS[0],

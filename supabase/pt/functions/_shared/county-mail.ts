@@ -183,3 +183,40 @@ export function safeFileName(name: string): string {
   const cleaned = name.replace(/[^\w.\- ]+/g, "_").replace(/\s+/g, " ").trim().slice(0, 120);
   return cleaned || "attachment";
 }
+
+// Appraisal-district mail domains the Comptroller directory doesn't list (it
+// often gives the county government's site instead) — confirmed district
+// domains for the counties CorvusPT serves.
+export const KNOWN_DISTRICT_DOMAINS: Record<string, string> = {
+  "hcad.org": "Harris",
+  "tad.org": "Tarrant",
+  "dallascad.org": "Dallas",
+  "dentoncad.com": "Denton",
+  "collincad.org": "Collin",
+  "cadcollin.org": "Collin",
+  "traviscad.org": "Travis",
+  "tcadcentral.org": "Travis",
+  "bcad.org": "Bexar",
+  "fbcad.org": "Fort Bend",
+  "wcad.org": "Williamson",
+  "mcad-tx.org": "Montgomery",
+  "graysonappraisal.org": "Grayson",
+  "kaufman-cad.org": "Kaufman",
+  "nuecescad.net": "Nueces",
+};
+
+export function withKnownDistricts(map: Map<string, string>): Map<string, string> {
+  const out = new Map(map);
+  for (const [d, county] of Object.entries(KNOWN_DISTRICT_DOMAINS)) out.set(d, county);
+  return out;
+}
+
+// Gmail's "confirm this forwarding address" email (sent when properties@ adds
+// the inbound address). Not county mail, but its code has to reach a person.
+export function isGmailForwardingConfirmation(from: string): boolean {
+  return /forwarding-noreply@google\.com/i.test(from);
+}
+
+export function gmailConfirmationCode(subject: string, text: string): string | null {
+  return /\(#(\d{6,12})\)/.exec(subject)?.[1] ?? /confirmation code:\s*(\d{6,12})/i.exec(text)?.[1] ?? null;
+}
