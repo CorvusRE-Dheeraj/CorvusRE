@@ -3058,3 +3058,29 @@ create policy "Users manage their own valuation worksheets"
 drop policy if exists "Admins can view all valuation worksheets" on public.valuation_worksheets;
 create policy "Admins can view all valuation worksheets"
   on public.valuation_worksheets for select using (public.is_admin());
+
+-- CAD evidence review (Oct 2026): once the owner uploads the appraisal
+-- district's hearing evidence (Tax Code §41.461), analyze-cad-evidence reads it
+-- against the property and lists its weaknesses (comp location/size, cap-rate
+-- assumptions, wrong subject data…) with a recommended hearing response. One
+-- current review per protest; shown in View Case and on the dashboard's Corvus
+-- decision card.
+create table if not exists public.cad_evidence_reviews (
+  protest_id uuid primary key references public.protests (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  document_ids uuid[] not null default '{}',
+  summary text,
+  weaknesses jsonb not null default '[]'::jsonb,
+  hearing_response text,
+  cad_indicated_value numeric,
+  created_at timestamptz not null default now()
+);
+alter table public.cad_evidence_reviews enable row level security;
+drop policy if exists "Users manage their own CAD evidence reviews" on public.cad_evidence_reviews;
+create policy "Users manage their own CAD evidence reviews"
+  on public.cad_evidence_reviews for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all CAD evidence reviews" on public.cad_evidence_reviews;
+create policy "Admins can view all CAD evidence reviews"
+  on public.cad_evidence_reviews for select using (public.is_admin());

@@ -948,6 +948,7 @@ export function CaseDetailView({
             <div className="space-y-5">
               {/* Request CAD Evidence comes before the hearing itself. */}
               <CadEvidenceRequest
+                userId={userId}
                 property={property}
                 protest={current}
                 userEmail={userEmail}

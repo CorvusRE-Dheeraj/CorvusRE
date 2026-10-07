@@ -52,11 +52,20 @@ import {
   classifyPropertyCategory,
 } from "@/lib/texas-tax-rates";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
-import { listDocuments, type DocumentRecord } from "@/lib/documents";
+import {
+  listDocuments,
+  PROTEST_EVIDENCE_DOCUMENT_TYPE,
+  type DocumentRecord,
+} from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
 import { listNoticeFilings } from "@/lib/protest-form-submissions";
 import { casePipeline, localTodayIso, type NoticeFiling, type Urgency } from "@/lib/case-pipeline";
 import { NextRequiredAction } from "@/components/CasePipeline";
+import { CorvusDecisionCard } from "@/components/CorvusDecisionCard";
+import { decisionCard } from "@/lib/decision-card";
+import { listValuationSummaries, type WorksheetSummary } from "@/lib/valuation-worksheet";
+import { listCadEvidenceReviews, type StoredCadEvidenceReview } from "@/lib/cad-evidence-review";
+import { evaluateArbitrationEligibility } from "@/lib/arbitration";
 import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
@@ -73,7 +82,7 @@ import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
-import { getMyBilling } from "@/lib/billing";
+import { getMyBilling, propertyMonthlyPrice } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
 import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
@@ -110,6 +119,10 @@ function Overview() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
+  // Inputs to each property's Corvus decision card.
+  const [valuations, setValuations] = useState<Map<string, WorksheetSummary>>(new Map());
+  const [cadReviews, setCadReviews] = useState<Map<string, StoredCadEvidenceReview>>(new Map());
+  const [plan, setPlan] = useState<string | null>(null);
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
   const [loaded, setLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -197,6 +210,15 @@ function Overview() {
         listNoticeFilings(prot.map((pr) => pr.id))
           .then(setNoticeFilings)
           .catch((err) => console.error(err));
+        listValuationSummaries(props.map((p) => p.id))
+          .then(setValuations)
+          .catch((err) => console.error(err));
+        listCadEvidenceReviews(prot.map((pr) => pr.id))
+          .then(setCadReviews)
+          .catch((err) => console.error(err));
+        getMyBilling(user.id)
+          .then((b) => setPlan(b.plan))
+          .catch(() => setPlan(null));
       })
       .catch((err) => console.error(err))
       .finally(() => setLoaded(true));
@@ -229,6 +251,49 @@ function Overview() {
       if (da !== db) return da < db ? -1 : 1;
       return (a.pipeline.next.owner === "you" ? 0 : 1) - (b.pipeline.next.owner === "you" ? 0 : 1);
     });
+
+  // Each property's Corvus decision card (lib/decision-card.ts), in the same
+  // most-pressing-first order as the next actions above.
+  const decisionCards = nextActions.map(({ property, pipeline }) => {
+    const pr = protests.find((x) => x.propertyId === property.id) ?? null;
+    const evidenceCount = documents.filter(
+      (d) => d.propertyId === property.id && d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE,
+    ).length;
+    const arb =
+      pr && (pr.status === "resolved" || pr.arbDecision != null)
+        ? evaluateArbitrationEligibility(property, pr, evidenceCount)
+        : null;
+    const annualCost =
+      plan === "beta"
+        ? 0
+        : property.subscriptionStatus === "active" && property.planTier
+          ? propertyMonthlyPrice(property.planTier, "upTo5m", false) * 12
+          : null;
+    const review = pr ? (cadReviews.get(pr.id) ?? null) : null;
+    return {
+      property,
+      pipeline,
+      hasCase: !!pr,
+      card: decisionCard({
+        cadValue: property.totalValue,
+        effectiveTaxRate: getEffectiveTaxRate(property.cad),
+        healthScore: healthScores[property.id]?.score ?? null,
+        worksheet: valuations.get(property.id) ?? null,
+        estimatedSavings: property.estimatedSavings,
+        protest: pr,
+        cadReview: review,
+        annualCost,
+        arbitration: arb
+          ? {
+              eligible:
+                arb.status === "eligible" ? true : arb.status === "not_eligible" ? false : null,
+              deadline: arb.deadline,
+              daysRemaining: arb.daysRemaining,
+            }
+          : null,
+      }),
+    };
+  });
 
   useSavingsBackfill(properties, setProperties);
   useHealthScoreBackfill(properties, healthScores, setHealthScores);
@@ -567,6 +632,45 @@ function Overview() {
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {loaded && decisionCards.length > 0 && (
+        <section aria-labelledby="corvus-decisions" className="grid gap-3">
+          <h2 id="corvus-decisions" className="font-serif text-2xl font-semibold">
+            Corvus Decisions
+          </h2>
+          {decisionCards.slice(0, 5).map(({ property, pipeline, card, hasCase }, i) => (
+            <CorvusDecisionCard
+              key={property.id}
+              card={card}
+              next={pipeline.next}
+              address={property.address}
+              propertyId={property.id}
+              hasCase={hasCase}
+              defaultOpen={i === 0}
+              onStart={() => nav({ to: "/dashboard/properties" })}
+              onReviewEvidence={() => {
+                updateIntake({
+                  address: property.address,
+                  cad: property.cad ?? undefined,
+                  accountNumber: property.accountNumber ?? undefined,
+                  ownerName: property.ownerName ?? undefined,
+                  propertyType: property.propertyType ?? undefined,
+                  landValue: property.landValue ?? undefined,
+                  improvementValue: property.improvementValue ?? undefined,
+                  totalValue: property.totalValue ?? undefined,
+                  taxYear: property.taxYear ?? undefined,
+                  valueHistory: property.valueHistory ?? undefined,
+                  confirmed: true,
+                });
+                nav({
+                  to: "/ai-report",
+                  search: { openModule: "evidence", propertyId: property.id },
+                });
+              }}
+            />
+          ))}
         </section>
       )}
 
