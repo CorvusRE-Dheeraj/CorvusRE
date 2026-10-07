@@ -15,6 +15,23 @@ export type Stage = "assess" | "evidence" | "offer" | "result";
 export type Verdict = "PROTEST" | "REVIEW" | "NO PROTEST";
 export type Strength = "Strong" | "Moderate" | "Limited";
 
+// Customer-facing labels. Corvus presents analysis and options; the owner
+// makes the decisions — so the internal verdict and offer ids never reach the
+// screen as instructions ("PROTEST", "Accept"). Texas licenses property tax
+// consulting (Occupations Code ch. 1152); this wording keeps the software on
+// the analysis side of that line.
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  PROTEST: "Potential protest opportunity",
+  REVIEW: "Possible opportunity — more evidence needed",
+  "NO PROTEST": "No clear opportunity identified yet",
+};
+export type OfferAssessment = "Accept" | "Borderline" | "Proceed to ARB";
+export const OFFER_LABEL: Record<OfferAssessment, string> = {
+  Accept: "Within Corvus's estimated outcome",
+  Borderline: "A judgment call",
+  "Proceed to ARB": "Above the range the evidence supports",
+};
+
 export type DecisionCardInput = {
   cadValue: number | null; // the county's appraised value this case started from
   effectiveTaxRate: number; // fraction, e.g. 0.022
@@ -55,7 +72,7 @@ export type DecisionCard = {
     original: number;
     savingsAtOffer: number;
     arbRange: Range | null;
-    decision: "Accept" | "Borderline" | "Proceed to ARB";
+    decision: OfferAssessment;
     reasoning: string;
     additionalSavings: Range | null;
   } | null;
@@ -220,9 +237,9 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
   if (p && offerValue != null && cad != null && p.informalStatus === "proposed_value_received") {
     card.stage = "offer";
     const savingsAtOffer = Math.round(Math.max(0, cad - offerValue) * rate);
-    let decision: "Accept" | "Borderline" | "Proceed to ARB" = "Borderline";
+    let decision: OfferAssessment = "Borderline";
     let reasoning =
-      "Corvus doesn't have a supportable range for this property yet — weigh the offer against your evidence.";
+      "Corvus doesn't have a supportable range for this property yet, so it can't compare the offer with the evidence.";
     let additional: Range | null = null;
     if (range) {
       additional = {
@@ -232,12 +249,12 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
       if (likely != null && offerValue <= likely) {
         decision = "Accept";
         reasoning =
-          "The offer is at or better than Corvus's estimated likely outcome — an ARB hearing is unlikely to do better.";
+          "The offer is at or below Corvus's estimated likely outcome — by Corvus's analysis, an ARB hearing may not produce a lower value.";
       } else if (offerValue > range.high * 1.05) {
         decision = "Proceed to ARB";
-        reasoning = `The offer is well above what your evidence supports. Going to the ARB could save another ${usd(additional.low)}–${usd(additional.high)} a year.`;
+        reasoning = `The offer is well above the range Corvus estimates the evidence supports. Corvus estimates an ARB hearing could produce another ${usd(additional.low)}–${usd(additional.high)} a year in savings, with no guarantee.`;
       } else {
-        reasoning = `Proceeding may produce an additional ~${usd(additional.low)}–${usd(additional.high)} in annual savings, but outcome uncertainty increases.`;
+        reasoning = `Corvus estimates a formal hearing could add ~${usd(additional.low)}–${usd(additional.high)} in annual savings, with more uncertainty about the outcome.`;
       }
     }
     card.offer = {
@@ -277,8 +294,8 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
       furtherAppeal: worth ? "Worth reviewing" : "Low priority",
       furtherAppealReason: range
         ? worth
-          ? `The final value is still above your supportable floor — up to ~${usd(remaining)} a year more is at stake.`
-          : "The final value is at or close to what your evidence supports."
+          ? `The final value is still above the low end of the range Corvus estimates the evidence supports — Corvus estimates up to ~${usd(remaining)} a year more is at stake.`
+          : "The final value is at or close to the value Corvus estimates the evidence supports."
         : "No supportable range on file to compare against.",
     };
   }

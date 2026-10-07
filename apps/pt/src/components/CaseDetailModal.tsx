@@ -1374,7 +1374,7 @@ function CaseRoadmap({
         <p className="mt-1 text-sm">{guidance.summary}</p>
         {next && (
           <div className="mt-2 text-sm">
-            <span className="font-semibold">Do this next: {next.label}.</span>
+            <span className="font-semibold">Next step: {next.label}.</span>
             {next.detail && <span className="text-muted-foreground"> {next.detail}</span>}
             {next.action && (
               <button

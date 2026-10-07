@@ -89,20 +89,22 @@ describe("protestIntelligence", () => {
 
   it("answers all nine questions in order", () => {
     expect(pi.answers.map((a) => a.question)).toEqual([
-      "Should I protest?",
+      "Is there a protest opportunity?",
       "Why?",
-      "What value can I defend?",
-      "What evidence proves it?",
+      "What value does the evidence support?",
+      "What evidence supports it?",
       "How strong is each argument?",
-      "What will the CAD probably argue?",
-      "What should I accept informally?",
-      "What should I ask the ARB for?",
-      "Is further appeal economically rational?",
+      "What might the district argue?",
+      "How might an informal offer compare?",
+      "What value could be presented to the ARB?",
+      "How do the further-appeal economics look?",
     ]);
   });
 
-  it("recommends protesting and explains why", () => {
-    expect(answer(pi, "should").headline).toBe("Yes — strong case");
+  it("identifies the protest opportunity and explains why", () => {
+    expect(answer(pi, "should").headline).toBe(
+      "Corvus identifies a potential protest opportunity — strong case",
+    );
     expect(answer(pi, "should").points[0]).toContain("$26,400");
     expect(answer(pi, "why").headline).toBe(
       "3 of 6 valuation approaches put the value below the county's $8.45M",
@@ -115,27 +117,31 @@ describe("protestIntelligence", () => {
     expect(answer(pi, "evidence").points[0]).toContain("Rent Roll 2026.pdf");
     expect(answer(pi, "evidence").points[1]).toContain("Cost Approach");
     expect(answer(pi, "strength").headline).toBe(
-      "Lead with Equal & Uniform; support with Income Approach",
+      "Corvus rates Equal & Uniform strongest, then Income Approach",
     );
   });
 
   it("anticipates the CAD's case, including the owner's own weak spots", () => {
     const cad = answer(pi, "cad");
-    expect(cad.headline).toMatch(/^Against your Equal & Uniform: that your comparables/);
+    expect(cad.headline).toMatch(/^Possibly, against the Equal & Uniform: that your comparables/);
     expect(
       cad.points.some((p) => p.includes("Sales Comparison") && p.includes("supports the county")),
     ).toBe(true);
   });
 
   it("sets informal-acceptance bands and the ARB ask", () => {
-    expect(answer(pi, "accept").headline).toMatch(/^Accept \$\d/);
+    expect(answer(pi, "accept").headline).toMatch(/^Corvus's estimated likely outcome: \$\d/);
     expect(answer(pi, "accept").points).toHaveLength(3);
-    expect(answer(pi, "ask").headline).toBe("$6.9M, on your Equal & Uniform");
+    expect(answer(pi, "ask").headline).toBe(
+      "Corvus estimates $6.9M as a potential value to consider, based on the Equal & Uniform",
+    );
   });
 
   it("frames further appeal by the dollars still at stake", () => {
     // $6.9M + $2,000 / 2.2% ≈ $6.99M
-    expect(answer(pi, "appeal").headline).toBe("Only if the ARB leaves you above $6.99M");
+    expect(answer(pi, "appeal").headline).toBe(
+      "Worth reviewing if the ARB's value is above $6.99M",
+    );
   });
 
   it("uses the CAD's reviewed evidence when there is one", () => {
@@ -151,10 +157,10 @@ describe("protestIntelligence", () => {
       cadArguesFor: 8_600_000,
     });
     const cad = answer(withReview, "cad");
-    expect(cad.headline).toBe("Its evidence argues for $8.6M");
+    expect(cad.headline).toBe("Its evidence points to $8.6M");
     expect(cad.points[0]).toContain("1 weakness");
     expect(answer(withReview, "ask").points).toContain(
-      "Rebut the district's evidence with Corvus's drafted hearing response.",
+      "Corvus has drafted a hearing response to the district's evidence for your review.",
     );
   });
 });

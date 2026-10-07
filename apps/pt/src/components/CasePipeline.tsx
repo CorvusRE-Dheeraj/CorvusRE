@@ -75,7 +75,7 @@ export function NextRequiredAction({
           onClick={() => onGo(target.anchor)}
           className="btn-primary btn-primary-hover inline-flex items-center gap-1.5"
         >
-          Do this now <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          Go to this step <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
       ) : (
         <Link
@@ -83,7 +83,7 @@ export function NextRequiredAction({
           search={{ propertyId, anchor: target.anchor }}
           className="btn-primary btn-primary-hover inline-flex items-center gap-1.5"
         >
-          Do this now <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          Go to this step <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       )
     ) : target.kind === "start" && onStart ? (

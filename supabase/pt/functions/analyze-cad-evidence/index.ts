@@ -10,6 +10,7 @@
 // actually printed in the packet; the owner's facts are supplied by the
 // caller, never guessed. Output is clamped by _shared/cad-evidence-review.ts.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 import {
   WEAKNESS_CATEGORIES,
   sanitizeCadEvidenceReview,
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
+        systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
         contents: [{ role: "user", parts }],
         generationConfig: {
           responseMimeType: "application/json",

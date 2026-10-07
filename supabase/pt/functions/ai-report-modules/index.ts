@@ -20,6 +20,7 @@
 // guest-accessible AI functions.
 import { PROSE_STYLE, BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_REASONING, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1320,7 +1321,7 @@ const MODULE_SPECS: Record<string, ModuleSpec> = {
       `evidence | null>"}, ...] (3-5 items, most important first), ` +
       `"missingInformation": [{"item": "<short item>", "severity": "<Critical | Important | ` +
       `Supporting>"}, ...] (only real gaps, empty array if none), ` +
-      `"recommendedProtestValue": <number, the real indicated value to argue for, or null if not ` +
+      `"recommendedProtestValue": <number, the real indicated value the evidence supports, or null if not ` +
       `reliably supported by the record>, ` +
       `"recommendedProtestValueBasis": "<max ~10 words, or 'Additional analysis required' if the ` +
       `value above is null>", ` +
@@ -1667,7 +1668,7 @@ async function generateJson(
   thinkingBudget = 2048,
 ): Promise<Record<string, unknown>> {
   const body = {
-    systemInstruction: { parts: [{ text: system }] },
+    systemInstruction: { parts: [{ text: withAdvisoryTone(system) }] },
     contents: [{ role: "user", parts }],
     generationConfig: {
       responseMimeType: "application/json",

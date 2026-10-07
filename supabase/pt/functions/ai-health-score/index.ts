@@ -5,6 +5,7 @@
 // guest-accessible AI functions (classify-document, ask-about-document, route-intent).
 import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_REASONING, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -242,7 +243,7 @@ Deno.serve(async (req: Request) => {
     const system = `${PREAMBLE}\n\nReturn ONLY a JSON object with exactly this shape:\n${SCHEMA}`;
 
     const body = {
-      systemInstruction: { parts: [{ text: system }] },
+      systemInstruction: { parts: [{ text: withAdvisoryTone(system) }] },
       contents: [{ role: "user", parts: [{ text: record }] }],
       // Bounded (not dynamic/unset, and not 0 — this model rejects a budget of
       // exactly 0 with a 400) thinking budget. Investigated live: this task's

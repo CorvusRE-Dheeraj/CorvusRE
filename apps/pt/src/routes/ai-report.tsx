@@ -81,6 +81,7 @@ import {
   getModuleAnalysis,
   askModuleQuestion,
   EVIDENCE_CATEGORY_ORDER,
+  RECOMMENDED_ACTION_LABEL,
   type BatchModuleId,
   type ModuleAnalysisInput,
   type ModuleResultMap,
@@ -7106,7 +7107,7 @@ function StrategyDetail({
         )}
         {s.recommendedInvestigation && (
           <div>
-            <div className="font-semibold text-foreground">Recommended investigation</div>
+            <div className="font-semibold text-foreground">Suggested investigation</div>
             <button
               type="button"
               onClick={handleInvestigationClick}
@@ -11626,7 +11627,7 @@ function ModulePreviewContent({
                   }`}
                 >
                   {needsActionItems.length > 0
-                    ? "Incomplete — Additional Evidence Recommended"
+                    ? "Incomplete — Additional Evidence Suggested"
                     : "Complete"}
                 </span>
               </div>
@@ -11669,7 +11670,7 @@ function ModulePreviewContent({
               {needsActionItems.length > 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    Additional Evidence Recommended
+                    Additional Evidence Suggested
                   </span>{" "}
                   — one or more important items are still missing. You can continue, but obtaining
                   the recommended evidence could strengthen the identified protest arguments.
@@ -12014,9 +12015,11 @@ function ModulePreviewContent({
             />
             <div className="min-w-0 flex-1">
               <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Recommended Action
+                Corvus Assessment
               </div>
-              <div className="mt-0.5 font-serif text-lg font-bold">{d.recommendedAction}</div>
+              <div className="mt-0.5 font-serif text-lg font-bold">
+                {RECOMMENDED_ACTION_LABEL[d.recommendedAction] ?? d.recommendedAction}
+              </div>
               {d.recommendationExplanation && (
                 <p className="mt-1 text-sm text-foreground/90">{d.recommendationExplanation}</p>
               )}
@@ -12078,7 +12081,7 @@ function ModulePreviewContent({
           {/* 6. Value Recommendation + 7. Financial Opportunity */}
           <div className="grid gap-2 sm:grid-cols-2">
             <FactBox
-              label="Recommended Protest Value"
+              label="Potential Value to Consider"
               value={
                 d.recommendedProtestValue != null
                   ? currency(d.recommendedProtestValue)

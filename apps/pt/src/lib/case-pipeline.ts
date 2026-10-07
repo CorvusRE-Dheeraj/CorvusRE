@@ -296,9 +296,9 @@ export function casePipeline(input: PipelineInput): Pipeline {
       const reviewDate = day(p?.informalReviewDate);
       if (status === "proposed_value_received") {
         next = action({
-          title: `Accept or reject the county's offer${p?.settlementOfferValue ? ` of ${usd(p.settlementOfferValue)}` : ""}`,
+          title: `Review the county's offer${p?.settlementOfferValue ? ` of ${usd(p.settlementOfferValue)}` : ""}`,
           detail:
-            "Accepting settles the protest at that value. Rejecting moves it to a formal ARB hearing.",
+            "Accepting settles the protest at that value; declining moves it to a formal ARB hearing. The decision is yours — Corvus's comparison of the offer is on your dashboard.",
           dueDate: null,
           dueLabel: null,
           target: { kind: "anchor", anchor: "case-informal-review" },

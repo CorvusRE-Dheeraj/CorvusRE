@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronDown, Info } from "lucide-react";
 import type { ArgumentStrength, Answer, ProtestIntelligence } from "@/lib/protest-intelligence";
 import type { NextAction } from "@/lib/case-pipeline";
+import { VERDICT_LABEL } from "@/lib/decision-card";
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const m = (n: number) =>
@@ -121,7 +122,7 @@ export function ProtestIntelligenceCard({
             Protest Intelligence
           </div>
           <div className="mt-1 font-serif text-2xl font-semibold">
-            <span className={VERDICT_TONE[card.verdict]}>{card.verdict}</span>
+            <span className={VERDICT_TONE[card.verdict]}>{VERDICT_LABEL[card.verdict]}</span>
             <span className="text-muted-foreground"> — {card.strength}</span>
           </div>
           <div className="truncate text-xs text-muted-foreground">{address}</div>
@@ -213,8 +214,9 @@ export function ProtestIntelligenceCard({
             </div>
           </section>
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Answers are computed from your county record, Corvus&apos;s valuation approaches and
-            your case — to support your decisions, not a guarantee of any outcome.
+            Corvus&apos;s analysis is computed from your county record, its valuation approaches and
+            your case. It presents estimates and options to inform your own decisions — it
+            isn&apos;t property tax advice or a guarantee of any outcome.
           </p>
         </div>
       )}

@@ -5,6 +5,7 @@
 // guest-accessible AI functions (classify-document, ask-about-document, route-intent,
 // ai-health-score): a rate-limited free API, no per-user state at stake.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,7 +52,7 @@ Deno.serve(async (req: Request) => {
       .join("\n");
 
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
       contents: [{ role: "user", parts: [{ text: record }] }],
     };
 

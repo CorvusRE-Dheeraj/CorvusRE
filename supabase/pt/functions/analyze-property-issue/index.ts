@@ -16,6 +16,7 @@
 // the table's enum, dates to real calendar dates) — the model never writes
 // straight into the row.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 import {
   ISSUE_CATEGORY_IDS,
   sanitizeIssueAnalysis,
@@ -114,7 +115,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
+        systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
         contents: [{ role: "user", parts }],
         generationConfig: {
           responseMimeType: "application/json",

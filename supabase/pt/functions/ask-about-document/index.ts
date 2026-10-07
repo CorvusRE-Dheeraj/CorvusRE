@@ -2,6 +2,7 @@
 // Requires the GEMINI_API_KEY secret (shared with classify-document).
 import { PROSE_STYLE, BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,7 +48,7 @@ Deno.serve(async (req: Request) => {
 
     const body = {
       systemInstruction: {
-        parts: [{ text: systemText }],
+        parts: [{ text: withAdvisoryTone(systemText) }],
       },
       contents: [
         {

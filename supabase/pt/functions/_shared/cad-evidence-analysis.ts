@@ -460,7 +460,7 @@ export function analyzeCadEvidence(
         kind: "inconsistent",
         comp: null,
         title: `The district's ${rf.name} adjustment isn't applied consistently`,
-        detail: `${rates.map((r) => `${r.label}: ${r.rate}% ${rf.unit}`).join("; ")} — ${signs.size > 1 ? "the same kind of difference is adjusted in opposite directions" : `the rate varies ${Math.round(ratio * 10) / 10}x`}. Ask the district to explain it.`,
+        detail: `${rates.map((r) => `${r.label}: ${r.rate}% ${rf.unit}`).join("; ")} — ${signs.size > 1 ? "the same kind of difference is adjusted in opposite directions" : `the rate varies ${Math.round(ratio * 10) / 10}x`}. This may be worth asking the district to explain.`,
         weight: 6,
       });
     }

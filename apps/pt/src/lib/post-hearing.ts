@@ -122,7 +122,7 @@ export function postHearing(i: PostHearingInput): PostHearing | null {
     billCheck = {
       status: "awaiting_bill",
       expectedBill,
-      note: `Texas tax bills usually arrive in October. At the final value it should be about ${usd(expectedBill)} — add it when it comes and Corvus will check it.`,
+      note: `Texas tax bills usually arrive in October. Corvus estimates about ${usd(expectedBill)} at the final value — once it's added, Corvus will compare the two.`,
     };
   } else {
     const diff = bill.amountDue - expectedBill;
@@ -143,8 +143,8 @@ export function postHearing(i: PostHearingInput): PostHearing | null {
       note:
         status === "too_high"
           ? valueTooHigh
-            ? `The bill is based on ${usd(bill.taxableValue as number)}, not the final ${usd(finalValue)} — ask the tax office for a corrected bill. If you've already paid, you're owed about ${usd(Math.max(0, diff))}.`
-            : `The bill is ${usd(diff)} more than the final value implies — check the rate and exemptions with the tax office.`
+            ? `The bill is based on ${usd(bill.taxableValue as number)}, not the final ${usd(finalValue)}. The tax office can issue a corrected bill; if it's already paid, Corvus estimates a refund of about ${usd(Math.max(0, diff))}.`
+            : `The bill is ${usd(diff)} more than the final value implies — the rate or exemptions may differ from what Corvus has on file; the tax office can confirm.`
           : status === "lower"
             ? "The bill is lower than the final value implies — likely an exemption or a lower rate."
             : "The bill reflects the final value.",
@@ -178,8 +178,8 @@ export function postHearing(i: PostHearingInput): PostHearing | null {
   let verdict: PostHearing["verdict"];
   if (p.arbDecision === "approved" || p.informalStatus === "accepted") {
     verdict = {
-      headline: "Done — no further appeal needed",
-      detail: "The value you asked for was granted.",
+      headline: "The requested value was granted",
+      detail: "Corvus doesn't see a value-related reason for further appeal.",
     };
   } else if (open.length === 0) {
     verdict = {
@@ -188,20 +188,20 @@ export function postHearing(i: PostHearingInput): PostHearing | null {
     };
   } else if (atStake == null) {
     verdict = {
-      headline: "Compare the routes below",
+      headline: "The routes are compared below",
       detail:
-        "Run the property's Commercial Valuation to put a number on what further appeal could save.",
+        "Running the property's Commercial Valuation would let Corvus estimate what further appeal could save.",
     };
   } else if (atStake < APPEAL_FLOOR) {
     verdict = {
-      headline: "Probably not worth appealing further",
-      detail: `The final value is within ~${usd(atStake)} a year of what your evidence supports — less than an appeal usually costs.`,
+      headline: "Further appeal looks less likely to pay",
+      detail: `Corvus estimates the final value is within ~${usd(atStake)} a year of what the evidence supports — less than an appeal usually costs.`,
     };
   } else {
     const best = open.find((r) => r.recommended) ?? open[0];
     verdict = {
-      headline: `Worth considering: ${best.title}`,
-      detail: `Up to ~${usd(atStake)} a year is still at stake${best.cost ? ` for about ${usd(best.cost.min)}${best.cost.max !== best.cost.min ? `–${usd(best.cost.max)}` : ""} up front` : ""}${best.deadline ? `; decide by ${longDate(best.deadline)}` : ""}.`,
+      headline: `An option to consider: ${best.title}`,
+      detail: `Corvus estimates up to ~${usd(atStake)} a year is still at stake${best.cost ? ` for about ${usd(best.cost.min)}${best.cost.max !== best.cost.min ? `–${usd(best.cost.max)}` : ""} up front` : ""}${best.deadline ? `; the deadline is ${longDate(best.deadline)}` : ""}.`,
     };
   }
 

@@ -124,13 +124,13 @@ describe("postHearing", () => {
       ["binding_arbitration", false, 41],
     ]);
     // (7.31M − 6.9M) × 2.2% = $9,020 a year still at stake
-    expect(r.verdict.headline).toBe("Worth considering: Appeal to district court");
+    expect(r.verdict.headline).toBe("An option to consider: Appeal to district court");
     expect(r.verdict.detail).toContain("$9,020");
   });
 
   it("says further appeal isn't worth it when little is at stake", () => {
     expect(postHearing({ ...base, supportableLow: 7_250_000 })!.verdict.headline).toBe(
-      "Probably not worth appealing further",
+      "Further appeal looks less likely to pay",
     );
   });
 

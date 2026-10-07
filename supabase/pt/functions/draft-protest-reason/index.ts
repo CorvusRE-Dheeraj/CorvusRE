@@ -17,6 +17,7 @@
 // (reads the full analysis).
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,7 +107,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
       contents: [{ role: "user", parts }],
       generationConfig: { responseMimeType: "application/json", temperature: 0 },
     };

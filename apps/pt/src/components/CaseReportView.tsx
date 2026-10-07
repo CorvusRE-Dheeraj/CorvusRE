@@ -11,7 +11,7 @@ const CAT_META: Record<
   ProtestCaseReport["nextActions"][number]["category"],
   { label: string; cls: string }
 > = {
-  next_step: { label: "Do this next", cls: "border-accent/50 bg-accent/10 text-accent" },
+  next_step: { label: "Next step", cls: "border-accent/50 bg-accent/10 text-accent" },
   waiting_on_user: {
     label: "Waiting on you",
     cls: "border-warning/40 bg-warning/10 text-warning-foreground",

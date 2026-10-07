@@ -1,6 +1,7 @@
 import {
   APPROACH_WEIGHT,
   decisionCard,
+  OFFER_LABEL,
   type DecisionCard,
   type DecisionCardInput,
 } from "./decision-card";
@@ -47,14 +48,14 @@ export type IntelligenceInput = DecisionCardInput & {
 
 const WHY: Record<ApproachId, string> = {
   equity:
-    "Built from the county's own appraisal roll — Texas caps your value at the median of comparable appraisals (Tax Code §41.43(b)(3)), so it's hard for the ARB to dismiss.",
+    "Built from the county's own appraisal roll — Texas caps your value at the median of comparable appraisals (Tax Code §41.43(b)(3)), so ARBs often find it difficult to dismiss.",
   income:
     "Built from your property's actual income — persuasive for income-producing property when the rent roll and P&L are complete.",
   sales: "Real sales of comparable properties — strong when the sales are verified and recent.",
   land: "Targets the land value on its own — useful when the county's land rate is out of line with nearby parcels.",
   impairments:
     "Deducts what a buyer would pay to fix problems — holds up when backed by contractor bids or inspection reports.",
-  cost: "Relies on a replacement-cost estimate — best as supporting evidence, not the lead argument.",
+  cost: "Relies on a replacement-cost estimate — generally carries more weight as supporting evidence than as the lead argument.",
 };
 
 // What the district typically says against each kind of argument.
@@ -143,22 +144,22 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   // 1. Should I protest?
   answers.push({
     id: "should",
-    question: "Should I protest?",
+    question: "Is there a protest opportunity?",
     headline:
       card.verdict === "PROTEST"
-        ? `Yes — ${card.strength.toLowerCase()} case`
+        ? `Corvus identifies a potential protest opportunity — ${card.strength.toLowerCase()} case`
         : card.verdict === "REVIEW"
-          ? "Possibly — the case needs more evidence"
-          : "Not on the evidence so far",
+          ? "A possible opportunity — Corvus needs more evidence to assess it"
+          : "Corvus hasn't identified a clear opportunity on the evidence so far",
     points: [
       ...(card.savingsAtSettlement != null && card.likelySettlement != null
         ? [
-            `About ${usd(card.savingsAtSettlement)} a year in tax savings at a likely ${m(card.likelySettlement)} settlement.`,
+            `Corvus estimates about ${usd(card.savingsAtSettlement)} a year in tax savings if the value settles near ${m(card.likelySettlement)}.`,
           ]
         : []),
       ...(card.verdict !== "PROTEST" && !range
         ? [
-            "Run the valuation approaches in the property's report to see what value you can defend.",
+            "Running the valuation approaches in the property's report would show what value the evidence may support.",
           ]
         : []),
     ],
@@ -186,14 +187,14 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   // 3. What value can I defend?
   answers.push({
     id: "defend",
-    question: "What value can I defend?",
+    question: "What value does the evidence support?",
     headline: range ? `${m(range.low)}–${m(range.high)}` : "Not established yet",
     points: range
       ? [
           card.supportableBasis + ".",
           ...(card.openingPosition != null
             ? [
-                `Open negotiations at ${m(card.openingPosition)} — just below that range, leaving room to settle.`,
+                `A potential opening position to consider: ${m(card.openingPosition)} — just below that range, which would leave room to negotiate.`,
               ]
             : []),
         ]
@@ -206,7 +207,7 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   const notRun = args.filter((a) => a.strength === "Not run").map((a) => a.name);
   answers.push({
     id: "evidence",
-    question: "What evidence proves it?",
+    question: "What evidence supports it?",
     headline:
       proving.length > 0
         ? proving.map((a) => `${a.name} (${a.value != null ? m(a.value) : "—"})`).join(", ")
@@ -219,10 +220,10 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
             `On file: ${i.evidenceDocuments.slice(0, 4).join(", ")}${i.evidenceDocuments.length > 4 ? ` and ${i.evidenceDocuments.length - 4} more` : ""}.`,
           ]
         : [
-            "No protest evidence uploaded yet — rent roll, P&L, photos, repair bids and comparable sales all help.",
+            "No protest evidence uploaded yet — a rent roll, P&L, photos, repair bids and comparable sales can each add support.",
           ]),
       ...(notRun.length > 0
-        ? [`Not run yet: ${notRun.join(", ")} — add the data to strengthen the case.`]
+        ? [`Not run yet: ${notRun.join(", ")} — adding the data could strengthen the analysis.`]
         : []),
     ],
     tone: proving.length > 0 ? "good" : "caution",
@@ -234,7 +235,7 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     question: "How strong is each argument?",
     headline:
       winning.length > 0
-        ? `Lead with ${winning[0].name}${winning[1] ? `; support with ${winning[1].name}` : ""}`
+        ? `Corvus rates ${winning[0].name} strongest${winning[1] ? `, then ${winning[1].name}` : ""}`
         : "No argument below the county's value yet",
     points: [],
     tone: winning.some((a) => a.strength === "Strong") ? "good" : "caution",
@@ -245,13 +246,13 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   const support = args.filter((a) => a.strength === "Supports county");
   answers.push({
     id: "cad",
-    question: "What will the CAD probably argue?",
+    question: "What might the district argue?",
     headline:
       i.cadReview && i.cadArguesFor != null
-        ? `Its evidence argues for ${m(i.cadArguesFor)}`
+        ? `Its evidence points to ${m(i.cadArguesFor)}`
         : lead
-          ? `Against your ${lead.name}: ${CAD_REBUTTAL[lead.id]}`
-          : "That its value is supported by the market",
+          ? `Possibly, against the ${lead.name}: ${CAD_REBUTTAL[lead.id]}`
+          : "Likely that its value is supported by the market",
     points: [
       ...(i.cadReview
         ? [
@@ -262,13 +263,13 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
             }.`,
           ]
         : [
-            "Request the district's evidence (Tax Code §41.461) to see its actual case before the hearing.",
+            "Owners may request the district's evidence (Tax Code §41.461) to see its actual case before the hearing.",
           ]),
       ...support.map(
         (a) =>
-          `Your own ${a.name}${a.value != null ? ` (${m(a.value)})` : ""} supports the county's value — expect the district to point to it.`,
+          `The ${a.name}${a.value != null ? ` (${m(a.value)})` : ""} supports the county's value — the district may point to it.`,
       ),
-      ...(winning[1] ? [`Against your ${winning[1].name}: ${CAD_REBUTTAL[winning[1].id]}.`] : []),
+      ...(winning[1] ? [`Against the ${winning[1].name}: ${CAD_REBUTTAL[winning[1].id]}.`] : []),
     ],
     tone: "neutral",
   });
@@ -278,20 +279,20 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   const judgmentUpTo = range ? Math.round(range.high * 1.05) : null;
   answers.push({
     id: "accept",
-    question: "What should I accept informally?",
+    question: "How might an informal offer compare?",
     headline:
       card.offer != null
-        ? `${card.offer.decision}: the ${m(card.offer.offer)} offer`
+        ? `The ${m(card.offer.offer)} offer: ${OFFER_LABEL[card.offer.decision].toLowerCase()}`
         : acceptUpTo != null
-          ? `Accept ${m(acceptUpTo)} or lower`
-          : "Set once you have a supportable range",
+          ? `Corvus's estimated likely outcome: ${m(acceptUpTo)} or lower`
+          : "Estimated once Corvus has a supportable range",
     points: [
       ...(card.offer ? [card.offer.reasoning] : []),
       ...(acceptUpTo != null && judgmentUpTo != null
         ? [
-            `At or below ${m(acceptUpTo)}: accept — an ARB hearing is unlikely to do better.`,
-            `${m(acceptUpTo)}–${m(judgmentUpTo)}: a judgment call between certainty now and more savings at the ARB.`,
-            `Above ${m(judgmentUpTo)}: decline and go to the ARB.`,
+            `At or below ${m(acceptUpTo)}: within Corvus's estimated outcome — by its analysis, an ARB hearing may not do better.`,
+            `${m(acceptUpTo)}–${m(judgmentUpTo)}: a judgment call between certainty now and possible further savings at the ARB.`,
+            `Above ${m(judgmentUpTo)}: above the range the evidence supports — a formal ARB hearing is an option to consider.`,
           ]
         : []),
     ],
@@ -301,24 +302,24 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   // 8. What should I ask the ARB for?
   answers.push({
     id: "ask",
-    question: "What should I ask the ARB for?",
+    question: "What value could be presented to the ARB?",
     headline:
       range && lead?.value != null
-        ? `${m(Math.max(range.low, lead.value))}, on your ${lead.name}`
+        ? `Corvus estimates ${m(Math.max(range.low, lead.value))} as a potential value to consider, based on the ${lead.name}`
         : range
-          ? m(range.low)
-          : "Set once you have a supportable range",
+          ? `Corvus estimates ${m(range.low)} as a potential value to consider`
+          : "Estimated once Corvus has a supportable range",
     points: [
       ...(lead
         ? [
-            `Present ${lead.name} first${winning[1] ? `, then ${winning[1].name} as corroboration` : ""}.`,
+            `By Corvus's ranking, ${lead.name} is the strongest argument${winning[1] ? `, with ${winning[1].name} as corroboration` : ""}.`,
           ]
         : []),
       ...(i.cadReview?.hearingResponse
-        ? ["Rebut the district's evidence with Corvus's drafted hearing response."]
+        ? ["Corvus has drafted a hearing response to the district's evidence for your review."]
         : []),
       ...(card.likelySettlement != null
-        ? [`A realistic outcome is around ${m(card.likelySettlement)}.`]
+        ? [`Corvus estimates a realistic outcome around ${m(card.likelySettlement)}.`]
         : []),
     ],
     tone: range ? "good" : "neutral",
@@ -329,29 +330,33 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
   const appealPoints: string[] = [];
   if (card.result) {
     appealHeadline =
-      card.result.furtherAppeal === "Worth reviewing" ? "Worth reviewing" : "Probably not";
+      card.result.furtherAppeal === "Worth reviewing"
+        ? "Worth reviewing"
+        : "Lower priority by the numbers";
     appealPoints.push(card.result.furtherAppealReason);
     if (card.result.arbitrationEligible != null) {
       appealPoints.push(
         card.result.arbitrationEligible
-          ? `Binding arbitration is available${card.result.arbitrationDeadline ? ` — file by ${card.result.arbitrationDeadline}` : ""}.`
-          : "Binding arbitration isn't available for this property; district court is the remaining route.",
+          ? `Binding arbitration appears available${card.result.arbitrationDeadline ? ` — the filing deadline is ${card.result.arbitrationDeadline}` : ""}.`
+          : "Binding arbitration doesn't appear available for this property; district court is the remaining route.",
       );
     }
   } else if (range && rate > 0) {
     const threshold = Math.round(range.low + APPEAL_MIN_ANNUAL_SAVINGS / rate);
-    appealHeadline = `Only if the ARB leaves you above ${m(threshold)}`;
+    appealHeadline = `Worth reviewing if the ARB's value is above ${m(threshold)}`;
     appealPoints.push(
-      `Below that, less than ${usd(APPEAL_MIN_ANNUAL_SAVINGS)} a year is still at stake — rarely worth an arbitration deposit or attorney fees.`,
-      "Decide within 60 days of receiving the ARB's order (Tax Code §41A.03, §42.21).",
+      `Below that, Corvus estimates less than ${usd(APPEAL_MIN_ANNUAL_SAVINGS)} a year would still be at stake — often less than an arbitration deposit or attorney fees.`,
+      "The appeal deadline is 60 days from receiving the ARB's order (Tax Code §41A.03, §42.21).",
     );
   } else {
-    appealHeadline = "Decide after the ARB's order";
-    appealPoints.push("Corvus will compare the ARB's value to what your evidence supports.");
+    appealHeadline = "Assessed after the ARB's order";
+    appealPoints.push(
+      "Corvus will compare the ARB's value with the range it estimates the evidence supports.",
+    );
   }
   answers.push({
     id: "appeal",
-    question: "Is further appeal economically rational?",
+    question: "How do the further-appeal economics look?",
     headline: appealHeadline,
     points: appealPoints,
     tone: card.result?.furtherAppeal === "Worth reviewing" ? "good" : "neutral",
