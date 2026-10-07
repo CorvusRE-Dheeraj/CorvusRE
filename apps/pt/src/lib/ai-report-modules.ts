@@ -506,3 +506,20 @@ export async function askModuleQuestion(
   });
   return result.answer;
 }
+
+// How the stored executive recommendedAction reads on screen: Corvus presents
+// analysis and options, never a directive (Texas licenses property tax
+// consulting — Occupations Code ch. 1152). The stored values stay as-is so
+// cached reports and tests keep working.
+export const RECOMMENDED_ACTION_LABEL: Record<
+  ModuleResultMap["executive"]["recommendedAction"],
+  string
+> = {
+  "Proceed with Protest": "Corvus identifies a potential protest opportunity",
+  "Proceed with Protest After Completing Recommended Evidence":
+    "Potential protest opportunity — more evidence would strengthen it",
+  "Additional Information Needed Before Proceeding":
+    "More information needed for Corvus to assess the opportunity",
+  "Limited Protest Opportunity Based on Available Information":
+    "Limited protest opportunity identified on the available information",
+};

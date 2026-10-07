@@ -10,6 +10,7 @@
 // member can skim, not a new analysis and not an assumptions aid.
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
       `Produce the full JSON response.`;
 
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
       contents: [{ role: "user", parts: [{ text: userText }] }],
       generationConfig: { responseMimeType: "application/json", temperature: 0 },
     };

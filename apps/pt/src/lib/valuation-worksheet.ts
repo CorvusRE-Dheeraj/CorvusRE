@@ -62,3 +62,21 @@ export async function saveValuationWorksheet(
   );
   if (error) throw error;
 }
+
+// Every property's saved worksheet summary in one query — the dashboard's
+// Corvus decision cards, keyed by property id.
+export async function listValuationSummaries(
+  propertyIds: string[],
+): Promise<Map<string, WorksheetSummary>> {
+  const out = new Map<string, WorksheetSummary>();
+  if (propertyIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("valuation_worksheets")
+    .select("property_id, summary")
+    .in("property_id", propertyIds);
+  if (error) throw error;
+  for (const r of data ?? []) {
+    if (r.summary) out.set(r.property_id as string, r.summary as WorksheetSummary);
+  }
+  return out;
+}

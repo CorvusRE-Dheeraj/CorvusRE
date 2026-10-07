@@ -9,7 +9,12 @@
 // told never to introduce a number that isn't in the input. Signed-in callers only.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
-import { describeTrigger, increaseLabel, type IncreaseTrigger } from "../_shared/tax-increase.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
+import {
+  describeTrigger,
+  increaseLabel,
+  type IncreaseTrigger,
+} from "../_shared/tax-increase.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,7 +93,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
+        systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
       }),

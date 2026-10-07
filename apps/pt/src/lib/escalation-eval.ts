@@ -370,7 +370,7 @@ export function evaluateEscalation(
           `evidence on file is ${evidence}. Usually only economic when the value gap is large.`,
       },
       practicalBenefit:
-        "The strongest remedy: the court is not bound by the ARB's finding. Worth it when a large value " +
+        "The broadest remedy: the court is not bound by the ARB's finding. Can be worth considering when a large value " +
         "gap makes the recoverable tax dwarf the litigation cost.",
       recommended: false,
     });
@@ -443,7 +443,7 @@ export function evaluateEscalation(
         "Rarely available after a completed protest hearing; confirm with the appraisal district.",
     },
     practicalBenefit:
-      "The right tool only if the roll has a factual/clerical error (wrong square footage carried for " +
+      "Generally suited only to cases where the roll has a factual/clerical error (wrong square footage carried for " +
       "years, the same parcel appraised twice) rather than a value you simply disagree with.",
     recommended: false,
   });
@@ -465,7 +465,7 @@ export function evaluateEscalation(
       basis: "No cost, no deadline exposure. You can protest again next year.",
     },
     practicalBenefit:
-      "The right call when the remaining gap is small, the evidence is thin, or the cost and effort of " +
+      "Often the more practical option when the remaining gap is small, the evidence is thin, or the cost and effort of " +
       "escalating outweigh a single year's additional savings.",
     recommended: false,
   });
@@ -488,7 +488,7 @@ export function evaluateEscalation(
 
   const headline = available
     ? pick.id === "no_further_action"
-      ? "Escalation may be available — but accepting the ARB value looks like the better call"
+      ? "Escalation may be available — by Corvus's numbers, the ARB value may be the more practical place to stop"
       : `Escalation may be available — ${pick.title.toLowerCase()} is worth a closer look`
     : "Escalation options are not open for this case yet";
 

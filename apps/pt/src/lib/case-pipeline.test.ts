@@ -120,7 +120,7 @@ describe("casePipeline", () => {
           settlementOfferValue: 820000,
         }),
       }).next.title,
-    ).toBe("Accept or reject the county's offer of $820,000");
+    ).toBe("Review the county's offer of $820,000");
   });
 
   it("skips the ARB, decision and appeal when the informal offer is accepted", () => {

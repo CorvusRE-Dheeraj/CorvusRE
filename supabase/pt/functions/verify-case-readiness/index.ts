@@ -10,6 +10,7 @@
 // is what actually blocks filing. Same "no auth check, rate-limited AI helper"
 // pattern as hearing-prep-guide.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -82,7 +83,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: withAdvisoryTone(SYSTEM) }] },
       contents: [
         {
           role: "user",

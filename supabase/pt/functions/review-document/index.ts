@@ -12,6 +12,7 @@
 // value, never make a fraud/forgery call.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 import { PROSE_STYLE, BULLET_STYLE } from "../_shared/prose-style.ts";
 
 const corsHeaders = {
@@ -169,7 +170,11 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: q ? ANSWER_SYSTEM : EXPLAIN_SYSTEM }] },
+        systemInstruction: {
+          parts: [
+            { text: withAdvisoryTone(q ? ANSWER_SYSTEM : EXPLAIN_SYSTEM) },
+          ],
+        },
         contents: [
           {
             role: "user",
