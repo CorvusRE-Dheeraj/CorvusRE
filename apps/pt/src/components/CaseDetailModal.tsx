@@ -221,6 +221,7 @@ import { CalendarDays, Scale } from "lucide-react";
 import { PageHero } from "@/components/PageHero";
 import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
 import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+import { PostHearingDecision } from "@/components/PostHearingDecision";
 
 // Every county email CorvusPT drafts copies its county address, so replies
 // file themselves under the case (see county-mail-inbound).
@@ -981,6 +982,14 @@ export function CaseDetailView({
           {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
+              {/* Once there's a final value: the outcome, bill check, appeal
+                  deadlines and economics, documents and prior year in one place. */}
+              <PostHearingDecision
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceDocumentCount={evidenceDocuments.length}
+              />
               <CaseOutcomeSection
                 userId={userId}
                 protest={current}
