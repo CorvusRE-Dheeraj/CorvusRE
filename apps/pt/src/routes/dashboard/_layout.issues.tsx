@@ -21,6 +21,7 @@ import {
   ISSUE_STATUSES,
   upcomingIssueDates,
   analyzeIssueNotice,
+  checkCityRecords,
   attachIssueDocument,
   generateIssueAdvice,
   categoryLabel,
@@ -98,6 +99,32 @@ function PropertyIssues() {
       .finally(() => setLoading(false));
   }, [user]);
 
+  const [checking, setChecking] = useState(false);
+
+  // Austin and Dallas publish open code cases by address; new ones become issues.
+  async function checkCity() {
+    if (!user) return;
+    setChecking(true);
+    try {
+      const res = await checkCityRecords();
+      if (res.checked === 0) {
+        toast("City records aren't available for your properties' cities yet", {
+          description:
+            "Automatic checks cover Austin and Dallas today. Upload any notice you receive.",
+        });
+      } else if (res.added > 0) {
+        setIssues(await listPropertyIssues(user.id));
+        toast.success(`Found ${res.added} new city record${res.added === 1 ? "" : "s"}.`);
+      } else {
+        toast.success("No new city code cases at your properties.");
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not check city records."));
+    } finally {
+      setChecking(false);
+    }
+  }
+
   const propertyById = useMemo(() => new Map(properties.map((p) => [p.id, p])), [properties]);
 
   const open = issues.filter((i) => i.status !== "resolved");
@@ -127,6 +154,14 @@ function PropertyIssues() {
           className="btn-outline border-white/40 text-sm text-white hover:bg-white/10 disabled:opacity-60"
         >
           {adding ? "Cancel" : "Add an issue"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void checkCity()}
+          disabled={properties.length === 0 || checking}
+          className="btn-outline border-white/40 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+        >
+          {checking ? "Checking…" : "Check city records"}
         </button>
       </PageHero>
 
@@ -563,6 +598,11 @@ function IssueCard({
               {statusLabel(issue.status)}
             </span>
             <span className="text-xs text-muted-foreground">{categoryLabel(issue.category)}</span>
+            {issue.source === "city_data" && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                From city records
+              </span>
+            )}
           </div>
           <h3 className="mt-1 font-semibold">{issue.title}</h3>
           <div className="text-xs text-muted-foreground">{property?.address ?? "Property"}</div>

@@ -3014,3 +3014,14 @@ alter table public.documents
 grant update (property_issue_id) on public.documents to authenticated;
 alter table public.user_reminders
   add column if not exists property_issue_id uuid references public.property_issues (id) on delete cascade;
+
+-- Property Issues auto-fetch: sync-city-code-cases adds open Austin Code
+-- Enforcement and Dallas 311 Code Compliance cases at each property's address
+-- (source 'city_data'). Schedule daily with the service-role key:
+--   select cron.schedule('sync-city-code-cases', '0 12 * * *', $$
+--     select net.http_post(
+--       url := '<project-url>/functions/v1/sync-city-code-cases',
+--       headers := jsonb_build_object('Authorization', 'Bearer <service-role-key>',
+--                                     'Content-Type', 'application/json'),
+--       body := '{}'::jsonb);
+--   $$);

@@ -458,3 +458,13 @@ export function nextStatus(s: IssueStatus): IssueStatus | null {
   const i = ISSUE_STATUSES.findIndex((x) => x.id === s);
   return i >= 0 && i < ISSUE_STATUSES.length - 1 ? ISSUE_STATUSES[i + 1].id : null;
 }
+
+// Looks up open city code cases at the owner's properties (Austin and Dallas
+// public records) and adds new ones as issues — sync-city-code-cases.
+export async function checkCityRecords(): Promise<{
+  checked: number;
+  added: number;
+  unsupported: number;
+}> {
+  return invokeEdgeFunction("sync-city-code-cases", {});
+}
