@@ -201,3 +201,68 @@ export async function fetchGoogleTextSearch(
     })
     .filter((m): m is GoogleTextSearchMatch => m !== null);
 }
+
+export type ServiceProvider = {
+  id: string;
+  name: string;
+  address: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+  phone: string | null;
+  website: string | null;
+  mapsUrl: string | null;
+};
+
+// Local businesses for a Property Issue ("lawn mowing service near <address>"),
+// best-rated first. Empty when the Maps key isn't configured.
+export async function searchServiceProviders(
+  query: string,
+  signal?: AbortSignal,
+): Promise<ServiceProvider[]> {
+  if (!GOOGLE_API_KEY) return [];
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_API_KEY,
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.googleMapsUri",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      locationBias: { rectangle: TEXAS_RECTANGLE },
+      pageSize: 8,
+    }),
+  });
+  if (!res.ok) throw new Error(`Google provider search failed: ${res.status}`);
+  const data = (await res.json()) as {
+    places?: Array<{
+      id?: string;
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      rating?: number;
+      userRatingCount?: number;
+      nationalPhoneNumber?: string;
+      websiteUri?: string;
+      googleMapsUri?: string;
+    }>;
+  };
+  return (data.places ?? [])
+    .filter((p) => p.id && p.displayName?.text)
+    .map((p) => ({
+      id: p.id as string,
+      name: p.displayName?.text as string,
+      address: p.formattedAddress ?? null,
+      rating: p.rating ?? null,
+      ratingCount: p.userRatingCount ?? null,
+      phone: p.nationalPhoneNumber ?? null,
+      website: p.websiteUri ?? null,
+      mapsUrl: p.googleMapsUri ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        (b.rating ?? 0) * Math.log10((b.ratingCount ?? 0) + 1) -
+        (a.rating ?? 0) * Math.log10((a.ratingCount ?? 0) + 1),
+    );
+}

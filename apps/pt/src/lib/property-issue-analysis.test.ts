@@ -61,6 +61,21 @@ describe("sanitizeIssueAnalysis", () => {
     expect(out.guidance?.nextSteps).toEqual(["Mow", "Take dated photos"]);
   });
 
+  it("keeps a sane cost range and dedupes provider types", () => {
+    const out = sanitizeIssueAnalysis({
+      fields: { category: "grass", title: "Tall grass" },
+      costEstimate: { service: "One-time mow", low: "$250", high: 75 },
+      providerTypes: ["Lawn mowing service", "lawn mowing service", "", "lot clearing", "x", "y"],
+    });
+    expect(out.costEstimate).toMatchObject({ service: "One-time mow", low: 75, high: 250 });
+    expect(out.providerTypes).toEqual(["lawn mowing service", "lot clearing", "x"]);
+  });
+
+  it("drops a cost estimate with no service or amounts", () => {
+    expect(sanitizeIssueAnalysis({ costEstimate: { low: 10 } }).costEstimate).toBeNull();
+    expect(sanitizeIssueAnalysis({ costEstimate: null }).providerTypes).toEqual([]);
+  });
+
   it("falls back to 'other' and a default title, and drops empty guidance", () => {
     const out = sanitizeIssueAnalysis({ fields: { category: "parking" }, guidance: {} });
     expect(out.fields.category).toBe("other");

@@ -377,7 +377,14 @@ export async function listIssueDocuments(issueId: string): Promise<DocumentRecor
   }));
 }
 
-type Analysis = { fields: IssueFields & { title: string }; guidance: IssueGuidance | null };
+// What the AI adds to an issue: guidance, a cost range for the fix, and the
+// kinds of local providers to search for.
+export type IssueAdvice = {
+  guidance: IssueGuidance | null;
+  costEstimate: CostEstimate | null;
+  providerTypes: string[];
+};
+type Analysis = IssueAdvice & { fields: IssueFields & { title: string } };
 
 const propertyContext = (p: Pick<PropertyRecord, "address" | "cad">) => ({
   address: p.address,
@@ -398,11 +405,11 @@ export async function analyzeIssueNotice(
   });
 }
 
-// Guidance for an issue with no notice attached (typed in, or from city data).
-export async function generateIssueGuidance(
+// Advice for an issue with no notice attached (typed in, or from city data).
+export async function generateIssueAdvice(
   property: Pick<PropertyRecord, "address" | "cad">,
   issue: PropertyIssue,
-): Promise<IssueGuidance | null> {
+): Promise<IssueAdvice> {
   const facts = {
     category: issue.category,
     title: issue.title,
@@ -419,7 +426,31 @@ export async function generateIssueGuidance(
     property: propertyContext(property),
     issue: facts,
   });
-  return res.guidance;
+  return {
+    guidance: res.guidance,
+    costEstimate: res.costEstimate ?? null,
+    providerTypes: res.providerTypes ?? [],
+  };
+}
+
+// Who usually fixes each kind of issue — used to search for providers when
+// the AI hasn't named any yet.
+const DEFAULT_PROVIDER_TYPES: Record<IssueCategory, string[]> = {
+  dumping: ["junk removal service"],
+  grass: ["lawn mowing service"],
+  maintenance: ["handyman service"],
+  court_order: ["real estate attorney"],
+  code_offense: ["general contractor"],
+  inspection: ["general contractor"],
+  fine: ["real estate attorney"],
+  compliance_deadline: ["general contractor"],
+  other: ["handyman service"],
+};
+
+export function providerSearchTypes(issue: Pick<PropertyIssue, "category" | "providerTypes">) {
+  return issue.providerTypes.length > 0
+    ? issue.providerTypes
+    : DEFAULT_PROVIDER_TYPES[issue.category];
 }
 
 // The next step in the flow (for a one-click "Move to …" button).

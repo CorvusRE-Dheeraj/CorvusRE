@@ -6,6 +6,8 @@
 // returns (1) the notice's real facts — dates, fine, required action,
 // issuing authority — and (2) plain-language guidance: what happened, what
 // to do, by when, and what happens if it isn't resolved.
+// It also prices the fix (typical Texas cost range) and names the kinds of
+// local providers to search for.
 //
 // With no document, it writes guidance for an issue the owner typed in (or
 // one pulled from city data) from the facts the caller passes.
@@ -48,7 +50,11 @@ Rules for "guidance" (plain language for a busy owner, no legal jargon, no markd
 - nextSteps: 3-5 short ordered steps, including keeping proof (dated photos, receipts) and confirming with the authority.
 - whoToHire: the kind of service provider that usually fixes this (e.g. "lawn care / mowing service", "junk removal / hauling", "licensed general contractor"), or "No outside help needed" when the owner can do it.
 
-Return ONLY JSON: {"fields":{"category":"...","title":"...","description":<string|null>,"issuedOn":<date|null>,"deadline":<date|null>,"inspectionDate":<date|null>,"courtDate":<date|null>,"fineAmount":<number|null>,"fineDue":<date|null>,"requiredAction":<string|null>,"authority":<string|null>,"authorityContact":<string|null>,"consequences":<string|null>},"guidance":{"whatHappened":"...","whatToDo":"...","byWhen":"...","ifNotResolved":"...","nextSteps":["..."],"whoToHire":"..."}}`;
+Rules for "costEstimate" and "providerTypes":
+- costEstimate: the typical cost in Texas to hire someone to fix THIS issue (not the fine) — {"service":"<what is being priced, e.g. one-time mow and trim of an overgrown lot>","low":<number>,"high":<number>,"basis":"<1 sentence: what drives the price, e.g. lot size, haul volume>"}. null when no outside service is needed.
+- providerTypes: 1-3 short search phrases for finding local providers, e.g. ["lawn mowing service","lot clearing"]; [] when no outside service is needed.
+
+Return ONLY JSON: {"fields":{"category":"...","title":"...","description":<string|null>,"issuedOn":<date|null>,"deadline":<date|null>,"inspectionDate":<date|null>,"courtDate":<date|null>,"fineAmount":<number|null>,"fineDue":<date|null>,"requiredAction":<string|null>,"authority":<string|null>,"authorityContact":<string|null>,"consequences":<string|null>},"guidance":{"whatHappened":"...","whatToDo":"...","byWhen":"...","ifNotResolved":"...","nextSteps":["..."],"whoToHire":"..."},"costEstimate":{"service":"...","low":<number>,"high":<number>,"basis":"..."}|null,"providerTypes":["..."]}`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")

@@ -41,9 +41,18 @@ export type IssueGuidance = {
   whoToHire: string;
 };
 
+export type CostEstimate = {
+  service: string;
+  low: number;
+  high: number;
+  basis: string;
+};
+
 export type IssueAnalysis = {
   fields: IssueExtraction;
   guidance: IssueGuidance | null;
+  costEstimate: CostEstimate | null;
+  providerTypes: string[];
 };
 
 const str = (v: unknown, len: number): string | null => {
@@ -128,5 +137,35 @@ export function sanitizeIssueAnalysis(
           whoToHire: str(g.whoToHire, 300) ?? "",
         }
       : null;
-  return { fields, guidance };
+
+  // Cost guidance: a sane low/high range (swapped if reversed), or nothing.
+  const c = parsed.costEstimate as Record<string, unknown> | undefined;
+  let low = toAmount(c?.low);
+  let high = toAmount(c?.high);
+  if (low != null && high != null && low > high) [low, high] = [high, low];
+  const service = str(c?.service, 120);
+  const costEstimate: CostEstimate | null =
+    service && low != null && high != null
+      ? {
+          service,
+          low,
+          high,
+          basis:
+            str(c?.basis, 300) ??
+            "Typical Texas pricing; get at least two quotes.",
+        }
+      : null;
+
+  // Search phrases for local providers ("lawn mowing service"), deduped.
+  const providerTypes = Array.isArray(parsed.providerTypes)
+    ? [
+        ...new Set(
+          parsed.providerTypes
+            .map((p) => str(p, 60)?.toLowerCase())
+            .filter((p): p is string => !!p),
+        ),
+      ].slice(0, 3)
+    : [];
+
+  return { fields, guidance, costEstimate, providerTypes };
 }

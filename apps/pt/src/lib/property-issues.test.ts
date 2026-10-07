@@ -5,6 +5,7 @@ vi.mock("./supabase", () => ({ supabase: {} }));
 import {
   nextStatus,
   planIssueReminders,
+  providerSearchTypes,
   upcomingIssueDates,
   type PropertyIssue,
 } from "./property-issues";
@@ -84,6 +85,15 @@ describe("upcomingIssueDates", () => {
       ["b", "Fine due", "2026-10-10"],
       ["a", "Deadline", "2026-11-01"],
     ]);
+  });
+});
+
+describe("providerSearchTypes", () => {
+  it("uses the AI's provider types, else a default for the category", () => {
+    expect(providerSearchTypes(issue({ providerTypes: ["lot clearing"] }))).toEqual([
+      "lot clearing",
+    ]);
+    expect(providerSearchTypes(issue({ category: "dumping" }))).toEqual(["junk removal service"]);
   });
 });
 

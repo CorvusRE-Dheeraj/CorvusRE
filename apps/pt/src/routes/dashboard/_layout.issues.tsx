@@ -1,10 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, CheckCircle2, ShieldAlert, Sparkles, Trash2, Upload } from "lucide-react";
+import {
+  CalendarClock,
+  CheckCircle2,
+  ShieldAlert,
+  Sparkles,
+  Star,
+  Trash2,
+  Upload,
+  Wrench,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { getDocumentUrl, type DocumentRecord } from "@/lib/documents";
+import { searchServiceProviders, type ServiceProvider } from "@/lib/google-places";
 import {
   ISSUE_CATEGORIES,
   HEADS_UP_DAYS,
@@ -12,13 +22,14 @@ import {
   upcomingIssueDates,
   analyzeIssueNotice,
   attachIssueDocument,
-  generateIssueGuidance,
+  generateIssueAdvice,
   categoryLabel,
   createPropertyIssue,
   deletePropertyIssue,
   listIssueDocuments,
   listPropertyIssues,
   nextStatus,
+  providerSearchTypes,
   statusLabel,
   updatePropertyIssue,
   type IssueCategory,
@@ -268,9 +279,9 @@ function AddIssueForm({
       toast.success("Issue added.");
       onCreated(issue);
       // Guidance arrives a few seconds later; the card picks it up via onUpdated.
-      generateIssueGuidance(property, issue)
-        .then((guidance) =>
-          guidance ? updatePropertyIssue(issue.id, { guidance }).then(onUpdated) : undefined,
+      generateIssueAdvice(property, issue)
+        .then((advice) =>
+          advice.guidance ? updatePropertyIssue(issue.id, advice).then(onUpdated) : undefined,
         )
         .catch(() => {});
     } catch (err) {
@@ -286,11 +297,20 @@ function AddIssueForm({
     if (!property) return;
     setReading(true);
     try {
-      const { fields, guidance } = await analyzeIssueNotice(property, file);
+      const { fields, guidance, costEstimate, providerTypes } = await analyzeIssueNotice(
+        property,
+        file,
+      );
       let issue = await createPropertyIssue(
         userId,
         property.id,
-        { ...fields, guidance, status: "action_required" },
+        {
+          ...fields,
+          guidance,
+          costEstimate: costEstimate ?? null,
+          providerTypes: providerTypes ?? [],
+          status: "action_required",
+        },
         "upload",
       );
       try {
@@ -473,9 +493,9 @@ function IssueCard({
     if (!property) return;
     setBusy("guidance");
     try {
-      const guidance = await generateIssueGuidance(property, issue);
-      if (!guidance) throw new Error("No guidance came back — try again.");
-      onChange(await updatePropertyIssue(issue.id, { guidance }));
+      const advice = await generateIssueAdvice(property, issue);
+      if (!advice.guidance) throw new Error("No guidance came back — try again.");
+      onChange(await updatePropertyIssue(issue.id, advice));
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not get guidance for this issue."));
     } finally {
@@ -609,6 +629,9 @@ function IssueCard({
               ))}
             </div>
           </div>
+          {issue.status !== "resolved" && property && (
+            <ServiceHelp issue={issue} property={property} />
+          )}
           {issue.consequences && (
             <p className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">If not resolved: </span>
@@ -750,6 +773,113 @@ function GuidancePanel({ guidance }: { guidance: IssueGuidance }) {
       <p className="mt-3 text-[11px] text-muted-foreground">
         AI guidance, not legal advice — confirm requirements with the issuing office.
       </p>
+    </div>
+  );
+}
+
+// Cost guidance for the fix plus local providers who do this work
+// (Google Places, searched near the property).
+function ServiceHelp({ issue, property }: { issue: PropertyIssue; property: PropertyRecord }) {
+  const types = providerSearchTypes(issue);
+  const [type, setType] = useState(types[0]);
+  const [providers, setProviders] = useState<ServiceProvider[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  async function search(t: string) {
+    setType(t);
+    setSearching(true);
+    try {
+      setProviders(await searchServiceProviders(`${t} near ${property.address}`));
+    } catch {
+      toast.error("Could not search for providers right now.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  const c = issue.costEstimate;
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+        Get it fixed
+      </div>
+      {c && (
+        <div className="mt-2">
+          <div className="text-xs text-muted-foreground">Typical cost — {c.service}</div>
+          <div className="text-lg font-semibold">
+            {usd(c.low)}–{usd(c.high)}
+          </div>
+          <p className="text-xs text-muted-foreground">{c.basis}</p>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {types.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => void search(t)}
+            disabled={searching}
+            className={`btn-outline text-xs capitalize disabled:opacity-60 ${providers && t === type ? "border-accent text-accent" : ""}`}
+          >
+            Find {t} nearby
+          </button>
+        ))}
+      </div>
+      {searching && <p className="mt-2 text-xs text-muted-foreground">Searching…</p>}
+      {!searching && providers && providers.length === 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">No providers found nearby.</p>
+      )}
+      {!searching && providers && providers.length > 0 && (
+        <ul className="mt-3 grid gap-2">
+          {providers.slice(0, 5).map((p) => (
+            <li key={p.id} className="rounded-md bg-muted/40 p-2.5 text-xs">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium text-sm">{p.name}</span>
+                {p.rating != null && (
+                  <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />
+                    {p.rating.toFixed(1)}
+                    {p.ratingCount != null && ` (${p.ratingCount})`}
+                  </span>
+                )}
+              </div>
+              {p.address && <div className="text-muted-foreground">{p.address}</div>}
+              <div className="mt-1 flex flex-wrap gap-3">
+                {p.phone && (
+                  <a href={`tel:${p.phone}`} className="text-accent underline">
+                    {p.phone}
+                  </a>
+                )}
+                {p.website && (
+                  <a
+                    href={p.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    Website
+                  </a>
+                )}
+                {p.mapsUrl && (
+                  <a
+                    href={p.mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    Map
+                  </a>
+                )}
+              </div>
+            </li>
+          ))}
+          <li className="text-[11px] text-muted-foreground">
+            Listings from Google — CorvusPT doesn&apos;t endorse providers. Get at least two quotes,
+            and keep the receipt as proof.
+          </li>
+        </ul>
+      )}
     </div>
   );
 }
