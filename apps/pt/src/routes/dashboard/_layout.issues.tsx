@@ -1,14 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, ShieldAlert, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, ShieldAlert, Sparkles, Trash2, Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { getDocumentUrl, type DocumentRecord } from "@/lib/documents";
 import {
   ISSUE_CATEGORIES,
   ISSUE_STATUSES,
+  analyzeIssueNotice,
   attachIssueDocument,
+  generateIssueGuidance,
   categoryLabel,
   createPropertyIssue,
   deletePropertyIssue,
@@ -18,6 +20,7 @@ import {
   statusLabel,
   updatePropertyIssue,
   type IssueCategory,
+  type IssueGuidance,
   type IssueStatus,
   type PropertyIssue,
 } from "@/lib/property-issues";
@@ -68,10 +71,7 @@ function PropertyIssues() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  const propertyLabel = useMemo(() => {
-    const m = new Map(properties.map((p) => [p.id, p.address]));
-    return (id: string) => m.get(id) ?? "Property";
-  }, [properties]);
+  const propertyById = useMemo(() => new Map(properties.map((p) => [p.id, p])), [properties]);
 
   const open = issues.filter((i) => i.status !== "resolved");
   const resolved = issues.filter((i) => i.status === "resolved");
@@ -119,6 +119,7 @@ function PropertyIssues() {
                 setIssues((cur) => [issue, ...cur]);
                 setAdding(false);
               }}
+              onUpdated={replace}
             />
           )}
 
@@ -134,7 +135,7 @@ function PropertyIssues() {
               key={issue.id}
               userId={user.id}
               issue={issue}
-              propertyLabel={propertyLabel(issue.propertyId)}
+              property={propertyById.get(issue.propertyId)}
               onChange={replace}
               onDelete={() => setIssues((cur) => cur.filter((i) => i.id !== issue.id))}
             />
@@ -156,7 +157,7 @@ function PropertyIssues() {
                       key={issue.id}
                       userId={user.id}
                       issue={issue}
-                      propertyLabel={propertyLabel(issue.propertyId)}
+                      property={propertyById.get(issue.propertyId)}
                       onChange={replace}
                       onDelete={() => setIssues((cur) => cur.filter((i) => i.id !== issue.id))}
                     />
@@ -175,10 +176,12 @@ function AddIssueForm({
   userId,
   properties,
   onCreated,
+  onUpdated,
 }: {
   userId: string;
   properties: PropertyRecord[];
   onCreated: (issue: PropertyIssue) => void;
+  onUpdated: (issue: PropertyIssue) => void;
 }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
   const [category, setCategory] = useState<IssueCategory>("code_offense");
@@ -189,12 +192,15 @@ function AddIssueForm({
   const [authority, setAuthority] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [reading, setReading] = useState(false);
+  const property = properties.find((p) => p.id === propertyId);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!propertyId || !title.trim()) return;
+    if (!property || !title.trim()) return;
     setSaving(true);
     try {
-      const issue = await createPropertyIssue(userId, propertyId, {
+      const issue = await createPropertyIssue(userId, property.id, {
         title: title.trim(),
         category,
         deadline: deadline || null,
@@ -205,6 +211,12 @@ function AddIssueForm({
       });
       toast.success("Issue added.");
       onCreated(issue);
+      // Guidance arrives a few seconds later; the card picks it up via onUpdated.
+      generateIssueGuidance(property, issue)
+        .then((guidance) =>
+          guidance ? updatePropertyIssue(issue.id, { guidance }).then(onUpdated) : undefined,
+        )
+        .catch(() => {});
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not add this issue."));
     } finally {
@@ -212,25 +224,86 @@ function AddIssueForm({
     }
   }
 
+  // Upload the notice: the AI reads it, the issue is created from what it
+  // says, and the notice is filed under Documents linked to the issue.
+  async function readNotice(file: File) {
+    if (!property) return;
+    setReading(true);
+    try {
+      const { fields, guidance } = await analyzeIssueNotice(property, file);
+      let issue = await createPropertyIssue(
+        userId,
+        property.id,
+        { ...fields, guidance, status: "action_required" },
+        "upload",
+      );
+      try {
+        const doc = await attachIssueDocument(userId, issue, file, "notice");
+        issue = await updatePropertyIssue(issue.id, { sourceDocumentId: doc.id });
+      } catch {
+        toast.error(
+          "The issue was added, but the notice file couldn't be saved — attach it below.",
+        );
+      }
+      toast.success("Notice read — review the details below.");
+      onCreated(issue);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not read this notice. Add the issue by hand below."));
+    } finally {
+      setReading(false);
+    }
+  }
+
   const input = "rounded-md border border-input bg-background px-3 py-2 text-sm";
   return (
     <form onSubmit={save} className="card-elev grid gap-3 p-5">
       <h2 className="font-semibold">Add an issue</h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-sm">
-          Property
-          <select
-            value={propertyId}
-            onChange={(e) => setPropertyId(e.target.value)}
-            className={input}
-          >
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.address}
-              </option>
-            ))}
-          </select>
+      <label className="grid gap-1 text-sm">
+        Property
+        <select
+          value={propertyId}
+          onChange={(e) => setPropertyId(e.target.value)}
+          className={input}
+        >
+          {properties.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.address}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="rounded-lg border border-dashed border-accent/50 bg-accent/5 p-4">
+        <div className="flex items-center gap-2 font-medium">
+          <Sparkles className="h-4 w-4 text-accent" aria-hidden="true" />
+          Have the notice? Upload it
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          A photo or PDF of the letter. CorvusPT reads the dates, fine, required action and who sent
+          it, then explains what to do.
+        </p>
+        <label
+          className={`btn-accent mt-3 inline-flex cursor-pointer items-center gap-1.5 text-sm ${reading ? "pointer-events-none opacity-60" : ""}`}
+        >
+          <Upload className="h-4 w-4" aria-hidden="true" />
+          {reading ? "Reading the notice…" : "Upload notice"}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void readNotice(file);
+            }}
+          />
         </label>
+      </div>
+
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Or enter it yourself
+      </div>
+      <div className="grid gap-3">
         <label className="grid gap-1 text-sm">
           Type
           <select
@@ -308,13 +381,13 @@ function AddIssueForm({
 function IssueCard({
   userId,
   issue,
-  propertyLabel,
+  property,
   onChange,
   onDelete,
 }: {
   userId: string;
   issue: PropertyIssue;
-  propertyLabel: string;
+  property: PropertyRecord | undefined;
   onChange: (issue: PropertyIssue) => void;
   onDelete: () => void;
 }) {
@@ -328,6 +401,20 @@ function IssueCard({
       .then(setDocs)
       .catch(() => {});
   }, [expanded, issue.id]);
+
+  async function getGuidance() {
+    if (!property) return;
+    setBusy("guidance");
+    try {
+      const guidance = await generateIssueGuidance(property, issue);
+      if (!guidance) throw new Error("No guidance came back — try again.");
+      onChange(await updatePropertyIssue(issue.id, { guidance }));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not get guidance for this issue."));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function setStatus(status: IssueStatus) {
     setBusy("status");
@@ -395,7 +482,7 @@ function IssueCard({
             <span className="text-xs text-muted-foreground">{categoryLabel(issue.category)}</span>
           </div>
           <h3 className="mt-1 font-semibold">{issue.title}</h3>
-          <div className="text-xs text-muted-foreground">{propertyLabel}</div>
+          <div className="text-xs text-muted-foreground">{property?.address ?? "Property"}</div>
         </div>
         <button
           type="button"
@@ -409,6 +496,21 @@ function IssueCard({
 
       {expanded && (
         <div className="mt-3 grid gap-3 text-sm">
+          {issue.guidance ? (
+            <GuidancePanel guidance={issue.guidance} />
+          ) : (
+            issue.status !== "resolved" && (
+              <button
+                type="button"
+                onClick={getGuidance}
+                disabled={!!busy || !property}
+                className="btn-outline inline-flex w-fit items-center gap-1.5 text-xs disabled:opacity-60"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                {busy === "guidance" ? "Working it out…" : "What should I do?"}
+              </button>
+            )
+          )}
           {issue.requiredAction && (
             <p>
               <span className="font-medium">Required action: </span>
@@ -525,5 +627,47 @@ function IssueCard({
         </div>
       )}
     </article>
+  );
+}
+
+// The AI's plain-language read of the issue (analyze-property-issue).
+function GuidancePanel({ guidance }: { guidance: IssueGuidance }) {
+  const rows: [string, string][] = [
+    ["What happened", guidance.whatHappened],
+    ["What to do", guidance.whatToDo],
+    ["By when", guidance.byWhen],
+    ["If it isn't resolved", guidance.ifNotResolved],
+    ["Who can fix it", guidance.whoToHire],
+  ];
+  return (
+    <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-accent">
+        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+        What this means
+      </div>
+      <dl className="mt-2 grid gap-2">
+        {rows
+          .filter(([, v]) => v)
+          .map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-xs font-medium text-muted-foreground">{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+      </dl>
+      {guidance.nextSteps.length > 0 && (
+        <>
+          <div className="mt-3 text-xs font-medium text-muted-foreground">Next steps</div>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+            {guidance.nextSteps.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+        </>
+      )}
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        AI guidance, not legal advice — confirm requirements with the issuing office.
+      </p>
+    </div>
   );
 }

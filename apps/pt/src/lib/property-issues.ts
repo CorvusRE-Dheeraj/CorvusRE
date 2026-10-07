@@ -1,5 +1,8 @@
 import { supabase } from "./supabase";
 import { uploadDocument, notifyDocumentsChanged, type DocumentRecord } from "./documents";
+import { invokeEdgeFunction } from "./edge-functions";
+import { bytesToBase64 } from "./pdf-utils";
+import type { PropertyRecord } from "./properties";
 
 // Property Issues: city/county notices, violations and other property-related
 // issues an owner has to resolve (public.property_issues). Each issue carries
@@ -271,6 +274,51 @@ export async function listIssueDocuments(issueId: string): Promise<DocumentRecor
     documentType: d.document_type as string | null,
     uploadedAt: d.uploaded_at as string,
   }));
+}
+
+type Analysis = { fields: IssueFields & { title: string }; guidance: IssueGuidance | null };
+
+const propertyContext = (p: Pick<PropertyRecord, "address" | "cad">) => ({
+  address: p.address,
+  county: p.cad,
+});
+
+// Reads an uploaded notice: its real facts plus plain-language guidance
+// (analyze-property-issue).
+export async function analyzeIssueNotice(
+  property: Pick<PropertyRecord, "address" | "cad">,
+  file: File,
+): Promise<Analysis> {
+  const mimeType = file.type || "application/octet-stream";
+  const dataUrl = `data:${mimeType};base64,${bytesToBase64(new Uint8Array(await file.arrayBuffer()))}`;
+  return invokeEdgeFunction<Analysis>("analyze-property-issue", {
+    property: propertyContext(property),
+    documents: [{ fileName: file.name, mimeType, dataUrl }],
+  });
+}
+
+// Guidance for an issue with no notice attached (typed in, or from city data).
+export async function generateIssueGuidance(
+  property: Pick<PropertyRecord, "address" | "cad">,
+  issue: PropertyIssue,
+): Promise<IssueGuidance | null> {
+  const facts = {
+    category: issue.category,
+    title: issue.title,
+    description: issue.description,
+    issuedOn: issue.issuedOn,
+    deadline: issue.deadline,
+    inspectionDate: issue.inspectionDate,
+    courtDate: issue.courtDate,
+    fineAmount: issue.fineAmount,
+    requiredAction: issue.requiredAction,
+    authority: issue.authority,
+  };
+  const res = await invokeEdgeFunction<Analysis>("analyze-property-issue", {
+    property: propertyContext(property),
+    issue: facts,
+  });
+  return res.guidance;
 }
 
 // The next step in the flow (for a one-click "Move to …" button).
