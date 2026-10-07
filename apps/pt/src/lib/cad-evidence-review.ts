@@ -11,6 +11,18 @@ import type {
 
 export type { CadEvidenceReview, CadWeakness };
 export {
+  analyzeCadEvidence as analyzeCadEvidencePacket,
+  strongestPoints,
+  LIMITS as CAD_EVIDENCE_LIMITS,
+  type CadEvidenceAnalysis,
+  type CompMetrics,
+  type HearingPoint,
+} from "../../../../supabase/pt/functions/_shared/cad-evidence-analysis";
+import {
+  sanitizeExtraction,
+  type CadExtraction,
+} from "../../../../supabase/pt/functions/_shared/cad-evidence-analysis";
+export {
   WEAKNESS_LABEL,
   weaknessCounts,
 } from "../../../../supabase/pt/functions/_shared/cad-evidence-review";
@@ -32,6 +44,7 @@ type Row = {
   weaknesses: CadWeakness[];
   hearing_response: string | null;
   cad_indicated_value: number | null;
+  extraction: CadExtraction | null;
   created_at: string;
 };
 
@@ -41,11 +54,12 @@ const fromRow = (r: Row): StoredCadEvidenceReview => ({
   weaknesses: r.weaknesses ?? [],
   hearingResponse: r.hearing_response ?? "",
   cadIndicatedValue: r.cad_indicated_value == null ? null : Number(r.cad_indicated_value),
+  extraction: r.extraction ?? sanitizeExtraction(null),
   createdAt: r.created_at,
 });
 
 const COLUMNS =
-  "protest_id, summary, weaknesses, hearing_response, cad_indicated_value, created_at";
+  "protest_id, summary, weaknesses, hearing_response, cad_indicated_value, extraction, created_at";
 
 export async function listCadEvidenceReviews(
   protestIds: string[],
@@ -74,6 +88,8 @@ export type SubjectFacts = {
   acres: number | null;
   noi: number | null;
   capRatePct: number | null;
+  propertyType: string | null;
+  taxYear: number | null;
 };
 
 // Uploads the packet to the case's documents, has it analyzed, and saves the review.
@@ -112,6 +128,7 @@ export async function analyzeCadEvidence(
         weaknesses: review.weaknesses,
         hearing_response: review.hearingResponse,
         cad_indicated_value: review.cadIndicatedValue,
+        extraction: review.extraction,
         created_at: new Date().toISOString(),
       },
       { onConflict: "protest_id" },

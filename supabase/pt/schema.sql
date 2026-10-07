@@ -3084,3 +3084,7 @@ create policy "Users manage their own CAD evidence reviews"
 drop policy if exists "Admins can view all CAD evidence reviews" on public.cad_evidence_reviews;
 create policy "Admins can view all CAD evidence reviews"
   on public.cad_evidence_reviews for select using (public.is_admin());
+-- The district packet read into structure (every comp, stated subject facts,
+-- adjustments, income assumptions) — the CAD evidence-response analysis
+-- (_shared/cad-evidence-analysis.ts) is computed from it.
+alter table public.cad_evidence_reviews add column if not exists extraction jsonb;

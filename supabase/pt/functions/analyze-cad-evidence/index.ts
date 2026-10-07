@@ -34,8 +34,9 @@ Rules:
 - item: which comp / page / exhibit it concerns, or null.
 - cadIndicatedValue: the value the district's packet argues for, as a number, or null if not stated.
 - summary: 1-2 sentences on the overall strength of the district's case.
+- extraction: read EVERY comparable in the packet (sales, equity/appraisal comps, rent comps) into extraction.comps with exactly the figures printed — label as the packet names it ("Comp 3", "Sale 2"), kind (sale|equity|rent|other), salePrice, saleDate (YYYY-MM-DD), appraisedValue, buildingSqft, yearBuilt, acres, propertyType, distanceMi, every adjustment as {factor, pct} (pct as a signed percent, e.g. -10), adjustedValue, capRatePct. extraction.subjectAsStated: the facts the packet states about the OWNER'S property (buildingSqft, yearBuilt, acres, propertyType, condition). extraction.income: the district's income assumptions (marketRentPerSf, vacancyPct, expensePct, capRatePct). extraction.proposedValue: the value the district proposes. Use null for anything not printed — never estimate.
 - hearingResponse: a concise, professional response the owner can present at the ARB hearing, organized point by point, citing the weaknesses. Plain text, no markdown.
-Return ONLY JSON: {"summary":"...","cadIndicatedValue":<number|null>,"weaknesses":[{"category":"...","finding":"...","detail":"...","item":<string|null>}],"hearingResponse":"..."}`;
+Return ONLY JSON: {"summary":"...","cadIndicatedValue":<number|null>,"extraction":{"proposedValue":<number|null>,"subjectAsStated":{"buildingSqft":null,"yearBuilt":null,"acres":null,"propertyType":null,"condition":null},"comps":[{"label":"...","address":null,"kind":"sale","salePrice":null,"saleDate":null,"appraisedValue":null,"buildingSqft":null,"yearBuilt":null,"acres":null,"propertyType":null,"distanceMi":null,"adjustments":[{"factor":"...","pct":0}],"adjustedValue":null,"capRatePct":null}],"income":{"marketRentPerSf":null,"vacancyPct":null,"expensePct":null,"capRatePct":null}},"weaknesses":[{"category":"...","finding":"...","detail":"...","item":<string|null>}],"hearingResponse":"..."}`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")

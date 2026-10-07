@@ -1,6 +1,10 @@
 // Pure helpers for analyze-cad-evidence: the weakness categories, and the
 // clamp that turns the model's JSON into a review the UI and the dashboard's
 // decision card can trust. No Deno APIs, so the app's vitest suite tests it.
+import {
+  sanitizeExtraction,
+  type CadExtraction,
+} from "./cad-evidence-analysis.ts";
 
 export const WEAKNESS_CATEGORIES = [
   "location",
@@ -39,6 +43,9 @@ export type CadEvidenceReview = {
   weaknesses: CadWeakness[];
   hearingResponse: string;
   cadIndicatedValue: number | null; // the value the district's evidence argues for
+  // Every comp, the stated subject facts, adjustments and income assumptions,
+  // read off the packet — the deterministic analysis runs on this.
+  extraction: CadExtraction;
 };
 
 const str = (v: unknown, len: number): string | null => {
@@ -76,6 +83,7 @@ export function sanitizeCadEvidenceReview(
     weaknesses,
     hearingResponse: str(parsed.hearingResponse, 6000) ?? "",
     cadIndicatedValue: Number.isFinite(v) && v > 0 ? Math.round(v) : null,
+    extraction: sanitizeExtraction(parsed.extraction),
   };
 }
 
