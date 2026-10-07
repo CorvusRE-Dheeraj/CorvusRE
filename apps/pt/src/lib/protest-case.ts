@@ -753,3 +753,31 @@ export async function undoHearingCompleted(protestIdArg: string): Promise<void> 
   if (error) throw error;
   void logCaseEvent(protestIdArg, "status_change", "Formal hearing completed mark undone.", {});
 }
+
+// "Request CAD Evidence" (Tax Code §41.461) — the owner says they sent the
+// written request, and later that the district's evidence arrived. Passing
+// false undoes a mis-click. See case-pipeline.ts.
+export async function setCadEvidenceRequested(
+  protestId: string,
+  requested: boolean,
+): Promise<string | null> {
+  const at = requested ? new Date().toISOString() : null;
+  const patch: Record<string, string | null> = { cad_evidence_requested_at: at };
+  if (!requested) patch.cad_evidence_received_at = null;
+  const { error } = await supabase.from("protests").update(patch).eq("id", protestId);
+  if (error) throw error;
+  return at;
+}
+
+export async function setCadEvidenceReceived(
+  protestId: string,
+  received: boolean,
+): Promise<string | null> {
+  const at = received ? new Date().toISOString() : null;
+  const { error } = await supabase
+    .from("protests")
+    .update({ cad_evidence_received_at: at })
+    .eq("id", protestId);
+  if (error) throw error;
+  return at;
+}

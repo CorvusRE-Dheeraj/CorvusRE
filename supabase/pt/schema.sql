@@ -3025,3 +3025,14 @@ alter table public.user_reminders
 --                                     'Content-Type', 'application/json'),
 --       body := '{}'::jsonb);
 --   $$);
+
+-- =========================================================================
+-- Case pipeline (Oct 2026): every property's protest runs Case Readiness →
+-- File Protest → Confirm Filing → Request CAD Evidence → Informal → ARB →
+-- Decision → Appeal Decision → Close Case, with one NEXT REQUIRED ACTION shown
+-- at all times (apps/pt/src/lib/case-pipeline.ts). Every stage reads facts the
+-- case already records except "Request CAD Evidence": the owner's written
+-- request for the district's hearing evidence (Tax Code §41.461) and when that
+-- evidence arrived. Owners update their own protests row (existing policy).
+alter table public.protests add column if not exists cad_evidence_requested_at timestamptz;
+alter table public.protests add column if not exists cad_evidence_received_at timestamptz;

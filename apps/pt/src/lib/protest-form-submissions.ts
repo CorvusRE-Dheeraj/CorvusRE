@@ -370,3 +370,39 @@ export async function setAllEvidenceReminderFrequency(
     .eq("form_type", "evidence");
   if (error) throw error;
 }
+
+// The Notice of Protest's signing and filing timestamps for many cases in one
+// query — what the case pipeline (case-pipeline.ts) needs for every
+// property's NEXT REQUIRED ACTION on list pages, keyed by protest id.
+export async function listNoticeFilings(
+  protestIds: string[],
+): Promise<
+  Map<
+    string,
+    Pick<
+      FormSubmission,
+      "signedAt" | "submittedAt" | "filingConfirmedAt" | "additionalRequestedAt" | "rejectedAt"
+    >
+  >
+> {
+  const out = new Map();
+  if (protestIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("protest_form_submissions")
+    .select(
+      "protest_id, signed_at, submitted_at, filing_confirmed_at, additional_requested_at, rejected_at",
+    )
+    .eq("form_type", "notice_of_protest")
+    .in("protest_id", protestIds);
+  if (error) throw error;
+  for (const r of data ?? []) {
+    out.set(r.protest_id as string, {
+      signedAt: r.signed_at as string | null,
+      submittedAt: r.submitted_at as string | null,
+      filingConfirmedAt: r.filing_confirmed_at as string | null,
+      additionalRequestedAt: r.additional_requested_at as string | null,
+      rejectedAt: r.rejected_at as string | null,
+    });
+  }
+  return out;
+}

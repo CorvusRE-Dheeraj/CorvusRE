@@ -16,8 +16,10 @@ import { LoadingLine } from "@/components/LoadingLine";
 // propertyId), so this page is a self-contained fetch, not a hand-off of
 // already-loaded data.
 export const Route = createFileRoute("/dashboard/_layout/case")({
-  validateSearch: (search: Record<string, unknown>): { propertyId?: string } => ({
+  // anchor: open straight at a section (a NEXT REQUIRED ACTION link).
+  validateSearch: (search: Record<string, unknown>): { propertyId?: string; anchor?: string } => ({
     propertyId: typeof search.propertyId === "string" ? search.propertyId : undefined,
+    anchor: typeof search.anchor === "string" ? search.anchor : undefined,
   }),
   component: CasePage,
 });
@@ -25,7 +27,7 @@ export const Route = createFileRoute("/dashboard/_layout/case")({
 function CasePage() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const { propertyId } = Route.useSearch();
+  const { propertyId, anchor } = Route.useSearch();
   const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [protest, setProtest] = useState<ProtestRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,6 +113,8 @@ function CasePage() {
       property={property}
       protest={protest}
       onBack={goToProperties}
+      initialAnchor={anchor}
+      userEmail={user.email ?? null}
     />
   );
 }

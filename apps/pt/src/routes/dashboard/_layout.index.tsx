@@ -54,6 +54,9 @@ import {
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { listDocuments, type DocumentRecord } from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { listNoticeFilings } from "@/lib/protest-form-submissions";
+import { casePipeline, localTodayIso, type NoticeFiling, type Urgency } from "@/lib/case-pipeline";
+import { NextRequiredAction } from "@/components/CasePipeline";
 import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
@@ -75,6 +78,8 @@ import { MyAppointments } from "@/components/MyAppointments";
 import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
+
+const URGENCY_RANK: Record<Urgency, number> = { overdue: 0, urgent: 1, soon: 2, normal: 3 };
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
@@ -104,6 +109,7 @@ function Overview() {
   const [bppAccounts, setBppAccounts] = useState<BppAccountRecord[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
+  const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
   const [loaded, setLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -188,10 +194,41 @@ function Overview() {
         setDocuments(docs);
         setProtests(prot);
         setHealthScores(scores);
+        listNoticeFilings(prot.map((pr) => pr.id))
+          .then(setNoticeFilings)
+          .catch((err) => console.error(err));
       })
       .catch((err) => console.error(err))
       .finally(() => setLoaded(true));
   }, [user]);
+
+  // Every property's NEXT REQUIRED ACTION (case-pipeline.ts), most pressing
+  // first: overdue, then urgent, soon and the rest; within that, the earliest
+  // due date; your own actions before ones CorvusPT is handling.
+  const today = localTodayIso();
+  const nextActions = properties
+    .map((p) => {
+      const pr = protests.find((x) => x.propertyId === p.id) ?? null;
+      const pipeline = casePipeline({
+        protest: pr,
+        notice: pr ? (noticeFilings.get(pr.id) ?? null) : null,
+        protestDeadline: p.protestDeadline,
+        cadName: p.cad,
+        managed: p.planTier === "corvusrf_managed",
+        today,
+      });
+      return { property: p, pipeline };
+    })
+    .filter((x) => x.pipeline.next.stage !== null)
+    .sort((a, b) => {
+      const ua = URGENCY_RANK[a.pipeline.next.urgency];
+      const ub = URGENCY_RANK[b.pipeline.next.urgency];
+      if (ua !== ub) return ua - ub;
+      const da = a.pipeline.next.dueDate ?? "9999";
+      const db = b.pipeline.next.dueDate ?? "9999";
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.pipeline.next.owner === "you" ? 0 : 1) - (b.pipeline.next.owner === "you" ? 0 : 1);
+    });
 
   useSavingsBackfill(properties, setProperties);
   useHealthScoreBackfill(properties, healthScores, setHealthScores);
@@ -475,6 +512,63 @@ function Overview() {
           </span>
         }
       />
+
+      {loaded && nextActions.length > 0 && (
+        <section aria-label="Next required actions" className="grid gap-3">
+          <NextRequiredAction
+            pipeline={nextActions[0].pipeline}
+            today={today}
+            propertyId={nextActions[0].property.id}
+            address={nextActions[0].property.address}
+            onStart={() => nav({ to: "/dashboard/properties" })}
+          />
+          {nextActions.length > 1 && (
+            <div className="card-elev p-4">
+              <h2 className="text-xs font-black uppercase tracking-[0.18em]">
+                Then, for your other properties
+              </h2>
+              <ul className="mt-2 divide-y divide-border">
+                {nextActions.slice(1, 6).map(({ property, pipeline }) => (
+                  <li
+                    key={property.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                  >
+                    <div className="min-w-0 flex-1 basis-64">
+                      <div className="text-sm font-medium">{pipeline.next.title}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {property.address}
+                        {pipeline.next.dueDate &&
+                          ` · ${pipeline.next.urgency === "overdue" ? "overdue since" : "by"} ${new Date(`${pipeline.next.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                      </div>
+                    </div>
+                    {pipeline.next.target.kind === "anchor" ? (
+                      <Link
+                        to="/dashboard/case"
+                        search={{ propertyId: property.id, anchor: pipeline.next.target.anchor }}
+                        className="btn-outline px-3 py-1 text-xs"
+                      >
+                        Open
+                      </Link>
+                    ) : (
+                      <Link to="/dashboard/properties" className="btn-outline px-3 py-1 text-xs">
+                        Open
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {nextActions.length > 6 && (
+                <Link
+                  to="/dashboard/properties"
+                  className="mt-2 inline-block text-xs text-accent underline"
+                >
+                  See all {nextActions.length} properties
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {nudge && urgentProperties.length > 0 && (
         <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">

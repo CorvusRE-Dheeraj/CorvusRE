@@ -130,6 +130,11 @@ export type ProtestRecord = {
   // fields above.
   assignedRepresentative?: string | null;
   assignedRepSetAt?: string | null;
+  // The owner's written request for the appraisal district's hearing
+  // evidence (Tax Code §41.461) and when that evidence arrived — the
+  // "Request CAD Evidence" stage of the case pipeline (case-pipeline.ts).
+  cadEvidenceRequestedAt?: string | null;
+  cadEvidenceReceivedAt?: string | null;
 };
 
 type ProtestRow = {
@@ -169,10 +174,12 @@ type ProtestRow = {
   evidence_submitted_confirmed_at: string | null;
   assigned_representative: string | null;
   assigned_rep_set_at: string | null;
+  cad_evidence_requested_at: string | null;
+  cad_evidence_received_at: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return {
@@ -212,6 +219,8 @@ function fromRow(row: ProtestRow): ProtestRecord {
     evidenceSubmittedConfirmedAt: row.evidence_submitted_confirmed_at,
     assignedRepresentative: row.assigned_representative,
     assignedRepSetAt: row.assigned_rep_set_at,
+    cadEvidenceRequestedAt: row.cad_evidence_requested_at,
+    cadEvidenceReceivedAt: row.cad_evidence_received_at,
   };
 }
 
