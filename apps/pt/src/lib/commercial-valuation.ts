@@ -1,4 +1,5 @@
 import type { ComparableStats, RankedComp } from "./comps-analysis";
+import { impactSummary, type ImpairmentCategory, type Support } from "./impairment-builder";
 import type { IncomeApproach } from "./income-approach";
 
 // The six valuation paths a commercial owner (and a commercial appraiser)
@@ -347,7 +348,20 @@ export function landImprovementAnalysis(i: LandImprovementInputs): LandImproveme
 
 // ── Property-specific impairments ──────────────────────────────────────────
 
-export type Impairment = { id: string; label: string; costToCure: number };
+export type Impairment = {
+  id: string;
+  label: string;
+  costToCure: number; // the bid / report total, or the high end of an estimate
+  // Set by the impact builder (impairment-builder.ts); absent on items saved
+  // before it, which count their figure in full.
+  category?: ImpairmentCategory;
+  support?: Support;
+  quantity?: number;
+  costLow?: number; // low end of an estimated range
+  remainingLifeYrs?: number; // short-lived components
+  documentId?: string; // the uploaded bid / report it came from
+  documentName?: string;
+};
 
 export function impairmentsApproach(
   baseValue: number | null,
@@ -357,10 +371,13 @@ export function impairmentsApproach(
   const name = "Property-Specific Impairments";
   const basis =
     "Conditions a buyer would discount for — deferred maintenance, flood exposure, access, functional problems.";
-  const total = items.reduce((s, x) => s + (x.costToCure > 0 ? x.costToCure : 0), 0);
+  const impact = impactSummary(items);
+  const total = impact.total;
   const steps = [
     ...knownConditions.map((c) => `Flagged in your report: ${c}`),
-    ...items.map((x) => `${x.label}: −${usd(x.costToCure)} cost to cure`),
+    ...items.map(
+      (x, i) => `${x.label}: −${usd(impact.byItem[i].counted)} (${impact.byItem[i].note})`,
+    ),
   ];
   if (baseValue == null || total <= 0) {
     return {
@@ -375,6 +392,10 @@ export function impairmentsApproach(
   }
   const value = Math.round(baseValue - total);
   steps.push(`County value ${usd(baseValue)} − impairments ${usd(total)} = ${usd(value)}`);
+  if (impact.documented < total)
+    steps.push(
+      `${usd(impact.documented)} of the ${usd(total)} is backed by bids or inspection reports — the rest is credited at the low end of its estimate.`,
+    );
   return {
     id: "impairments",
     name,
