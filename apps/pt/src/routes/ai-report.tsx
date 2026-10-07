@@ -156,6 +156,7 @@ import {
   type PropertyBaseData,
 } from "@/lib/property-base-data";
 import { moduleSourceFacts } from "@/lib/module-source-facts";
+import { PropertyTaxHistory } from "@/components/HistoricPropertyTaxSection";
 import { listProtests, requestProtest, type ProtestRecord } from "@/lib/protests";
 import { generateCasePrep } from "@/lib/protest-case";
 import { getCaseNextAction, type CaseNextAction } from "@/lib/case-next-action";
@@ -9650,6 +9651,19 @@ function Module1Content({
           </>
         )}
       </div>
+
+      {/* Historic Property Tax — 5+ years of values and taxes, with the 10% /
+          20% / 30% increase triggers and their AI insight. */}
+      <PropertyTaxHistory
+        propertyId={property?.id ?? null}
+        address={state.address ?? property?.address ?? ""}
+        cad={state.cad ?? property?.cad ?? null}
+        propertyType={state.propertyType ?? null}
+        valueHistory={state.valueHistory ?? []}
+        taxYear={state.taxYear ?? null}
+        totalValue={state.totalValue ?? null}
+        onStartProtest={protest ? undefined : onStartProtest}
+      />
 
       {/* 4. Detailed Analysis — collapsed by default; native <details> since
           nothing outside this block needs to control whether it's open. */}

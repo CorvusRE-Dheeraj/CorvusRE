@@ -11,6 +11,12 @@
 // via its "Refresh" button); this job's responsibility is detect + notify.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
+import {
+  compareYears,
+  describeTrigger,
+  increaseLabel,
+  type IncreaseTrigger,
+} from "../_shared/tax-increase.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,6 +120,29 @@ function diffCad(a: CadSnap | null, b: CadSnap | null): string | null {
   return notes.length > 0 ? notes.join("; ") : null;
 }
 
+// The 10% / 20% / 30% increase trigger (../_shared/tax-increase.ts) for a tax
+// year that just appeared — only when `next` has a year `prev` didn't, so the
+// same increase is alerted once, not every week.
+function newYearIncrease(prev: CadSnap | null, next: CadSnap): IncreaseTrigger | null {
+  const points = new Map<number, number>();
+  for (const h of next.valueHistory) if (h.total != null) points.set(h.year, h.total);
+  if (next.taxYear != null && next.totalValue != null && !points.has(next.taxYear))
+    points.set(next.taxYear, next.totalValue);
+  const years = [...points.keys()].sort((a, b) => a - b);
+  const latest = years[years.length - 1];
+  if (latest == null) return null;
+  const prevYears = new Set<number>([
+    ...(prev?.valueHistory ?? []).filter((h) => h.total != null).map((h) => h.year),
+    ...(prev?.taxYear != null && prev.totalValue != null ? [prev.taxYear] : []),
+  ]);
+  if (prevYears.has(latest)) return null;
+  return compareYears(
+    "appraised",
+    points.has(latest - 1) ? { year: latest - 1, value: points.get(latest - 1)! } : undefined,
+    { year: latest, value: points.get(latest)! },
+  );
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -193,7 +222,10 @@ Deno.serve(async (req: Request) => {
           .eq("property_id", row.property_id);
 
         const today = new Date().toISOString().slice(0, 10);
-        const noteText = `Property base data updated for ${prop.address} — ${note}. Review your protest analysis.`;
+        const increase = newYearIncrease(prevCad, nextCad);
+        const noteText = increase
+          ? `${increaseLabel(increase.level)} for ${prop.address}: ${describeTrigger(increase)} Open Module 1 (Historic Property Tax) to see the history and whether a protest may be worth it.`
+          : `Property base data updated for ${prop.address} — ${note}. Review your protest analysis.`;
         const { data: dup } = await admin
           .from("user_reminders")
           .select("id")
