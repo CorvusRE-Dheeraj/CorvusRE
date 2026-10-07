@@ -157,6 +157,7 @@ import {
 } from "@/lib/property-base-data";
 import { moduleSourceFacts } from "@/lib/module-source-facts";
 import { PropertyTaxHistory } from "@/components/HistoricPropertyTaxSection";
+import { CommercialValuationPanel } from "@/components/CommercialValuationPanel";
 import { listProtests, requestProtest, type ProtestRecord } from "@/lib/protests";
 import { generateCasePrep } from "@/lib/protest-case";
 import { getCaseNextAction, type CaseNextAction } from "@/lib/case-next-action";
@@ -3352,6 +3353,54 @@ function Report() {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* The six commercial valuation approaches side by side — Income,
+              Sales Comparison, Equal & Uniform, Cost, Land / Improvement,
+              Impairments (lib/commercial-valuation.ts). Not for a property the
+              county itself codes as residential. */}
+          {classifyPropertyCategory(state.propertyType) !== "residential" && (
+            <CommercialValuationPanel
+              propertyId={resolvedProperty?.id ?? null}
+              cadValue={state.totalValue ?? null}
+              landValue={state.landValue ?? null}
+              improvementValue={state.improvementValue ?? null}
+              acres={
+                compsMap.data?.subject?.legalAcreage ?? baseData?.snapshot.cad?.lotSizeAcres ?? null
+              }
+              buildingSqft={baseData?.snapshot.cad?.buildingSqft ?? null}
+              yearBuilt={baseData?.snapshot.cad?.yearBuilt ?? null}
+              income={incomeComputed}
+              compStats={
+                compsMap.data
+                  ? computeComparableStats(
+                      compsMap.data.subject,
+                      compsMap.data.comps,
+                      state.totalValue,
+                      {
+                        excludedKeys: excludedCompKeys(compSelections),
+                        extraComps: compSelectionsToExtraComps(compSelections),
+                        subjectBuildingSqft: baseData?.snapshot.cad?.buildingSqft ?? null,
+                      },
+                    )
+                  : null
+              }
+              knownConditions={
+                baseData?.snapshot.siteGis?.floodZone?.inSFHA
+                  ? [
+                      `FEMA flood zone ${baseData.snapshot.siteGis.floodZone.zone} (special flood hazard area)`,
+                    ]
+                  : []
+              }
+              onAddIncomeData={() => {
+                const m = MODULES.find((x) => x.id === "income");
+                if (m) openModule(m);
+              }}
+              onAddSales={() => {
+                const m = MODULES.find((x) => x.id === "comps");
+                if (m) openModule(m);
+              }}
+            />
           )}
 
           <CaseResultContext.Provider
