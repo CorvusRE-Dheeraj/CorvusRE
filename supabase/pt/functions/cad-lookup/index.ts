@@ -17,6 +17,12 @@
 // outside these eleven counties correctly fall through to "not matched" rather than
 // returning fabricated data.
 import { ID_SEARCH_TIMEOUT_MS, looksLikePropertyId } from "../_shared/property-id.ts";
+import {
+  BPP_PROPERTY_TYPE,
+  fetchTaxOfficeAccounts,
+  geoIdFromTaxAccount,
+  isBusinessPersonalProperty,
+} from "../_shared/bexar-tax-office.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -3709,6 +3715,32 @@ async function runLookup(
         const key = c.accountNumber ?? c.propertyAddress;
         if (!distinctAccounts.has(key)) distinctAccounts.set(key, c);
       }
+      // Bexar: the tax office also lists the accounts BCAD's parcel map can't
+      // (business personal property, mainly) — see _shared/bexar-tax-office.ts.
+      if (record.cad === "Bexar Appraisal District") {
+        const extra = await withTimeout(
+          bexarTaxOfficeRecords(record.propertyAddress),
+          TAX_OFFICE_TIMEOUT_MS,
+          [] as CadRecord[],
+        );
+        for (const r of extra) {
+          if (!r.accountNumber) continue;
+          const known = distinctAccounts.get(r.accountNumber);
+          if (!known) {
+            distinctAccounts.set(r.accountNumber, r);
+          } else if (!known.totalValue) {
+            // The parcel map often reads "N/A" for value; the tax office has it.
+            const filled = {
+              ...known,
+              totalValue: r.totalValue,
+              landValue: known.landValue ?? r.landValue,
+              improvementValue: known.improvementValue ?? r.improvementValue,
+            };
+            distinctAccounts.set(r.accountNumber, filled);
+            if (record.accountNumber === r.accountNumber) record = filled;
+          }
+        }
+      }
       // The user's own typed directional, when there is one, disambiguates a
       // same-house-number "multiple" result that's actually just the
       // directional-blind query matching two DIFFERENT real streets (2601 E
@@ -3791,6 +3823,36 @@ async function runLookup(
     if (!preview) record = await enrichRecord(record);
 
     return { matched: true, record };
+}
+
+const TAX_OFFICE_TIMEOUT_MS = 4000;
+
+// Tax-office accounts at a Bexar address as CadRecords — only those with a
+// current market value (a retired account reads $0), like other firms show.
+async function bexarTaxOfficeRecords(situs: string): Promise<CadRecord[]> {
+  try {
+    const accounts = await fetchTaxOfficeAccounts(situs, TAX_OFFICE_TIMEOUT_MS);
+    return accounts
+      .filter((a) => (a.marketValue ?? 0) > 0)
+      .map((a) => {
+        const bpp = isBusinessPersonalProperty(a);
+        return {
+          ownerName: a.owner,
+          propertyAddress: situs,
+          cad: "Bexar Appraisal District",
+          accountNumber: a.cadPropertyId,
+          geoId: geoIdFromTaxAccount(a.taxAccount),
+          propertyType: bpp ? BPP_PROPERTY_TYPE : null,
+          landValue: bpp ? null : a.landValue,
+          improvementValue: bpp ? null : a.improvementValue,
+          totalValue: a.marketValue,
+          taxYear: null,
+          legalDescription: a.legal || null,
+        };
+      });
+  } catch {
+    return [];
+  }
 }
 
 Deno.serve(async (req: Request) => {

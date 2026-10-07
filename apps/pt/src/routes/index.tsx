@@ -41,6 +41,7 @@ import { useFileDrop } from "@/hooks/use-file-drop";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import { PropertyIds } from "@/components/PropertyIds";
+import { BPP_PROPERTY_TYPE } from "../../../../supabase/pt/functions/_shared/bexar-tax-office";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -390,7 +391,11 @@ function Home() {
                     // of coverage is shown, not hidden, but never
                     // selectable, with its own plain reason instead of
                     // residential's.
-                    const disabled = residential || m.cadStatus === "unsupported";
+                    // Business personal property rows (see _shared/bexar-tax-office.ts):
+                    // shown with their IDs, labelled BPP, grayed out until BPP
+                    // protests open.
+                    const bpp = m.record?.propertyType === BPP_PROPERTY_TYPE;
+                    const disabled = residential || bpp || m.cadStatus === "unsupported";
                     return (
                       <button
                         key={m.id}
@@ -398,11 +403,13 @@ function Home() {
                         disabled={disabled}
                         onClick={() => !disabled && selectMatch(m)}
                         title={
-                          residential
-                            ? "Residential — coming soon"
-                            : disabled
-                              ? "We don't cover this county yet"
-                              : undefined
+                          bpp
+                            ? "Business personal property — coming soon"
+                            : residential
+                              ? "Residential — coming soon"
+                              : disabled
+                                ? "We don't cover this county yet"
+                                : undefined
                         }
                         className={`row-hover block w-full px-4 py-3 text-left ${
                           i > 0 ? "border-t border-border" : ""
@@ -445,6 +452,7 @@ function Home() {
                             <PropertyIds
                               accountNumber={m.record.accountNumber}
                               geoId={m.record.geoId}
+                              propertyType={m.record.propertyType}
                             />
                             {" · "}
                             {m.record.cad}
