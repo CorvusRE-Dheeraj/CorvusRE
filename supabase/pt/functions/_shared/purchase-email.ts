@@ -70,12 +70,20 @@ export async function sendPurchaseConfirmationEmail(
     const subjectLabelKind = opts.subjectLabelKind ?? "Property";
 
     const subscription = await stripe.subscriptions.retrieve(opts.subscriptionId, {
-      expand: ["items.data.price"],
+      expand: ["items.data.price", "discounts"],
     });
-    const monthlyCents = subscription.items.data.reduce(
+    const rateCents = subscription.items.data.reduce(
       (sum, it) => sum + (it.price.unit_amount ?? 0) * (it.quantity ?? 1),
       0,
     );
+    // Property plans are annual since the Oct 2026 pricing revision; BPP and
+    // grandfathered property subscriptions are still monthly.
+    const isAnnual = subscription.items.data[0]?.price.recurring?.interval === "year";
+    const rateLabel = isAnnual ? "Your plan price (billed annually)" : "Your monthly rate going forward";
+    const rateSuffix = isAnnual ? "/yr" : "/mo";
+    const discountNames = (subscription.discounts ?? [])
+      .map((d) => (typeof d === "object" ? d.coupon?.name : null))
+      .filter((n): n is string => !!n);
     const nextBillingDate = new Date(subscription.current_period_end * 1000).toLocaleDateString(
       "en-US",
       { year: "numeric", month: "long", day: "numeric" },
@@ -118,7 +126,8 @@ export async function sendPurchaseConfirmationEmail(
                       <tr><td style="padding:6px 0; color:#67788f;">${subjectLabelKind}</td><td style="padding:6px 0; text-align:right; font-weight:600;">${address}</td></tr>
                       <tr><td style="padding:6px 0; color:#67788f;">Plan</td><td style="padding:6px 0; text-align:right; font-weight:600;">${planLabel}</td></tr>
                       <tr><td style="padding:6px 0; color:#67788f; border-top:1px solid #e2e8ef;">${todayLineLabel}</td><td style="padding:6px 0; text-align:right; font-weight:700; border-top:1px solid #e2e8ef; color:${isCredit ? "#0f9e6e" : "#16233a"};">${isCredit ? "-" : ""}${todayLineAmount}</td></tr>
-                      <tr><td style="padding:6px 0; color:#67788f;">Your monthly rate going forward</td><td style="padding:6px 0; text-align:right; font-weight:600;">${formatUsd(monthlyCents)}/mo</td></tr>
+                      <tr><td style="padding:6px 0; color:#67788f;">${rateLabel}</td><td style="padding:6px 0; text-align:right; font-weight:600;">${formatUsd(rateCents)}${rateSuffix}</td></tr>
+                      ${discountNames.map((n) => `<tr><td style="padding:6px 0; color:#67788f;">Discount</td><td style="padding:6px 0; text-align:right; font-weight:600; color:#0f9e6e;">${n}</td></tr>`).join("")}
                       <tr><td style="padding:6px 0; color:#67788f;">Next billing date</td><td style="padding:6px 0; text-align:right; font-weight:600;">${nextBillingDate}</td></tr>
                     </table>
                   </td></tr>

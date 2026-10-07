@@ -4,7 +4,8 @@
 // below), see referral-reward.test.mts.
 //
 // The credit is the REFERRER's own real current monthly total (their most
-// recently created active subscription), applied through Stripe's customer
+// recently created active subscription; an annual one counts as 1/12),
+// applied through Stripe's customer
 // balance (a negative balance transaction), which Stripe takes off their next
 // invoice automatically — not a coupon, since this per-property pricing has no
 // fixed Price id to attach one to.
@@ -32,7 +33,14 @@ export type StripeLike = {
     retrieve: (
       id: string,
       opts?: unknown,
-    ) => Promise<{ items: { data: { price: { unit_amount: number | null }; quantity?: number | null }[] } }>;
+    ) => Promise<{
+      items: {
+        data: {
+          price: { unit_amount: number | null; recurring?: { interval: string } | null };
+          quantity?: number | null;
+        }[];
+      };
+    }>;
   };
   customers: {
     createBalanceTransaction: (
@@ -115,9 +123,16 @@ export async function grantReferralRewardIfDue(
     const referrerSub = await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ["items.data.price"],
     });
-    const creditCents = referrerSub.items.data.reduce(
-      (sum, item) => sum + (item.price.unit_amount ?? 0) * (item.quantity ?? 1),
-      0,
+    // "One month free" — an annual price (the post-Oct-2026 property plan) is
+    // divided down to its monthly share, not credited as a whole year.
+    const creditCents = Math.round(
+      referrerSub.items.data.reduce(
+        (sum, item) =>
+          sum +
+          ((item.price.unit_amount ?? 0) * (item.quantity ?? 1)) /
+            (item.price.recurring?.interval === "year" ? 12 : 1),
+        0,
+      ),
     );
     if (creditCents <= 0) return;
 

@@ -20,8 +20,7 @@ import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { FeedbackWidget } from "../components/FeedbackWidget";
 import { HourBeforeAlert } from "../components/HourBeforeAlert";
-import { LegalGate } from "../components/LegalGate";
-import { ProfileGate } from "../components/ProfileGate";
+import { EngagementPacketHost } from "../components/EngagementPacketHost";
 import { AppShell, shouldShowShell } from "../components/AppShell";
 
 function NotFoundComponent() {
@@ -183,8 +182,7 @@ function RootComponent() {
           <AskAiWidget />
           <FeedbackWidget />
           <HourBeforeAlert />
-          <LegalGate />
-          <ProfileGate />
+          <EngagementPacketHost />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

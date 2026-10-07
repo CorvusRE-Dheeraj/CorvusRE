@@ -1,13 +1,17 @@
 import { OPEN_TOUR_EVENT } from "@/components/WelcomeTour";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { BookOpen, CalendarCheck, HelpCircle, Sparkles, MessageCircle } from "lucide-react";
 import { GLOSSARY } from "@/lib/glossary";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // A "?" button in the header: quick help, ways to reach us, and a plain-English glossary.
 export function HelpMenu({ inline }: { inline?: boolean }) {
+  // Controlled so "Take the quick tour" can close it — otherwise the popover stays
+  // open underneath the tour's spotlight.
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         {inline ? (
           <button
@@ -33,7 +37,10 @@ export function HelpMenu({ inline }: { inline?: boolean }) {
           <div className="mt-2 grid gap-1 text-sm">
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new Event(OPEN_TOUR_EVENT))}
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new Event(OPEN_TOUR_EVENT));
+              }}
               className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-secondary"
             >
               <Sparkles className="h-4 w-4 text-amber-700" /> Take the quick tour

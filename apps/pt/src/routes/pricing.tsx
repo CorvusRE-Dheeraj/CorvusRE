@@ -6,14 +6,16 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 import {
   openBillingPortal,
   getMyBilling,
-  VALUE_BRACKETS,
   TIER_BRACKET_PRICES,
+  VALUE_BRACKETS,
   CUSTOM_TIER,
-  ADDITIONAL_PROPERTY_DISCOUNT,
+  LAUNCH_DISCOUNT,
+  LAUNCH_DISCOUNT_DEADLINE,
+  FRANCHISE_DISCOUNT,
+  isLaunchDiscountActive,
   type PlanValue,
-  type Tier,
 } from "@/lib/billing";
-import { ShieldCheck, CalendarCheck, FileCheck2, Scale } from "lucide-react";
+import { ShieldCheck, CalendarCheck, FileCheck2, Scale, BadgePercent } from "lucide-react";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -22,78 +24,61 @@ export const Route = createFileRoute("/pricing")({
       {
         name: "description",
         content:
-          "Property-value-tiered pricing for CorvusPT: free AI review, Owner-Managed, or CorvusPT-Managed protest service.",
+          "CorvusPT pricing: $299/month billed annually for $1M–$5M properties, custom pricing above $5M, a success-based option charged as a percentage of savings, and 50% off for franchise owners.",
       },
       { property: "og:title", content: "CorvusPT Pricing" },
       {
         property: "og:description",
-        content: "Free AI review. Then $99–$799/mo per property, priced by property value.",
+        content:
+          "Free AI review. Then $299/mo per property, billed annually — 50% off your first year.",
       },
     ],
   }),
   component: Page,
 });
 
-const PAID_PLANS: {
-  tier: Tier;
-  name: string;
-  tag: string;
-  features: string[];
-  highlight: boolean;
-}[] = [
-  {
-    tier: "owner_managed",
-    name: "Owner-Managed",
-    tag: "Most popular",
-    features: [
-      "All 10 premium AI modules unlocked, per property",
-      "AI Executive Protest Report",
-      "AI Evidence Builder packet",
-      "You file and represent yourself, AI-assisted",
-    ],
-    highlight: true,
-  },
-  {
-    tier: "corvusrf_managed",
-    name: "CorvusPT-Managed",
-    tag: "White glove",
-    features: [
-      "Everything in Owner-Managed",
-      "CorvusPT staff files your protest",
-      "County communication + hearing representation",
-      "Settlement approval workflow",
-    ],
-    highlight: false,
-  },
+// Both service levels sit under the one fixed-price plan — the revised
+// pricing sets a single price for the bracket regardless of who files.
+const PLAN_FEATURES = [
+  "All 10 premium AI modules unlocked, per property",
+  "AI Executive Protest Report + Evidence Builder packet",
+  "Owner-Managed: you file, AI-assisted every step",
+  "CorvusPT-Managed: our staff files and represents you",
 ];
 
-// Illustrative cost-comparison numbers — NOT pulled from a live calculation
-// against a specific property, just representative examples at each real
-// value bracket. Assumptions stated plainly in the UI copy itself (a 10%
-// assessed-value reduction, a 2.2% blended Texas commercial effective tax
-// rate, and a 3-month subscription window from notice to resolution) rather
-// than hidden — this mirrors a real finding from the Oct 2026 competitive
-// analysis: on a successful case, CorvusPT's flat Owner-Managed fee is
-// usually dramatically cheaper than a typical contingency firm's 25-40%-of-
-// savings fee, and that gap widens with property value, but nobody visiting
-// this page could tell that without doing the math themselves. A typical
-// contingency range (25-40%) is shown generically rather than naming any
-// specific competitor.
-const COST_COMPARISON_EXAMPLES: {
-  bracket: (typeof VALUE_BRACKETS)[number]["value"];
-  exampleValue: string;
-  annualSavings: number;
-}[] = [
-  { bracket: "under2m", exampleValue: "$1.2M property", annualSavings: 2_640 },
-  { bracket: "mid2m10m", exampleValue: "$5M property", annualSavings: 11_000 },
-  { bracket: "over10m", exampleValue: "$15M property", annualSavings: 33_000 },
-];
-const COST_COMPARISON_MONTHS = 3;
-const CONTINGENCY_FEE_LOW = 0.25;
-const CONTINGENCY_FEE_HIGH = 0.4;
+// Every number on this page reads off @/lib/billing — the same values
+// create-checkout-session mirrors and actually charges.
+const PLAN_BRACKET = VALUE_BRACKETS[0];
+const MONTHLY_PRICE = TIER_BRACKET_PRICES.owner_managed[PLAN_BRACKET.value];
+const ANNUAL_PRICE = MONTHLY_PRICE * 12;
+const LAUNCH_FIRST_YEAR_PRICE = ANNUAL_PRICE * (1 - LAUNCH_DISCOUNT);
+const FRANCHISE_ANNUAL_PRICE = ANNUAL_PRICE * (1 - FRANCHISE_DISCOUNT);
 
-function formatDollars(n: number): string {
-  return `$${Math.round(n).toLocaleString("en-US")}`;
+// The deadline is stored as midnight US Central in UTC — format it in that
+// zone so it never reads as "Jan 31" for a visitor west of it.
+const LAUNCH_DEADLINE_LABEL = LAUNCH_DISCOUNT_DEADLINE.toLocaleDateString("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "America/Chicago",
+});
+
+function dollars(n: number): string {
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+// Marks the two fixed-price plans the Savings Protection callout covers.
+function SavingsProtectionChip() {
+  return (
+    <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-accent">
+      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+      Includes CorvusPT Savings Protection
+    </div>
+  );
 }
 
 // "ai_report" (flat-rate, self-file) and "managed_protest" (contingency, staff-filed)
@@ -110,6 +95,7 @@ function Page() {
   const { user } = useAuth();
   const [openingPortal, setOpeningPortal] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<PlanValue | null>(null);
+  const launchActive = isLaunchDiscountActive();
 
   useEffect(() => {
     if (!user) {
@@ -144,154 +130,164 @@ function Page() {
         <div className="max-w-3xl">
           <span className="badge-soft">Pricing</span>
           <h1 className="mt-3 text-4xl md:text-5xl font-semibold">
-            Pricing that scales with property value.
+            Fixed-price or success-based. Your call.
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Start free. Pick Owner-Managed to do it yourself with AI, or CorvusPT-Managed to have
-            our staff file and represent you. Each property gets its own subscription, priced by
-            that property's value, billed monthly — subscribe right from a property's own page once
-            you've added it.
+            Start free. Then pick a fixed annual price per property — file it yourself with AI, or
+            have CorvusPT staff file and represent you — or pay only as a percentage of the savings
+            we secure.
           </p>
         </div>
       </div>
 
-      {/* One table with every price side by side. Always visible, regardless
-          of sign-in/subscription state, since it's a plain reference: every
-          number here reads straight off TIER_BRACKET_PRICES/VALUE_BRACKETS/
-          ADDITIONAL_PROPERTY_DISCOUNT/CUSTOM_TIER — the exact same single
-          source of truth create-checkout-session actually charges, so this
-          can never drift out of sync with what a subscriber is charged. */}
-      <div className="container-page">
-        <ScrollReveal className="card-elev overflow-hidden">
-          <div className="p-6 pb-4">
-            <h2 className="font-serif text-xl font-semibold">Pricing at a glance</h2>
+      {/* Three pricing options: two fixed-price plans (both covered by
+          Savings Protection below), then the success-based one. Always
+          visible, regardless of sign-in/subscription state, since they're
+          the plain price reference. */}
+      <div className="container-page mt-10">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <ScrollReveal className="card-elev relative overflow-hidden p-6 flex flex-col h-full ring-2 ring-accent">
+            <span className="brand-gradient absolute inset-x-0 top-0 h-1.5" />
+            <div className="badge-soft self-start">Fixed price</div>
+            <h2 className="mt-3 font-serif text-2xl">
+              {PLAN_BRACKET.label.replace(" - ", "–")} property value
+            </h2>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="text-4xl font-semibold">{dollars(MONTHLY_PRICE)}</span>
+              <span className="text-muted-foreground text-sm">/month, per property</span>
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Every price for both plans, by property value.
+              Billed annually — {dollars(ANNUAL_PRICE)}/year
             </p>
-          </div>
-          {/* min-w keeps every column at a readable width instead of the table
-              shrinking to fit a narrow viewport and clipping the header text (confirmed
-              live at 390px: without it, "Additional property, same bracket" squeezed down
-              to unreadable fragments instead of the wrapper actually scrolling) — wide
-              content should scroll inside its own container, never squeeze. */}
-          <div
-            className="overflow-x-auto"
-            tabIndex={0}
-            role="region"
-            aria-label="Plan comparison table"
+            {launchActive && (
+              <div className="mt-4 rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm">
+                <div className="flex items-center gap-1.5 font-semibold text-accent">
+                  <BadgePercent className="h-4 w-4" aria-hidden="true" />
+                  {pct(LAUNCH_DISCOUNT)} off your first year
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  <span className="line-through">{dollars(ANNUAL_PRICE)}</span>{" "}
+                  <span className="font-semibold text-foreground">
+                    {dollars(LAUNCH_FIRST_YEAR_PRICE)}
+                  </span>{" "}
+                  for year one when you sign up before {LAUNCH_DEADLINE_LABEL}.
+                </p>
+              </div>
+            )}
+            <ul className="mt-4 space-y-2 text-sm">
+              {PLAN_FEATURES.map((f) => (
+                <li key={f} className="flex gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <SavingsProtectionChip />
+            <div className="mt-6 flex-1" />
+            <Link to="/dashboard/properties" className="w-full text-center btn-accent">
+              Add a Property to Subscribe
+            </Link>
+            {/* Priority #6 from the Oct 2026 competitive analysis — a
+            surprise renewal bill is the most common complaint in this
+            industry, so the billing term is stated before checkout. */}
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              Charged once a year, renews annually. Cancel renewal anytime from Manage Billing.
+            </p>
+          </ScrollReveal>
+
+          <ScrollReveal delay={120} className="card-elev p-6 flex flex-col h-full">
+            <div className="badge-soft self-start">Fixed price · {CUSTOM_TIER.tag}</div>
+            <h2 className="mt-3 font-serif text-2xl">{CUSTOM_TIER.label} property value</h2>
+            <div className="mt-2 text-4xl font-semibold">Custom</div>
+            <p className="mt-2 text-sm text-muted-foreground">{CUSTOM_TIER.blurb}</p>
+            <SavingsProtectionChip />
+            <div className="mt-6 flex-1" />
+            <Link to="/contact" className="w-full btn-outline text-center">
+              Contact Us
+            </Link>
+          </ScrollReveal>
+
+          {/* Success-based is quoted and billed by the team, not through
+              Stripe checkout — so no rate is printed here. */}
+          <ScrollReveal
+            delay={240}
+            className="card-elev p-6 flex flex-col h-full ring-2 ring-warning/60"
           >
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-t border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="whitespace-nowrap py-3 pl-6 pr-4 font-medium">
-                    Property value range
-                  </th>
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">Owner-Managed</th>
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">CorvusPT-Managed</th>
-                  <th className="whitespace-nowrap py-3 pr-6 font-medium">
-                    Price per additional property, same bracket
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {VALUE_BRACKETS.map((b) => (
-                  <tr key={b.value} className="border-t border-border">
-                    <td className="py-3 pl-6 pr-4 font-medium">{b.label}</td>
-                    <td className="py-3 pr-4">
-                      ${TIER_BRACKET_PRICES.owner_managed[b.value]}
-                      <span className="text-muted-foreground">/mo</span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      ${TIER_BRACKET_PRICES.corvusrf_managed[b.value]}
-                      <span className="text-muted-foreground">/mo</span>
-                    </td>
-                    <td className="py-3 pr-6 text-muted-foreground">
-                      {Math.round(ADDITIONAL_PROPERTY_DISCOUNT * 100)}% off base price
-                    </td>
-                  </tr>
-                ))}
-                <tr className="border-t border-border">
-                  <td className="py-3 pl-6 pr-4 font-medium">{CUSTOM_TIER.label}</td>
-                  <td className="py-3 pr-4 text-muted-foreground">Custom</td>
-                  <td className="py-3 pr-4 text-muted-foreground">Custom</td>
-                  <td className="py-3 pr-6 text-muted-foreground">—</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="badge-soft-warning self-start">Success-based</div>
+            <h2 className="mt-3 font-serif text-2xl">Success-based</h2>
+            <div className="mt-2 text-4xl font-semibold">% of savings</div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Instead of a fixed price, you're charged as a percentage of the property tax savings
+              CorvusPT secures for you.
+            </p>
+            <div className="mt-6 flex-1" />
+            <Link to="/contact" className="w-full btn-outline text-center">
+              Contact Us
+            </Link>
+          </ScrollReveal>
+        </div>
+
+        {/* A discount on whichever option above applies, not a plan of its
+            own — so a full-width strip rather than a fourth card. */}
+        <ScrollReveal className="mt-6 flex flex-col gap-4 rounded-xl border border-warning/60 bg-warning/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <BadgePercent className="mt-0.5 h-6 w-6 shrink-0 text-warning" aria-hidden="true" />
+            <div>
+              <h2 className="font-serif text-lg font-semibold">
+                Franchise owners: {pct(FRANCHISE_DISCOUNT)} off
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {pct(FRANCHISE_DISCOUNT)} off the applicable CorvusPT pricing — e.g.{" "}
+                {dollars(FRANCHISE_ANNUAL_PRICE)}/year instead of {dollars(ANNUAL_PRICE)} on the{" "}
+                {PLAN_BRACKET.label.replace(" - ", "–")} plan. Once your franchise is verified, it's
+                applied automatically at checkout.
+              </p>
+            </div>
+          </div>
+          <Link to="/contact" className="btn-outline shrink-0 text-center">
+            Verify Franchise Status
+          </Link>
+        </ScrollReveal>
+      </div>
+
+      {/* Directly below the pricing section, deliberately loud, so it's read
+          before anything further down the page. */}
+      <div className="container-page mt-8">
+        <ScrollReveal className="relative overflow-hidden rounded-2xl border-2 border-accent bg-accent/10 p-6 md:p-8 shadow-elev">
+          <span className="brand-gradient absolute inset-x-0 top-0 h-1.5" />
+          <div className="flex flex-col gap-5 md:flex-row md:items-center">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+              <ShieldCheck className="h-7 w-7" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="font-serif text-2xl md:text-3xl font-semibold">
+                CorvusPT Savings Protection
+              </h2>
+              <p className="mt-2 max-w-3xl text-base md:text-lg">
+                If CorvusPT does not identify any savings for you during the year 2027, your unused
+                value carries forward to the following year —{" "}
+                <span className="font-semibold">and your next year protest support is free.</span>
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Included with both fixed-price plans.
+              </p>
+            </div>
           </div>
         </ScrollReveal>
       </div>
 
-      {/* Added per the Oct 2026 competitive analysis (Priority #7): the
-      pricing-model objection isn't that CorvusPT is expensive — on a
-      successful case it's usually much cheaper than a typical contingency
-      firm's cut — it's that nobody visiting this page could tell that
-      without doing the math themselves. Always visible, same as the table
-      above, since it's exactly what a prospect compares before signing up. */}
-      <div className="container-page">
-        <ScrollReveal className="card-elev p-6">
-          <h2 className="font-serif text-xl font-semibold">What it actually costs, on a win</h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Many property tax firms charge nothing upfront, then take 25–40% of whatever they save
-            you — which sounds risk-free, but scales with the dollar amount saved. CorvusPT's
-            Owner-Managed fee doesn't. For a successful protest, here's roughly how that compares:
-          </p>
-          <div className="mt-5 overflow-x-auto" tabIndex={0} role="region" aria-label="Cost comparison">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-t border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">Example</th>
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">Annual savings</th>
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">CorvusPT (Owner-Managed)</th>
-                  <th className="whitespace-nowrap py-3 pr-4 font-medium">
-                    A typical contingency firm (25–40% of savings)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {COST_COMPARISON_EXAMPLES.map((ex) => {
-                  const corvusCost =
-                    TIER_BRACKET_PRICES.owner_managed[ex.bracket] * COST_COMPARISON_MONTHS;
-                  const contingencyLow = ex.annualSavings * CONTINGENCY_FEE_LOW;
-                  const contingencyHigh = ex.annualSavings * CONTINGENCY_FEE_HIGH;
-                  return (
-                    <tr key={ex.bracket} className="border-t border-border">
-                      <td className="py-3 pr-4 font-medium">{ex.exampleValue}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {formatDollars(ex.annualSavings)}/yr
-                      </td>
-                      <td className="py-3 pr-4 font-semibold text-accent">
-                        {formatDollars(corvusCost)}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {formatDollars(contingencyLow)} – {formatDollars(contingencyHigh)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            Illustrative, not a guarantee: assumes a 10% assessed-value reduction, a 2.2% blended
-            Texas commercial effective tax rate, and {COST_COMPARISON_MONTHS} months of
-            Owner-Managed subscription from notice to resolution. Your own property's actual
-            savings, timeline, and value bracket will differ — see your property's own AI report
-            for a real estimate.
-          </p>
-        </ScrollReveal>
-      </div>
-
-      {/* Added per the same analysis (Priorities #4 and #9): these are real,
-      already-built parts of the CorvusPT workflow — the pricing page is
-      where a prospect is actively comparing options, so it's the right
-      place to say plainly what control they keep and what happens if a
-      hearing doesn't go their way. */}
+      {/* Added per the Oct 2026 competitive analysis (Priorities #4 and #9):
+      these are real, already-built parts of the CorvusPT workflow — the
+      pricing page is where a prospect is actively comparing options, so
+      it's the right place to say plainly what control they keep and what
+      happens if a hearing doesn't go their way. */}
       <div className="container-page mt-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ScrollReveal className="card-elev p-5">
             <CalendarCheck className="h-5 w-5 text-accent" aria-hidden="true" />
-            <h3 className="mt-2 font-serif text-base font-semibold">You see your own hearing date</h3>
+            <h3 className="mt-2 font-serif text-base font-semibold">
+              You see your own hearing date
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Every case's scheduled date, time, and mode is shown directly in your dashboard —
               never something you find out about after the fact.
@@ -299,7 +295,9 @@ function Page() {
           </ScrollReveal>
           <ScrollReveal delay={100} className="card-elev p-5">
             <ShieldCheck className="h-5 w-5 text-accent" aria-hidden="true" />
-            <h3 className="mt-2 font-serif text-base font-semibold">You approve every settlement</h3>
+            <h3 className="mt-2 font-serif text-base font-semibold">
+              You approve every settlement
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Nothing is accepted on your behalf without your sign-off first — CorvusPT-Managed
               includes a real settlement-approval step, not a blanket authorization.
@@ -309,8 +307,8 @@ function Page() {
             <FileCheck2 className="h-5 w-5 text-accent" aria-hidden="true" />
             <h3 className="mt-2 font-serif text-base font-semibold">You see the evidence filed</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Every comp and document behind your case is in your own case's Evidence section —
-              not a black box you have to request access to.
+              Every comp and document behind your case is in your own case's Evidence section — not
+              a black box you have to request access to.
             </p>
           </ScrollReveal>
           <ScrollReveal delay={300} className="card-elev p-5">
@@ -336,122 +334,35 @@ function Page() {
               free, for as long as you're in the beta. No card, no subscription to manage.
             </p>
           </div>
-        ) : (
-          <>
-            {alreadySubscribed && (
-              <div className="mt-6 max-w-3xl rounded-lg border border-border bg-secondary/40 p-4 text-sm">
-                <p>Each of your properties has its own real subscription.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link to="/dashboard/properties" className="btn-outline">
-                    View My Properties
-                  </Link>
-                  <button
-                    onClick={handleManageBilling}
-                    disabled={openingPortal}
-                    className="btn-outline disabled:opacity-60"
-                  >
-                    {openingPortal ? "Redirecting…" : "Manage Billing"}
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Manage Billing opens Stripe's portal, where every property's subscription is
-                  listed separately — cancel, update payment method, or view invoices for any one of
-                  them individually.
-                </p>
-              </div>
-            )}
-
-            {!alreadySubscribed && (
-              <div className="mt-8 text-sm text-muted-foreground">
-                Just want the free AI review first?{" "}
-                <Link to="/" className="font-medium text-accent underline underline-offset-2">
-                  Start a free review
-                </Link>{" "}
-                — no card required, one property.
-              </div>
-            )}
-
-            {/* Informational only — subscribing to a specific property
-            happens on that property's own card on /dashboard/properties,
-            where its real value bracket is already known and priced
-            automatically. Both tiers shown side by side, plus a Custom card
-            for $25M+, so a visitor can compare every price without
-            switching tabs. */}
-            <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-              {PAID_PLANS.map((p, i) => {
-                const isWhiteGlove = p.tier === "corvusrf_managed";
-                return (
-                  <ScrollReveal
-                    key={p.tier}
-                    delay={i * 120}
-                    className={`card-elev relative overflow-hidden p-6 flex flex-col h-full transition-all hover:-translate-y-0.5 hover:shadow-elev ${p.highlight ? "ring-2 ring-accent" : isWhiteGlove ? "ring-2 ring-warning/60" : ""}`}
-                  >
-                    {/* A real focal band on the recommended tier, not just a
-                    thin ring — "more colorful/bolder" feedback called out
-                    this exact spot as the one place a visitor picks between
-                    plans. */}
-                    {p.highlight && (
-                      <span className="brand-gradient absolute inset-x-0 top-0 h-1.5" />
-                    )}
-                    <div
-                      className={
-                        isWhiteGlove ? "badge-soft-warning self-start" : "badge-soft self-start"
-                      }
-                    >
-                      {p.tag}
-                    </div>
-                    <h3 className="mt-3 font-serif text-2xl">{p.name}</h3>
-                    <div className="mt-2 flex items-baseline gap-1">
-                      <span className="text-4xl font-semibold">
-                        ${TIER_BRACKET_PRICES[p.tier].under2m}–$
-                        {TIER_BRACKET_PRICES[p.tier].over10m}
-                      </span>
-                      <span className="text-muted-foreground text-sm">/mo, per property</span>
-                    </div>
-                    <ul className="mt-4 space-y-2 text-sm">
-                      {p.features.map((f) => (
-                        <li key={f} className="flex gap-2">
-                          <span
-                            className={`mt-1.5 h-1.5 w-1.5 rounded-full ${isWhiteGlove ? "bg-warning" : "bg-accent"}`}
-                          />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-6 flex-1" />
-                    <Link
-                      to="/dashboard/properties"
-                      className={`w-full text-center ${p.highlight ? "btn-accent" : "btn-primary btn-primary-hover"}`}
-                    >
-                      Add a Property to Subscribe
-                    </Link>
-                    {/* Priority #6 — stated before a visitor subscribes, not
-                    just in the after-the-fact "Manage Billing" panel above:
-                    a surprise renewal bill is the single most common
-                    complaint in this industry (see the Oct 2026 competitive
-                    analysis), and this is a plain monthly subscription, not
-                    a one-time fee. */}
-                    <p className="mt-2 text-center text-xs text-muted-foreground">
-                      Billed monthly. Cancel anytime from Manage Billing — no long-term contract.
-                    </p>
-                  </ScrollReveal>
-                );
-              })}
-
-              <ScrollReveal
-                delay={PAID_PLANS.length * 120}
-                className="card-elev p-6 flex flex-col h-full"
+        ) : alreadySubscribed ? (
+          <div className="mt-8 max-w-3xl rounded-lg border border-border bg-secondary/40 p-4 text-sm">
+            <p>Each of your properties has its own real subscription.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link to="/dashboard/properties" className="btn-outline">
+                View My Properties
+              </Link>
+              <button
+                onClick={handleManageBilling}
+                disabled={openingPortal}
+                className="btn-outline disabled:opacity-60"
               >
-                <div className="badge-soft self-start">{CUSTOM_TIER.tag}</div>
-                <h3 className="mt-3 font-serif text-2xl">{CUSTOM_TIER.label}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{CUSTOM_TIER.blurb}</p>
-                <div className="mt-6 flex-1" />
-                <Link to="/contact" className="w-full btn-outline text-center">
-                  Contact Us
-                </Link>
-              </ScrollReveal>
+                {openingPortal ? "Redirecting…" : "Manage Billing"}
+              </button>
             </div>
-          </>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Manage Billing opens Stripe's portal, where every property's subscription is listed
+              separately — cancel, update payment method, or view invoices for any one of them
+              individually.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-8 text-sm text-muted-foreground">
+            Just want the free AI review first?{" "}
+            <Link to="/" className="font-medium text-accent underline underline-offset-2">
+              Start a free review
+            </Link>{" "}
+            — no card required, one property.
+          </div>
         )}
       </div>
     </div>

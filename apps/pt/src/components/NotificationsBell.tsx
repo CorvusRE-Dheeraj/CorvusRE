@@ -119,6 +119,7 @@ export function NotificationsBell() {
           type="button"
           aria-label={unseen.length ? `Notifications, ${unseen.length} new` : "Notifications"}
           title="Notifications"
+          data-tour="notifications"
           className="relative grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
         >
           <Bell className="h-[18px] w-[18px]" />

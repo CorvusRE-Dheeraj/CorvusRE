@@ -67,6 +67,7 @@ import {
   startPropertyCheckout,
   bracketForValue,
   formatMoney,
+  isCustomPricedValue,
   TIER_BRACKET_PRICES,
   type PlanValue,
   type Tier,
@@ -154,6 +155,7 @@ import {
   fetchPropertyBaseSnapshot,
   type PropertyBaseData,
 } from "@/lib/property-base-data";
+import { moduleSourceFacts } from "@/lib/module-source-facts";
 import { listProtests, requestProtest, type ProtestRecord } from "@/lib/protests";
 import { generateCasePrep } from "@/lib/protest-case";
 import { getCaseNextAction, type CaseNextAction } from "@/lib/case-next-action";
@@ -2028,6 +2030,14 @@ function Report() {
         }
       }
 
+      // "Sources as per steps": every module gets its slice of the reconciled
+      // base-data record (county, Regrid, ATTOM, Comptroller) — see
+      // module-source-facts.ts for which facts go to which module.
+      const sourceFacts = moduleSourceFacts(id, baseData?.snapshot);
+      if (sourceFacts.length > 0) {
+        input.authoritativeFacts = [...(input.authoritativeFacts ?? []), ...sourceFacts];
+      }
+
       // Real typical economic-life range for this property's type (see
       // src/lib/improvement-condition.ts) — always attached, not gated on
       // anything, so the AI's effective-age estimate (when it has real
@@ -3244,13 +3254,18 @@ function Report() {
                 <button onClick={startProtest} className="btn-accent text-sm py-1.5">
                   {myPlan === "owner_managed" ? "File Protest" : "Request Protest Filing"}
                 </button>
+              ) : // Real payment gate (see startProtest's own check) reflected
+              // honestly here — real, one-click checkout for THIS property
+              // right in the banner, not a dead-end link to go find it again
+              // on the Properties list. The bracket is already known from
+              // the property's own value; only the tier is a real choice,
+              // so both real prices are shown. $5M+ is custom-priced and
+              // never reaches checkout.
+              isCustomPricedValue(resolvedProperty?.totalValue ?? state.totalValue) ? (
+                <Link to="/contact" className="btn-accent text-sm py-1.5">
+                  Custom pricing for $5M+ — Contact Us
+                </Link>
               ) : (
-                // Real payment gate (see startProtest's own check) reflected
-                // honestly here — real, one-click checkout for THIS property
-                // right in the banner, not a dead-end link to go find it again
-                // on the Properties list. The bracket is already known from
-                // the property's own value; only the tier is a real choice,
-                // so both real prices are shown.
                 <div className="flex flex-wrap gap-2">
                   {(["owner_managed", "corvusrf_managed"] as const).map((tier) => {
                     const bracket = bracketForValue(
@@ -3265,7 +3280,7 @@ function Report() {
                       >
                         {subscribingTier === tier
                           ? "Redirecting…"
-                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo`}
+                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "CorvusPT-Managed"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo, billed annually`}
                       </button>
                     );
                   })}

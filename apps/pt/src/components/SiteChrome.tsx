@@ -298,7 +298,7 @@ export function SiteNav() {
 
         <div className="flex items-center gap-1 sm:gap-2">
           <NotificationsBell />
-          <div className="hidden sm:block">
+          <div className="hidden sm:block" data-tour="help">
             <HelpMenu />
           </div>
           <WelcomeTour />
@@ -311,6 +311,7 @@ export function SiteNav() {
                 onClick={() => setProfileOpen((v) => !v)}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold transition-transform hover:scale-105 active:scale-95"
                 aria-label="Profile menu"
+                data-tour="profile"
                 aria-haspopup="menu"
                 aria-expanded={profileOpen}
               >

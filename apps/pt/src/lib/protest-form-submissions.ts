@@ -50,6 +50,12 @@ export type FormSubmission = {
   // this and filingConfirmedAt resolve into one status (newest wins, so a
   // fresh re-confirmation naturally clears an old request).
   additionalRequestedAt: string | null;
+  // What the county asked for, in the owner's words (the request itself can be
+  // attached as a "county_request" proof document).
+  additionalRequestNote: string | null;
+  // Mail: when the carrier shows it delivered. The tracking number alone only
+  // shows it was sent.
+  mailDeliveredAt: string | null;
   // The county rejected this document — same newest-timestamp precedence
   // against filingConfirmedAt/additionalRequestedAt.
   rejectedAt: string | null;
@@ -74,6 +80,8 @@ type SubmissionRow = {
   submitted_at: string | null;
   filing_confirmed_at: string | null;
   additional_requested_at: string | null;
+  additional_request_note: string | null;
+  mail_delivered_at: string | null;
   rejected_at: string | null;
   reminder_frequency: ReminderFrequency | null;
   last_reminder_sent_at: string | null;
@@ -97,6 +105,8 @@ function fromRow(row: SubmissionRow): FormSubmission {
     submittedAt: row.submitted_at,
     filingConfirmedAt: row.filing_confirmed_at,
     additionalRequestedAt: row.additional_requested_at,
+    additionalRequestNote: row.additional_request_note,
+    mailDeliveredAt: row.mail_delivered_at,
     rejectedAt: row.rejected_at,
     reminderFrequency: row.reminder_frequency,
     lastReminderSentAt: row.last_reminder_sent_at,
@@ -110,7 +120,7 @@ export async function getSubmission(
   const { data, error } = await supabase
     .from("protest_form_submissions")
     .select(
-      "field_values, signature_type, signature_data, signed_at, document_id, filing_method, filing_confirmation_number, mail_tracking_number, email_recipient, email_subject, email_sent_at, submitted_at, filing_confirmed_at, additional_requested_at, rejected_at, reminder_frequency, last_reminder_sent_at",
+      "field_values, signature_type, signature_data, signed_at, document_id, filing_method, filing_confirmation_number, mail_tracking_number, email_recipient, email_subject, email_sent_at, submitted_at, filing_confirmed_at, additional_requested_at, additional_request_note, mail_delivered_at, rejected_at, reminder_frequency, last_reminder_sent_at",
     )
     .eq("protest_id", protestId)
     .eq("form_type", formType)
@@ -195,6 +205,7 @@ export type FilingProofFields = Partial<{
   emailRecipient: string | null;
   emailSubject: string | null;
   emailSentAt: string | null;
+  mailDeliveredAt: string | null;
 }>;
 
 const FILING_PROOF_FIELD_COLUMN: Record<keyof FilingProofFields, string> = {
@@ -203,6 +214,7 @@ const FILING_PROOF_FIELD_COLUMN: Record<keyof FilingProofFields, string> = {
   emailRecipient: "email_recipient",
   emailSubject: "email_subject",
   emailSentAt: "email_sent_at",
+  mailDeliveredAt: "mail_delivered_at",
 };
 
 export async function saveFilingProofFields(
@@ -281,6 +293,8 @@ export async function requestAdditionalInfo(
   userId: string,
   protestId: string,
   formType: FormType,
+  // What the county asked for — optional; undefined leaves any earlier note alone.
+  note?: string | null,
 ): Promise<string> {
   const at = new Date().toISOString();
   const { error } = await supabase.from("protest_form_submissions").upsert(
@@ -289,6 +303,7 @@ export async function requestAdditionalInfo(
       user_id: userId,
       form_type: formType,
       additional_requested_at: at,
+      ...(note !== undefined ? { additional_request_note: note?.trim() || null } : {}),
       updated_at: at,
     },
     { onConflict: "protest_id,form_type" },

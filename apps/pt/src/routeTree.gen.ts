@@ -31,6 +31,7 @@ import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
+import { Route as DashboardLayoutAgreementsRouteImport } from './routes/dashboard/_layout.agreements'
 import { Route as DashboardLayoutBillingRouteImport } from './routes/dashboard/_layout.billing'
 import { Route as DashboardLayoutBppAccountsRouteImport } from './routes/dashboard/_layout.bpp-accounts'
 import { Route as DashboardLayoutBppIntakeRouteImport } from './routes/dashboard/_layout.bpp-intake'
@@ -156,6 +157,12 @@ const DashboardLayoutIndexRoute = DashboardLayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutAgreementsRoute =
+  DashboardLayoutAgreementsRouteImport.update({
+    id: '/agreements',
+    path: '/agreements',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutBillingRoute = DashboardLayoutBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -256,6 +263,7 @@ export interface FileRoutesByFullPath {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -293,6 +301,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -332,6 +341,7 @@ export interface FileRoutesById {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/_layout/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/_layout/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/_layout/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
   '/dashboard/_layout/bpp-intake': typeof DashboardLayoutBppIntakeRoute
@@ -372,6 +382,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard'
+    | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
     | '/dashboard/bpp-intake'
@@ -409,6 +420,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/tax-payment'
     | '/terms'
+    | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
     | '/dashboard/bpp-intake'
@@ -447,6 +459,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard/_layout'
+    | '/dashboard/_layout/agreements'
     | '/dashboard/_layout/billing'
     | '/dashboard/_layout/bpp-accounts'
     | '/dashboard/_layout/bpp-intake'
@@ -644,6 +657,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutIndexRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/agreements': {
+      id: '/dashboard/_layout/agreements'
+      path: '/agreements'
+      fullPath: '/dashboard/agreements'
+      preLoaderRoute: typeof DashboardLayoutAgreementsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/billing': {
       id: '/dashboard/_layout/billing'
       path: '/billing'
@@ -746,6 +766,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardLayoutRouteChildren {
+  DashboardLayoutAgreementsRoute: typeof DashboardLayoutAgreementsRoute
   DashboardLayoutBillingRoute: typeof DashboardLayoutBillingRoute
   DashboardLayoutBppAccountsRoute: typeof DashboardLayoutBppAccountsRoute
   DashboardLayoutBppIntakeRoute: typeof DashboardLayoutBppIntakeRoute
@@ -764,6 +785,7 @@ interface DashboardLayoutRouteChildren {
 }
 
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
+  DashboardLayoutAgreementsRoute: DashboardLayoutAgreementsRoute,
   DashboardLayoutBillingRoute: DashboardLayoutBillingRoute,
   DashboardLayoutBppAccountsRoute: DashboardLayoutBppAccountsRoute,
   DashboardLayoutBppIntakeRoute: DashboardLayoutBppIntakeRoute,

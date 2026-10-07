@@ -53,7 +53,9 @@ export type PropertyRecord = {
   stripeSubscriptionId?: string | null;
   subscriptionStatus?: string | null;
   planTier?: Tier | null;
-  valueBracket?: PropertyValueBracket | null;
+  // A PropertyValueBracket, or a pre-Oct-2026 legacy key ("under2m" etc.) on a
+  // grandfathered subscription.
+  valueBracket?: PropertyValueBracket | string | null;
   cancelAtPeriodEnd?: boolean;
   cancelAt?: string | null;
   // Opt-in year-over-year auto-refile — see setAutoRefile() and the schema.sql
@@ -84,7 +86,7 @@ type PropertyRow = {
   stripe_subscription_id: string | null;
   subscription_status: string | null;
   plan_tier: Tier | null;
-  value_bracket: PropertyValueBracket | null;
+  value_bracket: PropertyValueBracket | string | null;
   cancel_at_period_end: boolean;
   cancel_at: string | null;
   auto_refile: boolean;

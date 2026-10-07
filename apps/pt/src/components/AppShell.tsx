@@ -11,6 +11,7 @@ import {
   CalendarDays,
   Receipt,
   Lock,
+  FileSignature,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +32,7 @@ const NAV = [
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
+  { to: "/dashboard/agreements", label: "Agreements", icon: FileSignature, locked: false },
 ] as const;
 
 // Each tab has its own colour: a tinted icon at rest, and a matching gradient pill when
@@ -60,6 +62,10 @@ const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard/tax-bills": {
     icon: "text-teal-600",
     active: "data-[status=active]:from-teal-600 data-[status=active]:to-blue-700",
+  },
+  "/dashboard/agreements": {
+    icon: "text-indigo-700",
+    active: "data-[status=active]:from-indigo-600 data-[status=active]:to-blue-800",
   },
 };
 
@@ -165,6 +171,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.to}
                 to={item.to}
+                // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
+                data-tour={`nav-${item.to.split("/").pop()}`}
                 className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
                 activeOptions={{ exact: item.to === "/dashboard" }}
               >

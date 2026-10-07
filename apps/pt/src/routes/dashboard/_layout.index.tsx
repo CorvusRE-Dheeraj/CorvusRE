@@ -564,6 +564,7 @@ function Overview() {
           <Link
             to="/intake"
             onClick={() => resetIntake()}
+            data-tour="add-property"
             className="card-elev flex items-center gap-2.5 p-3 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
           >
             <span

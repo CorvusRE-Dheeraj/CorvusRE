@@ -1,6 +1,7 @@
 // Emails for "Schedule a Call or Google Meet" — shared by book-appointment and
 // manage-appointment so a booking, a reschedule and a cancellation all read alike.
 import { emailShell, escapeHtml } from "./email-shell.ts";
+import { appBaseUrl } from "./app-url.ts";
 import { slotLabel } from "./appointment-rules.ts";
 import { buildIcs, toBase64 } from "./appointment-ics.ts";
 
@@ -8,9 +9,8 @@ export const STAFF_EMAIL = "properties@srclandbuilding.com";
 // Who gets the team notice (one email, to the properties inbox only) and is invited on the event.
 export const TEAM_EMAILS = [STAFF_EMAIL];
 
-// Where the manage page lives. APP_URL is not set as a secret today, so default to the
-// real production address (the app is served under /corvuspt/).
-export const appBaseUrl = () => (Deno.env.get("APP_URL") ?? "https://corvusre.com/corvuspt").replace(/\/$/, "");
+// Where the manage page lives — see ./app-url.ts.
+export { appBaseUrl };
 export const manageUrl = (token: string) => `${appBaseUrl()}/appointment?token=${token}`;
 
 export const longDate = (date: string) =>

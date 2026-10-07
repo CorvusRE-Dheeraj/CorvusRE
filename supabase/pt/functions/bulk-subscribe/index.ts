@@ -14,13 +14,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import {
+  annualUnitAmountCents,
   bracketForValue,
+  isCustomPricedValue,
   isTier,
   subscriptionProductName,
-  unitAmountCents,
-  type Bracket,
   type Tier,
 } from "../_shared/pricing.ts";
+import { checkoutCouponFor } from "../_shared/discounts.ts";
 import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -130,7 +131,7 @@ Deno.serve(async (req: Request) => {
     );
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, is_franchise_owner")
       .eq("id", user.id)
       .maybeSingle();
     const customerId = profile?.stripe_customer_id as string | null | undefined;
@@ -153,6 +154,9 @@ Deno.serve(async (req: Request) => {
     await stripe.customers.update(customerId, {
       invoice_settings: { default_payment_method: paymentMethodId },
     });
+
+    // Same launch/franchise coupon a single-property Checkout gets.
+    const discount = await checkoutCouponFor(stripe, profile?.is_franchise_owner === true);
 
     // The caller's own properties for the requested ids, still unpaid.
     const ids = items.map((i) => i.propertyId);
@@ -206,11 +210,20 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const bracket = bracketForValue(prop.total_value as number | null) as Bracket;
+      if (isCustomPricedValue(prop.total_value as number | null)) {
+        results.push({
+          propertyId,
+          status: "error",
+          message: "Properties valued at $5M+ have custom pricing — please contact us.",
+        });
+        continue;
+      }
+
+      const bracket = bracketForValue(prop.total_value as number | null);
       const k = key(tier, bracket);
       const isAdditional = (bracketCount[k] ?? 0) > 0;
       const address = ((prop.address as string | null) ?? "").trim();
-      const unitAmount = unitAmountCents(tier, bracket, isAdditional);
+      const unitAmount = annualUnitAmountCents(tier, bracket, isAdditional);
       const name = subscriptionProductName(tier, bracket, address, isAdditional);
 
       try {
@@ -223,12 +236,13 @@ Deno.serve(async (req: Request) => {
         const price = await stripe.prices.create({
           currency: "usd",
           unit_amount: unitAmount,
-          recurring: { interval: "month" },
+          recurring: { interval: "year" },
           product_data: { name, metadata: { tier, bracket } },
         });
         const sub = await stripe.subscriptions.create({
           customer: customerId,
           items: [{ price: price.id }],
+          ...(discount ? { discounts: [{ coupon: discount.couponId }] } : {}),
           default_payment_method: paymentMethodId,
           off_session: true,
           payment_behavior: "allow_incomplete",

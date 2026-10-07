@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
-import { TERMS_VERSION, PRIVACY_VERSION, SIGNUP_ACK_VERSION, AI_ACK_VERSION } from "./legal";
+import { TERMS_VERSION, PRIVACY_VERSION, SIGNUP_ACK_VERSION } from "./legal";
 
 export type TermsAcceptance = {
   termsVersion: string;
@@ -39,31 +39,14 @@ export function termsAcceptanceNeeded(acc: TermsAcceptance | null): boolean {
 }
 
 // Records an acceptance for the current versions. Goes through the edge
-// function so the request IP + user agent are captured server-side. Used by
-// LegalGate for re-acceptance (signup itself is recorded by handle_new_user).
+// function so the request IP + user agent are captured server-side. Used when
+// someone skips the Engagement Packet pop-up while a Terms acceptance is
+// outstanding (signing the packet records one itself; signup's is recorded by
+// handle_new_user).
 export async function recordTermsAcceptance(): Promise<void> {
   await invokeEdgeFunction("record-terms-acceptance", {
     termsVersion: TERMS_VERSION,
     privacyVersion: PRIVACY_VERSION,
     ackVersion: SIGNUP_ACK_VERSION,
   });
-}
-
-// "Review Before Proceeding" acknowledgement, recorded per property/case the
-// first time (or every time) an owner is about to rely on / submit AI output.
-export async function recordAiAcknowledgement(input: {
-  propertyId: string;
-  protestId?: string | null;
-}): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-  const { error } = await supabase.from("ai_acknowledgements").insert({
-    user_id: user.id,
-    property_id: input.propertyId,
-    protest_id: input.protestId ?? null,
-    ack_version: AI_ACK_VERSION,
-  });
-  if (error) throw error;
 }

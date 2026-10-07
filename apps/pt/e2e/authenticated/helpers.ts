@@ -59,30 +59,31 @@ export async function signIn(page: Page, email: string, password: string) {
   );
 
   await page.goto("/dashboard", { waitUntil: "networkidle" });
-  await dismissLegalGateIfPresent(page);
+  await skipEngagementPacketIfPresent(page);
 }
 
-// LegalGate.tsx blocks the ENTIRE app (fixed inset-0, every route) for any
-// signed-in account whose recorded Terms/Privacy acceptance is behind the
-// current version — which a real, previously-used account (like a seeded
-// test/admin account) hits routinely as those versions get bumped. Every
-// authenticated spec needs this dismissed right after sign-in, not just the
-// ones that happen to already expect a dialog, or every later click just
-// times out against this overlay intercepting pointer events.
-async function dismissLegalGateIfPresent(page: Page) {
-  // isVisible() checks the DOM immediately and does NOT wait — LegalGate only
-  // renders once its own getLatestTermsAcceptance() fetch resolves, which is
-  // still in flight right after sign-in's redirect. waitFor() actually polls
-  // for up to the timeout instead of taking one instant snapshot.
-  const heading = page.getByRole("heading", { name: "We've updated our Terms" });
-  const appeared = await heading
+// EngagementPacketHost.tsx opens a full-screen pop-up (fixed inset-0, every
+// route) for any signed-in account without a current signed packet or with a
+// Terms acceptance behind the current version — which a real, previously-used
+// account (like a seeded test account) hits whenever those versions are bumped.
+// Every authenticated spec needs it out of the way right after sign-in, or every
+// later click times out against the overlay intercepting pointer events. Skipping
+// (not signing) keeps the test account's packet state untouched; a spec that
+// files a protest signs through the filing flow's own required pop-up instead.
+async function skipEngagementPacketIfPresent(page: Page) {
+  // isVisible() checks the DOM immediately and does NOT wait — the pop-up only
+  // renders once its own fetches resolve, still in flight right after sign-in's
+  // redirect. waitFor() actually polls for up to the timeout.
+  const dialog = page.getByRole("dialog", { name: /agreements/i });
+  const appeared = await dialog
     .waitFor({ state: "visible", timeout: 5000 })
     .then(() => true)
     .catch(() => false);
   if (!appeared) return;
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Accept & Continue" }).click();
-  await heading.waitFor({ state: "hidden", timeout: 10_000 });
+  const terms = dialog.getByRole("checkbox", { name: /Terms of Service/ });
+  if (await terms.isVisible()) await terms.check();
+  await dialog.getByRole("button", { name: "Skip for now" }).click();
+  await dialog.waitFor({ state: "hidden", timeout: 10_000 });
 }
 
 // Deletes the most recently requested protest for this account — run after

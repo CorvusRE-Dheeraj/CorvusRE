@@ -6,6 +6,7 @@ function looksLikeEntity(name: string | null | undefined): boolean {
 }
 
 import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -14,22 +15,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
+import { SignaturePreview } from "@/components/SignaturePad";
 import { requestProtest, type ProtestRecord } from "@/lib/protests";
 import { createAuthorization } from "@/lib/protest-authorizations";
-import {
-  recordServiceAgreement,
-  getServiceAgreementAcceptance,
-  SERVICE_AGREEMENT_SECTIONS,
-  OWNER_ACCEPTANCE_TEXT,
-  SERVICE_AGREEMENT_VERSION,
-  CORVUSPT_LEGAL_ENTITY,
-  CORVUSPT_CONTACT,
-  type ServiceAgreementAcceptance,
-} from "@/lib/service-agreement";
-import { getMyProfile } from "@/lib/profile";
-import { recordAiAcknowledgement } from "@/lib/legal-acceptance";
-import { AI_ACK_CHECKBOX, AI_ACK_BODY, AI_ACK_VERSION } from "@/lib/legal";
+import { recordServiceAgreement } from "@/lib/service-agreement";
+import { requirePacket, type EngagementPacket } from "@/lib/engagement-packet";
 import type { PropertyRecord } from "@/lib/properties";
 import { getErrorMessage } from "@/lib/error-message";
 
@@ -43,28 +33,26 @@ export const AGREEMENT = {
   venue: "Dallas County, Texas",
 };
 
-type Step = "agreement" | "owner" | "review";
 const ENTITY_TYPES = ["LLC", "Corporation", "Partnership", "Estate", "Trust", "Other"] as const;
 
-// The owner-identity fields carried from one property to the next when this
-// flow is driven in sequence by BulkProtestAuthorizationFlow, so someone
-// authorizing several properties in one sitting only has to type their own
-// name/contact/entity details once — everything else (the
-// signature) still happens fresh per property below, since those are
-// genuinely property-specific and each is its own real, independently
-// executed "Appointment of Agent," not one document covering many
-// properties.
+// The per-property answers carried from one property to the next when this flow
+// is driven in sequence by BulkProtestAuthorizationFlow. Everything else (who's
+// signing, the signature) comes from the signed Engagement Packet.
 export type CarriedOwnerInfo = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
   isEntity: boolean;
   entityName: string;
   entityRelationship: string;
   entityType: (typeof ENTITY_TYPES)[number] | "";
 };
 
+// Starting a protest for one property. Every agreement is signed once, in the
+// Engagement Packet (see EngagementPacketForm / the Agreements tab) — this flow
+// asks for it first if it isn't on file yet ("Please complete the service
+// agreement form"), then needs just one confirm. On confirm it still writes the
+// same per-property records as before — this property's Service Agreement (with
+// a copy in its Documents) and its Appointment of Agent authorization, which the
+// Form 50-162 filler reads — executed with the packet's signature, as the packet
+// authorizes.
 export function ProtestAuthorizationFlow({
   userId,
   property,
@@ -80,48 +68,21 @@ export function ProtestAuthorizationFlow({
   property: PropertyRecord;
   userEmail?: string | null;
   open: boolean;
-  // Pre-fills the owner-identity step from a prior property in the same
-  // batch (see CarriedOwnerInfo above) instead of the usual empty/profile-
-  // autofill start state. Absent for a normal single-property flow.
   initialOwnerInfo?: CarriedOwnerInfo;
-  // "Property 2 of 5" — purely a progress label for the batch orchestrator;
-  // has no effect on this flow's own step logic.
+  // "Property 2 of 5" — purely a progress label for the batch orchestrator.
   batchProgress?: { index: number; total: number };
-  // Real payment gate, enforced here rather than trusted to whichever
-  // caller happens to render the button that opens this modal — a hidden/
-  // disabled button elsewhere is just a hint; this is where filing an
-  // actual protest is prevented outright for an unpaid property. Callers
-  // compute this themselves (beta bypasses unconditionally; every other
-  // plan reads the property's own real subscriptionStatus — see isPaid in
-  // _layout.properties.tsx/hasFullAccess in ai-report.tsx) since this
-  // component has no independent way to know about account-level plans.
+  // Real payment gate, enforced here rather than trusted to whichever caller
+  // renders the button that opens this modal. Callers compute this themselves
+  // (beta bypasses unconditionally; every other plan reads the property's own
+  // subscriptionStatus).
   isPaid: boolean;
   onOpenChange: (open: boolean) => void;
   onDone: (protest: ProtestRecord, ownerInfo: CarriedOwnerInfo) => void;
 }) {
-  const [step, setStep] = useState<Step>("agreement");
-  const [attested, setAttested] = useState(false);
-  const [recordingAgreement, setRecordingAgreement] = useState(false);
-  const [agreementAccepted, setAgreementAccepted] = useState<ServiceAgreementAcceptance | null>(
-    null,
-  );
-  // The Service Agreement is a one-time thing per property. On open we check
-  // whether it's already on file (service_agreement_acceptances) and, if so,
-  // skip straight past the agreement step — it never shows again for a
-  // property once accepted, no matter how often this modal is reopened, the
-  // tab is switched, or the session is refreshed.
-  const [checkingAgreement, setCheckingAgreement] = useState(true);
-  const [firstName, setFirstName] = useState(initialOwnerInfo?.firstName ?? "");
-  const [lastName, setLastName] = useState(initialOwnerInfo?.lastName ?? "");
-  const [email, setEmail] = useState(initialOwnerInfo?.email ?? userEmail ?? "");
-  const [phone, setPhone] = useState(initialOwnerInfo?.phone ?? "");
-  // A county owner name like "FPG CT OWNER LP" is a business, so start on "Yes" and ask how the
-  // signer is connected to it, rather than defaulting to "No" and skipping that question.
+  const [packet, setPacket] = useState<EngagementPacket | null>(null);
+  const [loadingPacket, setLoadingPacket] = useState(false);
   const ownerLooksLikeEntity = looksLikeEntity(property.ownerName);
   const [isEntity, setIsEntity] = useState(initialOwnerInfo?.isEntity ?? ownerLooksLikeEntity);
-  // The question names the county's owner of record whenever there is one;
-  // the generic wording is only the fallback when the county has none.
-  const ownerNamedAsEntity = !!property.ownerName;
   const [entityName, setEntityName] = useState(initialOwnerInfo?.entityName ?? "");
   const [entityRelationship, setEntityRelationship] = useState(
     initialOwnerInfo?.entityRelationship ?? "",
@@ -129,153 +90,87 @@ export function ProtestAuthorizationFlow({
   const [entityType, setEntityType] = useState<(typeof ENTITY_TYPES)[number] | "">(
     initialOwnerInfo?.entityType ?? "",
   );
-  const [aiAcked, setAiAcked] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-  const [signature, setSignature] = useState<SignatureValue | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Synchronous double-submit guard -- see handleSubmit for why the
-  // `submitting` state (and the button's disabled attribute) is not enough.
+  // Synchronous double-submit guard — `submitting` only disables the button on
+  // the NEXT render, and a real double-click once filed the same protest twice.
   const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Real account info, not guessed — fetched fresh each time the modal opens
-  // rather than passed in as a prop, so every call site gets this for free.
-  // Only fills fields still empty, so it can never clobber something the
-  // user already typed if this resolves late.
-  useEffect(() => {
-    if (!open) return;
-    getMyProfile(userId)
-      .then((profile) => {
-        setFirstName((prev) => prev || (profile.firstName ?? ""));
-        setLastName((prev) => prev || (profile.lastName ?? ""));
-        setPhone((prev) => prev || (profile.phone ?? ""));
-      })
-      .catch((err) => console.error("Could not load profile for autofill:", err));
-  }, [open, userId]);
-
-  // Skip the agreement step entirely if this property already has one on
-  // file. Keyed on property.id (not the property object) so a background
-  // token refresh / tab switch never re-runs this and bounces the user back.
+  // On open: the signed packet, or prompt for it. Closing the packet pop-up
+  // without signing closes this too — there's nothing to confirm without it.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setCheckingAgreement(true);
-    getServiceAgreementAcceptance(property.id)
-      .then((rec) => {
+    setLoadingPacket(true);
+    requirePacket()
+      .then((p) => {
         if (cancelled) return;
-        if (rec) {
-          setAgreementAccepted(rec);
-          setStep((s) => (s === "agreement" ? "owner" : s));
+        if (!p) {
+          onOpenChange(false);
+          return;
+        }
+        setPacket(p);
+        // Prefill the entity answers from who signed, unless a prior property in
+        // this batch already answered them.
+        if (!initialOwnerInfo) {
+          if (p.role === "representative") setIsEntity(true);
+          setEntityName(
+            (v) => v || p.companyName || (ownerLooksLikeEntity ? (property.ownerName ?? "") : ""),
+          );
+          setEntityRelationship((v) => v || p.title);
         }
       })
-      .catch(() => {})
       .finally(() => {
-        if (!cancelled) setCheckingAgreement(false);
+        if (!cancelled) setLoadingPacket(false);
       });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, property.id]);
-
-  function reset() {
-    setStep("agreement");
-    setAttested(false);
-    setRecordingAgreement(false);
-    setAgreementAccepted(null);
-    setFirstName(initialOwnerInfo?.firstName ?? "");
-    setLastName(initialOwnerInfo?.lastName ?? "");
-    setEmail(initialOwnerInfo?.email ?? userEmail ?? "");
-    setPhone(initialOwnerInfo?.phone ?? "");
-    setIsEntity(initialOwnerInfo?.isEntity ?? false);
-    setEntityName(initialOwnerInfo?.entityName ?? "");
-    setEntityRelationship(initialOwnerInfo?.entityRelationship ?? "");
-    setEntityType(initialOwnerInfo?.entityType ?? "");
-    setAiAcked(false);
-    setAgreed(false);
-    setSignature(null);
-    setError(null);
-    setSubmitting(false);
-  }
 
   function close() {
     onOpenChange(false);
-    reset();
-  }
-
-  async function handleAcceptAgreement() {
-    if (!attested || recordingAgreement) return;
-    if (!isPaid) {
-      setError("This property isn't covered by an active subscription — subscribe before filing.");
-      return;
-    }
-    setRecordingAgreement(true);
     setError(null);
-    try {
-      const rec = await recordServiceAgreement({ propertyId: property.id });
-      setAgreementAccepted(rec);
-      setStep("owner");
-    } catch (err) {
-      const message = getErrorMessage(err, "Could not record your acceptance. Please try again.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setRecordingAgreement(false);
-    }
   }
 
-  const ownerValid =
-    firstName.trim() &&
-    lastName.trim() &&
-    email.trim() &&
-    phone.trim() &&
-    (!isEntity || (entityName.trim() && entityRelationship.trim() && entityType));
+  const entityValid = !isEntity || (entityName.trim() && entityRelationship.trim() && entityType);
 
   async function handleSubmit() {
-    if (!signature || !aiAcked) return;
+    if (!packet || !entityValid) return;
     if (!isPaid) {
       setError("This property isn't covered by an active subscription — subscribe before filing.");
       return;
     }
-    // `disabled={submitting}` is a React state flag: the button is only
-    // really disabled on the NEXT render, so a real double-click runs this
-    // handler twice. Reproduced live -- two clicks in one tick filed the
-    // same protest twice (two protests rows, two authorization records, two
-    // entries in the staff queue). Nothing server-side catches it either:
-    // prevent_duplicate_active_protest only blocks a duplicate from a
-    // DIFFERENT account. The ref flips synchronously.
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      // Recorded first, on the same click as the signature — a failure here
-      // aborts before any protest row exists.
-      await recordAiAcknowledgement({ propertyId: property.id });
+      // Recorded first — a failure aborts before any protest row exists.
+      await recordServiceAgreement({ propertyId: property.id, engagementPacketId: packet.id });
       const protest = await requestProtest(userId, property.id, {
         address: property.address,
-        userEmail: email,
+        userEmail: packet.email ?? userEmail ?? "",
         originalValue: property.totalValue,
         taxYear: property.taxYear,
       });
       await createAuthorization(userId, {
         protestId: protest.id,
         propertyId: property.id,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
+        engagementPacketId: packet.id,
+        firstName: packet.firstName,
+        lastName: packet.lastName,
+        email: packet.email ?? userEmail ?? "",
+        phone: packet.phone,
         isEntity,
         entityName: entityName.trim(),
         entityRelationship: entityRelationship.trim(),
         entityType,
-        signature,
+        signature: packet.signature,
       });
-      toast.success("Authorization signed. CorvusPT staff will follow up.");
+      toast.success("Protest started. CorvusPT staff will follow up.");
       onDone(protest, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
         isEntity,
         entityName: entityName.trim(),
         entityRelationship: entityRelationship.trim(),
@@ -283,7 +178,7 @@ export function ProtestAuthorizationFlow({
       });
       close();
     } catch (err) {
-      const message = getErrorMessage(err, "Could not submit your authorization.");
+      const message = getErrorMessage(err, "Could not start this protest.");
       setError(message);
       toast.error(message);
     } finally {
@@ -292,31 +187,27 @@ export function ProtestAuthorizationFlow({
     }
   }
 
+  // Nothing to show until the packet's in hand — while it's missing, the packet
+  // pop-up itself is what's on screen.
+  if (open && (!packet || loadingPacket)) return null;
+
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {step === "agreement" && "CorvusPT Service Agreement"}
-            {step === "owner" && "Property Owner Details"}
-            {step === "review" && "Review & Sign"}
-          </DialogTitle>
+          <DialogTitle>Start Protest</DialogTitle>
           <DialogDescription>
             {property.address}
             {batchProgress && ` — Property ${batchProgress.index} of ${batchProgress.total}`}
           </DialogDescription>
         </DialogHeader>
 
-        {step === "agreement" && checkingAgreement && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-        )}
-
-        {step === "agreement" && !checkingAgreement && (
+        {packet && (
           <div className="grid gap-4">
             {!isPaid && (
               <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
-                This property isn't covered by an active subscription yet — you can read the
-                agreement, but you can't continue until you subscribe.
+                This property isn't covered by an active subscription yet — subscribe before
+                starting its protest.
               </div>
             )}
 
@@ -326,10 +217,7 @@ export function ProtestAuthorizationFlow({
                 ["Account / PID", property.accountNumber ?? "—"],
                 ["County", property.cad ?? "—"],
                 ["Tax Year", property.taxYear != null ? String(property.taxYear) : "—"],
-                [
-                  "Property Owner",
-                  (property.ownerName ?? `${firstName} ${lastName}`.trim()) || "—",
-                ],
+                ["Owner of Record", property.ownerName ?? "—"],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-3 sm:block">
                   <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
@@ -338,123 +226,14 @@ export function ProtestAuthorizationFlow({
               ))}
             </dl>
 
-            <p className="text-sm text-muted-foreground">
-              By checking the box below and selecting “Agree &amp; Continue,” you (“Owner”)
-              authorize CorvusPT to provide property tax protest services for the property above,
-              subject to the following terms.
-            </p>
-
-            <div className="max-h-72 space-y-3 overflow-y-auto rounded-lg border border-border p-4 text-sm">
-              {SERVICE_AGREEMENT_SECTIONS.map((s) => (
-                <section key={s.n}>
-                  <h3 className="font-semibold">
-                    {s.n}. {s.title}
-                  </h3>
-                  {s.body.map((p, i) => (
-                    <p key={i} className="mt-1 text-muted-foreground">
-                      {p}
-                    </p>
-                  ))}
-                </section>
-              ))}
-              <p className="pt-1 text-xs text-muted-foreground">
-                {CORVUSPT_LEGAL_ENTITY} · {CORVUSPT_CONTACT.address} · {CORVUSPT_CONTACT.phone} ·{" "}
-                {CORVUSPT_CONTACT.email}. Agreement version {SERVICE_AGREEMENT_VERSION}.
-              </p>
-            </div>
-
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={attested}
-                onChange={(e) => setAttested(e.target.checked)}
-                className="mt-0.5"
-              />
-              {OWNER_ACCEPTANCE_TEXT}
-            </label>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <div className="flex gap-2">
-              <button onClick={close} className="btn-outline">
-                Cancel
-              </button>
-              <button
-                disabled={!attested || !isPaid || recordingAgreement}
-                onClick={handleAcceptAgreement}
-                className="btn-primary btn-primary-hover disabled:opacity-50"
-              >
-                {recordingAgreement ? "Recording…" : "Agree & Continue"}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Selecting “Agree &amp; Continue” electronically signs this Agreement. A copy is saved
-              to this property's Documents. The separate Appointment of Agent (Form 50-162) is
-              signed in the next steps.
-            </p>
-          </div>
-        )}
-
-        {step === "owner" && (
-          <div className="grid gap-4">
-            <p className="text-sm font-semibold text-foreground">
-              Provide your full legal name, including any suffix (Jr., Sr., II), to ensure it
-              matches the county's records.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">
-                  First Name<span className="text-destructive"> *</span>
-                </span>
-                <input
-                  required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Last Name<span className="text-destructive"> *</span>
-                </span>
-                <input
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Email Address<span className="text-destructive"> *</span>
-                </span>
-                <input
-                  required
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Phone Number<span className="text-destructive"> *</span>
-                </span>
-                <input
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2"
-                />
-              </label>
-            </div>
             <div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm">
-                  {ownerNamedAsEntity ? (
+                  {property.ownerName ? (
                     <>
                       Is this property owned by{" "}
-                      <span className="font-medium">{property.ownerName}</span>?
+                      <span className="font-medium">{property.ownerName}</span> (a company, trust or
+                      other entity)?
                     </>
                   ) : (
                     "Is this property owned by a trust, LLC, or other entity?"
@@ -467,17 +246,14 @@ export function ProtestAuthorizationFlow({
                       checked={isEntity}
                       onChange={() => {
                         setIsEntity(true);
-                        // The county's own owner-of-record — only offered once the
-                        // user has confirmed entity ownership themselves; never
-                        // auto-selects Yes/No on its own.
                         if (!entityName.trim() && property.ownerName)
                           setEntityName(property.ownerName);
                       }}
-                    />{" "}
+                    />
                     Yes
                   </label>
                   <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={!isEntity} onChange={() => setIsEntity(false)} />{" "}
+                    <input type="radio" checked={!isEntity} onChange={() => setIsEntity(false)} />
                     No
                   </label>
                 </div>
@@ -490,19 +266,13 @@ export function ProtestAuthorizationFlow({
                   connected to it. We may ask for proof before we file.
                 </p>
               )}
-              {property.ownerName && !ownerNamedAsEntity && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  County record shows owner:{" "}
-                  <span className="font-medium">{property.ownerName}</span>
-                </p>
-              )}
             </div>
+
             {isEntity && (
               <div className="grid gap-4 rounded-lg bg-secondary/40 p-4">
-                <h3 className="font-semibold">Representative of Entity Details</h3>
                 <p className="text-xs text-muted-foreground">
-                  If your name does not match an authorized representative of the entity, CorvusPT
-                  may be unable to proceed with your protest.
+                  If you're not an authorized representative of the entity, CorvusPT may be unable
+                  to proceed with this protest.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
@@ -510,132 +280,70 @@ export function ProtestAuthorizationFlow({
                     <input
                       value={entityName}
                       onChange={(e) => setEntityName(e.target.value)}
-                      placeholder="Entity Name"
                       className="rounded-md border border-input bg-background px-3 py-2"
                     />
                   </label>
                   <label className="grid gap-1 text-sm">
                     <span className="text-xs font-medium text-muted-foreground">
-                      Relationship to Entity
+                      Your Relationship to Entity
                     </span>
                     <input
                       value={entityRelationship}
                       onChange={(e) => setEntityRelationship(e.target.value)}
-                      placeholder="Owner, Agent, Trustee, etc."
+                      placeholder="Owner, Manager, Trustee…"
                       className="rounded-md border border-input bg-background px-3 py-2"
                     />
                   </label>
                 </div>
-                <div>
+                <label className="grid gap-1 text-sm sm:max-w-xs">
                   <span className="text-xs font-medium text-muted-foreground">Type of Entity</span>
-                  <div className="mt-1 grid gap-1.5">
+                  <select
+                    value={entityType}
+                    onChange={(e) => setEntityType(e.target.value as (typeof ENTITY_TYPES)[number])}
+                    className="rounded-md border border-input bg-background px-3 py-2"
+                  >
+                    <option value="">Choose…</option>
                     {ENTITY_TYPES.map((t) => (
-                      <label key={t} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          checked={entityType === t}
-                          onChange={() => setEntityType(t)}
-                        />
+                      <option key={t} value={t}>
                         {t}
-                      </label>
+                      </option>
                     ))}
+                  </select>
+                </label>
+              </div>
+            )}
+
+            <div className="grid gap-2 rounded-lg border border-border p-4 text-sm">
+              <p className="text-muted-foreground">
+                Your signature on file will be applied to this property&apos;s CorvusPT Service
+                Agreement and Appointment of Agent (Form 50-162), as authorized in the engagement
+                packet you signed on {new Date(packet.signedAt).toLocaleDateString()}. CorvusPT
+                files the appointment with {property.cad ?? "the appraisal district"}.
+              </p>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <SignaturePreview value={packet.signature} />
+                  <div className="text-xs text-muted-foreground">
+                    {packet.firstName} {packet.lastName}, {packet.title}
                   </div>
                 </div>
+                <Link to="/dashboard/agreements" className="text-xs text-accent underline">
+                  View or update in Agreements
+                </Link>
               </div>
-            )}
-            <button
-              disabled={!ownerValid}
-              onClick={() => setStep("review")}
-              className="btn-primary btn-primary-hover w-fit disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-        )}
+            </div>
 
-        {step === "review" && (
-          <div className="grid gap-4">
-            {!isPaid && (
-              <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
-                This property isn't covered by an active subscription yet — signing is disabled
-                until you subscribe.
-              </div>
-            )}
-            <div className="grid gap-3 rounded-lg border border-border p-4">
-              <p className="text-sm text-muted-foreground">
-                Before you sign and submit this protest, please review how CorvusPT&apos;s
-                AI-assisted analysis should be used.
-              </p>
-              <p className="text-sm text-muted-foreground">{AI_ACK_BODY}</p>
-              <p className="text-xs text-muted-foreground">
-                Acknowledgement version {AI_ACK_VERSION}.
-              </p>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={aiAcked}
-                  onChange={(e) => setAiAcked(e.target.checked)}
-                  className="mt-0.5"
-                />
-                {AI_ACK_CHECKBOX}
-              </label>
-            </div>
-            {agreementAccepted && (
-              <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                CorvusPT Service Agreement (v{agreementAccepted.version}) accepted on{" "}
-                {new Date(agreementAccepted.acceptedAt).toLocaleString()}. A copy is saved to this
-                property's Documents.
-              </div>
-            )}
-            <p className="text-sm text-muted-foreground">
-              Next, sign the Texas Comptroller&apos;s Appointment of Agent for Property Tax Matters
-              (Form 50-162). CorvusPT files this with {property.cad ?? "the appraisal district"}{" "}
-              after you sign.
-            </p>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="mt-0.5"
-              />
-              I authorize CorvusPT to be appointed as my agent for property tax matters for this
-              property (Form 50-162) and to prepare and file this protest on my behalf.
-            </label>
-            <div>
-              <SignaturePad expectedName={property.ownerName} onChange={setSignature} />
-            </div>
-            <div className="rounded-lg bg-secondary/40 p-4 text-sm grid gap-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Parcel Number</span>
-                <span>{property.accountNumber ?? "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Full Name</span>
-                <span>
-                  {firstName} {lastName}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Email</span>
-                <span>{email}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Phone</span>
-                <span>{phone}</span>
-              </div>
-            </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={() => setStep("owner")} className="btn-outline">
-                Back
+              <button onClick={close} className="btn-outline">
+                Cancel
               </button>
               <button
-                disabled={!aiAcked || !agreed || !signature || submitting || !isPaid}
+                disabled={!entityValid || submitting || !isPaid}
                 onClick={handleSubmit}
                 className="btn-primary btn-primary-hover disabled:opacity-50"
               >
-                {submitting ? "Submitting…" : "Sign & Submit"}
+                {submitting ? "Starting…" : "Start Protest"}
               </button>
             </div>
           </div>
