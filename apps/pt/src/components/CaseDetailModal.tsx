@@ -382,6 +382,7 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
 // tabs before scrolling.
 const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-progress": "overview",
+  "case-readiness": "overview",
   "case-record": "overview",
   "case-audit-trail": "overview",
   "case-documents": "file",
@@ -600,6 +601,13 @@ export function CaseDetailView({
   function navigateTo(anchor: string) {
     if (anchor.startsWith("http") || anchor.startsWith("tel:") || anchor.startsWith("mailto:")) {
       goToGuidanceAnchor(anchor);
+      return;
+    }
+    // The readiness check is the guidance notice on Overview until it's
+    // accepted; after that it's the Pre-Filing Check inside the filing popup.
+    if (anchor === "case-readiness" && !needsGuidanceAck) {
+      if (activeTab !== "file") setActiveTab("file");
+      setFilingOpen(true);
       return;
     }
     const targetTab = ANCHOR_TAB[anchor];
@@ -1449,7 +1457,7 @@ function CorvusGuidanceGate({
   const canContinue = checked && (!hasHigh || concernsReviewed) && !acknowledging;
 
   return (
-    <div className="mt-4 grid gap-4">
+    <div id="case-readiness" className="mt-4 grid scroll-mt-24 gap-4">
       <div className="card-elev p-4">
         <h2 className="text-sm font-semibold">AI Guidance & Filing Notice</h2>
         <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
