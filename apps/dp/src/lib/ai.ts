@@ -21,6 +21,7 @@ export async function generateFeasibilitySummary(input: {
   state?: string;
   intent?: string;
   sector?: string;
+  subcategory?: string;
   zoning: ZoningClassification;
   feasibility: FeasibilityResult;
   permits: Pick<PermitItem, "name" | "category">[];

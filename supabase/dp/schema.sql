@@ -164,6 +164,8 @@ create table if not exists public.projects (
   zoning_category text,
   intent text,
   sector text,
+  -- Optional commercial subcategory (retail, office, data_center, ...).
+  sector_subcategory text,
   lot_size text,
   building_area text,
   floors text,
@@ -176,6 +178,7 @@ create table if not exists public.projects (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table public.projects add column if not exists sector_subcategory text;
 alter table public.projects enable row level security;
 
 drop policy if exists "own projects: all" on public.projects;
