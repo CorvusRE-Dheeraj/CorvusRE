@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { TeamAccess } from "@/components/TeamAccess";
 import { supabase } from "@/lib/supabase";
 import {
   getMyProfile,
@@ -122,6 +123,22 @@ function Settings() {
     setSavingPrefs(true);
     try {
       await updateNotificationPrefs(user.id, { deadlineHourAlert: value });
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
+  async function handleAssessmentAlertsChange(value: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    setNotificationPrefs({ ...prev, assessmentAlertsEmail: value });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { assessmentAlertsEmail: value });
       toast.success("Notification preferences updated.");
     } catch (err) {
       setNotificationPrefs(prev);
@@ -398,6 +415,29 @@ function Settings() {
               <option value="weekly">Weekly</option>
               <option value="off">Off</option>
             </select>
+          </label>
+        </div>
+      )}
+
+      {!loading && user && <TeamAccess ownerId={user.id} />}
+
+      {!loading && (
+        <div className="mt-8 card-elev p-6">
+          <h2 className="font-semibold">Assessment Monitoring</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Corvus regularly re-checks each of your properties against the appraisal district&apos;s
+            record. When a value changes — a new year&apos;s notice or a revision — it updates the
+            property, re-runs the screening and shows the change on your dashboard.
+          </p>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notificationPrefs.assessmentAlertsEmail}
+              disabled={savingPrefs}
+              onChange={(e) => handleAssessmentAlertsChange(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Email me when an assessment changes
           </label>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getActiveWorkspace } from "./active-account";
 import { invokeEdgeFunction } from "./edge-functions";
 import { AI_ACK_VERSION, PRIVACY_VERSION, TERMS_VERSION } from "./legal";
 import { SERVICE_AGREEMENT_VERSION } from "./service-agreement";
@@ -167,6 +168,9 @@ export function openPacketDialog(opts: { required: boolean }): Promise<Engagemen
 // What every filing step calls before anything that needs a signature: returns
 // the current signed packet, prompting for it first if there isn't one.
 export async function requirePacket(): Promise<EngagementPacket | null> {
+  // A team member in an owner's account never files with anyone's signature:
+  // the Notice of Protest is signed by the owner, from their own login.
+  if (getActiveWorkspace()) return openPacketDialog({ required: true });
   const latest = await getMyLatestPacket().catch(() => null);
   if (latest && isPacketCurrent(latest)) return latest;
   return openPacketDialog({ required: true });

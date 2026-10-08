@@ -1,7 +1,7 @@
 // AI web/PDF retrieval for official sources: fetch a site's pages (and linked
 // PDFs), keep their text, and let the AI extract facts FROM THAT TEXT ONLY.
 // Deliberately not "search the web" — Gemini's Google Search grounding has never
-// returned for this project's key (see market-listings/index.ts) — and not open
+// returned for this project's key (an experiment removed from the repo in 2026-10) — and not open
 // to arbitrary URLs: callers pass an official starting URL (e.g. an appraisal
 // district's website from the Texas Comptroller's directory), and only that site's
 // own pages are followed.

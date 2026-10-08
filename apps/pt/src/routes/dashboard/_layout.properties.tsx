@@ -44,6 +44,11 @@ import {
 } from "@/lib/case-pipeline";
 import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
+import { CasePreviewFor } from "@/components/CasePreview";
+import { PortfolioScreening } from "@/components/PortfolioScreening";
+import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
+import { screenPortfolio } from "@/lib/portfolio-screening";
+import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { renderInline as renderMarkdownInline } from "@/components/MarkdownLite";
@@ -99,8 +104,13 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
   // poll for the subscription actually going active (see the effect below)
   // instead of only showing whatever it fetched at the exact instant the
   // page loaded.
-  validateSearch: (search: Record<string, unknown>): { checkout?: "success" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { checkout?: "success"; podio?: "connected" | "error" } => ({
     checkout: search.checkout === "success" ? "success" : undefined,
+    // Set by podio-oauth-callback on the way back from connecting Podio.
+    podio:
+      search.podio === "connected" ? "connected" : search.podio === "error" ? "error" : undefined,
   }),
   component: Properties,
 });
@@ -225,8 +235,20 @@ function writeColumnsPref(cols: PropertyColumnKey[]) {
 
 function Properties() {
   const navigate = useNavigate();
-  const { checkout } = Route.useSearch();
-  const { user } = useAuth();
+  const { checkout, podio } = Route.useSearch();
+  const { user, workspace } = useAuth();
+  // A team member works the owner's cases but doesn't add properties or start
+  // the owner's paid plan — those stay with the owner.
+  const isMember = !!workspace;
+  function openProtest(p: PropertyRecord) {
+    if (isMember) {
+      toast.info(
+        `Activating a case starts ${workspace!.ownerName}'s subscription for it, so the owner does that from their own login.`,
+      );
+      return;
+    }
+    setProtestingProperty(p);
+  }
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -236,8 +258,19 @@ function Properties() {
   // ACTION (case-pipeline.ts) — keyed by protest id.
   const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
+  const [scoresLoaded, setScoresLoaded] = useState(false);
   const [authorizingProperty, setAuthorizingProperty] = useState<PropertyRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Back from connecting Podio: reopen the bulk upload where the owner left off.
+  useEffect(() => {
+    if (podio === "connected") {
+      setImportOpen(true);
+      toast.success("Podio connected — choose the app that holds your properties.");
+    } else if (podio === "error") {
+      toast.error("Podio wasn't connected. Try again, or upload a Podio Excel export instead.");
+    }
+    if (podio) navigate({ to: "/dashboard/properties", search: {}, replace: true });
+  }, [podio, navigate]);
   const [ownershipsOpen, setOwnershipsOpen] = useState(false);
   const [authorizingBatch, setAuthorizingBatch] = useState<PropertyRecord[] | null>(null);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
@@ -304,7 +337,8 @@ function Properties() {
       .catch((err) => console.error(err));
     listHealthScores(uid)
       .then(setHealthScores)
-      .catch((err) => console.error(err));
+      .catch((err) => console.error(err))
+      .finally(() => setScoresLoaded(true));
     listDocuments(uid)
       .then(setDocuments)
       .catch((err) => console.error("Could not load documents for the Evidence column:", err));
@@ -374,6 +408,15 @@ function Properties() {
   useEffect(() => writePref(LS_FILTER, statusFilter), [statusFilter]);
 
   useSavingsBackfill(properties, setProperties);
+  // Scores the properties the screening needs — only once the stored scores
+  // have loaded, so it never recomputes one that's already on file.
+  useHealthScoreBackfill(scoresLoaded ? properties : [], healthScores, setHealthScores);
+
+  // Free portfolio screening: every property not yet activated.
+  const screening = useMemo(() => {
+    const unactivated = properties.filter((p) => !isBeta && p.subscriptionStatus !== "active");
+    return unactivated.length >= 2 ? screenPortfolio(unactivated, healthScores) : null;
+  }, [properties, healthScores, isBeta]);
 
   // Starts a real, one-click checkout for exactly this property — see
   // startPropertyCheckout in billing.ts. Opens in a new tab (newTab: true)
@@ -832,7 +875,7 @@ function Properties() {
               >
                 {bulkDeleting ? "Deleting…" : "Delete"}
               </button>
-              {stripeConfigured && subscribableSelected.length > 0 && (
+              {stripeConfigured && !isMember && subscribableSelected.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setBulkOpen(true)}
@@ -853,19 +896,23 @@ function Properties() {
               </button>
             </div>
           )}
-          <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
-            Bulk Upload
-          </button>
-          <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
-            Add Ownerships
-          </button>
-          <Link
-            to="/intake"
-            onClick={() => resetIntake()}
-            className="btn-primary btn-primary-hover"
-          >
-            Add another property
-          </Link>
+          {!isMember && (
+            <>
+              <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
+                Bulk Upload
+              </button>
+              <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
+                Add Ownerships
+              </button>
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover"
+              >
+                Add another property
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -905,6 +952,20 @@ function Properties() {
         onOpenChange={setBulkOpen}
         onDone={handleBulkDone}
       />
+
+      {!propertiesLoading && user && properties.length > 0 && (
+        <div className="mt-6">
+          <AssessmentChangesBanner
+            userId={user.id}
+            properties={properties}
+            onReview={openAiReport}
+          />
+        </div>
+      )}
+
+      {!propertiesLoading && screening && (
+        <PortfolioScreening screening={screening} onActivate={openProtest} />
+      )}
 
       {!propertiesLoading && properties.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -1148,7 +1209,7 @@ function Properties() {
                             compact
                             onDocuments={() => setDocsProperty(p)}
                             onAuthorize={() => setAuthorizingProperty(p)}
-                            onProtest={() => setProtestingProperty(p)}
+                            onProtest={() => openProtest(p)}
                             onResume={() => handleResumeSubscription(p)}
                             onCancel={() => handleCancelSubscription(p)}
                             onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1227,7 +1288,7 @@ function Properties() {
                       pipeline={pipelineFor(p)}
                       today={today}
                       propertyId={p.id}
-                      onStart={() => setProtestingProperty(p)}
+                      onStart={() => openProtest(p)}
                       lockedHint={
                         existingProtest && !isPaid
                           ? "Subscribe to this property to open its case and continue."
@@ -1260,7 +1321,7 @@ function Properties() {
                       subscribing={subscribing}
                       onDocuments={() => setDocsProperty(p)}
                       onAuthorize={() => setAuthorizingProperty(p)}
-                      onProtest={() => setProtestingProperty(p)}
+                      onProtest={() => openProtest(p)}
                       onResume={() => handleResumeSubscription(p)}
                       onCancel={() => handleCancelSubscription(p)}
                       onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1283,12 +1344,19 @@ function Properties() {
       )}
 
       {protestingProperty && (
-        <Modal onClose={() => setProtestingProperty(null)}>
+        <Modal wide onClose={() => setProtestingProperty(null)}>
           <div className="p-6">
             <h2 className="font-serif text-xl font-bold">Protest this property</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {protestingProperty.address} — choose how you want to run the protest.
+              Here&apos;s what Corvus found for {protestingProperty.address}. Review it, then choose
+              how you want to run the protest.
             </p>
+            <div className="mt-4">
+              <CasePreviewFor
+                property={protestingProperty}
+                score={healthScores[protestingProperty.id] ?? null}
+              />
+            </div>
             {isCustomPricedValue(protestingProperty.totalValue) ? (
               // $5M+ never reaches checkout (create-checkout-session refuses
               // it too) — custom pricing is quoted by the team.
@@ -1502,10 +1570,7 @@ function PropertyActionsMenu({
       <DropdownMenuContent align="end" className="w-56">
         {existingProtest && isPaid && (
           <DropdownMenuItem asChild>
-            <Link
-              to="/dashboard/case"
-              search={{ propertyId: p.id }}
-            >
+            <Link to="/dashboard/case" search={{ propertyId: p.id }}>
               <Gavel className="mr-2 h-4 w-4" /> View Case
             </Link>
           </DropdownMenuItem>

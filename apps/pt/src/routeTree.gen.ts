@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AiReportRouteImport } from './routes/ai-report'
@@ -31,6 +32,7 @@ import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
+import { Route as DashboardLayoutAcquisitionRouteImport } from './routes/dashboard/_layout.acquisition'
 import { Route as DashboardLayoutAgreementsRouteImport } from './routes/dashboard/_layout.agreements'
 import { Route as DashboardLayoutBillingRouteImport } from './routes/dashboard/_layout.billing'
 import { Route as DashboardLayoutBppAccountsRouteImport } from './routes/dashboard/_layout.bpp-accounts'
@@ -51,6 +53,11 @@ import { Route as DashboardLayoutTaxUpdatesRouteImport } from './routes/dashboar
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptInviteRoute = AcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -158,6 +165,12 @@ const DashboardLayoutIndexRoute = DashboardLayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutAcquisitionRoute =
+  DashboardLayoutAcquisitionRouteImport.update({
+    id: '/acquisition',
+    path: '/acquisition',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutAgreementsRoute =
   DashboardLayoutAgreementsRouteImport.update({
     id: '/agreements',
@@ -249,6 +262,7 @@ const DashboardLayoutTaxUpdatesRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -269,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
@@ -289,6 +304,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -308,6 +324,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
@@ -329,6 +346,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
   '/ai-report': typeof AiReportRoute
@@ -349,6 +367,7 @@ export interface FileRoutesById {
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/_layout/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/_layout/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/_layout/billing': typeof DashboardLayoutBillingRoute
   '/dashboard/_layout/bpp-accounts': typeof DashboardLayoutBppAccountsRoute
@@ -371,6 +390,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -391,6 +411,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard'
+    | '/dashboard/acquisition'
     | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
@@ -411,6 +432,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -430,6 +452,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/tax-payment'
     | '/terms'
+    | '/dashboard/acquisition'
     | '/dashboard/agreements'
     | '/dashboard/billing'
     | '/dashboard/bpp-accounts'
@@ -450,6 +473,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/accept-invite'
     | '/admin'
     | '/admin-login'
     | '/ai-report'
@@ -470,6 +494,7 @@ export interface FileRouteTypes {
     | '/tax-payment'
     | '/terms'
     | '/dashboard/_layout'
+    | '/dashboard/_layout/acquisition'
     | '/dashboard/_layout/agreements'
     | '/dashboard/_layout/billing'
     | '/dashboard/_layout/bpp-accounts'
@@ -491,6 +516,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AcceptInviteRoute: typeof AcceptInviteRoute
   AdminRoute: typeof AdminRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AiReportRoute: typeof AiReportRoute
@@ -520,6 +546,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accept-invite': {
+      id: '/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/accept-invite'
+      preLoaderRoute: typeof AcceptInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -669,6 +702,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutIndexRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/acquisition': {
+      id: '/dashboard/_layout/acquisition'
+      path: '/acquisition'
+      fullPath: '/dashboard/acquisition'
+      preLoaderRoute: typeof DashboardLayoutAcquisitionRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/agreements': {
       id: '/dashboard/_layout/agreements'
       path: '/agreements'
@@ -785,6 +825,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardLayoutRouteChildren {
+  DashboardLayoutAcquisitionRoute: typeof DashboardLayoutAcquisitionRoute
   DashboardLayoutAgreementsRoute: typeof DashboardLayoutAgreementsRoute
   DashboardLayoutBillingRoute: typeof DashboardLayoutBillingRoute
   DashboardLayoutBppAccountsRoute: typeof DashboardLayoutBppAccountsRoute
@@ -805,6 +846,7 @@ interface DashboardLayoutRouteChildren {
 }
 
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
+  DashboardLayoutAcquisitionRoute: DashboardLayoutAcquisitionRoute,
   DashboardLayoutAgreementsRoute: DashboardLayoutAgreementsRoute,
   DashboardLayoutBillingRoute: DashboardLayoutBillingRoute,
   DashboardLayoutBppAccountsRoute: DashboardLayoutBppAccountsRoute,
@@ -830,6 +872,7 @@ const DashboardLayoutRouteWithChildren = DashboardLayoutRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AcceptInviteRoute: AcceptInviteRoute,
   AdminRoute: AdminRoute,
   AdminLoginRoute: AdminLoginRoute,
   AiReportRoute: AiReportRoute,

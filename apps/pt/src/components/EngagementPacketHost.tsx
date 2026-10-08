@@ -38,7 +38,11 @@ type Mode =
 //  - Filing: requirePacket() opens it as "Please complete the service agreement
 //    form" with Cancel instead of Skip, and the filing continues once signed.
 export function EngagementPacketHost() {
-  const { user, loading } = useAuth();
+  const { user, loading, workspace, workspaces } = useAuth();
+  // Team access: a property manager or CPA never signs the owner's agreements
+  // (the Form 50-162 appointment, the service agreement), so the first-visit
+  // prompt is skipped for anyone who's a member of an owner's account.
+  const isMember = !!workspace || workspaces.length > 0;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mode, setMode] = useState<Mode | null>(null);
   const [packet, setPacket] = useState<EngagementPacket | null>(null);
@@ -61,10 +65,12 @@ export function EngagementPacketHost() {
     pathname === "/sign-in" ||
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/forgot-password") ||
-    pathname === "/admin-login";
+    pathname === "/admin-login" ||
+    // An invitee accepts before anything else; they never sign for the owner.
+    pathname === "/accept-invite";
 
   useEffect(() => {
-    if (loading || !user) {
+    if (loading || !user || isMember) {
       setMode(null);
       setWelcome(false);
       return;
@@ -91,13 +97,22 @@ export function EngagementPacketHost() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading]);
+  }, [user, loading, isMember]);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
       const detail = (
         e as CustomEvent<{ required: boolean; resolve?: (p: EngagementPacket | null) => void }>
       ).detail;
+      // In an owner's account, filing needs the OWNER's signed agreements —
+      // a member can't sign them.
+      if (workspace) {
+        detail?.resolve?.(null);
+        toast.error(
+          `Filing needs ${workspace.ownerName}'s own signature. Everything you've prepared is saved in their account — ask them to sign in and file it.`,
+        );
+        return;
+      }
       setMode(
         detail?.required ? { kind: "required", resolve: detail.resolve } : { kind: "first-visit" },
       );
@@ -109,7 +124,7 @@ export function EngagementPacketHost() {
       window.removeEventListener(OPEN_PACKET_EVENT, onOpen);
       window.removeEventListener(PACKET_SIGNED_EVENT, onSigned);
     };
-  }, []);
+  }, [workspace]);
 
   // ProfileGate's old one-time owner lookup: once a name is first saved, look for
   // properties already on file under it and offer to add them. Best-effort.

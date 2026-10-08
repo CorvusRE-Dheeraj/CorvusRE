@@ -1,10 +1,21 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
 import { resetIntake } from "@/lib/intake-store";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import { stableUser } from "@/lib/auth-user";
+import { listMyWorkspaces, type Workspace } from "@/lib/account-members";
+import { setActiveWorkspace } from "@/lib/active-account";
 
 type AuthState = {
   user: User | null;
@@ -12,7 +23,38 @@ type AuthState = {
   loading: boolean;
 };
 
-const AuthContext = createContext<AuthState>({ user: null, session: null, loading: true });
+// Team access: a property manager or CPA invited to an owner's account can
+// switch into it. While they're there, `user` is the EFFECTIVE account — the
+// signed-in user with the owner's id — so every existing query and write
+// lands in the owner's account, and row-level security (account_members /
+// member_access in schema.sql) limits what the member can actually do.
+// `realUser` is always whoever signed in; `workspace` is the owner account
+// they're working in, or null in their own.
+type AuthContextValue = AuthState & {
+  realUser: User | null;
+  workspace: Workspace | null;
+  workspaces: Workspace[];
+  setWorkspace: (ownerId: string | null) => void;
+};
+
+const AuthContext = createContext<AuthContextValue>({
+  user: null,
+  session: null,
+  loading: true,
+  realUser: null,
+  workspace: null,
+  workspaces: [],
+  setWorkspace: () => {},
+});
+
+const workspaceKey = (userId: string) => `corvuspt.workspace.${userId}`;
+const savedWorkspace = (userId: string): string | null => {
+  try {
+    return localStorage.getItem(workspaceKey(userId));
+  } catch {
+    return null;
+  }
+};
 
 // Idle sign-out — a standard security control (an unattended, still-signed-in
 // browser tab shouldn't stay authenticated forever), independent of the
@@ -209,7 +251,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, nav]);
 
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  // Team access: the owner accounts this user can work in, and which one
+  // they're in. Validated against live membership on every load, so a
+  // revoked member drops back to their own account.
+  const [ws, setWs] = useState<{ list: Workspace[]; active: Workspace | null; ready: boolean }>({
+    list: [],
+    active: null,
+    ready: false,
+  });
+  useEffect(() => {
+    if (!userId) {
+      setWs({ list: [], active: null, ready: true });
+      return;
+    }
+    const saved = savedWorkspace(userId);
+    // Nothing saved: don't hold the app up while memberships load.
+    setWs((prev) => ({ ...prev, active: null, ready: !saved }));
+    let cancelled = false;
+    listMyWorkspaces(userId)
+      .then((list) => {
+        if (cancelled) return;
+        setWs({ list, active: list.find((w) => w.ownerId === saved) ?? null, ready: true });
+      })
+      .catch(() => !cancelled && setWs({ list: [], active: null, ready: true }));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const setWorkspace = useCallback(
+    (ownerId: string | null) => {
+      if (!userId) return;
+      try {
+        if (ownerId) localStorage.setItem(workspaceKey(userId), ownerId);
+        else localStorage.removeItem(workspaceKey(userId));
+      } catch {
+        // storage blocked — the switch still applies to this page load
+      }
+      resetIntake();
+      // A full reload so nothing loaded for the other account lingers in memory.
+      window.location.assign(`${import.meta.env.BASE_URL}dashboard`);
+    },
+    [userId],
+  );
+
+  useEffect(() => setActiveWorkspace(ws.active), [ws.active]);
+
+  const effectiveUser = useMemo(
+    () =>
+      ws.active && state.user ? ({ ...state.user, id: ws.active.ownerId } as User) : state.user,
+    [ws.active, state.user],
+  );
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user: effectiveUser,
+      session: state.session,
+      loading: state.loading || (!!state.user && !ws.ready),
+      realUser: state.user,
+      workspace: ws.active,
+      workspaces: ws.list,
+      setWorkspace,
+    }),
+    [effectiveUser, state, ws, setWorkspace],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

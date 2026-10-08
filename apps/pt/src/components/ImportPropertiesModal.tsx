@@ -12,10 +12,17 @@ import {
   type ColumnTarget,
   type SpreadsheetGrid,
 } from "@/lib/spreadsheet-import";
-import { buildRows, enrichRow, commitRows, type ImportRow } from "@/lib/bulk-property-import";
+import {
+  buildRows,
+  enrichRow,
+  commitRows,
+  markInFileDuplicates,
+  type ImportRow,
+} from "@/lib/bulk-property-import";
 import { type PropertyRecord } from "@/lib/properties";
 import { type CadRecord } from "@/lib/cad-lookup";
 import { currency } from "@/lib/intake-store";
+import { PodioImportPanel } from "@/components/PodioImportPanel";
 
 type Step = "pick" | "mapping" | "review" | "importing" | "done";
 
@@ -31,6 +38,42 @@ const FIELD_LABEL: Record<ColumnTarget, string> = {
   taxYear: "Tax year",
   ignore: "— ignore —",
 };
+
+// Each row's status in plain words — what will happen to it.
+function rowBadge(r: ImportRow): { label: string; tone: string; hint: string | null } {
+  if (r.status === "duplicate" && r.existingId)
+    return {
+      label: "Already in your account",
+      tone: "bg-secondary text-muted-foreground",
+      hint: "It's on your Properties list, so it won't be added again.",
+    };
+  if (r.status === "duplicate") {
+    const same = r.flags.find((x) => isDuplicateNote(x.message))?.message.match(/“(.+)”/)?.[1];
+    return {
+      label: "Listed twice",
+      tone: "bg-secondary text-muted-foreground",
+      hint: same
+        ? `Same building as “${same}” — it's only counted once.`
+        : "It's only counted once.",
+    };
+  }
+  if (!r.include)
+    return { label: "Skipped", tone: "bg-secondary text-muted-foreground", hint: null };
+  if (r.status === "review")
+    return {
+      label: "Needs a quick look",
+      tone: "bg-warning/15 text-warning-foreground",
+      hint: "Check the note under the address — it's still added unless you untick it.",
+    };
+  return {
+    label: "Will be added",
+    tone: "bg-success/15 text-success",
+    hint: r.values.accountNumber ? "Matched to the county record." : null,
+  };
+}
+
+const isDuplicateNote = (m: string) =>
+  m.startsWith("Already in your account") || m.startsWith("Same property as");
 
 export function ImportPropertiesModal({
   userId,
@@ -65,6 +108,12 @@ export function ImportPropertiesModal({
       setFileError("That file has no data rows.");
       return;
     }
+    handleGrid(g);
+  }
+
+  // A file's rows or a Podio app's items — the same path from here.
+  function handleGrid(g: SpreadsheetGrid) {
+    setFileError(null);
     setGrid(g);
 
     // Deterministic mapping first — if every column resolves and there's an
@@ -92,16 +141,19 @@ export function ImportPropertiesModal({
   }
 
   async function startReview(g: SpreadsheetGrid, m: ColumnMapping[]) {
-    const built = buildRows(g, m);
+    // Repeats within the file itself are caught before any lookups.
+    const built = markInFileDuplicates(buildRows(g, m));
     setRows(built);
     setStep("review");
     setProgress({ done: 0, total: built.length });
     // Sequential dedupe + CAD lookup with live progress.
     for (let i = 0; i < built.length; i++) {
-      await enrichRow(userId, built[i]);
+      if (built[i].status !== "duplicate") await enrichRow(userId, built[i]);
       setProgress({ done: i + 1, total: built.length });
       setRows((prev) => prev.map((r, idx) => (idx === i ? { ...built[i] } : r)));
     }
+    // County matching can reveal two spellings of one account.
+    setRows(markInFileDuplicates(built.map((r) => ({ ...r }))));
   }
 
   async function confirmMapping() {
@@ -165,7 +217,7 @@ export function ImportPropertiesModal({
                 totalValue: rec.totalValue ?? r.values.totalValue,
               },
               cadOptions: null,
-              flags: r.flags.filter((f) => !f.message.startsWith("Address matches")),
+              flags: r.flags.filter((f) => !f.message.startsWith("This address covers")),
               status: "ok",
             }
           : r,
@@ -173,9 +225,10 @@ export function ImportPropertiesModal({
     );
   }
 
-  const ready = rows.filter((r) => r.include && r.status === "ok").length;
   const needsReview = rows.filter((r) => r.include && r.status === "review").length;
-  const dupes = rows.filter((r) => r.status === "duplicate").length;
+  const inAccount = rows.filter((r) => r.status === "duplicate" && r.existingId).length;
+  const listedTwice = rows.filter((r) => r.status === "duplicate" && !r.existingId).length;
+  const toAdd = rows.filter((r) => r.include && r.status !== "duplicate").length;
   const enriching = step === "review" && progress.done < progress.total;
 
   return (
@@ -185,10 +238,10 @@ export function ImportPropertiesModal({
       {step === "pick" && (
         <div className="mt-4 grid gap-4">
           <p className="text-sm text-muted-foreground">
-            Upload an Excel or CSV file with one property per row. AI maps your columns to our
-            fields, matches each address to the county appraisal district, and flags anything that
-            needs a look — nothing is saved until you confirm. Existing properties are never added
-            twice.
+            Upload an Excel or CSV file with one property per row, or import straight from Podio. AI
+            maps your columns to our fields, matches each address to the county appraisal district,
+            and flags anything that needs a look — nothing is saved until you confirm. Existing
+            properties are never added twice.
           </p>
           <button type="button" onClick={downloadCsvTemplate} className="btn-outline text-sm w-fit">
             Download CSV Template
@@ -215,6 +268,7 @@ export function ImportPropertiesModal({
             />
           </label>
           {fileError && <p className="text-sm text-destructive">{fileError}</p>}
+          <PodioImportPanel onGrid={handleGrid} />
         </div>
       )}
 
@@ -275,7 +329,8 @@ export function ImportPropertiesModal({
           {enriching ? (
             <div>
               <p className="text-sm text-muted-foreground">
-                Matching {progress.done} of {progress.total} to the county appraisal district…
+                Checking {progress.done} of {progress.total} against your account and the county
+                records…
               </p>
               <div className="mt-2 h-2 w-full rounded-full bg-secondary">
                 <div
@@ -285,80 +340,157 @@ export function ImportPropertiesModal({
               </div>
             </div>
           ) : (
-            <p className="text-sm">
-              <span className="font-medium text-success">{ready} ready</span> ·{" "}
-              <span className="font-medium text-warning-foreground">{needsReview} need review</span>
-              {dupes > 0 && ` · ${dupes} already in your account (won't be re-added)`}
-            </p>
+            <div className="rounded-md bg-secondary/50 p-3 text-sm">
+              <div className="font-medium">
+                {rows.length} propert{rows.length === 1 ? "y" : "ies"} found
+              </div>
+              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
+                <span>
+                  <span className={toAdd === 0 ? "font-medium" : "text-success"}>
+                    {toAdd === 0 ? "None new" : `${toAdd} will be added`}
+                  </span>
+                  {needsReview > 0 && (
+                    <span className="text-warning-foreground">
+                      {" — "}
+                      {needsReview === toAdd
+                        ? toAdd === 1
+                          ? "it needs a quick look first"
+                          : toAdd === 2
+                            ? "both need a quick look first"
+                            : "all need a quick look first"
+                        : `${needsReview} of them need${needsReview === 1 ? "s" : ""} a quick look first`}
+                    </span>
+                  )}
+                </span>
+                {inAccount > 0 && (
+                  <span className="text-muted-foreground">{inAccount} already in your account</span>
+                )}
+                {listedTwice > 0 && (
+                  <span className="text-muted-foreground">{listedTwice} listed twice</span>
+                )}
+              </div>
+              {toAdd === 0 && (
+                <p className="mt-1.5 text-muted-foreground">
+                  Nothing new to add — these properties are already on your Properties list. Your
+                  existing properties are unchanged.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="max-h-[50vh] overflow-auto rounded-md border border-border">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-secondary text-left">
                 <tr>
-                  <th className="px-2 py-2">Use</th>
-                  <th className="px-2 py-2">Address</th>
-                  <th className="px-2 py-2">County</th>
-                  <th className="px-2 py-2">Account</th>
-                  <th className="px-2 py-2">Total value</th>
+                  <th className="px-2 py-2">
+                    <span className="sr-only">Add</span>
+                  </th>
+                  <th className="px-2 py-2">Property</th>
+                  <th className="hidden px-2 py-2 sm:table-cell">Status</th>
+                  <th className="hidden px-2 py-2 sm:table-cell">County</th>
+                  <th className="hidden px-2 py-2 sm:table-cell">Account</th>
+                  <th className="hidden px-2 py-2 sm:table-cell">Value</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, idx) => (
-                  <tr
-                    key={r.rowNumber}
-                    className={`border-t border-border ${r.status === "duplicate" ? "opacity-60" : ""}`}
-                  >
-                    <td className="px-2 py-2">
-                      <input
-                        type="checkbox"
-                        checked={r.include}
-                        onChange={(e) =>
-                          setRows((prev) =>
-                            prev.map((x, i) =>
-                              i === idx ? { ...x, include: e.target.checked } : x,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        value={r.values.address}
-                        onChange={(e) => editRow(idx, { address: e.target.value })}
-                        className="w-full min-w-[12rem] rounded border border-input bg-background px-1.5 py-1"
-                      />
-                      {r.flags.map((f, fi) => (
-                        <div
-                          key={fi}
-                          className={`mt-0.5 text-[11px] ${f.level === "error" ? "text-destructive" : "text-warning-foreground"}`}
+                {rows.map((r, idx) => {
+                  const badge = rowBadge(r);
+                  const notes = r.flags.filter((x) => !isDuplicateNote(x.message));
+                  return (
+                    <tr
+                      key={r.rowNumber}
+                      className={`border-t border-border align-top ${r.status === "duplicate" ? "bg-secondary/30 text-muted-foreground" : ""}`}
+                    >
+                      <td className="px-2 py-2.5">
+                        <input
+                          type="checkbox"
+                          // A duplicate is never added, so it can't look selected.
+                          checked={r.include && r.status !== "duplicate"}
+                          disabled={r.status === "duplicate"}
+                          aria-label={
+                            r.status === "duplicate" ? "Won't be added" : "Add this property"
+                          }
+                          onChange={(e) =>
+                            setRows((prev) =>
+                              prev.map((x, i) =>
+                                i === idx ? { ...x, include: e.target.checked } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        {r.status === "duplicate" ? (
+                          // Won't be added, so nothing to edit — shown in full.
+                          <div className="px-1.5 py-1">{r.values.address}</div>
+                        ) : (
+                          <input
+                            value={r.values.address}
+                            onChange={(e) => editRow(idx, { address: e.target.value })}
+                            aria-label="Address"
+                            className="w-full min-w-0 rounded border border-input bg-background px-1.5 py-1 sm:min-w-[12rem]"
+                          />
+                        )}
+                        <div className="mt-1 sm:hidden">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.tone}`}
+                          >
+                            {badge.label}
+                          </span>
+                          {badge.hint && <div className="mt-0.5 text-[11px]">{badge.hint}</div>}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground sm:hidden">
+                          {[
+                            r.values.cad,
+                            r.values.accountNumber && `Acct ${r.values.accountNumber}`,
+                            r.values.totalValue != null && currency(r.values.totalValue),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "No county match yet"}
+                        </div>
+                        {notes.map((n, ni) => (
+                          <div
+                            key={ni}
+                            className={`mt-0.5 text-[11px] ${n.level === "error" ? "text-destructive" : "text-warning-foreground"}`}
+                          >
+                            {n.message}
+                          </div>
+                        ))}
+                        {r.cadOptions && (
+                          <div className="mt-1 grid gap-1">
+                            {r.cadOptions.map((o) => (
+                              <button
+                                key={o.accountNumber ?? o.propertyAddress}
+                                onClick={() => pickParcel(idx, o)}
+                                className="text-left text-[11px] text-accent underline underline-offset-2"
+                              >
+                                Account {o.accountNumber ?? "—"} ·{" "}
+                                {o.ownerName ?? "owner not listed"}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="hidden px-2 py-2.5 sm:table-cell">
+                        <span
+                          className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.tone}`}
                         >
-                          {f.message}
-                        </div>
-                      ))}
-                      {r.cadOptions && (
-                        <div className="mt-1 grid gap-1">
-                          {r.cadOptions.map((o) => (
-                            <button
-                              key={o.accountNumber ?? o.propertyAddress}
-                              onClick={() => pickParcel(idx, o)}
-                              className="text-left text-[11px] text-accent underline underline-offset-2"
-                            >
-                              Use {o.accountNumber ?? "this parcel"} — {o.ownerName ?? "owner n/a"}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-2 py-2 text-muted-foreground">{r.values.cad ?? "—"}</td>
-                    <td className="px-2 py-2 text-muted-foreground">
-                      {r.values.accountNumber ?? "—"}
-                    </td>
-                    <td className="px-2 py-2 text-muted-foreground">
-                      {r.values.totalValue != null ? currency(r.values.totalValue) : "—"}
-                    </td>
-                  </tr>
-                ))}
+                          {badge.label}
+                        </span>
+                        {badge.hint && (
+                          <div className="mt-0.5 max-w-[14rem] text-[11px]">{badge.hint}</div>
+                        )}
+                      </td>
+                      <td className="hidden px-2 py-2.5 sm:table-cell">{r.values.cad ?? "—"}</td>
+                      <td className="hidden px-2 py-2.5 sm:table-cell">
+                        {r.values.accountNumber ?? "—"}
+                      </td>
+                      <td className="hidden px-2 py-2.5 tabular-nums sm:table-cell">
+                        {r.values.totalValue != null ? currency(r.values.totalValue) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -367,15 +499,20 @@ export function ImportPropertiesModal({
             <button type="button" onClick={() => setStep("pick")} className="btn-outline">
               Start over
             </button>
-            <button
-              type="button"
-              onClick={runImport}
-              disabled={enriching || ready + needsReview === 0}
-              className="btn-accent disabled:opacity-60"
-            >
-              Add {rows.filter((r) => r.include && r.status !== "duplicate").length} propert
-              {rows.filter((r) => r.include && r.status !== "duplicate").length === 1 ? "y" : "ies"}
-            </button>
+            {toAdd === 0 && !enriching ? (
+              <button type="button" onClick={onClose} className="btn-accent">
+                Done — nothing new to add
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={runImport}
+                disabled={enriching || toAdd === 0}
+                className="btn-accent disabled:opacity-60"
+              >
+                Add {toAdd} propert{toAdd === 1 ? "y" : "ies"}
+              </button>
+            )}
           </div>
         </div>
       )}

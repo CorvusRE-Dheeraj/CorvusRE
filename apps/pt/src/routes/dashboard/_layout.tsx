@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { OWNER_ONLY_PATHS, OwnerOnlyNotice, WorkspaceBar } from "@/components/WorkspaceBar";
 
 export const Route = createFileRoute("/dashboard/_layout")({
   component: DashboardLayout,
@@ -20,7 +21,7 @@ const REDIRECT_REASONS: Record<string, string> = {
 // sign-in guard that's specific to /dashboard/* routes.
 function DashboardLayout() {
   const nav = useNavigate();
-  const { user, loading } = useAuth();
+  const { user, loading, workspace } = useAuth();
   // The router's own pathname is app-relative (base already stripped) —
   // window.location.pathname still carries the GitHub Pages base ("/corvuspt"),
   // and storing THAT as `redirect` made sign-in navigate to
@@ -45,5 +46,14 @@ function DashboardLayout() {
 
   if (loading || !user) return null;
 
-  return <Outlet />;
+  return (
+    <>
+      <WorkspaceBar />
+      {workspace && OWNER_ONLY_PATHS.some((p) => path.startsWith(p)) ? (
+        <OwnerOnlyNotice />
+      ) : (
+        <Outlet />
+      )}
+    </>
+  );
 }

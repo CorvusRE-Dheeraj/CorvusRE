@@ -3088,3 +3088,310 @@ create policy "Admins can view all CAD evidence reviews"
 -- adjustments, income assumptions) — the CAD evidence-response analysis
 -- (_shared/cad-evidence-analysis.ts) is computed from it.
 alter table public.cad_evidence_reviews add column if not exists extraction jsonb;
+
+-- ARB mock hearings: practice sessions against the AI district appraiser and
+-- panel (hearing-simulator edge function). The transcript and the debrief
+-- are kept so the owner can review a run before the real hearing.
+create table if not exists public.mock_hearings (
+  id uuid primary key default gen_random_uuid(),
+  protest_id uuid not null references public.protests (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  difficulty text not null default 'typical' check (difficulty in ('cooperative', 'typical', 'tough')),
+  transcript jsonb not null default '[]'::jsonb,
+  debrief jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists mock_hearings_protest_idx on public.mock_hearings (protest_id, created_at desc);
+alter table public.mock_hearings enable row level security;
+drop policy if exists "Users manage their own mock hearings" on public.mock_hearings;
+create policy "Users manage their own mock hearings"
+  on public.mock_hearings for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Admins can view all mock hearings" on public.mock_hearings;
+create policy "Admins can view all mock hearings"
+  on public.mock_hearings for select using (public.is_admin());
+
+-- Annual "assessment changed" monitoring (monitor-assessments edge function,
+-- weekly): every change the job finds in a property's county value — a new
+-- tax year's notice value or a revision — is logged here, emailed to the
+-- owner and shown in the dashboard until they've seen it.
+create table if not exists public.assessment_changes (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references public.properties (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('new_year', 'revised')),
+  tax_year integer not null,
+  prior_year integer,
+  prior_value numeric,
+  new_value numeric not null,
+  change_pct numeric,
+  level text,
+  protest_deadline_estimate date,
+  detected_at timestamptz not null default now(),
+  emailed_at timestamptz,
+  seen_at timestamptz
+);
+create unique index if not exists assessment_changes_once
+  on public.assessment_changes (property_id, tax_year, new_value);
+create index if not exists assessment_changes_user_idx
+  on public.assessment_changes (user_id, detected_at desc);
+alter table public.assessment_changes enable row level security;
+drop policy if exists "Users read their own assessment changes" on public.assessment_changes;
+create policy "Users read their own assessment changes"
+  on public.assessment_changes for select using (auth.uid() = user_id);
+drop policy if exists "Users mark their own assessment changes seen" on public.assessment_changes;
+create policy "Users mark their own assessment changes seen"
+  on public.assessment_changes for update
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+revoke update on public.assessment_changes from authenticated;
+grant update (seen_at) on public.assessment_changes to authenticated;
+drop policy if exists "Admins can view all assessment changes" on public.assessment_changes;
+create policy "Admins can view all assessment changes"
+  on public.assessment_changes for select using (public.is_admin());
+-- Last time the monitor re-read this property's county record.
+alter table public.properties add column if not exists assessment_checked_at timestamptz;
+
+-- Street View condition comparisons (streetview-condition edge function):
+-- the subject's and nearby comparables' visible exterior condition, rated
+-- from Street View and compared. Kept per owner and county account so the
+-- AI Report shows the last run instead of re-fetching and re-rating.
+create table if not exists public.streetview_conditions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  cad text not null,
+  account_number text not null,
+  comparison jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, cad, account_number)
+);
+alter table public.streetview_conditions enable row level security;
+drop policy if exists "Users manage their own street view comparisons" on public.streetview_conditions;
+create policy "Users manage their own street view comparisons"
+  on public.streetview_conditions for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ── Team access: property managers and CPA / controllers ─────────────────
+-- An owner invites someone to their account with a role:
+--   property_manager — works the cases (properties, protests, documents,
+--     evidence, hearing prep) on the properties assigned to them;
+--   cpa — read-only: properties, cases, tax bills, documents, valuations.
+-- Neither can see billing or sign legal documents for the owner. Members
+-- reach the owner's rows through the additive policies below (the owners'
+-- own policies are untouched); the app switches its effective account to
+-- the owner while a member works there.
+create table if not exists public.account_members (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  member_id uuid references auth.users (id) on delete cascade,
+  email text not null,
+  role text not null check (role in ('property_manager', 'cpa')),
+  property_ids uuid[], -- null = every property, including ones added later
+  status text not null default 'invited' check (status in ('invited', 'active', 'revoked')),
+  invite_token text not null default encode(extensions.gen_random_bytes(18), 'hex'),
+  invited_at timestamptz not null default now(),
+  accepted_at timestamptz,
+  unique (owner_id, email)
+);
+create index if not exists account_members_member_idx on public.account_members (member_id) where status = 'active';
+alter table public.account_members enable row level security;
+drop policy if exists "Owners manage their team" on public.account_members;
+create policy "Owners manage their team" on public.account_members for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id and member_id is distinct from owner_id);
+drop policy if exists "Members see their own memberships" on public.account_members;
+create policy "Members see their own memberships" on public.account_members for select
+  using (auth.uid() = member_id);
+
+-- Does the signed-in user have member access to this owner's property?
+-- prop null = a row not tied to one property: only members scoped to every property.
+create or replace function public.member_access(owner uuid, prop uuid, need_write boolean)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.account_members m
+    where m.owner_id = owner
+      and m.member_id = auth.uid()
+      and m.status = 'active'
+      and (m.property_ids is null or (prop is not null and prop = any (m.property_ids)))
+      and (not need_write or m.role = 'property_manager')
+  );
+$$;
+
+create or replace function public.member_access_protest(owner uuid, protest uuid, need_write boolean)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.member_access(owner, (select p.property_id from public.protests p where p.id = protest), need_write);
+$$;
+
+-- Accept an invite: the signed-in user's email must match the invite.
+create or replace function public.accept_account_invite(token text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  row_id uuid;
+begin
+  update public.account_members m
+     set member_id = auth.uid(), status = 'active', accepted_at = now()
+   where m.invite_token = token
+     and m.status = 'invited'
+     and lower(m.email) = lower((select u.email from auth.users u where u.id = auth.uid()))
+     and m.owner_id <> auth.uid()
+  returning m.id into row_id;
+  return row_id;
+end;
+$$;
+revoke all on function public.accept_account_invite(text) from public;
+grant execute on function public.accept_account_invite(text) to authenticated;
+
+-- The owner's name for the account switcher.
+drop policy if exists "Members can view the owner's profile" on public.profiles;
+create policy "Members can view the owner's profile" on public.profiles for select
+  using (exists (
+    select 1 from public.account_members m
+    where m.owner_id = profiles.id and m.member_id = auth.uid() and m.status = 'active'
+  ));
+
+-- Member policies: read for every member, write for property managers.
+do $do$
+declare
+  t text;
+  prop_tables text[] := array[
+    'documents', 'tax_bills', 'valuation_worksheets', 'comp_selections', 'income_analysis',
+    'module_data_overrides', 'module_results', 'savings_tax_inputs', 'property_issues',
+    'property_ai_scores', 'property_base_data', 'assessment_changes', 'user_reminders',
+    'county_emails', 'protests'];
+  prop_write text[] := array[
+    'documents', 'tax_bills', 'valuation_worksheets', 'comp_selections', 'income_analysis',
+    'module_data_overrides', 'module_results', 'savings_tax_inputs', 'property_issues',
+    'property_ai_scores', 'user_reminders', 'protests'];
+  protest_tables text[] := array[
+    'cad_evidence_reviews', 'case_audit_events', 'decision_notices', 'hearing_notices',
+    'mock_hearings', 'protest_evidence_items', 'protest_form_submissions', 'settlement_agreements'];
+  protest_write text[] := array[
+    'cad_evidence_reviews', 'case_audit_events', 'decision_notices', 'hearing_notices',
+    'mock_hearings', 'protest_evidence_items', 'protest_form_submissions'];
+begin
+  foreach t in array prop_tables loop
+    execute format('drop policy if exists "Members read" on public.%I', t);
+    execute format('create policy "Members read" on public.%I for select using (public.member_access(user_id, property_id, false))', t);
+  end loop;
+  foreach t in array prop_write loop
+    execute format('drop policy if exists "Property managers write" on public.%I', t);
+    execute format('create policy "Property managers write" on public.%I for insert with check (public.member_access(user_id, property_id, true))', t);
+    execute format('drop policy if exists "Property managers update" on public.%I', t);
+    execute format('create policy "Property managers update" on public.%I for update using (public.member_access(user_id, property_id, true)) with check (public.member_access(user_id, property_id, true))', t);
+  end loop;
+  foreach t in array protest_tables loop
+    execute format('drop policy if exists "Members read" on public.%I', t);
+    execute format('create policy "Members read" on public.%I for select using (public.member_access_protest(user_id, protest_id, false))', t);
+  end loop;
+  foreach t in array protest_write loop
+    execute format('drop policy if exists "Property managers write" on public.%I', t);
+    execute format('create policy "Property managers write" on public.%I for insert with check (public.member_access_protest(user_id, protest_id, true))', t);
+    execute format('drop policy if exists "Property managers update" on public.%I', t);
+    execute format('create policy "Property managers update" on public.%I for update using (public.member_access_protest(user_id, protest_id, true)) with check (public.member_access_protest(user_id, protest_id, true))', t);
+  end loop;
+end
+$do$;
+
+-- Properties themselves.
+drop policy if exists "Members read" on public.properties;
+create policy "Members read" on public.properties for select using (public.member_access(user_id, id, false));
+drop policy if exists "Property managers update" on public.properties;
+create policy "Property managers update" on public.properties for update
+  using (public.member_access(user_id, id, true)) with check (public.member_access(user_id, id, true));
+
+-- Owner-keyed rows with no property: members scoped to every property.
+drop policy if exists "Members read" on public.streetview_conditions;
+create policy "Members read" on public.streetview_conditions for select using (public.member_access(user_id, null, false));
+drop policy if exists "Property managers write" on public.streetview_conditions;
+create policy "Property managers write" on public.streetview_conditions for all
+  using (public.member_access(user_id, null, true)) with check (public.member_access(user_id, null, true));
+
+-- Documents in storage live under the owner's id; the documents table above
+-- already limits which files a member can find.
+drop policy if exists "Members can view the owner's documents" on storage.objects;
+create policy "Members can view the owner's documents" on storage.objects for select
+  using (bucket_id = 'documents' and exists (
+    select 1 from public.account_members m
+    where m.owner_id::text = (storage.foldername(name))[1] and m.member_id = auth.uid() and m.status = 'active'));
+drop policy if exists "Property managers can upload the owner's documents" on storage.objects;
+create policy "Property managers can upload the owner's documents" on storage.objects for insert
+  with check (bucket_id = 'documents' and exists (
+    select 1 from public.account_members m
+    where m.owner_id::text = (storage.foldername(name))[1] and m.member_id = auth.uid()
+      and m.status = 'active' and m.role = 'property_manager'));
+
+-- Historical settlement database: protest outcome statistics by county,
+-- tax year, property class, value band, representation and stage, built
+-- from appraisal districts' published account-level hearing results
+-- (scripts/import-settlements.ts; aggregation in
+-- functions/_shared/settlement-stats.ts). Aggregates of public records only —
+-- no owner names or accounts — so any signed-in user can read them; only the
+-- service role writes.
+create table if not exists public.settlement_stats (
+  id bigint generated always as identity primary key,
+  cad text not null,
+  tax_year integer not null,
+  property_class text not null,
+  value_band text not null,
+  representation text not null check (representation in ('all', 'agent', 'owner')),
+  stage text not null check (stage in ('all', 'informal', 'formal')),
+  protests integer not null,
+  reduced integer not null,
+  median_cut_pct numeric not null,
+  p25_cut_pct numeric not null,
+  p75_cut_pct numeric not null,
+  median_cut_when_reduced_pct numeric,
+  heard_share numeric not null,
+  source text not null,
+  imported_at timestamptz not null default now(),
+  unique (cad, tax_year, property_class, value_band, representation, stage)
+);
+alter table public.settlement_stats enable row level security;
+drop policy if exists "Signed-in users read settlement stats" on public.settlement_stats;
+create policy "Signed-in users read settlement stats" on public.settlement_stats
+  for select to authenticated using (true);
+
+-- County portal integration: the appraisal district's own published record
+-- of each case (sync-county-records, daily) — when the protest was received,
+-- the hearing's scheduled and actual dates, the final value and when it was
+-- released. One row per case; shown on the case page as the county's record.
+create table if not exists public.county_case_records (
+  protest_id uuid primary key references public.protests (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  property_id uuid references public.properties (id) on delete cascade,
+  cad text not null,
+  account text not null,
+  tax_year integer not null,
+  protested_at date,
+  protested_by text,
+  scheduled_hearing date,
+  actual_hearing date,
+  release_date date,
+  stage text,
+  initial_value numeric,
+  final_value numeric,
+  withdrawn boolean not null default false,
+  source text not null,
+  synced_at timestamptz not null default now()
+);
+alter table public.county_case_records enable row level security;
+drop policy if exists "Users read their own county records" on public.county_case_records;
+create policy "Users read their own county records" on public.county_case_records
+  for select using (auth.uid() = user_id);
+drop policy if exists "Members read" on public.county_case_records;
+create policy "Members read" on public.county_case_records
+  for select using (public.member_access(user_id, property_id, false));
+
+-- Podio connections for the bulk property import (podio-oauth-callback stores
+-- them, podio-import uses them). Tokens never reach the browser: row-level
+-- security is on with no policies, so only the service role can read them.
+create table if not exists public.podio_connections (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  podio_user_id text,
+  connected_at timestamptz not null default now()
+);
+alter table public.podio_connections enable row level security;

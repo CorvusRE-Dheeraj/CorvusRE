@@ -69,6 +69,7 @@ import {
   formatMoney,
   isCustomPricedValue,
   TIER_BRACKET_PRICES,
+  TIER_LABEL,
   type PlanValue,
   type Tier,
 } from "@/lib/billing";
@@ -88,6 +89,7 @@ import {
   type StrategyEntry,
 } from "@/lib/ai-report-modules";
 import { computeEvidenceReadiness } from "@/lib/evidence-readiness";
+import { CasePreviewFor } from "@/components/CasePreview";
 import { getComps, type CompsResult, type CompProperty } from "@/lib/cad-comps";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
 import { geocodeAddress, type GeocodedPoint } from "@/lib/geocode";
@@ -231,6 +233,7 @@ import { LoadingLine } from "@/components/LoadingLine";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
 import { PropertyImage } from "@/components/PropertyImage";
+import { StreetViewComparison } from "@/components/StreetViewComparison";
 import {
   hashModuleInput,
   getCachedModuleResult,
@@ -591,6 +594,10 @@ function Report() {
   // here — see handleSubscribeToProperty — rather than sending the user off
   // to the Properties list to find this same property again).
   const [subscribingTier, setSubscribingTier] = useState<Tier | null>(null);
+  const [checkoutPreview, setCheckoutPreview] = useState<{
+    property: PropertyRecord;
+    tier: Tier;
+  } | null>(null);
   // Evidence (photos/repair estimates/appraisals) the user has uploaded for this
   // property, fed into the Improvement Condition module's analysis — see
   // handleUploadEvidence() and loadModule() below.
@@ -1226,12 +1233,20 @@ function Report() {
   // in a new tab (newTab: true) so the report stays put underneath; since
   // this tab never navigates away, the loading state is always released
   // here, not just on the failure path.
+  //
+  // Checkout is preceded by the case preview — what Corvus found for this
+  // property (components/CasePreview.tsx) — and opens from that dialog's own
+  // button, so the new tab is still opened straight from a click.
   async function handleSubscribeToProperty(tier: Tier) {
     const property = await ensureProperty();
     if (!property) {
       toast.error("Could not save this property. Please try again.");
       return;
     }
+    setCheckoutPreview({ property, tier });
+  }
+
+  async function continueToCheckout(property: PropertyRecord, tier: Tier) {
     setSubscribingTier(tier);
     try {
       await startPropertyCheckout(property.id, tier, { newTab: true });
@@ -3644,6 +3659,35 @@ function Report() {
                   Subscribe & Unlock Full Report
                 </Link>
               )}
+            </div>
+          </Modal>
+        )}
+
+        {checkoutPreview && (
+          <Modal wide onClose={() => setCheckoutPreview(null)}>
+            <h3 className="font-serif text-2xl font-semibold">Before you subscribe</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Here&apos;s what Corvus found for this property, and exactly what unlocks.
+            </p>
+            <div className="mt-4">
+              <CasePreviewFor property={checkoutPreview.property} />
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button onClick={() => setCheckoutPreview(null)} className="btn-outline">
+                Not now
+              </button>
+              <button
+                disabled={!!subscribingTier}
+                onClick={async () => {
+                  await continueToCheckout(checkoutPreview.property, checkoutPreview.tier);
+                  setCheckoutPreview(null);
+                }}
+                className="btn-accent disabled:opacity-60"
+              >
+                {subscribingTier
+                  ? "Redirecting…"
+                  : `Continue to checkout — ${TIER_LABEL[checkoutPreview.tier]}`}
+              </button>
             </div>
           </Modal>
         )}
@@ -10051,6 +10095,14 @@ function Module5Content({
           ))}
         </div>
       </div>
+
+      {/* Street View: the visible exterior against the nearest comparables. */}
+      <StreetViewComparison
+        address={state.address}
+        cad={state.cad}
+        accountNumber={state.accountNumber}
+        totalValue={state.totalValue}
+      />
 
       {/* 2. What May Be Affecting Its Value — real AI-grounded findings only. */}
       {affectingValue.length > 0 && (

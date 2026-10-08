@@ -5,9 +5,7 @@ import {
   ChevronDown,
   Hammer,
   Landmark,
-  Plus,
   Scale,
-  Trash2,
   TrendingDown,
   TriangleAlert,
 } from "lucide-react";
@@ -23,7 +21,6 @@ import {
   salesComparisonApproach,
   type ApproachId,
   type ApproachResult,
-  type Impairment,
 } from "@/lib/commercial-valuation";
 import {
   getValuationWorksheet,
@@ -31,6 +28,7 @@ import {
   type WorksheetInputs,
   type WorksheetSummary,
 } from "@/lib/valuation-worksheet";
+import { ImpairmentBuilder } from "@/components/ImpairmentBuilder";
 
 const ICON: Record<ApproachId, typeof Scale> = {
   income: Calculator,
@@ -311,7 +309,12 @@ export function CommercialValuationPanel({
               )}
               {r.id === "cost" && <CostControls saved={saved} update={update} />}
               {r.id === "impairments" && (
-                <ImpairmentControls items={saved.impairments ?? []} update={update} />
+                <ImpairmentBuilder
+                  items={saved.impairments ?? []}
+                  propertyId={propertyId}
+                  buildingSqft={buildingSqft}
+                  onChange={(impairments) => update({ impairments })}
+                />
               )}
 
               {r.missing.length > 0 && (
@@ -566,70 +569,6 @@ function CostControls({ saved, update }: { saved: Saved; update: (p: Saved) => v
           ))}
         </select>
       </label>
-    </div>
-  );
-}
-
-function ImpairmentControls({
-  items,
-  update,
-}: {
-  items: Impairment[];
-  update: (p: Saved) => void;
-}) {
-  const [label, setLabel] = useState("");
-  const [cost, setCost] = useState("");
-  const add = () => {
-    const c = Number(cost.replace(/[$,]/g, ""));
-    if (!label.trim() || !(c > 0)) return;
-    update({
-      impairments: [...items, { id: crypto.randomUUID(), label: label.trim(), costToCure: c }],
-    });
-    setLabel("");
-    setCost("");
-  };
-  return (
-    <div className="mt-3 grid gap-2 rounded-md border border-border p-3 text-xs">
-      {items.map((x) => (
-        <div key={x.id} className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate">{x.label}</span>
-          <span className="flex items-center gap-2">
-            <span className="tabular-nums">−{usd(x.costToCure)}</span>
-            <button
-              type="button"
-              aria-label={`Remove ${x.label}`}
-              onClick={() => update({ impairments: items.filter((y) => y.id !== x.id) })}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </span>
-        </div>
-      ))}
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. Roof at end of life"
-          aria-label="Impairment"
-          className="min-w-0 flex-1 basis-40 rounded-md border border-input bg-background px-2 py-1.5"
-        />
-        <input
-          value={cost}
-          onChange={(e) => setCost(e.target.value)}
-          placeholder="Cost to cure $"
-          inputMode="decimal"
-          aria-label="Cost to cure"
-          className="w-32 rounded-md border border-input bg-background px-2 py-1.5"
-        />
-        <button
-          type="button"
-          onClick={add}
-          className="btn-outline inline-flex items-center gap-1 px-2 py-1 text-xs"
-        >
-          <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Add
-        </button>
-      </div>
     </div>
   );
 }

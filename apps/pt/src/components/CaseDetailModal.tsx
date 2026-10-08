@@ -3,6 +3,10 @@ import { centerInStrip } from "@/lib/scroll-into-strip";
 import { GLOSSARY_MAP } from "@/lib/glossary";
 import { NextRequiredAction, PipelineStepper } from "@/components/CasePipeline";
 import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
+import { MockHearing } from "@/components/MockHearing";
+import { SettlementHistory } from "@/components/SettlementHistory";
+import { PortalCopySheet } from "@/components/PortalCopySheet";
+import { CountyRecordPanel } from "@/components/CountyRecordPanel";
 import { casePipeline, localTodayIso, type NoticeFiling } from "@/lib/case-pipeline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -975,6 +979,12 @@ export function CaseDetailView({
                 evidenceDocuments={evidenceDocuments}
                 settlementAgreement={settlementAgreement}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <MockHearing
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceFiles={evidenceDocuments.map((d) => d.fileName)}
               />
             </div>
           )}
@@ -2698,6 +2708,9 @@ function FilingSubmissionFlow({
                     ? ` ${countyInfo.filingMethod.online.notes}`
                     : ""}
                 </p>
+                {submission?.fieldValues && Object.keys(submission.fieldValues).length > 0 && (
+                  <PortalCopySheet values={submission.fieldValues} />
+                )}
                 <a
                   href={countyInfo.filingMethod.online.url}
                   target="_blank"
@@ -7854,6 +7867,7 @@ export function CaseProgress({
       <p className="mt-0.5 text-xs text-muted-foreground">
         Record what has happened — settlement offers, the hearing date, the ARB&apos;s decision.
       </p>
+      <CountyRecordPanel protestId={protest.id} />
 
       {protest.status === "resolved" ? (
         results ? (
@@ -7922,6 +7936,21 @@ export function CaseProgress({
                   or schedule a hearing below to proceed instead
                 </span>
               </div>
+              {protest.settlementOfferValue != null && (
+                <div className="mt-3">
+                  <SettlementHistory
+                    compact
+                    cad={property.cad}
+                    propertyType={property.propertyType}
+                    value={protest.originalValue ?? property.totalValue}
+                    offer={
+                      protest.originalValue
+                        ? { original: protest.originalValue, offer: protest.settlementOfferValue }
+                        : null
+                    }
+                  />
+                </div>
+              )}
             </div>
           ) : (
             protest.status !== "decision_received" &&
