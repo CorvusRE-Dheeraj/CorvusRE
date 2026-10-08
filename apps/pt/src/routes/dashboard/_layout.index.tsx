@@ -42,7 +42,7 @@ import {
   classifyAndStoreDocument,
   updateIntake,
 } from "@/lib/intake-store";
-import { listProperties, type PropertyRecord } from "@/lib/properties";
+import { buildAiReportIntakePatch, listProperties, type PropertyRecord } from "@/lib/properties";
 import { useSavingsBackfill } from "@/hooks/use-savings-backfill";
 import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
 import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
@@ -307,22 +307,15 @@ function Overview() {
   useSavingsBackfill(properties, setProperties);
   useHealthScoreBackfill(properties, healthScores, setHealthScores);
 
+  // The property's own report: summary + AI modules (where a case starts).
   function openAiReport(p: PropertyRecord) {
-    updateIntake({
-      address: p.address,
-      cad: p.cad ?? undefined,
-      accountNumber: p.accountNumber ?? undefined,
-      ownerName: p.ownerName ?? undefined,
-      propertyType: p.propertyType ?? undefined,
-      landValue: p.landValue ?? undefined,
-      improvementValue: p.improvementValue ?? undefined,
-      totalValue: p.totalValue ?? undefined,
-      taxYear: p.taxYear ?? undefined,
-      valueHistory: p.valueHistory ?? undefined,
-      confirmed: true,
-    });
-    nav({ to: "/ai-report" });
+    updateIntake(buildAiReportIntakePatch(p));
+    nav({ to: "/ai-report", search: { propertyId: p.id } });
   }
+
+  // Protest Intelligence shows one property at a time (dropdown), so the page
+  // doesn't grow with every property on file.
+  const [intelPropertyId, setIntelPropertyId] = useState<string | null>(null);
 
   const addressFor = (propertyId: string | null) =>
     propertyId
@@ -601,7 +594,7 @@ function Overview() {
             today={today}
             propertyId={nextActions[0].property.id}
             address={nextActions[0].property.address}
-            onStart={() => nav({ to: "/dashboard/properties" })}
+            onStart={() => openAiReport(nextActions[0].property)}
           />
           {nextActions.length > 1 && (
             <div className="card-elev p-4">
@@ -609,7 +602,7 @@ function Overview() {
                 Then, for your other properties
               </h2>
               <ul className="mt-2 divide-y divide-border">
-                {nextActions.slice(1, 6).map(({ property, pipeline }) => (
+                {nextActions.slice(1, 4).map(({ property, pipeline }) => (
                   <li
                     key={property.id}
                     className="flex flex-wrap items-center justify-between gap-2 py-2.5"
@@ -631,14 +624,18 @@ function Overview() {
                         Open
                       </Link>
                     ) : (
-                      <Link to="/dashboard/properties" className="btn-outline px-3 py-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => openAiReport(property)}
+                        className="btn-outline px-3 py-1 text-xs"
+                      >
                         Open
-                      </Link>
+                      </button>
                     )}
                   </li>
                 ))}
               </ul>
-              {nextActions.length > 6 && (
+              {nextActions.length > 4 && (
                 <Link
                   to="/dashboard/properties"
                   className="mt-2 inline-block text-xs text-accent underline"
@@ -653,45 +650,63 @@ function Overview() {
 
       {loaded && decisionCards.length > 0 && (
         <section aria-labelledby="protest-intelligence" className="grid gap-3">
-          <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
-            Protest Intelligence
-          </h2>
-          {decisionCards.slice(0, 5).map(({ property, pipeline, intel, hasCase }, i) => (
-            <ProtestIntelligenceCard
-              key={property.id}
-              intel={intel}
-              next={pipeline.next}
-              address={property.address}
-              propertyId={property.id}
-              hasCase={hasCase}
-              defaultOpen={i === 0}
-              settlement={{
-                cad: property.cad,
-                propertyType: property.propertyType,
-                value: property.totalValue,
-              }}
-              onStart={() => nav({ to: "/dashboard/properties" })}
-              onReviewEvidence={() => {
-                updateIntake({
-                  address: property.address,
-                  cad: property.cad ?? undefined,
-                  accountNumber: property.accountNumber ?? undefined,
-                  ownerName: property.ownerName ?? undefined,
-                  propertyType: property.propertyType ?? undefined,
-                  landValue: property.landValue ?? undefined,
-                  improvementValue: property.improvementValue ?? undefined,
-                  totalValue: property.totalValue ?? undefined,
-                  taxYear: property.taxYear ?? undefined,
-                  valueHistory: property.valueHistory ?? undefined,
-                  confirmed: true,
-                });
-                nav({
-                  to: "/ai-report",
-                  search: { openModule: "evidence", propertyId: property.id },
-                });
-              }}
-            />
-          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
+              Protest Intelligence
+            </h2>
+            {decisionCards.length > 1 && (
+              <select
+                aria-label="Property"
+                className="max-w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm sm:max-w-md"
+                value={intelPropertyId ?? decisionCards[0].property.id}
+                onChange={(e) => setIntelPropertyId(e.target.value)}
+              >
+                {decisionCards.map(({ property }) => (
+                  <option key={property.id} value={property.id}>
+                    {property.address}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {[decisionCards.find((c) => c.property.id === intelPropertyId) ?? decisionCards[0]].map(
+            ({ property, pipeline, intel, hasCase }) => (
+              <ProtestIntelligenceCard
+                key={property.id}
+                intel={intel}
+                next={pipeline.next}
+                address={property.address}
+                propertyId={property.id}
+                hasCase={hasCase}
+                defaultOpen={false}
+                settlement={{
+                  cad: property.cad,
+                  propertyType: property.propertyType,
+                  value: property.totalValue,
+                }}
+                onStart={() => openAiReport(property)}
+                onReviewEvidence={() => {
+                  updateIntake({
+                    address: property.address,
+                    cad: property.cad ?? undefined,
+                    accountNumber: property.accountNumber ?? undefined,
+                    ownerName: property.ownerName ?? undefined,
+                    propertyType: property.propertyType ?? undefined,
+                    landValue: property.landValue ?? undefined,
+                    improvementValue: property.improvementValue ?? undefined,
+                    totalValue: property.totalValue ?? undefined,
+                    taxYear: property.taxYear ?? undefined,
+                    valueHistory: property.valueHistory ?? undefined,
+                    confirmed: true,
+                  });
+                  nav({
+                    to: "/ai-report",
+                    search: { openModule: "evidence", propertyId: property.id },
+                  });
+                }}
+              />
+            ),
+          )}
         </section>
       )}
 
