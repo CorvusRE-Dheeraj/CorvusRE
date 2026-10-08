@@ -396,6 +396,13 @@ alter table public.project_checklist_items add column if not exists kind text no
 alter table public.design_requests add column if not exists site_area text;
 alter table public.design_requests add column if not exists approved_at timestamptz;
 alter table public.design_requests add column if not exists consultation_requested_at timestamptz;
+-- Callback details captured with a consultation request (emailed to staff
+-- and confirmed to the customer by send-inquiry-email, kind "consultation").
+alter table public.design_requests add column if not exists consultation_phone text;
+alter table public.design_requests add column if not exists consultation_best_time text;
+alter table public.design_requests add column if not exists consultation_notes text;
+-- Design checklist items the customer has ticked (dashboard → Design → Checklist).
+alter table public.design_requests add column if not exists checklist_done text[] not null default '{}';
 
 -- Engagement / "proceed with professional assistance" (PRD 1.1.19).
 create table if not exists public.engagement_requests (

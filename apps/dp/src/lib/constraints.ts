@@ -100,7 +100,7 @@ export function deriveSiteConstraints(input: {
   constraints.push({
     title: "Building setbacks & lot coverage",
     severity: "info",
-    detail: `Confirm ${zoning.label || "zoning"} front/side/rear setbacks, height limits, and maximum lot coverage — these shape the buildable envelope.`,
+    detail: `Confirm ${zoning.category === "unknown" || !zoning.label ? "the zoning district's" : zoning.label} front/side/rear setbacks, height limits, and maximum lot coverage — these shape the buildable envelope.`,
   });
   constraints.push({
     title: "Utility easements",

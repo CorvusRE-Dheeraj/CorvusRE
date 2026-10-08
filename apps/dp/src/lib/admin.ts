@@ -186,13 +186,18 @@ export type AdminDesignRow = {
   scope: string | null;
   sector: string | null;
   stage: string;
+  consultation_requested_at: string | null;
+  consultation_phone: string | null;
+  consultation_best_time: string | null;
   created_at: string;
 };
 
 export async function listAllDesignRequests(): Promise<AdminDesignRow[]> {
   const { data, error } = await supabase
     .from("design_requests")
-    .select("id, address, city, scope, sector, stage, created_at")
+    .select(
+      "id, address, city, scope, sector, stage, consultation_requested_at, consultation_phone, consultation_best_time, created_at",
+    )
     .order("created_at", { ascending: false })
     .limit(300);
   if (error) throw error;
@@ -294,7 +299,9 @@ export type AdminEngagementRow = {
 export async function listEngagementRequests(): Promise<AdminEngagementRow[]> {
   const { data, error } = await supabase
     .from("engagement_requests")
-    .select("id, project_id, user_id, track, scope_summary, note, status, created_at, projects(address, name)")
+    .select(
+      "id, project_id, user_id, track, scope_summary, note, status, created_at, projects(address, name)",
+    )
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw error;
