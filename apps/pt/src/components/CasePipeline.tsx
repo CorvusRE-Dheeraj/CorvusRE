@@ -129,10 +129,9 @@ export function NextRequiredAction({
         {next.title}
       </h2>
       {address && <p className="text-xs text-muted-foreground">{address}</p>}
-      <p className={`mt-1.5 text-muted-foreground ${compact ? "text-sm" : "text-base"}`}>
-        {next.detail}
-      </p>
-      {button && <div className="mt-4">{button}</div>}
+      {button && <div className="mt-3">{button}</div>}
+      {/* Kept to a small footnote — the title and button carry the action. */}
+      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">* {next.detail}</p>
     </section>
   );
 }
