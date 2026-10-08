@@ -8,10 +8,19 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import {
+  newErrorRef,
+  errorMessage,
+  logClientError,
+  isStaleBuildError,
+  canReloadFresh,
+  reloadFresh,
+  stripFreshParam,
+} from "../lib/client-errors";
 import { SiteNav, SiteFooter } from "../components/SiteChrome";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { Toaster } from "../components/ui/sonner";
@@ -53,9 +62,28 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  // One reference per error shown, stored with the error itself (see
+  // lib/client-errors.ts) so a screenshot of this page is enough to find it.
+  const [ref] = useState(newErrorRef);
+  // A deploy replaced this page's code while the tab was open — fetch the
+  // fresh version instead of showing an error (see isStaleBuildError).
+  const [updating] = useState(() => isStaleBuildError(error) && canReloadFresh());
   useEffect(() => {
+    if (updating) {
+      reloadFresh();
+      return;
+    }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    void logClientError(ref, error);
+  }, [error, ref, updating]);
+
+  if (updating) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Updating CorvusPT to the latest version…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -88,6 +116,16 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
             Go home
           </a>
         </div>
+        <p className="mt-6 text-xs text-muted-foreground">
+          Reference <span className="font-mono font-semibold text-foreground">{ref}</span> — include
+          it if you contact us.
+        </p>
+        <details className="mt-2 text-left text-xs text-muted-foreground">
+          <summary className="cursor-pointer text-center">Technical details</summary>
+          <p className="mt-2 break-words rounded-md border border-border bg-muted/40 p-2 font-mono">
+            {errorMessage(error)}
+          </p>
+        </details>
       </div>
     </div>
   );
@@ -148,6 +186,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(stripFreshParam, []);
 
   return (
     <QueryClientProvider client={queryClient}>
