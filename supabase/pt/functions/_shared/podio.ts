@@ -24,6 +24,12 @@ export const admin = () =>
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+export class PodioTokenError extends Error {
+  constructor(public code: string) {
+    super(`Podio token error: ${code}`);
+  }
+}
+
 type TokenResponse = {
   access_token: string;
   refresh_token: string;
@@ -34,15 +40,19 @@ type TokenResponse = {
 export async function exchangeToken(
   params: Record<string, string>,
 ): Promise<TokenResponse> {
+  // The v2 token endpoint takes a JSON body; a form-encoded one is rejected
+  // ("Invalid value null (null): must be object") — confirmed against Podio.
   const res = await fetch(`${PODIO_API}/oauth/token/v2`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(params),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
   });
-  if (!res.ok)
-    throw new Error(
-      `Podio token ${res.status}: ${(await res.text()).slice(0, 200)}`,
-    );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    // Podio's own error code (invalid_grant, invalid_client, …) — passed back
+    // to the app so a failed connection says why.
+    throw new PodioTokenError(body.error ?? `http_${res.status}`);
+  }
   return (await res.json()) as TokenResponse;
 }
 

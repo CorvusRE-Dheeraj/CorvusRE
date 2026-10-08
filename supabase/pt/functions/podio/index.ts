@@ -21,6 +21,7 @@ import {
   podioConfig,
   podioGet,
   podioPost,
+  PodioTokenError,
   saveTokens,
 } from "../_shared/podio.ts";
 import {
@@ -65,7 +66,10 @@ async function oauthCallback(params: URLSearchParams): Promise<Response> {
   if (!verified) return back(FALLBACK_RETURN, { podio: "error" });
   const code = params.get("code");
   if (params.get("error") || !code)
-    return back(verified.returnPath, { podio: "error" });
+    return back(verified.returnPath, {
+      podio: "error",
+      reason: params.get("error") ?? "missing_code",
+    });
   try {
     await saveTokens(
       verified.userId,
@@ -78,8 +82,11 @@ async function oauthCallback(params: URLSearchParams): Promise<Response> {
       }),
     );
     return back(verified.returnPath, { podio: "connected" });
-  } catch {
-    return back(verified.returnPath, { podio: "error" });
+  } catch (err) {
+    return back(verified.returnPath, {
+      podio: "error",
+      reason: err instanceof PodioTokenError ? err.code : "token_exchange",
+    });
   }
 }
 
