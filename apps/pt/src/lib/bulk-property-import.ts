@@ -1,4 +1,9 @@
-import { addProperty, findExistingProperty, type PropertyRecord } from "./properties";
+import {
+  addProperty,
+  findExistingProperty,
+  isSameProperty,
+  type PropertyRecord,
+} from "./properties";
 import { cadLookup, type CadRecord } from "./cad-lookup";
 import { parseNumber } from "./csv-import";
 import {
@@ -70,12 +75,13 @@ export function buildRows(grid: SpreadsheetGrid, mapping: ColumnMapping[]): Impo
     }
 
     if (!values.address) flags.push({ level: "error", message: "No address." });
+    flags.push(...sanityFlags(values, new Date().getFullYear()));
 
     return {
       rowNumber,
       values,
       flags,
-      status: flags.some((f) => f.level === "error") ? "review" : "ok",
+      status: flags.length ? "review" : "ok",
       include: true,
       existingId: null,
       cadOptions: null,
@@ -214,4 +220,69 @@ export async function commitRows(
     }
   }
   return { imported, duplicates, failed };
+}
+
+// ── Checks within the uploaded list itself ─────────────────────────────────
+
+// Values that parsed but look wrong — flagged for review, never changed.
+export function sanityFlags(v: ImportRow["values"], currentYear: number): ImportFlag[] {
+  const flags: ImportFlag[] = [];
+  if (v.address && !/^\s*\d/.test(v.address))
+    flags.push({
+      level: "warn",
+      message: "Doesn't start with a street number — check it's a full street address.",
+    });
+  if (v.totalValue != null && (v.totalValue < 1_000 || v.totalValue > 2_000_000_000))
+    flags.push({
+      level: "warn",
+      message: `Total value $${v.totalValue.toLocaleString("en-US")} looks unusual.`,
+    });
+  if (v.taxYear != null && (v.taxYear < 2000 || v.taxYear > currentYear + 1))
+    flags.push({ level: "warn", message: `Tax year ${v.taxYear} looks unusual.` });
+  if (v.landValue != null && v.improvementValue != null && v.totalValue != null) {
+    const sum = v.landValue + v.improvementValue;
+    if (v.totalValue > 0 && Math.abs(sum - v.totalValue) / v.totalValue > 0.05)
+      flags.push({
+        level: "warn",
+        message: "Land plus improvement value doesn't add up to the total.",
+      });
+  }
+  return flags;
+}
+
+// A row that's the same property as an earlier row in the same file (by
+// address, or by county account once known) — only the first is added.
+export function markInFileDuplicates(rows: ImportRow[]): ImportRow[] {
+  return rows.map((r, i) => {
+    if (r.status === "duplicate" || !r.values.address) return r;
+    const earlier = rows.slice(0, i).find(
+      (e) =>
+        e.values.address &&
+        e.status !== "duplicate" &&
+        isSameProperty(
+          {
+            address: e.values.address,
+            cad: e.values.cad ?? null,
+            accountNumber: e.values.accountNumber ?? null,
+          },
+          {
+            address: r.values.address,
+            cad: r.values.cad ?? null,
+            accountNumber: r.values.accountNumber ?? null,
+          },
+        ),
+    );
+    if (!earlier) return r;
+    return {
+      ...r,
+      status: "duplicate" as const,
+      flags: [
+        ...r.flags,
+        {
+          level: "warn" as const,
+          message: `Same property as row ${earlier.rowNumber} in this file — only that one is added.`,
+        },
+      ],
+    };
+  });
 }

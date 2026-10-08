@@ -3382,3 +3382,16 @@ create policy "Users read their own county records" on public.county_case_record
 drop policy if exists "Members read" on public.county_case_records;
 create policy "Members read" on public.county_case_records
   for select using (public.member_access(user_id, property_id, false));
+
+-- Podio connections for the bulk property import (podio-oauth-callback stores
+-- them, podio-import uses them). Tokens never reach the browser: row-level
+-- security is on with no policies, so only the service role can read them.
+create table if not exists public.podio_connections (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  podio_user_id text,
+  connected_at timestamptz not null default now()
+);
+alter table public.podio_connections enable row level security;

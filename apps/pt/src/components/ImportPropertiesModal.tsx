@@ -12,10 +12,17 @@ import {
   type ColumnTarget,
   type SpreadsheetGrid,
 } from "@/lib/spreadsheet-import";
-import { buildRows, enrichRow, commitRows, type ImportRow } from "@/lib/bulk-property-import";
+import {
+  buildRows,
+  enrichRow,
+  commitRows,
+  markInFileDuplicates,
+  type ImportRow,
+} from "@/lib/bulk-property-import";
 import { type PropertyRecord } from "@/lib/properties";
 import { type CadRecord } from "@/lib/cad-lookup";
 import { currency } from "@/lib/intake-store";
+import { PodioImportPanel } from "@/components/PodioImportPanel";
 
 type Step = "pick" | "mapping" | "review" | "importing" | "done";
 
@@ -65,6 +72,12 @@ export function ImportPropertiesModal({
       setFileError("That file has no data rows.");
       return;
     }
+    handleGrid(g);
+  }
+
+  // A file's rows or a Podio app's items — the same path from here.
+  function handleGrid(g: SpreadsheetGrid) {
+    setFileError(null);
     setGrid(g);
 
     // Deterministic mapping first — if every column resolves and there's an
@@ -92,16 +105,19 @@ export function ImportPropertiesModal({
   }
 
   async function startReview(g: SpreadsheetGrid, m: ColumnMapping[]) {
-    const built = buildRows(g, m);
+    // Repeats within the file itself are caught before any lookups.
+    const built = markInFileDuplicates(buildRows(g, m));
     setRows(built);
     setStep("review");
     setProgress({ done: 0, total: built.length });
     // Sequential dedupe + CAD lookup with live progress.
     for (let i = 0; i < built.length; i++) {
-      await enrichRow(userId, built[i]);
+      if (built[i].status !== "duplicate") await enrichRow(userId, built[i]);
       setProgress({ done: i + 1, total: built.length });
       setRows((prev) => prev.map((r, idx) => (idx === i ? { ...built[i] } : r)));
     }
+    // County matching can reveal two spellings of one account.
+    setRows(markInFileDuplicates(built.map((r) => ({ ...r }))));
   }
 
   async function confirmMapping() {
@@ -185,10 +201,10 @@ export function ImportPropertiesModal({
       {step === "pick" && (
         <div className="mt-4 grid gap-4">
           <p className="text-sm text-muted-foreground">
-            Upload an Excel or CSV file with one property per row. AI maps your columns to our
-            fields, matches each address to the county appraisal district, and flags anything that
-            needs a look — nothing is saved until you confirm. Existing properties are never added
-            twice.
+            Upload an Excel or CSV file with one property per row, or import straight from Podio. AI
+            maps your columns to our fields, matches each address to the county appraisal district,
+            and flags anything that needs a look — nothing is saved until you confirm. Existing
+            properties are never added twice.
           </p>
           <button type="button" onClick={downloadCsvTemplate} className="btn-outline text-sm w-fit">
             Download CSV Template
@@ -215,6 +231,7 @@ export function ImportPropertiesModal({
             />
           </label>
           {fileError && <p className="text-sm text-destructive">{fileError}</p>}
+          <PodioImportPanel onGrid={handleGrid} />
         </div>
       )}
 
@@ -288,7 +305,8 @@ export function ImportPropertiesModal({
             <p className="text-sm">
               <span className="font-medium text-success">{ready} ready</span> ·{" "}
               <span className="font-medium text-warning-foreground">{needsReview} need review</span>
-              {dupes > 0 && ` · ${dupes} already in your account (won't be re-added)`}
+              {dupes > 0 &&
+                ` · ${dupes} duplicate${dupes === 1 ? "" : "s"} — already in your account or repeated in the list (won't be added)`}
             </p>
           )}
 

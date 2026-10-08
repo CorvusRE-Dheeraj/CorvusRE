@@ -104,8 +104,13 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
   // poll for the subscription actually going active (see the effect below)
   // instead of only showing whatever it fetched at the exact instant the
   // page loaded.
-  validateSearch: (search: Record<string, unknown>): { checkout?: "success" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { checkout?: "success"; podio?: "connected" | "error" } => ({
     checkout: search.checkout === "success" ? "success" : undefined,
+    // Set by podio-oauth-callback on the way back from connecting Podio.
+    podio:
+      search.podio === "connected" ? "connected" : search.podio === "error" ? "error" : undefined,
   }),
   component: Properties,
 });
@@ -230,7 +235,7 @@ function writeColumnsPref(cols: PropertyColumnKey[]) {
 
 function Properties() {
   const navigate = useNavigate();
-  const { checkout } = Route.useSearch();
+  const { checkout, podio } = Route.useSearch();
   const { user, workspace } = useAuth();
   // A team member works the owner's cases but doesn't add properties or start
   // the owner's paid plan — those stay with the owner.
@@ -256,6 +261,16 @@ function Properties() {
   const [scoresLoaded, setScoresLoaded] = useState(false);
   const [authorizingProperty, setAuthorizingProperty] = useState<PropertyRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Back from connecting Podio: reopen the bulk upload where the owner left off.
+  useEffect(() => {
+    if (podio === "connected") {
+      setImportOpen(true);
+      toast.success("Podio connected — choose the app that holds your properties.");
+    } else if (podio === "error") {
+      toast.error("Podio wasn't connected. Try again, or upload a Podio Excel export instead.");
+    }
+    if (podio) navigate({ to: "/dashboard/properties", search: {}, replace: true });
+  }, [podio, navigate]);
   const [ownershipsOpen, setOwnershipsOpen] = useState(false);
   const [authorizingBatch, setAuthorizingBatch] = useState<PropertyRecord[] | null>(null);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
