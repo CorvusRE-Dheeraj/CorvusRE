@@ -3614,10 +3614,22 @@ export function DocumentsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingSteps.join(","), preFilingBlocked, firstIncomplete]);
 
+  // Nothing after File Protest (agent form, affidavit, evidence) opens until
+  // the Notice of Protest is signed — it's the filing everything else hangs on.
+  const noticeDone = stepDone("file");
+  const fileIndex = filingSteps.indexOf("file");
+  const stepLocked = (id: FilingStepId) =>
+    (preFilingBlocked && id !== "prefiling") ||
+    (!noticeDone && fileIndex >= 0 && filingSteps.indexOf(id) > fileIndex);
+
   function selectStep(id: FilingStepId) {
     // While the Pre-Filing Check is blocked, nothing after it is actionable.
     if (preFilingBlocked && id !== "prefiling") {
       toast.info("Finish the Pre-Filing Check first — resolve the flagged field(s).");
+      return;
+    }
+    if (stepLocked(id)) {
+      toast.info("File your Notice of Protest first.");
       return;
     }
     setActiveStep(id);
@@ -3928,7 +3940,7 @@ export function DocumentsSection({
         steps={filingSteps}
         active={activeStep}
         isDone={stepDone}
-        lockedAfterPrefiling={preFilingBlocked}
+        isLocked={stepLocked}
         onSelect={selectStep}
       />
       <p className="mt-2 text-xs text-muted-foreground">{FILING_STEP_META[activeStep].blurb}</p>
@@ -4118,7 +4130,9 @@ export function DocumentsSection({
         const idx = filingSteps.indexOf(activeStep);
         const next = idx >= 0 ? filingSteps[idx + 1] : undefined;
         const done = stepDone(activeStep);
-        const blocked = preFilingBlocked && activeStep === "prefiling";
+        const blocked =
+          (preFilingBlocked && activeStep === "prefiling") ||
+          (activeStep === "file" && !noticeDone);
         return (
           <div
             className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
@@ -4133,7 +4147,9 @@ export function DocumentsSection({
                 {done
                   ? "✓ This step is complete."
                   : blocked
-                    ? "Fix the flagged items above to continue."
+                    ? activeStep === "file"
+                      ? "File your Notice of Protest above to continue."
+                      : "Fix the flagged items above to continue."
                     : !next
                       ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
                       : "Not finished yet. Complete it above, or skip ahead."}
@@ -4239,14 +4255,14 @@ function FilingStepBar({
   steps,
   active,
   isDone,
-  lockedAfterPrefiling,
+  isLocked,
   onSelect,
 }: {
   steps: FilingStepId[];
   active: FilingStepId;
   isDone: (id: FilingStepId) => boolean;
-  // While the Pre-Filing Check is blocked, every step after it is inert.
-  lockedAfterPrefiling: boolean;
+  // Blocked Pre-Filing Check, or Notice of Protest not yet signed.
+  isLocked: (id: FilingStepId) => boolean;
   onSelect: (id: FilingStepId) => void;
 }) {
   return (
@@ -4254,7 +4270,7 @@ function FilingStepBar({
       {steps.map((id, i) => {
         const done = isDone(id);
         const here = id === active;
-        const locked = lockedAfterPrefiling && id !== "prefiling";
+        const locked = isLocked(id);
         return (
           <li key={id} className="flex items-center gap-1">
             {i > 0 && <span className="text-muted-foreground/40">→</span>}
