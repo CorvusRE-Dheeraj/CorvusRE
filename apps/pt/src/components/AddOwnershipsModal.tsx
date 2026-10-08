@@ -271,6 +271,8 @@ export function AddOwnershipsModal({
           landValue: row.record.landValue ?? undefined,
           improvementValue: row.record.improvementValue ?? undefined,
           totalValue: row.record.totalValue ?? undefined,
+          valueYear: row.record.valueYear ?? null,
+          upcomingValueYear: row.record.upcomingValueYear ?? null,
           // Pinned to 2026 regardless of the county feed — see
           // CURRENT_TAX_YEAR in lib/tax-calendar.ts.
           taxYear: 2026,

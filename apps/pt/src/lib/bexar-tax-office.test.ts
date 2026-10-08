@@ -62,7 +62,14 @@ describe("parseTaxOfficeDetail", () => {
       parseTaxOfficeDetail(
         "<td>Total Market Value:</td><td>$6,940</td> <td>Land Value:</td><td>$0</td> <td>Improvement Value:</td><td>$6,940</td>",
       ),
-    ).toEqual({ marketValue: 6940, landValue: 0, improvementValue: 6940 });
+    ).toEqual({ taxYear: null, marketValue: 6940, landValue: 0, improvementValue: 6940 });
+  });
+  it("reads which tax year the values are for", () => {
+    expect(
+      parseTaxOfficeDetail(
+        "<td>ALL DATA REFERS TO TAX INFORMATION FOR 2025.</td><td>Total Market Value:</td><td>$4,350,000</td>",
+      ).taxYear,
+    ).toBe(2025);
   });
 });
 

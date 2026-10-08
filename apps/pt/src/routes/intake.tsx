@@ -1504,6 +1504,8 @@ function Intake() {
                       improvementValue: state.improvementValue,
                       totalValue: state.totalValue,
                       taxYear: state.taxYear,
+                      valueYear: state.valueYear,
+                      upcomingValueYear: state.upcomingValueYear,
                       estimatedSavings: savings?.amount,
                       savingsBasis: savings?.basis,
                       valueHistory: state.valueHistory,

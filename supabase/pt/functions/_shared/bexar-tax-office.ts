@@ -26,6 +26,10 @@ export type TaxOfficeAccount = {
 };
 
 export type TaxOfficeDetail = {
+  // The roll year the page's values belong to ("ALL DATA REFERS TO TAX
+  // INFORMATION FOR 2025") — the tax office trails the appraisal district,
+  // which may already have moved on to a year it hasn't valued yet.
+  taxYear: number | null;
   marketValue: number | null;
   landValue: number | null;
   improvementValue: number | null;
@@ -89,7 +93,9 @@ export function parseTaxOfficeDetail(html: string): TaxOfficeDetail {
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, ""),
   );
+  const year = t.match(/TAX INFORMATION FOR (\d{4})/i);
   return {
+    taxYear: year ? Number(year[1]) : null,
     marketValue: money(t, "Total Market Value"),
     landValue: money(t, "Land Value"),
     improvementValue: money(t, "Improvement Value"),
@@ -183,6 +189,7 @@ export async function fetchTaxOfficeAccounts(
       } catch {
         return {
           ...a,
+          taxYear: null,
           marketValue: null,
           landValue: null,
           improvementValue: null,

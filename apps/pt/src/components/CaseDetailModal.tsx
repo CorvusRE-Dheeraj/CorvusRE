@@ -382,6 +382,7 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
 // tabs before scrolling.
 const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-progress": "overview",
+  "case-readiness": "overview",
   "case-record": "overview",
   "case-audit-trail": "overview",
   "case-documents": "file",
@@ -602,6 +603,13 @@ export function CaseDetailView({
       goToGuidanceAnchor(anchor);
       return;
     }
+    // The readiness check is the guidance notice on Overview until it's
+    // accepted; after that it's the Pre-Filing Check inside the filing popup.
+    if (anchor === "case-readiness" && !needsGuidanceAck) {
+      if (activeTab !== "file") setActiveTab("file");
+      setFilingOpen(true);
+      return;
+    }
     const targetTab = ANCHOR_TAB[anchor];
     if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
     // The filing steps live inside the popup — open it so the anchor exists.
@@ -685,7 +693,8 @@ export function CaseDetailView({
                 label: "Original value",
                 value: original ?? 0,
                 format: (n) => compactCurrency(n),
-                ...(original == null ? { text: "Not on file" } : {}),
+                // 0 means the county hasn't published this year's value yet, not $0.
+                ...(!original ? { text: "Pending" } : {}),
               },
               ...(outcome && outcome.finalValue != null
                 ? [
@@ -1448,28 +1457,20 @@ function CorvusGuidanceGate({
   const canContinue = checked && (!hasHigh || concernsReviewed) && !acknowledging;
 
   return (
-    <div className="mt-4 grid gap-4">
+    <div id="case-readiness" className="mt-4 grid scroll-mt-24 gap-4">
       <div className="card-elev p-4">
         <h2 className="text-sm font-semibold">AI Guidance & Filing Notice</h2>
-        <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
+        <div className="mt-1.5 grid gap-0.5 text-xs text-muted-foreground">
           <p>
-            Corvus AI is an assistant designed to guide you through the property protest process and
-            help prepare and complete the required forms and documents.
+            Corvus AI helps prepare your protest forms — by continuing, you authorize it to fill
+            them in for you.
           </p>
           <p>
-            By proceeding, you authorize Corvus AI to assist with completing forms and preparing
-            filing materials on your behalf.
-          </p>
-          <p>
-            You are responsible for reviewing and verifying all information before signing, filing,
-            or submitting any document.
-          </p>
-          <p>
-            Corvus AI does not replace your responsibility to verify the accuracy of the information
-            or comply with county requirements.
+            You review and verify everything before signing or filing, and remain responsible for
+            county requirements.
           </p>
         </div>
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+        <p className="mt-2 border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
           {countyInfo ? (
             <>
               County procedures for {property.cad} were verified {countyInfo.verifiedAt}.{" "}
@@ -3613,10 +3614,22 @@ export function DocumentsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingSteps.join(","), preFilingBlocked, firstIncomplete]);
 
+  // Nothing after File Protest (agent form, affidavit, evidence) opens until
+  // the Notice of Protest is signed — it's the filing everything else hangs on.
+  const noticeDone = stepDone("file");
+  const fileIndex = filingSteps.indexOf("file");
+  const stepLocked = (id: FilingStepId) =>
+    (preFilingBlocked && id !== "prefiling") ||
+    (!noticeDone && fileIndex >= 0 && filingSteps.indexOf(id) > fileIndex);
+
   function selectStep(id: FilingStepId) {
     // While the Pre-Filing Check is blocked, nothing after it is actionable.
     if (preFilingBlocked && id !== "prefiling") {
       toast.info("Finish the Pre-Filing Check first — resolve the flagged field(s).");
+      return;
+    }
+    if (stepLocked(id)) {
+      toast.info("File your Notice of Protest first.");
       return;
     }
     setActiveStep(id);
@@ -3927,7 +3940,7 @@ export function DocumentsSection({
         steps={filingSteps}
         active={activeStep}
         isDone={stepDone}
-        lockedAfterPrefiling={preFilingBlocked}
+        isLocked={stepLocked}
         onSelect={selectStep}
       />
       <p className="mt-2 text-xs text-muted-foreground">{FILING_STEP_META[activeStep].blurb}</p>
@@ -4117,7 +4130,9 @@ export function DocumentsSection({
         const idx = filingSteps.indexOf(activeStep);
         const next = idx >= 0 ? filingSteps[idx + 1] : undefined;
         const done = stepDone(activeStep);
-        const blocked = preFilingBlocked && activeStep === "prefiling";
+        const blocked =
+          (preFilingBlocked && activeStep === "prefiling") ||
+          (activeStep === "file" && !noticeDone);
         return (
           <div
             className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
@@ -4132,7 +4147,9 @@ export function DocumentsSection({
                 {done
                   ? "✓ This step is complete."
                   : blocked
-                    ? "Fix the flagged items above to continue."
+                    ? activeStep === "file"
+                      ? "File your Notice of Protest above to continue."
+                      : "Fix the flagged items above to continue."
                     : !next
                       ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
                       : "Not finished yet. Complete it above, or skip ahead."}
@@ -4238,14 +4255,14 @@ function FilingStepBar({
   steps,
   active,
   isDone,
-  lockedAfterPrefiling,
+  isLocked,
   onSelect,
 }: {
   steps: FilingStepId[];
   active: FilingStepId;
   isDone: (id: FilingStepId) => boolean;
-  // While the Pre-Filing Check is blocked, every step after it is inert.
-  lockedAfterPrefiling: boolean;
+  // Blocked Pre-Filing Check, or Notice of Protest not yet signed.
+  isLocked: (id: FilingStepId) => boolean;
   onSelect: (id: FilingStepId) => void;
 }) {
   return (
@@ -4253,7 +4270,7 @@ function FilingStepBar({
       {steps.map((id, i) => {
         const done = isDone(id);
         const here = id === active;
-        const locked = lockedAfterPrefiling && id !== "prefiling";
+        const locked = isLocked(id);
         return (
           <li key={id} className="flex items-center gap-1">
             {i > 0 && <span className="text-muted-foreground/40">→</span>}

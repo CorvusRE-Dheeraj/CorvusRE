@@ -224,7 +224,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
               "Read the filing guidance and let Corvus confirm the county, property, tax year, owner and deadline before anything is filed.",
             dueDate: deadline,
             dueLabel: "Protest deadline",
-            target: { kind: "anchor", anchor: "case-progress" },
+            target: { kind: "anchor", anchor: "case-readiness" },
           });
       break;
     case "file":

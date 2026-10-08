@@ -45,6 +45,10 @@ type CadRecord = {
   improvementValue: number | null;
   totalValue: number | null;
   taxYear: number | null;
+  // The year totalValue/landValue/improvementValue belong to, and the newer
+  // roll year the county lists that has no value yet (see withValueYears).
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   // Enrichment fields — populated for the counties whose public site offers a real,
   // callable second source: TrueProdigy (Denton/Montgomery/Tarrant/Travis), BIS
   // Consultants (Fort Bend/Grayson), Williamson's own JSON search API, and Dallas's
@@ -2712,7 +2716,82 @@ async function queryByAccountNumber(
   const config = ARCGIS_ACCOUNT_LOOKUP.find((c) => c.cad === cad);
   if (!config) return null;
   const record = await queryArcgisAccount(config, trimmed);
-  return record ? await enrichRecord(record) : null;
+  return record
+    ? await fillBexarFromTaxOffice(await enrichRecord(record))
+    : null;
+}
+
+// BCAD's parcel layer rolls over to next year's roll before that year is
+// valued ("N/A" for 2027, seen live 2026-10-08 on account 1313473) — fill the
+// value from the tax office, which still carries the latest billed year.
+// The address search already does this (see runLookup); this is the same for
+// a lookup by account number, which is how saved properties refresh.
+async function fillBexarFromTaxOffice(record: CadRecord): Promise<CadRecord> {
+  if (record.cad !== "Bexar Appraisal District" || (record.totalValue ?? 0) > 0)
+    return record;
+  const extra = await withTimeout(
+    bexarTaxOfficeRecords(
+      record.propertyAddress,
+      TAX_OFFICE_ACCOUNT_TIMEOUT_MS,
+    ),
+    TAX_OFFICE_ACCOUNT_TIMEOUT_MS,
+    [] as CadRecord[],
+  );
+  const match = extra.find((r) => r.accountNumber === record.accountNumber);
+  if (!match) return record;
+  return {
+    ...record,
+    totalValue: match.totalValue,
+    landValue: record.landValue || match.landValue,
+    improvementValue: record.improvementValue || match.improvementValue,
+    valueYear: match.valueYear ?? null,
+  };
+}
+
+// Texas appraisal districts publish a year's values with the notices in
+// April–May of that year, so before April only last year's roll can carry real
+// values. A county that has already opened next year's roll (Denton's and
+// Bexar's map layers read 2027 in October 2026) is either showing nothing yet
+// or last year's value copied forward — label it with the year it really is.
+function latestPublishedRollYear(now = new Date()): number {
+  return now.getUTCMonth() >= 3
+    ? now.getUTCFullYear()
+    : now.getUTCFullYear() - 1;
+}
+
+// Every record leaves with its value labelled by year, plus the newer roll
+// year that's still to come. A 0 means "not published", not $0 — the latest
+// valued year (when a second source had it) stays the value shown.
+function withValueYears(r: CadRecord): CadRecord {
+  const latest = latestPublishedRollYear();
+  if (!((r.totalValue ?? 0) > 0)) {
+    return {
+      ...r,
+      totalValue: null,
+      landValue: r.landValue || null,
+      improvementValue: r.improvementValue || null,
+      valueYear: null,
+      upcomingValueYear: r.taxYear ?? null,
+    };
+  }
+  let valueYear = r.valueYear ?? r.taxYear ?? null;
+  let upcoming =
+    r.taxYear != null && valueYear != null && r.taxYear > valueYear
+      ? r.taxYear
+      : null;
+  if (valueYear != null && valueYear > latest) {
+    upcoming = Math.max(upcoming ?? 0, valueYear);
+    valueYear = latest;
+  }
+  return { ...r, valueYear, upcomingValueYear: upcoming };
+}
+
+function withValueYearsResult(result: LookupResult): LookupResult {
+  if (result.matched === true)
+    return { matched: true, record: withValueYears(result.record) };
+  if (result.matched === "multiple")
+    return { matched: "multiple", options: result.options.map(withValueYears) };
+  return { matched: false, nearby: result.nearby.map(withValueYears) };
 }
 
 // --- Enrichment (Phase 5, 2026-07-27) ---------------------------------------
@@ -4211,6 +4290,7 @@ async function runLookup(
             totalValue: r.totalValue,
             landValue: known.landValue ?? r.landValue,
             improvementValue: known.improvementValue ?? r.improvementValue,
+            valueYear: r.valueYear ?? null,
           };
           distinctAccounts.set(r.accountNumber, filled);
           if (record.accountNumber === r.accountNumber) record = filled;
@@ -4308,12 +4388,19 @@ async function runLookup(
 }
 
 const TAX_OFFICE_TIMEOUT_MS = 4000;
+// A by-account lookup (saving or refreshing a property) can wait longer than
+// the live search: the tax office usually answers in ~1s but was seen taking
+// 22s (2026-10-08), and a missed answer here leaves a saved property at $0.
+const TAX_OFFICE_ACCOUNT_TIMEOUT_MS = 12000;
 
 // Tax-office accounts at a Bexar address as CadRecords — only those with a
 // current market value (a retired account reads $0), like other firms show.
-async function bexarTaxOfficeRecords(situs: string): Promise<CadRecord[]> {
+async function bexarTaxOfficeRecords(
+  situs: string,
+  timeoutMs = TAX_OFFICE_TIMEOUT_MS,
+): Promise<CadRecord[]> {
   try {
-    const accounts = await fetchTaxOfficeAccounts(situs, TAX_OFFICE_TIMEOUT_MS);
+    const accounts = await fetchTaxOfficeAccounts(situs, timeoutMs);
     return accounts
       .filter((a) => (a.marketValue ?? 0) > 0)
       .map((a) => {
@@ -4329,6 +4416,7 @@ async function bexarTaxOfficeRecords(situs: string): Promise<CadRecord[]> {
           improvementValue: bpp ? null : a.improvementValue,
           totalValue: a.marketValue,
           taxYear: null,
+          valueYear: a.taxYear,
           legalDescription: a.legal || null,
         };
       });
@@ -4351,7 +4439,8 @@ Deno.serve(async (req: Request) => {
       typeof body.accountNumber === "string" &&
       typeof body.cad === "string"
     ) {
-      const record = await queryByAccountNumber(body.cad, body.accountNumber);
+      const found = await queryByAccountNumber(body.cad, body.accountNumber);
+      const record = found ? withValueYears(found) : null;
       return new Response(
         JSON.stringify({ matched: Boolean(record), record: record ?? null }),
         {
@@ -4447,7 +4536,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    return new Response(JSON.stringify(result), {
+    return new Response(JSON.stringify(withValueYearsResult(result)), {
       status: 200,
       headers: corsHeaders,
     });

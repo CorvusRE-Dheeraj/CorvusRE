@@ -49,6 +49,9 @@ export type IntakeState = {
   improvementValue?: number;
   totalValue?: number;
   taxYear?: number;
+  // See CadRecord.valueYear / upcomingValueYear.
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   noticeFileName?: string;
   confirmed?: boolean;
   previewsUsed: string[];
@@ -163,6 +166,8 @@ export function cadRecordToIntakePatch(
     landValue: record.landValue ?? undefined,
     improvementValue: record.improvementValue ?? undefined,
     totalValue: record.totalValue ?? undefined,
+    valueYear: record.valueYear ?? null,
+    upcomingValueYear: record.upcomingValueYear ?? null,
     // Pinned the same way applyCadRecord's own copy is — see its comment on
     // CURRENT_TAX_YEAR in lib/tax-calendar.ts for why this isn't computed.
     taxYear: 2026,

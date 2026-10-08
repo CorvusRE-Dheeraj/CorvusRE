@@ -3407,3 +3407,38 @@ alter table public.podio_connections enable row level security;
 --   select cron.alter_job(jobid, command := regexp_replace(command,
 --     'body\s*:=\s*''\{\}''::jsonb', 'body := ''{}''::jsonb, timeout_milliseconds := 150000'))
 --   from cron.job where command like '%net.http_post%' and command not like '%timeout_milliseconds%';
+
+-- ---------------------------------------------------------------------------
+-- Client crash log (2026-10): one row per "This page didn't load" shown, with
+-- the reference printed on that page (lib/client-errors.ts) so a user's
+-- screenshot can be traced to the real error. Anyone (signed in or not) may
+-- insert their own row; only admins can read.
+-- ---------------------------------------------------------------------------
+create table if not exists public.client_errors (
+  id uuid primary key default gen_random_uuid(),
+  ref text not null,
+  user_id uuid references auth.users(id) on delete set null,
+  route text,
+  message text,
+  stack text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+create index if not exists client_errors_created_idx on public.client_errors (created_at desc);
+create index if not exists client_errors_ref_idx on public.client_errors (ref);
+alter table public.client_errors enable row level security;
+drop policy if exists "client errors: insert own" on public.client_errors;
+create policy "client errors: insert own" on public.client_errors
+  for insert to anon, authenticated
+  with check (user_id is null or user_id = auth.uid());
+drop policy if exists "client errors: admin read" on public.client_errors;
+create policy "client errors: admin read" on public.client_errors
+  for select using (public.is_admin());
+grant insert on public.client_errors to anon, authenticated;
+
+-- Which year a saved property's values belong to, and the newer roll year the
+-- county has opened but not valued yet (2026-10: Bexar and Denton list 2027
+-- with no values). Set from cad-lookup's valueYear/upcomingValueYear on save
+-- and by refresh-property-base-data; shown as "2025 value" + "2027 upcoming".
+alter table public.properties add column if not exists value_year integer;
+alter table public.properties add column if not exists upcoming_value_year integer;
