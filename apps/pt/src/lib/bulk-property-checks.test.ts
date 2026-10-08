@@ -63,9 +63,9 @@ describe("markInFileDuplicates", () => {
     const out = markInFileDuplicates(rows);
     expect(out.map((r) => r.status)).toEqual(["ok", "duplicate", "ok", "duplicate"]);
     expect(out[1].flags.at(-1)!.message).toBe(
-      "Same property as row 2 in this file — only that one is added.",
+      "Same property as “1200 Commerce Street, Austin, TX 78701” above — listed once.",
     );
-    expect(out[3].flags.at(-1)!.message).toContain("row 4");
+    expect(out[3].flags.at(-1)!.message).toContain("88 Lamar Blvd");
   });
 
   it("leaves distinct properties alone", () => {

@@ -137,7 +137,7 @@ export async function enrichRow(userId: string, row: ImportRow): Promise<ImportR
       row.cadOptions = res.options;
       row.flags.push({
         level: "error",
-        message: `Address matches ${res.options.length} county parcels — pick one.`,
+        message: `This address covers ${res.options.length} county parcels — pick the right one below.`,
       });
     } else {
       row.flags.push({
@@ -280,7 +280,7 @@ export function markInFileDuplicates(rows: ImportRow[]): ImportRow[] {
         ...r.flags,
         {
           level: "warn" as const,
-          message: `Same property as row ${earlier.rowNumber} in this file — only that one is added.`,
+          message: `Same property as “${earlier.values.address}” above — listed once.`,
         },
       ],
     };
