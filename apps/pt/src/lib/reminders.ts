@@ -100,7 +100,10 @@ export async function setReminderDone(id: string, done: boolean): Promise<void> 
 export async function setReminderMissed(id: string, missed: boolean): Promise<void> {
   const { error } = await supabase
     .from("user_reminders")
-    .update({ missed_at: missed ? new Date().toISOString() : null, done: missed ? false : undefined })
+    .update({
+      missed_at: missed ? new Date().toISOString() : null,
+      done: missed ? false : undefined,
+    })
     .eq("id", id);
   if (error) throw error;
 }

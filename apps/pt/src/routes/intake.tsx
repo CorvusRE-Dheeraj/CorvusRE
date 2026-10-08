@@ -266,7 +266,6 @@ function Intake() {
       clearTimeout(t);
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, step]);
 
   // A live-match row was clicked — same handling as a "nearby"/"multiple"

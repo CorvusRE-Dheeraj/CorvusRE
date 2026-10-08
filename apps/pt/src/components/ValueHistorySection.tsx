@@ -22,7 +22,8 @@ function ValueHistoryChart({ history }: { history: CadValueHistoryEntry[] }) {
   const changePct = first !== 0 ? Math.round(((last - first) / first) * 100) : 0;
   // Rising assessed value is the thing worth flagging to a taxpayer (usually means
   // a higher bill), so it's colored as a caution, not a plain neutral trend line.
-  const color = changePct > 0 ? "var(--warning)" : changePct < 0 ? "var(--success)" : "var(--muted-foreground)";
+  const color =
+    changePct > 0 ? "var(--warning)" : changePct < 0 ? "var(--success)" : "var(--muted-foreground)";
 
   return (
     <div className="mt-2">
@@ -46,7 +47,13 @@ function ValueHistoryChart({ history }: { history: CadValueHistoryEntry[] }) {
           <XAxis dataKey="year" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
           <YAxis hide domain={["dataMin - dataMin * 0.05", "dataMax + dataMax * 0.05"]} />
           <Tooltip formatter={(v: number) => currency(v)} labelFormatter={(l) => `Year ${l}`} />
-          <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2}
+            fill={`url(#${gradientId})`}
+          />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -59,7 +66,11 @@ export function ValueHistorySection({ history }: { history: CadValueHistoryEntry
   // for it) — showing a table that's entirely dashes isn't useful, so only real rows
   // count, and the whole section stays hidden unless at least one does.
   const realHistory = history.filter(
-    (v) => v.landValue != null || v.improvementValue != null || v.marketValue != null || v.appraisedValue != null,
+    (v) =>
+      v.landValue != null ||
+      v.improvementValue != null ||
+      v.marketValue != null ||
+      v.appraisedValue != null,
   );
   if (realHistory.length === 0) return null;
 

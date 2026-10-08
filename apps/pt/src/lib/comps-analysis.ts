@@ -393,9 +393,7 @@ export function computeComparableStats(
 
   let adjustedIndicated: ComparableStats["adjustedIndicated"] = null;
   if (perCompAdjustment.length > 0) {
-    const targets = perCompAdjustment
-      .map((a) => a.subjectValueAtCompRate)
-      .sort((x, y) => x - y);
+    const targets = perCompAdjustment.map((a) => a.subjectValueAtCompRate).sort((x, y) => x - y);
     adjustedIndicated = {
       value: targets[Math.floor(targets.length / 2)],
       min: targets[0],

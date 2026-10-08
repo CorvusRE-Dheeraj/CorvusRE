@@ -196,3 +196,55 @@ describe("urgencyOf", () => {
     expect(urgencyOf(null, "2026-05-01")).toBe("normal");
   });
 });
+
+describe("a missed protest deadline", () => {
+  it("says the deadline passed and what Texas law still allows", () => {
+    const r = casePipeline({
+      ...base,
+      protest: protest({ status: "requested" }),
+      today: "2026-10-08",
+    });
+    expect(r.next.title).toBe("The protest deadline passed on May 15, 2026");
+    expect(r.next.detail).toContain("§41.44(b)");
+    expect(r.next.detail).toContain("§41.411");
+  });
+
+  it("leaves a filed case, and one before the deadline, alone", () => {
+    expect(
+      casePipeline({ ...base, protest: protest({ status: "requested" }) }).next.title,
+    ).not.toContain("deadline passed");
+    expect(
+      casePipeline({ ...base, protest: protest({ status: "filed" }), today: "2026-10-08" }).next
+        .title,
+    ).not.toContain("deadline passed");
+  });
+});
+
+describe("a stale deadline from an earlier year", () => {
+  it("isn't reported as missed", () => {
+    const r = casePipeline({
+      ...base,
+      protestDeadline: "2025-05-15",
+      protest: protest({ status: "requested" }),
+      today: "2026-03-01",
+    });
+    expect(r.next.title).not.toContain("deadline passed");
+  });
+});
+
+describe("an informal offer waiting for a reply", () => {
+  it("comes before requesting the district's evidence", () => {
+    const r = casePipeline({
+      ...base,
+      today: "2026-09-25",
+      protest: protest({
+        status: "offer_received",
+        informalStatus: "proposed_value_received",
+        settlementOfferValue: 2_850_000,
+      }),
+    });
+    expect(r.next.title).toBe("Review the county's offer of $2,850,000");
+    expect(r.stages.find((s) => s.id === "cad_evidence")?.state).toBe("upcoming");
+    expect(r.stages.find((s) => s.id === "informal")?.state).toBe("current");
+  });
+});

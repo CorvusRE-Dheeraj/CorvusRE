@@ -8,8 +8,17 @@
 // invents a permit, a fee, or a risk of its own — it only narrates around
 // the real, already-computed facts it's given, same discipline as the
 // CorvusPT door's hearing-prep-guide function.
-import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
-import { callGemini, parseJsonLoose, str, arr, aiErrorResponse } from "../_shared/gemini.ts";
+import {
+  PROSE_STYLE,
+  STRUCTURED_BULLET_STYLE,
+} from "../_shared/prose-style.ts";
+import {
+  callGemini,
+  parseJsonLoose,
+  str,
+  arr,
+  aiErrorResponse,
+} from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
@@ -44,6 +53,7 @@ Deno.serve(async (req: Request) => {
       state,
       intent,
       sector,
+      subcategory,
       zoning,
       feasibility,
       permits,
@@ -56,7 +66,11 @@ Deno.serve(async (req: Request) => {
       `Property: ${[address, city, county && `${county} County`, state].filter(Boolean).join(", ") || "address not yet entered"}`,
     );
     if (intent) lines.push(`Project intent: ${intent}`);
-    if (sector) lines.push(`Sector: ${sector}`);
+    if (sector) {
+      lines.push(
+        `Sector: ${sector}${typeof subcategory === "string" && subcategory ? ` (${subcategory})` : ""}`,
+      );
+    }
     if (zoning?.category) {
       lines.push(
         `Zoning: ${zoning.code || "(no code entered)"} — ${zoning.label} (category: ${zoning.category})`,
@@ -70,8 +84,11 @@ Deno.serve(async (req: Request) => {
         lines.push(
           `Real feasibility risks: ${feasibility.risks
             .map(
-              (r: { title?: string; plainLanguage?: string; approval?: string }) =>
-                `${r.title} (${r.approval}) — ${r.plainLanguage}`,
+              (r: {
+                title?: string;
+                plainLanguage?: string;
+                approval?: string;
+              }) => `${r.title} (${r.approval}) — ${r.plainLanguage}`,
             )
             .join(" | ")}`,
         );
@@ -81,7 +98,10 @@ Deno.serve(async (req: Request) => {
       lines.push(
         `Real identified permits (${permits.length}): ${permits
           .slice(0, 20)
-          .map((p: { name?: string; category?: string }) => `${p.name} (${p.category})`)
+          .map(
+            (p: { name?: string; category?: string }) =>
+              `${p.name} (${p.category})`,
+          )
           .join(", ")}`,
       );
     }
@@ -90,17 +110,28 @@ Deno.serve(async (req: Request) => {
         `Complexity: ${complexity.level}, ~${complexity.estimatedApprovals} approvals, ~${complexity.estimatedReviewCycles} review cycle(s)`,
       );
     }
-    if (Array.isArray(constraints?.criticalWarnings) && constraints.criticalWarnings.length > 0) {
-      lines.push(`Real critical site-constraint warnings: ${constraints.criticalWarnings.join(" | ")}`);
+    if (
+      Array.isArray(constraints?.criticalWarnings) &&
+      constraints.criticalWarnings.length > 0
+    ) {
+      lines.push(
+        `Real critical site-constraint warnings: ${constraints.criticalWarnings.join(" | ")}`,
+      );
     }
-    if (Array.isArray(constraints?.utilities) && constraints.utilities.length > 0) {
+    if (
+      Array.isArray(constraints?.utilities) &&
+      constraints.utilities.length > 0
+    ) {
       const constrained = constraints.utilities.filter(
         (u: { status?: string }) => u.status !== "likely_available",
       );
       if (constrained.length > 0) {
         lines.push(
           `Utilities needing verification: ${constrained
-            .map((u: { name?: string; status?: string }) => `${u.name} (${u.status})`)
+            .map(
+              (u: { name?: string; status?: string }) =>
+                `${u.name} (${u.status})`,
+            )
             .join(", ")}`,
         );
       }
@@ -120,7 +151,10 @@ Deno.serve(async (req: Request) => {
 
     await logAiCall("feasibility_summary", input, result);
 
-    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (err) {
     return aiErrorResponse(err, corsHeaders);
   }

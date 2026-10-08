@@ -17,7 +17,7 @@ export function winAnsiSafe(text: string): string {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/…/g, "...")
-    .replace(/[^\n\x20-\x7E -ÿ–—•]/g, "");
+    .replace(/[^\n\x20-\x7E\u00A0-\u00FF\u2013\u2014\u2022]/g, "");
 }
 
 const PAGE: [number, number] = [612, 792];

@@ -16,7 +16,10 @@
 // queryBexar) and has no land/improvement split, only a combined total. Addresses
 // outside these eleven counties correctly fall through to "not matched" rather than
 // returning fabricated data.
-import { ID_SEARCH_TIMEOUT_MS, looksLikePropertyId } from "../_shared/property-id.ts";
+import {
+  ID_SEARCH_TIMEOUT_MS,
+  looksLikePropertyId,
+} from "../_shared/property-id.ts";
 import {
   BPP_PROPERTY_TYPE,
   fetchTaxOfficeAccounts,
@@ -25,7 +28,8 @@ import {
 } from "../_shared/bexar-tax-office.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   // Without this, supabase-js's functions.invoke() parses the body as plain text
   // (a JSON string) instead of a parsed object, based on the response Content-Type.
   "Content-Type": "application/json",
@@ -101,7 +105,13 @@ type CadRecord = {
 // calls. `klass` omitted where the layer has no construction-class field.
 const STRUCTURE_FIELDS_BY_CAD: Record<
   string,
-  { sqft?: string; year?: string; klass?: string; lotAcres?: string; lotSqft?: string }
+  {
+    sqft?: string;
+    year?: string;
+    klass?: string;
+    lotAcres?: string;
+    lotSqft?: string;
+  }
 > = {
   "Denton Central Appraisal District": {
     sqft: "imprvMainArea",
@@ -140,7 +150,10 @@ const STRUCTURE_FIELDS_BY_CAD: Record<
     sqft: "imprvMainArea",
     year: "imprvActualYearBuilt",
   },
-  "Harris Central Appraisal District": { lotSqft: "land_sqft", lotAcres: "acreage_1" },
+  "Harris Central Appraisal District": {
+    lotSqft: "land_sqft",
+    lotAcres: "acreage_1",
+  },
   "Travis Central Appraisal District": { lotAcres: "tcad_acres" },
   "Grayson Central Appraisal District": { lotAcres: "LegalAcreage" },
 };
@@ -164,7 +177,9 @@ const GEO_FIELD_BY_CAD: Record<string, string> = {
 function structureOutFields(cad: string): string {
   const f = STRUCTURE_FIELDS_BY_CAD[cad];
   if (!f) return "";
-  return [f.sqft, f.year, f.klass, f.lotAcres, f.lotSqft].filter(Boolean).join(",");
+  return [f.sqft, f.year, f.klass, f.lotAcres, f.lotSqft]
+    .filter(Boolean)
+    .join(",");
 }
 
 // Copies whatever structure / lot fields the county's layer returned onto the
@@ -185,13 +200,21 @@ function applyStructureDetail(
     if (!key) return null;
     const raw = attrs[key];
     if (raw == null || raw === "") return null;
-    const n = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^0-9.]/g, ""));
+    const n =
+      typeof raw === "number"
+        ? raw
+        : parseFloat(String(raw).replace(/[^0-9.]/g, ""));
     return Number.isFinite(n) && n > 0 ? n : null;
   };
   const str = (key?: string): string | null => {
     if (!key) return null;
     const raw = attrs[key];
-    const s = typeof raw === "string" ? raw.trim() : raw != null ? String(raw).trim() : "";
+    const s =
+      typeof raw === "string"
+        ? raw.trim()
+        : raw != null
+          ? String(raw).trim()
+          : "";
     return s.length > 0 ? s : null;
   };
   const yr = num(f.year);
@@ -199,7 +222,8 @@ function applyStructureDetail(
   return {
     ...record,
     buildingSqft: num(f.sqft),
-    yearBuilt: yr != null && yr >= 1700 && yr <= nowYear + 1 ? Math.round(yr) : null,
+    yearBuilt:
+      yr != null && yr >= 1700 && yr <= nowYear + 1 ? Math.round(yr) : null,
     buildingClass: str(f.klass),
     lotSizeAcres: num(f.lotAcres),
     lotSizeSqft: num(f.lotSqft),
@@ -320,11 +344,16 @@ function trailingSuffixOf(street: string): string | null {
 // a bare trailing directional ("107 Oak Dr E, Fort Worth" — a real, already-
 // supported input shape) being mistaken for one: a real city is never just
 // "E"/"N"/"NE"/etc. on its own.
-function splitGluedCity(rawStreet: string): { street: string; gluedCity: string } | null {
-  const m = rawStreet.match(new RegExp(`^(.*\\b(?:${STREET_SUFFIX_ALT})\\.?)\\b\\s+(\\S.*)$`, "i"));
+function splitGluedCity(
+  rawStreet: string,
+): { street: string; gluedCity: string } | null {
+  const m = rawStreet.match(
+    new RegExp(`^(.*\\b(?:${STREET_SUFFIX_ALT})\\.?)\\b\\s+(\\S.*)$`, "i"),
+  );
   if (!m) return null;
   const extra = m[2].trim();
-  if (/^(n|s|e|w|ne|nw|se|sw|north|south|east|west)\.?$/i.test(extra)) return null;
+  if (/^(n|s|e|w|ne|nw|se|sw|north|south|east|west)\.?$/i.test(extra))
+    return null;
   // A real glued-on city is never a bare number — found live 2026-09-04
   // chasing a real report ("705 Hwy 352, Mesquite, TX 75149"): STREET_SUFFIX_ALT
   // includes "hwy"/"highway"/"fwy"/"freeway" for real NAMED streets that end in
@@ -354,7 +383,11 @@ function parseHouseAndStreet(
         cityStateZip: `${split.gluedCity}, ${withComma[3].trim()}`,
       };
     }
-    return { house: withComma[1], street: rawStreet, cityStateZip: withComma[3].trim() };
+    return {
+      house: withComma[1],
+      street: rawStreet,
+      cityStateZip: withComma[3].trim(),
+    };
   }
 
   // No comma (e.g. "900 Willowwood St Denton") — capture the house number and street
@@ -363,10 +396,17 @@ function parseHouseAndStreet(
   // typed without a comma failed to parse at all and silently returned "not matched"
   // before ever reaching the county API.
   const noComma = address.match(
-    new RegExp(`^\\s*(\\d+)\\s+(.+?\\b(?:${STREET_SUFFIX_ALT})\\.?)\\b\\s*(.*)$`, "i"),
+    new RegExp(
+      `^\\s*(\\d+)\\s+(.+?\\b(?:${STREET_SUFFIX_ALT})\\.?)\\b\\s*(.*)$`,
+      "i",
+    ),
   );
   if (!noComma) return null;
-  return { house: noComma[1], street: noComma[2].trim(), cityStateZip: noComma[3].trim() };
+  return {
+    house: noComma[1],
+    street: noComma[2].trim(),
+    cityStateZip: noComma[3].trim(),
+  };
 }
 
 // Same idea as parseHouseAndStreet, but for a bare road/street with no leading
@@ -374,13 +414,18 @@ function parseHouseAndStreet(
 // not a numbered street address). Used only for the "nearby" search fallback:
 // there's no single parcel to exact-match without a house number, but a street
 // name alone is still enough to search by and suggest real nearby options.
-function parseStreetOnly(address: string): { street: string; cityStateZip: string } | null {
+function parseStreetOnly(
+  address: string,
+): { street: string; cityStateZip: string } | null {
   const withComma = address.match(/^\s*([^,]+?)\s*,(.*)$/);
   if (withComma) {
     const rawStreet = withComma[1].trim();
     const split = splitGluedCity(rawStreet);
     if (split)
-      return { street: split.street, cityStateZip: `${split.gluedCity}, ${withComma[2].trim()}` };
+      return {
+        street: split.street,
+        cityStateZip: `${split.gluedCity}, ${withComma[2].trim()}`,
+      };
     return { street: rawStreet, cityStateZip: withComma[2].trim() };
   }
 
@@ -408,7 +453,11 @@ function parseAddressForQuery(
   if (mode !== "nearby") return null;
   const streetOnly = parseStreetOnly(address);
   if (!streetOnly) return null;
-  return { house: "", street: streetOnly.street, cityStateZip: streetOnly.cityStateZip };
+  return {
+    house: "",
+    street: streetOnly.street,
+    cityStateZip: streetOnly.cityStateZip,
+  };
 }
 
 type NameQuery = { name: string; city: string };
@@ -448,12 +497,44 @@ const MULTI_WORD_CITIES = [
 // entirely — they read as leftover address fragments the user tacked on,
 // not part of either the business name or a second real city reference.
 const KNOWN_SINGLE_WORD_CITIES = new Set([
-  "denton", "houston", "dallas", "plano", "frisco", "mckinney", "allen",
-  "carrollton", "lewisville", "wylie", "celina", "garland", "mesquite",
-  "irving", "arlington", "austin", "sherman", "denison", "conroe", "katy",
-  "georgetown", "humble", "spring", "stafford", "aubrey", "porter",
-  "crandall", "forney", "montgomery", "euless", "hurst", "bedford",
-  "colleyville", "southlake", "keller", "burleson", "haslet", "roanoke",
+  "denton",
+  "houston",
+  "dallas",
+  "plano",
+  "frisco",
+  "mckinney",
+  "allen",
+  "carrollton",
+  "lewisville",
+  "wylie",
+  "celina",
+  "garland",
+  "mesquite",
+  "irving",
+  "arlington",
+  "austin",
+  "sherman",
+  "denison",
+  "conroe",
+  "katy",
+  "georgetown",
+  "humble",
+  "spring",
+  "stafford",
+  "aubrey",
+  "porter",
+  "crandall",
+  "forney",
+  "montgomery",
+  "euless",
+  "hurst",
+  "bedford",
+  "colleyville",
+  "southlake",
+  "keller",
+  "burleson",
+  "haslet",
+  "roanoke",
   "grapevine",
 ]);
 
@@ -487,7 +568,10 @@ function parseNameQuery(address: string): NameQuery | null {
     KNOWN_SINGLE_WORD_CITIES.has(w.replace(/[^a-zA-Z]/g, "").toLowerCase()),
   );
   if (cityIndex > 0) {
-    return { name: words.slice(0, cityIndex).join(" "), city: words[cityIndex] };
+    return {
+      name: words.slice(0, cityIndex).join(" "),
+      city: words[cityIndex],
+    };
   }
   return { name: words.slice(0, -1).join(" "), city: words[words.length - 1] };
 }
@@ -527,7 +611,10 @@ function guessCity(cityStateZip: string): string {
 // so "Pl" can't match as a false prefix of an unrelated word like "Plano".
 function cityOf(propertyAddress: string): string {
   const m = propertyAddress.match(
-    new RegExp(`.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?\\s*,?\\s*(.*?)\\s*,?\\s*(?:TX|Texas)\\b`, "i"),
+    new RegExp(
+      `.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?\\s*,?\\s*(.*?)\\s*,?\\s*(?:TX|Texas)\\b`,
+      "i",
+    ),
   );
   if (m) return m[1].replace(/,/g, " ").replace(/\s+/g, " ").trim();
   // No recognized suffix word found at all (a genuinely unusual shape) —
@@ -535,7 +622,9 @@ function cityOf(propertyAddress: string): string {
   // primary approach can't anchor on anything, so an imperfect multi-word
   // city (truncated to its last word) here is a rare, honest degradation,
   // not the common case.
-  const fallback = propertyAddress.match(/.*[,\s]([A-Za-z][A-Za-z'-]*?)\s*,?\s*(?:TX|Texas)\b/i);
+  const fallback = propertyAddress.match(
+    /.*[,\s]([A-Za-z][A-Za-z'-]*?)\s*,?\s*(?:TX|Texas)\b/i,
+  );
   return fallback ? fallback[1].trim() : "";
 }
 
@@ -547,7 +636,10 @@ function cityOf(propertyAddress: string): string {
 // dropped. Used by findNearby's street-match sort tier below.
 function streetPortionOf(propertyAddress: string): string {
   const m = propertyAddress.match(
-    new RegExp(`^\\s*\\d+[A-Za-z]?\\s+(.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?)`, "i"),
+    new RegExp(
+      `^\\s*\\d+[A-Za-z]?\\s+(.*\\b(?:${STREET_SUFFIX_ALT})\\b\\.?)`,
+      "i",
+    ),
   );
   return m ? m[1].trim() : "";
 }
@@ -584,7 +676,10 @@ function cityMatches(extractedCity: string, cityGuess: string): boolean {
 // name in this search means that city, not its whole county — a real
 // Denton, TX resident expects "Denton" to mean the city of Denton, not
 // Frisco or The Colony just because they share a CAD.
-function nameSearchCityMatches(propertyAddress: string, cityGuess: string): boolean {
+function nameSearchCityMatches(
+  propertyAddress: string,
+  cityGuess: string,
+): boolean {
   if (!cityGuess) return false;
   const extracted = cityOf(propertyAddress);
   if (extracted) return cityMatches(extracted, cityGuess);
@@ -766,11 +861,23 @@ function coreStreetName(street: string): string {
 // singleFieldWhere's "end of string" boundary case, built for exactly
 // this on plain streets like "107 OAK DR E").
 function withGluedDirectionals(forms: string[]): string[] {
-  return forms.flatMap((f) => [f, ...["N", "S", "E", "W"].map((d) => `${f}${d}`)]);
+  return forms.flatMap((f) => [
+    f,
+    ...["N", "S", "E", "W"].map((d) => `${f}${d}`),
+  ]);
 }
 
 function coreVariants(core: string): string[] {
   const variants = new Set<string>([core]);
+  // Travis stores numbered streets without the ordinal ("500 E 7 ST", not
+  // "7TH") and abbreviates Texas inside a street name ("2901 S CAPITAL OF TX
+  // HY") — both confirmed live 2026-10-08 on real Austin addresses that
+  // matched nothing before.
+  const ordinal = core.match(/^(\d+)(?:st|nd|rd|th)$/i);
+  if (ordinal) variants.add(ordinal[1]);
+  if (/\btexas\b/i.test(core) && !/^texas[\s-]highway/i.test(core)) {
+    variants.add(core.replace(/\btexas\b/gi, "TX"));
+  }
   const m = core.match(
     /^(interstate|ih|i|u\.?s\.?|us|fm|rm|rr|farm[\s-]to[\s-]market(?:[\s-]road)?|ranch[\s-]to[\s-]market(?:[\s-]road)?|ranch[\s-]road|loop|sh|state[\s-]hwy|texas[\s-]highway|cr|county[\s-]road)\s*-?\s*(?:hy|hwy|highway)?\s*-?\s*(\d+)(?:\s+(?:n|s|e|w|north|south|east|west))?$/i,
   );
@@ -781,14 +888,26 @@ function coreVariants(core: string): string[] {
       .replace(/[\s-]+/g, " ")
       .trim();
     if (/^(interstate|ih|i)$/.test(prefix)) {
-      for (const v of withGluedDirectionals([`I${n}`, `I ${n}`, `I-${n}`, `IH ${n}`, `IH-${n}`])) {
+      for (const v of withGluedDirectionals([
+        `I${n}`,
+        `I ${n}`,
+        `I-${n}`,
+        `IH ${n}`,
+        `IH-${n}`,
+      ])) {
         variants.add(v);
       }
       for (const v of [`INTERSTATE ${n}`, `INTERSTATE HY ${n}`]) {
         variants.add(v);
       }
     } else if (/^(us|u s|u\.s\.)$/.test(prefix)) {
-      for (const v of [`US ${n}`, `U S HY ${n}`, `US HWY ${n}`, `US HIGHWAY ${n}`, `HWY ${n}`]) {
+      for (const v of [
+        `US ${n}`,
+        `U S HY ${n}`,
+        `US HWY ${n}`,
+        `US HIGHWAY ${n}`,
+        `HWY ${n}`,
+      ]) {
         variants.add(v);
       }
     } else if (/^(fm|farm to market( road)?)$/.test(prefix)) {
@@ -810,7 +929,13 @@ function coreVariants(core: string): string[] {
         variants.add(v);
       }
     } else if (/^(sh|state hwy|texas highway)$/.test(prefix)) {
-      for (const v of [`SH ${n}`, `SH${n}`, `SH-${n}`, `STATE HWY ${n}`, `TEXAS HIGHWAY ${n}`]) {
+      for (const v of [
+        `SH ${n}`,
+        `SH${n}`,
+        `SH-${n}`,
+        `STATE HWY ${n}`,
+        `TEXAS HIGHWAY ${n}`,
+      ]) {
         variants.add(v);
       }
     } else {
@@ -950,7 +1075,9 @@ function nameSearchVariants(name: string): string[] {
   const key = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
   for (const [aliasKey, alias] of Object.entries(NAME_SEARCH_ALIASES)) {
     if (key.startsWith(aliasKey)) {
-      return alias.toUpperCase() !== name.toUpperCase() ? [name, alias] : [name];
+      return alias.toUpperCase() !== name.toUpperCase()
+        ? [name, alias]
+        : [name];
     }
   }
   return [name];
@@ -1109,12 +1236,21 @@ const COLLIN_URL =
 const COLLIN_OUT_FIELDS =
   "ownerName,situsConcat,currValLand,currValImprv,currValAppraised,currValYear,prevValLand,prevValImprv,prevValAppraised,prevValYear,PROP_ID,propType,propSubType,propCategoryCode,propYear,imprvMainArea,imprvYearBuilt,imprvClassCd,landSizeAcres,landSizeSqft,geoID";
 
-async function queryCollin(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryCollin(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
     if (!nq?.name) return [];
-    features = await ownerNameFeatures(COLLIN_URL, "ownerName", COLLIN_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+    features = await ownerNameFeatures(
+      COLLIN_URL,
+      "ownerName",
+      COLLIN_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
   } else {
     const parsed = parseAddressForQuery(address, mode);
     if (!parsed) return [];
@@ -1162,10 +1298,18 @@ async function queryCollin(address: string, mode: QueryMode = "exact"): Promise<
         // rather than showing nothing; taxYear falls back alongside it so the
         // displayed year always matches whichever set of numbers is actually
         // shown, never claims the still-null new year while showing old figures.
-        landValue: (attrs.currValLand as number) ?? (attrs.prevValLand as number) ?? null,
-        improvementValue: (attrs.currValImprv as number) ?? (attrs.prevValImprv as number) ?? null,
+        landValue:
+          (attrs.currValLand as number) ??
+          (attrs.prevValLand as number) ??
+          null,
+        improvementValue:
+          (attrs.currValImprv as number) ??
+          (attrs.prevValImprv as number) ??
+          null,
         totalValue:
-          (attrs.currValAppraised as number) ?? (attrs.prevValAppraised as number) ?? null,
+          (attrs.currValAppraised as number) ??
+          (attrs.prevValAppraised as number) ??
+          null,
         taxYear:
           (attrs.currValYear as number) ??
           (attrs.prevValYear as number) ??
@@ -1182,7 +1326,10 @@ const MONTGOMERY_URL =
 const MONTGOMERY_OUT_FIELDS =
   "ownerName,situs,legalDescription,PIN,imprvMainArea,imprvActualYearBuilt";
 
-async function queryMontgomery(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryMontgomery(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -1252,11 +1399,15 @@ function acresFromLegalText(legal: string | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 && n < 100000 ? n : null;
 }
 
-const DENTON_URL = "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels_FC/MapServer/0/query";
+const DENTON_URL =
+  "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels_FC/MapServer/0/query";
 const DENTON_OUT_FIELDS =
   "name,situs_full_address,landHSValue,landNHSValue,improvementValue,ownerMarketValue,pid,pYear,propType,stateCodes,imprvMainArea,imprvActualYearBuilt,imprvClasses,legalAcreage,land_sqft,geoID";
 
-async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryDenton(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   // Denton County's own GIS (gis.dentoncounty.gov) — full ~382k-parcel countywide
   // dataset, not the earlier "TAD_Parcels" service this used to point at, which
   // turned out (discovered 2026-07-24, chasing a "not found" report for a real
@@ -1266,7 +1417,13 @@ async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<
   if (mode === "name") {
     const nq = parseNameQuery(address);
     if (!nq?.name) return [];
-    features = await ownerNameFeatures(DENTON_URL, "name", DENTON_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+    features = await ownerNameFeatures(
+      DENTON_URL,
+      "name",
+      DENTON_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
   } else {
     const parsed = parseAddressForQuery(address, mode);
     if (!parsed) return [];
@@ -1302,9 +1459,12 @@ async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<
         // chasing a real Frisco house that fell through to the generic
         // "unknown category" fallback.
         propertyType:
-          (attrs.stateCodes as string)?.trim() || (attrs.propType as string)?.trim() || null,
+          (attrs.stateCodes as string)?.trim() ||
+          (attrs.propType as string)?.trim() ||
+          null,
         landValue:
-          (parseMoneyField(attrs.landHSValue) ?? 0) + (parseMoneyField(attrs.landNHSValue) ?? 0),
+          (parseMoneyField(attrs.landHSValue) ?? 0) +
+          (parseMoneyField(attrs.landNHSValue) ?? 0),
         improvementValue: parseMoneyField(attrs.improvementValue),
         totalValue: parseMoneyField(attrs.ownerMarketValue),
         taxYear: attrs.pYear != null ? parseInt(String(attrs.pYear), 10) : null,
@@ -1314,16 +1474,26 @@ async function queryDenton(address: string, mode: QueryMode = "exact"): Promise<
   });
 }
 
-const HARRIS_URL = "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query";
+const HARRIS_URL =
+  "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query";
 const HARRIS_OUT_FIELDS =
   "owner_name_1,site_str_num,site_str_pfx,site_str_name,site_str_sfx,site_city,land_value,bld_value,total_appraised_val,acct_num,tax_year,land_sqft,acreage_1";
 
-async function queryHarris(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryHarris(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
     if (!nq?.name) return [];
-    features = await ownerNameFeatures(HARRIS_URL, "owner_name_1", HARRIS_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+    features = await ownerNameFeatures(
+      HARRIS_URL,
+      "owner_name_1",
+      HARRIS_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
   } else {
     const parsed = parseAddressForQuery(address, mode);
     if (!parsed) return [];
@@ -1377,7 +1547,8 @@ async function queryHarris(address: string, mode: QueryMode = "exact"): Promise<
         landValue: parseMoneyField(attrs.land_value),
         improvementValue: parseMoneyField(attrs.bld_value),
         totalValue: parseMoneyField(attrs.total_appraised_val),
-        taxYear: attrs.tax_year != null ? parseInt(String(attrs.tax_year), 10) : null,
+        taxYear:
+          attrs.tax_year != null ? parseInt(String(attrs.tax_year), 10) : null,
       },
       attrs,
     );
@@ -1443,7 +1614,10 @@ const TARRANT_URL =
 const TARRANT_OUT_FIELDS =
   "Owner_Name,Situs_Addr,City,Land_Value,Improvemen,Total_Valu,Appraised_,Account_Nu,Property_C,Living_Are,Year_Built,Land_Acres,Land_SqFt";
 
-async function queryTarrant(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryTarrant(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   // This endpoint doesn't support resultRecordCount ("Pagination is not
   // supported") — always returns every matching row unbounded, sliced
   // client-side below (limit: null tells nearbyFeaturesWithFallback/
@@ -1456,7 +1630,13 @@ async function queryTarrant(address: string, mode: QueryMode = "exact"): Promise
   if (mode === "name") {
     const nq = parseNameQuery(address);
     if (!nq?.name) return [];
-    features = await ownerNameFeatures(TARRANT_URL, "Owner_Name", TARRANT_OUT_FIELDS, nq.name, null);
+    features = await ownerNameFeatures(
+      TARRANT_URL,
+      "Owner_Name",
+      TARRANT_OUT_FIELDS,
+      nq.name,
+      null,
+    );
   } else {
     const parsed = parseAddressForQuery(address, mode);
     if (!parsed) return [];
@@ -1479,7 +1659,8 @@ async function queryTarrant(address: string, mode: QueryMode = "exact"): Promise
     .slice(0, mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT)
     .map(({ attributes: attrs }) => {
       const situsAddr = (attrs.Situs_Addr as string | null)?.trim();
-      const cityName = TARRANT_CITY_CODES[(attrs.City as string)?.trim()] ?? null;
+      const cityName =
+        TARRANT_CITY_CODES[(attrs.City as string)?.trim()] ?? null;
       return applyStructureDetail(
         {
           ownerName: (attrs.Owner_Name as string) ?? null,
@@ -1506,7 +1687,10 @@ const FORT_BEND_URL =
 const FORT_BEND_OUT_FIELDS =
   "OWNERNAME,SITUS,LANDVALUE,IMPVALUE,TOTALVALUE,PROPNUMBER,Building_Class,TOTSQFTLVG,YEARBUILT,LANDSIZEAC,LANDSIZEFT";
 
-async function queryFortBend(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryFortBend(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -1559,7 +1743,10 @@ const WILLIAMSON_URL =
 const WILLIAMSON_OUT_FIELDS =
   "OWNERNME1,SITEADDRESS,LNDVALUE,CNTASSDVAL,PARCELID,CLASSDSCRP,BLDGAREA,RESYRBLT,STRCLASS,TotAcreDeed";
 
-async function queryWilliamson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryWilliamson(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -1612,7 +1799,10 @@ const GRAYSON_URL =
 const GRAYSON_OUT_FIELDS =
   "OwnerName,SitusNumber,SitusStreetPrefix,SitusStreet,SitusStreetSufix,SitusCity,LandValue,ImprovementValue,MarketValue,PropertyNumber,Year,LegalAcreage,GeoId";
 
-async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryGrayson(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -1665,7 +1855,8 @@ async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise
             : streetParts
           : address,
         cad: "Grayson Central Appraisal District",
-        accountNumber: attrs.PropertyNumber != null ? String(attrs.PropertyNumber) : null,
+        accountNumber:
+          attrs.PropertyNumber != null ? String(attrs.PropertyNumber) : null,
         propertyType: null,
         landValue: parseMoneyField(attrs.LandValue),
         improvementValue: parseMoneyField(attrs.ImprovementValue),
@@ -1677,13 +1868,18 @@ async function queryGrayson(address: string, mode: QueryMode = "exact"): Promise
   });
 }
 
-async function queryTravis(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryTravis(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   const parsed = parseAddressForQuery(address, mode);
   if (!parsed) return [];
   const core = coreStreetName(parsed.street);
   const streetClause = coreClauseOr("situs_street", core);
   const where =
-    mode === "nearby" ? `(${streetClause})` : `situs_num = '${parsed.house}' AND (${streetClause})`;
+    mode === "nearby"
+      ? `(${streetClause})`
+      : `situs_num = '${parsed.house}' AND (${streetClause})`;
   const url =
     "https://gis.traviscountytx.gov/server1/rest/services/Boundaries_and_Jurisdictions/TCAD_public/MapServer/0/query" +
     `?where=${encodeURIComponent(where)}` +
@@ -1757,10 +1953,14 @@ const BCAD_FIELDS = {
   geoId: "PAMaps.dbo.web_map_property.geo_id",
 };
 
-const BEXAR_URL = "https://maps.bcad.org/arcgis/rest/services/PAMapSearch/MapServer/6/query";
+const BEXAR_URL =
+  "https://maps.bcad.org/arcgis/rest/services/PAMapSearch/MapServer/6/query";
 const BEXAR_OUT_FIELDS = Object.values(BCAD_FIELDS).join(",");
 
-async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryBexar(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -1794,12 +1994,18 @@ async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<C
     ownerName: (attrs[BCAD_FIELDS.owner] as string)?.trim() || null,
     propertyAddress: (attrs[BCAD_FIELDS.situs] as string)?.trim() || address,
     cad: "Bexar Appraisal District",
-    accountNumber: attrs[BCAD_FIELDS.propId] != null ? String(attrs[BCAD_FIELDS.propId]) : null,
+    accountNumber:
+      attrs[BCAD_FIELDS.propId] != null
+        ? String(attrs[BCAD_FIELDS.propId])
+        : null,
     propertyType: (attrs[BCAD_FIELDS.propType] as string)?.trim() || null,
     landValue: null,
     improvementValue: null,
     totalValue: parseDollarString(attrs[BCAD_FIELDS.appraisedVal]),
-    taxYear: attrs[BCAD_FIELDS.taxYear] != null ? Number(attrs[BCAD_FIELDS.taxYear]) : null,
+    taxYear:
+      attrs[BCAD_FIELDS.taxYear] != null
+        ? Number(attrs[BCAD_FIELDS.taxYear])
+        : null,
     geoId: (attrs[BCAD_FIELDS.geoId] as string)?.trim() || null,
   }));
 }
@@ -1816,21 +2022,33 @@ async function queryBexar(address: string, mode: QueryMode = "exact"): Promise<C
 // null here, same pattern as Montgomery/Travis.
 const DALLAS_URL =
   "https://services3.arcgis.com/zqe2kwz79KUqUvxC/arcgis/rest/services/DCAD_PARCELS/FeatureServer/0/query";
-const DALLAS_OUT_FIELDS = "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR";
+const DALLAS_OUT_FIELDS =
+  "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR";
 
-async function queryDallas(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryDallas(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
     if (!nq?.name) return [];
-    features = await ownerNameFeatures(DALLAS_URL, "OWNER_NAME1", DALLAS_OUT_FIELDS, nq.name, NEARBY_LIMIT);
+    features = await ownerNameFeatures(
+      DALLAS_URL,
+      "OWNER_NAME1",
+      DALLAS_OUT_FIELDS,
+      nq.name,
+      NEARBY_LIMIT,
+    );
   } else {
     const parsed = parseAddressForQuery(address, mode);
     if (!parsed) return [];
     const core = coreStreetName(parsed.street);
     const streetClause = coreClauseOr("FULL_STREET_NAME", core);
     const where =
-      mode === "nearby" ? `(${streetClause})` : `STREET_NUM=${parsed.house} AND (${streetClause})`;
+      mode === "nearby"
+        ? `(${streetClause})`
+        : `STREET_NUM=${parsed.house} AND (${streetClause})`;
     const url =
       `${DALLAS_URL}?where=${encodeURIComponent(where)}` +
       `&outFields=${DALLAS_OUT_FIELDS}` +
@@ -1845,11 +2063,17 @@ async function queryDallas(address: string, mode: QueryMode = "exact"): Promise<
     // WHERE clause's own disambiguation but redundant/odd-looking in a displayed
     // address (the "Dallas Central Appraisal District" cad field already says which
     // county this is), so it's stripped here for display only.
-    const city = (attrs.PROPERTY_CITY as string)?.trim().replace(/\s*\([^)]*\)\s*$/, "");
-    const zip9 = attrs.PROPERTY_ZIPCODE != null ? String(attrs.PROPERTY_ZIPCODE) : null;
-    const zip = zip9 && zip9.length >= 5 ? `${zip9.slice(0, 5)}-${zip9.slice(5)}` : zip9;
+    const city = (attrs.PROPERTY_CITY as string)
+      ?.trim()
+      .replace(/\s*\([^)]*\)\s*$/, "");
+    const zip9 =
+      attrs.PROPERTY_ZIPCODE != null ? String(attrs.PROPERTY_ZIPCODE) : null;
+    const zip =
+      zip9 && zip9.length >= 5 ? `${zip9.slice(0, 5)}-${zip9.slice(5)}` : zip9;
     const propertyAddress =
-      site && city ? `${site}, ${city}, TX${zip ? ` ${zip}` : ""}` : site || address;
+      site && city
+        ? `${site}, ${city}, TX${zip ? ` ${zip}` : ""}`
+        : site || address;
 
     return {
       ownerName: (attrs.OWNER_NAME1 as string)?.trim() || null,
@@ -1889,7 +2113,10 @@ async function queryDallas(address: string, mode: QueryMode = "exact"): Promise<
 // can't get at all). No separate enrichBIS() call is added for Kaufman
 // (deliberately not added to BIS_CONFIG_BY_CAD) since there's nothing left
 // for a second call to add.
-async function queryKaufman(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryKaufman(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   const parsed = parseAddressForQuery(address, mode);
   if (!parsed) return [];
   const core = coreStreetName(parsed.street);
@@ -1897,38 +2124,49 @@ async function queryKaufman(address: string, mode: QueryMode = "exact"): Promise
   // number — confirmed live this vendor's search engine still returns real
   // results with just a StreetName field present.
   const keywords =
-    mode === "nearby" ? `StreetName:${core}` : `StreetNumber:${parsed.house} StreetName:${core}`;
+    mode === "nearby"
+      ? `StreetName:${core}`
+      : `StreetNumber:${parsed.house} StreetName:${core}`;
 
   try {
-    const rows = await fetchBisResults("esearch.kaufman-cad.org", true, keywords);
-    return rows.slice(0, mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT).map((r) => {
-      // "propertyTypeCode" alone is a single opaque letter ("R") — not
-      // useful for classifyPropertyCategory()'s commercial/residential
-      // keyword matching. "neighborhoodCode" is real free text this same
-      // response already carries ("RETAIL - A", confirmed live on a real
-      // commercial property) that DOES match its COMMERCIAL_TYPE_KEYWORDS
-      // list — preferred when present, falling back to the opaque code
-      // rather than nothing.
-      const neighborhoodCode = (r.neighborhoodCode as string)?.trim();
-      const propertyTypeCode = (r.propertyTypeCode as string)?.trim();
-      const percentOwnership =
-        typeof r.percentOwnership === "string" ? r.percentOwnership.replace("%", "") : null;
-      return {
-        ownerName: (r.ownerName as string)?.trim() || null,
-        propertyAddress: (r.address as string)?.trim() || address,
-        cad: "Kaufman Central Appraisal District",
-        accountNumber: r.propertyId != null ? String(r.propertyId) : null,
-        propertyType: neighborhoodCode || propertyTypeCode || null,
-        landValue: null,
-        improvementValue: null,
-        totalValue: typeof r.appraisedValue === "number" ? r.appraisedValue : null,
-        taxYear: typeof r.year === "number" ? r.year : null,
-        legalDescription: (r.legalDescription as string)?.trim() || null,
-        subdivision: (r.subdivision as string)?.trim() || null,
-        geoId: (r.geoId as string)?.trim() || null,
-        ownershipPct: percentOwnership ? parseFloat(percentOwnership) : null,
-      };
-    });
+    const rows = await fetchBisResults(
+      "esearch.kaufman-cad.org",
+      true,
+      keywords,
+    );
+    return rows
+      .slice(0, mode === "nearby" ? NEARBY_LIMIT : MULTI_CANDIDATE_LIMIT)
+      .map((r) => {
+        // "propertyTypeCode" alone is a single opaque letter ("R") — not
+        // useful for classifyPropertyCategory()'s commercial/residential
+        // keyword matching. "neighborhoodCode" is real free text this same
+        // response already carries ("RETAIL - A", confirmed live on a real
+        // commercial property) that DOES match its COMMERCIAL_TYPE_KEYWORDS
+        // list — preferred when present, falling back to the opaque code
+        // rather than nothing.
+        const neighborhoodCode = (r.neighborhoodCode as string)?.trim();
+        const propertyTypeCode = (r.propertyTypeCode as string)?.trim();
+        const percentOwnership =
+          typeof r.percentOwnership === "string"
+            ? r.percentOwnership.replace("%", "")
+            : null;
+        return {
+          ownerName: (r.ownerName as string)?.trim() || null,
+          propertyAddress: (r.address as string)?.trim() || address,
+          cad: "Kaufman Central Appraisal District",
+          accountNumber: r.propertyId != null ? String(r.propertyId) : null,
+          propertyType: neighborhoodCode || propertyTypeCode || null,
+          landValue: null,
+          improvementValue: null,
+          totalValue:
+            typeof r.appraisedValue === "number" ? r.appraisedValue : null,
+          taxYear: typeof r.year === "number" ? r.year : null,
+          legalDescription: (r.legalDescription as string)?.trim() || null,
+          subdivision: (r.subdivision as string)?.trim() || null,
+          geoId: (r.geoId as string)?.trim() || null,
+          ownershipPct: percentOwnership ? parseFloat(percentOwnership) : null,
+        };
+      });
   } catch {
     return [];
   }
@@ -1952,7 +2190,10 @@ const NUECES_URL =
 const NUECES_OUT_FIELDS =
   "file_as_name,situs_num,situs_street_prefx,situs_street,situs_street_sufix,situs_city,land_val,imprv_val,market,prop_id,geo_id,owner_tax_yr,legal_desc,abs_subdv_cd,legal_acreage";
 
-async function queryNueces(address: string, mode: QueryMode = "exact"): Promise<CadRecord[]> {
+async function queryNueces(
+  address: string,
+  mode: QueryMode = "exact",
+): Promise<CadRecord[]> {
   let features: Array<{ attributes: Record<string, string | number | null> }>;
   if (mode === "name") {
     const nq = parseNameQuery(address);
@@ -2009,7 +2250,10 @@ async function queryNueces(address: string, mode: QueryMode = "exact"): Promise<
         landValue: parseMoneyField(attrs.land_val),
         improvementValue: parseMoneyField(attrs.imprv_val),
         totalValue: parseMoneyField(attrs.market),
-        taxYear: attrs.owner_tax_yr != null ? parseInt(String(attrs.owner_tax_yr), 10) : null,
+        taxYear:
+          attrs.owner_tax_yr != null
+            ? parseInt(String(attrs.owner_tax_yr), 10)
+            : null,
         legalDescription: (attrs.legal_desc as string)?.trim() || null,
         subdivision: (attrs.abs_subdv_cd as string)?.trim() || null,
         geoId: (attrs.geo_id as string)?.trim() || null,
@@ -2073,9 +2317,16 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
         (attrs.propCategoryCode as string)?.trim() ||
         (attrs.propType as string)?.trim() ||
         null,
-      landValue: (attrs.currValLand as number) ?? (attrs.prevValLand as number) ?? null,
-      improvementValue: (attrs.currValImprv as number) ?? (attrs.prevValImprv as number) ?? null,
-      totalValue: (attrs.currValAppraised as number) ?? (attrs.prevValAppraised as number) ?? null,
+      landValue:
+        (attrs.currValLand as number) ?? (attrs.prevValLand as number) ?? null,
+      improvementValue:
+        (attrs.currValImprv as number) ??
+        (attrs.prevValImprv as number) ??
+        null,
+      totalValue:
+        (attrs.currValAppraised as number) ??
+        (attrs.prevValAppraised as number) ??
+        null,
       taxYear:
         (attrs.currValYear as number) ??
         (attrs.prevValYear as number) ??
@@ -2110,13 +2361,17 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
       "name,situs_full_address,landHSValue,landNHSValue,improvementValue,ownerMarketValue,pid,pYear,propType,stateCodes",
     mapRow: (attrs) => ({
       ownerName: (attrs.name as string)?.trim() || null,
-      propertyAddress: (attrs.situs_full_address as string | null)?.trim() || "",
+      propertyAddress:
+        (attrs.situs_full_address as string | null)?.trim() || "",
       cad: "Denton Central Appraisal District",
       accountNumber: attrs.pid != null ? String(attrs.pid) : null,
       propertyType:
-        (attrs.stateCodes as string)?.trim() || (attrs.propType as string)?.trim() || null,
+        (attrs.stateCodes as string)?.trim() ||
+        (attrs.propType as string)?.trim() ||
+        null,
       landValue:
-        (parseMoneyField(attrs.landHSValue) ?? 0) + (parseMoneyField(attrs.landNHSValue) ?? 0),
+        (parseMoneyField(attrs.landHSValue) ?? 0) +
+        (parseMoneyField(attrs.landNHSValue) ?? 0),
       improvementValue: parseMoneyField(attrs.improvementValue),
       totalValue: parseMoneyField(attrs.ownerMarketValue),
       taxYear: attrs.pYear != null ? parseInt(String(attrs.pYear), 10) : null,
@@ -2152,7 +2407,8 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
         landValue: parseMoneyField(attrs.land_value),
         improvementValue: parseMoneyField(attrs.bld_value),
         totalValue: parseMoneyField(attrs.total_appraised_val),
-        taxYear: attrs.tax_year != null ? parseInt(String(attrs.tax_year), 10) : null,
+        taxYear:
+          attrs.tax_year != null ? parseInt(String(attrs.tax_year), 10) : null,
       };
     },
   },
@@ -2165,10 +2421,15 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
       "Owner_Name,Situs_Addr,City,Land_Value,Improvemen,Total_Valu,Appraised_,Account_Nu,Property_C",
     mapRow: (attrs) => {
       const situsAddr = (attrs.Situs_Addr as string | null)?.trim();
-      const cityName = TARRANT_CITY_CODES[(attrs.City as string)?.trim()] ?? null;
+      const cityName =
+        TARRANT_CITY_CODES[(attrs.City as string)?.trim()] ?? null;
       return {
         ownerName: (attrs.Owner_Name as string) ?? null,
-        propertyAddress: situsAddr ? (cityName ? `${situsAddr}, ${cityName}` : situsAddr) : "",
+        propertyAddress: situsAddr
+          ? cityName
+            ? `${situsAddr}, ${cityName}`
+            : situsAddr
+          : "",
         cad: "Tarrant Appraisal District",
         accountNumber: (attrs.Account_Nu as string)?.trim() || null,
         propertyType: (attrs.Property_C as string)?.trim() || null,
@@ -2184,7 +2445,8 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
     url: "https://services2.arcgis.com/D4saGHECICkCeoJm/arcgis/rest/services/FBCAD_Public_Data/FeatureServer/0/query",
     idField: "PROPNUMBER",
     mode: "quoted",
-    outFields: "OWNERNAME,SITUS,LANDVALUE,IMPVALUE,TOTALVALUE,PROPNUMBER,Building_Class",
+    outFields:
+      "OWNERNAME,SITUS,LANDVALUE,IMPVALUE,TOTALVALUE,PROPNUMBER,Building_Class",
     mapRow: (attrs) => ({
       ownerName: (attrs.OWNERNAME as string) ?? null,
       propertyAddress: (attrs.SITUS as string)?.trim() || "",
@@ -2240,7 +2502,8 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
             : streetParts
           : "",
         cad: "Grayson Central Appraisal District",
-        accountNumber: attrs.PropertyNumber != null ? String(attrs.PropertyNumber) : null,
+        accountNumber:
+          attrs.PropertyNumber != null ? String(attrs.PropertyNumber) : null,
         propertyType: null,
         landValue: parseMoneyField(attrs.LandValue),
         improvementValue: parseMoneyField(attrs.ImprovementValue),
@@ -2254,7 +2517,8 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
     url: "https://gis.traviscountytx.gov/server1/rest/services/Boundaries_and_Jurisdictions/TCAD_public/MapServer/0/query",
     idField: "PROP_ID",
     mode: "numeric",
-    outFields: "situs_num,situs_street_prefx,situs_street,situs_street_suffix,situs_city,PROP_ID",
+    outFields:
+      "situs_num,situs_street_prefx,situs_street,situs_street_suffix,situs_city,PROP_ID",
     mapRow: (attrs) => {
       const streetParts = [
         attrs.situs_num,
@@ -2291,13 +2555,19 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
       ownerName: (attrs[BCAD_FIELDS.owner] as string)?.trim() || null,
       propertyAddress: (attrs[BCAD_FIELDS.situs] as string)?.trim() || "",
       cad: "Bexar Appraisal District",
-      accountNumber: attrs[BCAD_FIELDS.propId] != null ? String(attrs[BCAD_FIELDS.propId]) : null,
+      accountNumber:
+        attrs[BCAD_FIELDS.propId] != null
+          ? String(attrs[BCAD_FIELDS.propId])
+          : null,
       propertyType: (attrs[BCAD_FIELDS.propType] as string)?.trim() || null,
       landValue: null,
       improvementValue: null,
       totalValue: parseDollarString(attrs[BCAD_FIELDS.appraisedVal]),
-      taxYear: attrs[BCAD_FIELDS.taxYear] != null ? Number(attrs[BCAD_FIELDS.taxYear]) : null,
-    geoId: (attrs[BCAD_FIELDS.geoId] as string)?.trim() || null,
+      taxYear:
+        attrs[BCAD_FIELDS.taxYear] != null
+          ? Number(attrs[BCAD_FIELDS.taxYear])
+          : null,
+      geoId: (attrs[BCAD_FIELDS.geoId] as string)?.trim() || null,
     }),
   },
   {
@@ -2305,15 +2575,25 @@ const ARCGIS_ACCOUNT_LOOKUP: ArcgisAccountConfig[] = [
     url: "https://services3.arcgis.com/zqe2kwz79KUqUvxC/arcgis/rest/services/DCAD_PARCELS/FeatureServer/0/query",
     idField: "ACCOUNT_NUM",
     mode: "quoted",
-    outFields: "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR",
+    outFields:
+      "OWNER_NAME1,SiteAddress,PROPERTY_CITY,PROPERTY_ZIPCODE,ACCOUNT_NUM,APPRAISAL_YR",
     mapRow: (attrs) => {
       const site = (attrs.SiteAddress as string)?.trim();
-      const city = (attrs.PROPERTY_CITY as string)?.trim().replace(/\s*\([^)]*\)\s*$/, "");
-      const zip9 = attrs.PROPERTY_ZIPCODE != null ? String(attrs.PROPERTY_ZIPCODE) : null;
-      const zip = zip9 && zip9.length >= 5 ? `${zip9.slice(0, 5)}-${zip9.slice(5)}` : zip9;
+      const city = (attrs.PROPERTY_CITY as string)
+        ?.trim()
+        .replace(/\s*\([^)]*\)\s*$/, "");
+      const zip9 =
+        attrs.PROPERTY_ZIPCODE != null ? String(attrs.PROPERTY_ZIPCODE) : null;
+      const zip =
+        zip9 && zip9.length >= 5
+          ? `${zip9.slice(0, 5)}-${zip9.slice(5)}`
+          : zip9;
       return {
         ownerName: (attrs.OWNER_NAME1 as string)?.trim() || null,
-        propertyAddress: site && city ? `${site}, ${city}, TX${zip ? ` ${zip}` : ""}` : site || "",
+        propertyAddress:
+          site && city
+            ? `${site}, ${city}, TX${zip ? ` ${zip}` : ""}`
+            : site || "",
         cad: "Dallas Central Appraisal District",
         accountNumber: (attrs.ACCOUNT_NUM as string)?.trim() || null,
         propertyType: null,
@@ -2352,7 +2632,9 @@ async function queryArcgisAccount(
   }
   // Pull the county's structure / lot fields (STRUCTURE_FIELDS_BY_CAD) and its
   // Geographic ID in the same query — no extra request.
-  const extra = [structureOutFields(config.cad), geoField].filter(Boolean).join(",");
+  const extra = [structureOutFields(config.cad), geoField]
+    .filter(Boolean)
+    .join(",");
   const url =
     `${config.url}?where=${encodeURIComponent(where)}` +
     `&outFields=${config.outFields}${extra ? `,${extra}` : ""}&returnGeometry=false&f=json`;
@@ -2371,19 +2653,24 @@ async function queryArcgisAccount(
 
 // Kaufman has no ArcGIS layer at all (see queryKaufman above) — same BIS
 // search endpoint, just keyed by account number instead of street/house.
-async function queryKaufmanByAccount(accountNumber: string): Promise<CadRecord | null> {
+async function queryKaufmanByAccount(
+  accountNumber: string,
+): Promise<CadRecord | null> {
   try {
     const rows = await fetchBisResults(
       "esearch.kaufman-cad.org",
       true,
       `PropertyId:${accountNumber}`,
     );
-    const r = rows.find((row) => String(row.propertyId) === accountNumber) ?? rows[0];
+    const r =
+      rows.find((row) => String(row.propertyId) === accountNumber) ?? rows[0];
     if (!r) return null;
     const neighborhoodCode = (r.neighborhoodCode as string)?.trim();
     const propertyTypeCode = (r.propertyTypeCode as string)?.trim();
     const percentOwnership =
-      typeof r.percentOwnership === "string" ? r.percentOwnership.replace("%", "") : null;
+      typeof r.percentOwnership === "string"
+        ? r.percentOwnership.replace("%", "")
+        : null;
     const legalDescription = (r.legalDescription as string)?.trim() || null;
     // BIS carries no building detail — its results only sometimes state the
     // acreage in the legal-description text (see acresFromLegalText).
@@ -2396,7 +2683,8 @@ async function queryKaufmanByAccount(accountNumber: string): Promise<CadRecord |
       propertyType: neighborhoodCode || propertyTypeCode || null,
       landValue: null,
       improvementValue: null,
-      totalValue: typeof r.appraisedValue === "number" ? r.appraisedValue : null,
+      totalValue:
+        typeof r.appraisedValue === "number" ? r.appraisedValue : null,
       taxYear: typeof r.year === "number" ? r.year : null,
       legalDescription,
       subdivision: (r.subdivision as string)?.trim() || null,
@@ -2413,10 +2701,14 @@ async function queryKaufmanByAccount(accountNumber: string): Promise<CadRecord |
 // county" flow calls, via Deno.serve's `{cad, accountNumber}` request shape
 // below — never invented UI text, `cad` is always one of SUPPORTED_COUNTY_NAMES'
 // full names the client's own dropdown offers (see cad-record-url.ts).
-async function queryByAccountNumber(cad: string, accountNumber: string): Promise<CadRecord | null> {
+async function queryByAccountNumber(
+  cad: string,
+  accountNumber: string,
+): Promise<CadRecord | null> {
   const trimmed = accountNumber.trim();
   if (!trimmed) return null;
-  if (cad === "Kaufman Central Appraisal District") return queryKaufmanByAccount(trimmed);
+  if (cad === "Kaufman Central Appraisal District")
+    return queryKaufmanByAccount(trimmed);
   const config = ARCGIS_ACCOUNT_LOOKUP.find((c) => c.cad === cad);
   if (!config) return null;
   const record = await queryArcgisAccount(config, trimmed);
@@ -2472,10 +2764,12 @@ async function getTrueProdigyToken(office: string): Promise<string> {
       body: JSON.stringify({ office }),
     },
   );
-  if (!res.ok) throw new Error(`TrueProdigy auth failed for ${office}: ${res.status}`);
+  if (!res.ok)
+    throw new Error(`TrueProdigy auth failed for ${office}: ${res.status}`);
   const json = (await res.json()) as { user?: { token?: string } };
   const token = json.user?.token;
-  if (!token) throw new Error(`TrueProdigy auth returned no token for ${office}`);
+  if (!token)
+    throw new Error(`TrueProdigy auth returned no token for ${office}`);
   return token;
 }
 
@@ -2495,44 +2789,62 @@ async function enrichTrueProdigy(
 
   try {
     const token = await getTrueProdigyToken(office);
-    const headers = { "Content-Type": "application/json", Authorization: token };
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: token,
+    };
 
     // Deeds only needs the pid + token, not the search result, so it's fetched
     // concurrently with the search call rather than after it — cuts a whole
     // network round-trip off the enrichment latency.
     const [searchRes, deedsRes] = await Promise.all([
-      fetch("https://prod-container.trueprodigyapi.com/public/property/search", {
-        method: "POST",
-        headers,
-        // The API 500s with a Python TypeError ("object of type 'int' has no
-        // len()") if value isn't a string — confirmed live 2026-07-27.
-        body: JSON.stringify({ pid: { operator: "=", value: String(pid) } }),
-      }),
-      fetch(`https://prod-container.trueprodigyapi.com/public/property/${pid}/deeds`, {
-        headers: { Authorization: token },
-      }),
+      fetch(
+        "https://prod-container.trueprodigyapi.com/public/property/search",
+        {
+          method: "POST",
+          headers,
+          // The API 500s with a Python TypeError ("object of type 'int' has no
+          // len()") if value isn't a string — confirmed live 2026-07-27.
+          body: JSON.stringify({ pid: { operator: "=", value: String(pid) } }),
+        },
+      ),
+      fetch(
+        `https://prod-container.trueprodigyapi.com/public/property/${pid}/deeds`,
+        {
+          headers: { Authorization: token },
+        },
+      ),
     ]);
     if (!searchRes.ok) return null;
-    const searchJson = (await searchRes.json()) as { results?: Array<Record<string, unknown>> };
+    const searchJson = (await searchRes.json()) as {
+      results?: Array<Record<string, unknown>>;
+    };
     const rows = searchJson.results ?? [];
     if (rows.length === 0) return null;
 
-    const latest = rows.reduce((a, b) => (Number(a.pYear) > Number(b.pYear) ? a : b));
+    const latest = rows.reduce((a, b) =>
+      Number(a.pYear) > Number(b.pYear) ? a : b,
+    );
     const streetNum = String(latest.streetNum ?? "").trim();
-    if (streetNum && expectedHouseNumber && streetNum !== expectedHouseNumber) return null;
+    if (streetNum && expectedHouseNumber && streetNum !== expectedHouseNumber)
+      return null;
 
     const valueHistory = rows
       .map((r) => ({
         year: Number(r.pYear),
         landValue: typeof r.landValue === "number" ? r.landValue : null,
-        improvementValue: typeof r.improvementValue === "number" ? r.improvementValue : null,
+        improvementValue:
+          typeof r.improvementValue === "number" ? r.improvementValue : null,
         marketValue: typeof r.marketValue === "number" ? r.marketValue : null,
-        appraisedValue: typeof r.appraisedValue === "number" ? r.appraisedValue : null,
+        appraisedValue:
+          typeof r.appraisedValue === "number" ? r.appraisedValue : null,
       }))
       .sort((a, b) => b.year - a.year);
 
     const deedsJson = deedsRes.ok
-      ? ((await deedsRes.json()) as { results?: Array<Record<string, unknown>> })
+      ? ((await deedsRes.json()) as {
+          results?: Array<Record<string, unknown>>;
+        })
       : {};
     const deeds = (deedsJson.results ?? []).map((d) => ({
       date: (d.deedDt as string) ?? null,
@@ -2543,7 +2855,11 @@ async function enrichTrueProdigy(
       instrumentNum: (d.instrumentNum as string) ?? null,
     }));
 
-    const mailingLine = [latest.addrDeliveryLine, latest.addrCity, latest.addrState]
+    const mailingLine = [
+      latest.addrDeliveryLine,
+      latest.addrCity,
+      latest.addrState,
+    ]
       .filter(Boolean)
       .join(", ");
     const mailingAddress = mailingLine
@@ -2556,7 +2872,10 @@ async function enrichTrueProdigy(
     // and Travis's primary ArcGIS layers are missing. Never overwrites a real
     // ArcGIS acreage (enrichRecord's spread only fills gaps that matter).
     const tpAcresRaw =
-      latest.legalAcreage ?? latest.effectiveSizeAcres ?? latest.legalAcres ?? null;
+      latest.legalAcreage ??
+      latest.effectiveSizeAcres ??
+      latest.legalAcres ??
+      null;
     const tpAcres =
       tpAcresRaw != null && Number.isFinite(parseFloat(String(tpAcresRaw)))
         ? parseFloat(String(tpAcresRaw))
@@ -2566,7 +2885,8 @@ async function enrichTrueProdigy(
       legalDescription: (latest.legalDescription as string) || null,
       geoId: (latest.geoID as string) || null,
       mailingAddress,
-      ownershipPct: latest.ownerPct != null ? parseFloat(String(latest.ownerPct)) : null,
+      ownershipPct:
+        latest.ownerPct != null ? parseFloat(String(latest.ownerPct)) : null,
       valueHistory,
       deeds,
       ...(tpAcres != null && tpAcres > 0 ? { lotSizeAcres: tpAcres } : {}),
@@ -2584,9 +2904,18 @@ async function enrichTrueProdigy(
 // each county's own ArcGIS accountNumber matches a DIFFERENT BIS field: Fort
 // Bend's matches BIS's "geoId", Grayson's matches BIS's "propertyId" — so
 // Grayson's search keywords need a "PropertyId:" prefix to hit the right field.
-const BIS_CONFIG_BY_CAD: Record<string, { host: string; sessionAuth: boolean }> = {
-  "Fort Bend Central Appraisal District": { host: "esearch.fbcad.org", sessionAuth: false },
-  "Grayson Central Appraisal District": { host: "esearch.graysonappraisal.org", sessionAuth: true },
+const BIS_CONFIG_BY_CAD: Record<
+  string,
+  { host: string; sessionAuth: boolean }
+> = {
+  "Fort Bend Central Appraisal District": {
+    host: "esearch.fbcad.org",
+    sessionAuth: false,
+  },
+  "Grayson Central Appraisal District": {
+    host: "esearch.graysonappraisal.org",
+    sessionAuth: true,
+  },
 };
 
 async function fetchBisResults(
@@ -2599,33 +2928,42 @@ async function fetchBisResults(
       `https://${host}/search/SearchResults?keywords=${encodeURIComponent(keywords)}&isArb=false`,
     );
     if (!res.ok) return [];
-    const json = (await res.json()) as { resultsList?: Array<Record<string, unknown>> };
+    const json = (await res.json()) as {
+      resultsList?: Array<Record<string, unknown>>;
+    };
     return json.resultsList ?? [];
   }
 
   const tokenRes = await fetch(`https://${host}/search/requestSessionToken`);
   if (!tokenRes.ok) return [];
-  const { searchSessionToken } = (await tokenRes.json()) as { searchSessionToken?: string };
+  const { searchSessionToken } = (await tokenRes.json()) as {
+    searchSessionToken?: string;
+  };
   if (!searchSessionToken) return [];
 
   const encodedKeywords = encodeURIComponent(keywords);
-  const res = await fetch(`https://${host}/search/SearchResults?keywords=${encodedKeywords}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest",
-      Referer: `https://${host}/search/result?keywords=${encodedKeywords}&searchSessionToken=${encodeURIComponent(searchSessionToken)}`,
+  const res = await fetch(
+    `https://${host}/search/SearchResults?keywords=${encodedKeywords}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        Referer: `https://${host}/search/result?keywords=${encodedKeywords}&searchSessionToken=${encodeURIComponent(searchSessionToken)}`,
+      },
+      body: JSON.stringify({
+        page: 1,
+        pageSize: 25,
+        isArb: false,
+        recaptchaToken: "",
+        searchToken: searchSessionToken,
+      }),
     },
-    body: JSON.stringify({
-      page: 1,
-      pageSize: 25,
-      isArb: false,
-      recaptchaToken: "",
-      searchToken: searchSessionToken,
-    }),
-  });
+  );
   if (!res.ok) return [];
-  const json = (await res.json()) as { resultsList?: Array<Record<string, unknown>> };
+  const json = (await res.json()) as {
+    resultsList?: Array<Record<string, unknown>>;
+  };
   return json.resultsList ?? [];
 }
 
@@ -2638,24 +2976,36 @@ async function enrichBIS(
   if (!config) return null;
 
   try {
-    const keywords = config.sessionAuth ? `PropertyId:${accountNumber}` : accountNumber;
-    const rows = await fetchBisResults(config.host, config.sessionAuth, keywords);
+    const keywords = config.sessionAuth
+      ? `PropertyId:${accountNumber}`
+      : accountNumber;
+    const rows = await fetchBisResults(
+      config.host,
+      config.sessionAuth,
+      keywords,
+    );
     if (rows.length === 0) return null;
 
     // Fort Bend's accountNumber matches BIS's own "geoId"; Grayson's matches BIS's
     // "propertyId" instead — both confirmed live, so check either field.
     const match =
-      rows.find((r) => r.geoId === accountNumber || r.propertyId === accountNumber) ?? rows[0];
+      rows.find(
+        (r) => r.geoId === accountNumber || r.propertyId === accountNumber,
+      ) ?? rows[0];
     const streetNum = String(match.streetNumber ?? "").trim();
-    if (streetNum && expectedHouseNumber && streetNum !== expectedHouseNumber) return null;
+    if (streetNum && expectedHouseNumber && streetNum !== expectedHouseNumber)
+      return null;
 
     return {
       legalDescription: (match.legalDescription as string) || null,
       subdivision: (match.subdivision as string) || null,
       geoId: (match.geoId as string) || null,
       ownershipPct:
-        match.percentOwnership != null ? parseFloat(String(match.percentOwnership)) : null,
-      protestStatus: (match.status as string) || (match.arbStatus as string) || null,
+        match.percentOwnership != null
+          ? parseFloat(String(match.percentOwnership))
+          : null,
+      protestStatus:
+        (match.status as string) || (match.arbStatus as string) || null,
       // Fort Bend-only field (see the CadRecord type comment) — captured
       // unconditionally here since it costs nothing when accountNumber
       // already equals it (Grayson/Kaufman), and getCadRecordUrl only
@@ -2690,7 +3040,9 @@ async function enrichWilliamson(
       `?f=${encodeURIComponent(record.propertyAddress)}&ty=${taxYear}&pvty=${taxYear}&pn=1&st=9&so=1&pt=RP%3BPP%3BMH%3BNR&take=20&skip=0&page=1&pageSize=20`;
     const res = await fetch(url);
     if (!res.ok) return null;
-    const json = (await res.json()) as { ResultList?: Array<Record<string, unknown>> };
+    const json = (await res.json()) as {
+      ResultList?: Array<Record<string, unknown>>;
+    };
     const rows = json.ResultList ?? [];
     if (rows.length === 0) return null;
 
@@ -2715,7 +3067,8 @@ async function enrichWilliamson(
     // this is filling a genuine gap, not second-guessing a good number.
     if (!record.totalValue) {
       const assessedValue = parseMoneyField(
-        (match.AssessedValue ?? match.MarketValue ?? match.PropertyValue) as number | string | null,
+        (match.AssessedValue ?? match.MarketValue ?? match.PropertyValue) as
+          number | string | null,
       );
       if (assessedValue) {
         enrichment.totalValue = assessedValue;
@@ -2749,7 +3102,11 @@ async function enrichWilliamson(
 // This is also the first enrichment function that backfills VALUE fields, not just
 // extra detail — deliberate, since queryDallas()'s ArcGIS source has none at all;
 // enrichRecord()'s existing spread-merge already applies them correctly.
-const DALLAS_DETAIL_PATHS = ["AcctDetailRes.aspx", "AcctDetailCom.aspx", "AcctDetailBPP.aspx"];
+const DALLAS_DETAIL_PATHS = [
+  "AcctDetailRes.aspx",
+  "AcctDetailCom.aspx",
+  "AcctDetailBPP.aspx",
+];
 
 // Improvement detail off a DCAD account-detail page. The residential page
 // (AcctDetailRes.aspx) exposes clean span ids; the commercial page
@@ -2771,14 +3128,22 @@ function parseDallasImprovement(html: string): {
   const sqft =
     digits(extractSpan(html, "MainImpRes1_lblLivingArea")) ??
     digits(
-      html.match(/Total Area:<\/b>\s*(?:&nbsp;|\s)*([\d,]+)\s*(?:&nbsp;|\s)*sqft/i)?.[1] ?? null,
+      html.match(
+        /Total Area:<\/b>\s*(?:&nbsp;|\s)*([\d,]+)\s*(?:&nbsp;|\s)*sqft/i,
+      )?.[1] ?? null,
     );
   const yb =
     digits(extractSpan(html, "MainImpRes1_lblYearBuilt")) ??
-    digits(html.match(/Year Built:<\/b>\s*(?:&nbsp;|\s)*(\d{4})/i)?.[1] ?? null);
+    digits(
+      html.match(/Year Built:<\/b>\s*(?:&nbsp;|\s)*(\d{4})/i)?.[1] ?? null,
+    );
   const cls =
     extractSpan(html, "MainImpRes1_lblBuildClass") ||
-    html.match(/Quality:<\/TH>\s*<TD[^>]*>\s*([A-Za-z][A-Za-z /-]*?)\s*<\/TD>/i)?.[1]?.trim() ||
+    html
+      .match(
+        /Quality:<\/TH>\s*<TD[^>]*>\s*([A-Za-z][A-Za-z /-]*?)\s*<\/TD>/i,
+      )?.[1]
+      ?.trim() ||
     null;
   return {
     buildingSqft: sqft,
@@ -2810,7 +3175,9 @@ function parseDallasDollar(v: string | null): number | null {
 // secondary text search that could ambiguously match a different property —
 // that's the risk the cross-check in the other enrich* functions guards
 // against, and it doesn't apply to a lookup keyed by an already-trusted ID.
-async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> | null> {
+async function enrichDallas(
+  accountNumber: string,
+): Promise<Partial<CadRecord> | null> {
   try {
     for (const path of DALLAS_DETAIL_PATHS) {
       const res = await fetch(
@@ -2825,7 +3192,9 @@ async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> |
       // silently swallowed the rest of the page instead of just the owner block.
       // The header span's own inner text ("Owner (Current 2027)") is explicitly
       // consumed too, so it can't leak into the first line.
-      const ownerBlock = html.match(/id="lblOwner"[^>]*>[^<]*<\/span>([\s\S]*?)<a name=/i)?.[1];
+      const ownerBlock = html.match(
+        /id="lblOwner"[^>]*>[^<]*<\/span>([\s\S]*?)<a name=/i,
+      )?.[1];
       if (!ownerBlock) continue; // wrong account-type page for this ID — try the next
 
       // ownerBlock is "NAME[<br />NAME2 ...]<br />LINE1<br />LINE2" — some accounts
@@ -2838,7 +3207,8 @@ async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> |
         .split(/<br\s*\/?>/i)
         .map((s) => s.replace(/&nbsp;/g, " ").trim())
         .filter(Boolean);
-      const mailingAddress = lines.length >= 2 ? lines.slice(-2).join(", ") : null;
+      const mailingAddress =
+        lines.length >= 2 ? lines.slice(-2).join(", ") : null;
 
       // The legal-description text lives in nested <span id="LegalDesc1_lblLegalN">
       // elements inside each <TD>, not as the TD's own direct text — confirmed live
@@ -2847,13 +3217,17 @@ async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> |
       const legalLines: string[] = [];
       const legalMatch = html.match(/id="lblLegalDesc"[\s\S]*?<\/TABLE>/i)?.[0];
       if (legalMatch) {
-        for (const m of legalMatch.matchAll(/id="LegalDesc1_lblLegal\d+"[^>]*>([^<]*)/gi)) {
+        for (const m of legalMatch.matchAll(
+          /id="LegalDesc1_lblLegal\d+"[^>]*>([^<]*)/gi,
+        )) {
           const line = m[1].trim();
           if (line) legalLines.push(line);
         }
       }
       const saleDate =
-        legalMatch?.match(/id="LegalDesc1_lblSaleDate"[^>]*>([^<]*)/i)?.[1]?.trim() || null;
+        legalMatch
+          ?.match(/id="LegalDesc1_lblSaleDate"[^>]*>([^<]*)/i)?.[1]
+          ?.trim() || null;
 
       // DCAD serves a (near-empty) AcctDetailRes.aspx even for commercial
       // accounts, and this loop stops at the first page with an owner block —
@@ -2869,7 +3243,8 @@ async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> |
           );
           if (comRes.ok) {
             const comHtml = await comRes.text();
-            if (/id="lblOwner"/.test(comHtml)) imp = parseDallasImprovement(comHtml);
+            if (/id="lblOwner"/.test(comHtml))
+              imp = parseDallasImprovement(comHtml);
           }
         } catch {
           // keep whatever the first page gave (usually nothing) — non-fatal
@@ -2880,9 +3255,15 @@ async function enrichDallas(accountNumber: string): Promise<Partial<CadRecord> |
       return {
         legalDescription: legalLines.join(" ").trim() || null,
         mailingAddress,
-        landValue: parseDallasDollar(extractSpan(html, "ValueSummary1_pnlValue_lblLandVal")),
-        improvementValue: parseDallasDollar(extractSpan(html, "ValueSummary1_lblImpVal")),
-        totalValue: parseDallasDollar(extractSpan(html, "ValueSummary1_pnlValue_lblTotalVal")),
+        landValue: parseDallasDollar(
+          extractSpan(html, "ValueSummary1_pnlValue_lblLandVal"),
+        ),
+        improvementValue: parseDallasDollar(
+          extractSpan(html, "ValueSummary1_lblImpVal"),
+        ),
+        totalValue: parseDallasDollar(
+          extractSpan(html, "ValueSummary1_pnlValue_lblTotalVal"),
+        ),
         ...(buildingSqft != null ? { buildingSqft } : {}),
         ...(yearBuilt != null ? { yearBuilt } : {}),
         ...(buildingClass ? { buildingClass } : {}),
@@ -2915,7 +3296,11 @@ async function enrichRecord(record: CadRecord): Promise<CadRecord> {
 
   const enrichment =
     record.cad in TRUEPRODIGY_OFFICE_BY_CAD
-      ? await enrichTrueProdigy(record.cad, record.accountNumber, expectedHouseNumber)
+      ? await enrichTrueProdigy(
+          record.cad,
+          record.accountNumber,
+          expectedHouseNumber,
+        )
       : record.cad in BIS_CONFIG_BY_CAD
         ? await enrichBIS(record.cad, record.accountNumber, expectedHouseNumber)
         : record.cad === "Williamson Central Appraisal District"
@@ -3063,7 +3448,11 @@ const EXACT_QUERY_TIMEOUT_MS = 30000;
 // per-county ceiling to be the thing that gives up first.
 const PREVIEW_QUERY_TIMEOUT_MS = 60000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
@@ -3071,7 +3460,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 async function findNearby(
-  countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
+  countyQueries: Array<
+    (address: string, mode?: QueryMode) => Promise<CadRecord[]>
+  >,
   address: string,
   cityGuess: string,
   queryTimeoutMs: number = NEARBY_QUERY_TIMEOUT_MS,
@@ -3092,7 +3483,9 @@ async function findNearby(
       withTimeout(query(address, "nearby"), queryTimeoutMs, [] as CadRecord[]),
     ),
   );
-  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const candidates = results.flatMap((r) =>
+    r.status === "fulfilled" ? r.value : [],
+  );
 
   // City is now a sort PREFERENCE, not a hard exclude — found live 2026-09-04
   // chasing a real report ("2514 Parker Rd, Parker, TX 75002"): Collin's own
@@ -3183,14 +3576,23 @@ async function findNearby(
   // still agree despite the spelling difference) now has to agree too, when
   // both sides actually have a recognized suffix.
   const searchedPortion = parsed ? parsed.street.trim() : null;
-  const searchedStreetCore = searchedPortion ? coreStreetName(searchedPortion).toUpperCase() : null;
-  const searchedSuffix = searchedPortion ? trailingSuffixOf(searchedPortion) : null;
+  const searchedStreetCore = searchedPortion
+    ? coreStreetName(searchedPortion).toUpperCase()
+    : null;
+  const searchedSuffix = searchedPortion
+    ? trailingSuffixOf(searchedPortion)
+    : null;
   const matchesSearchedStreet = (addr: string): boolean => {
     if (!searchedStreetCore) return false;
     const portion = streetPortionOf(addr);
-    if (!portion || coreStreetName(portion).toUpperCase() !== searchedStreetCore) return false;
+    if (
+      !portion ||
+      coreStreetName(portion).toUpperCase() !== searchedStreetCore
+    )
+      return false;
     const candidateSuffix = trailingSuffixOf(portion);
-    if (searchedSuffix && candidateSuffix && searchedSuffix !== candidateSuffix) return false;
+    if (searchedSuffix && candidateSuffix && searchedSuffix !== candidateSuffix)
+      return false;
     return true;
   };
 
@@ -3208,15 +3610,21 @@ async function findNearby(
     const ha = parseInt(houseNumberOf(a.propertyAddress), 10);
     const hb = parseInt(houseNumberOf(b.propertyAddress), 10);
     const da =
-      Number.isFinite(ha) && Number.isFinite(targetHouse) ? Math.abs(ha - targetHouse) : Infinity;
+      Number.isFinite(ha) && Number.isFinite(targetHouse)
+        ? Math.abs(ha - targetHouse)
+        : Infinity;
     const db =
-      Number.isFinite(hb) && Number.isFinite(targetHouse) ? Math.abs(hb - targetHouse) : Infinity;
+      Number.isFinite(hb) && Number.isFinite(targetHouse)
+        ? Math.abs(hb - targetHouse)
+        : Infinity;
     if (da !== db) return da - db;
     const az = targetZip && extractZip(a.propertyAddress) === targetZip ? 0 : 1;
     const bz = targetZip && extractZip(b.propertyAddress) === targetZip ? 0 : 1;
     if (az !== bz) return az - bz;
-    const ac = cityGuess && cityMatches(cityOf(a.propertyAddress), cityGuess) ? 0 : 1;
-    const bc = cityGuess && cityMatches(cityOf(b.propertyAddress), cityGuess) ? 0 : 1;
+    const ac =
+      cityGuess && cityMatches(cityOf(a.propertyAddress), cityGuess) ? 0 : 1;
+    const bc =
+      cityGuess && cityMatches(cityOf(b.propertyAddress), cityGuess) ? 0 : 1;
     return ac - bc;
   });
 
@@ -3273,7 +3681,9 @@ async function findNearby(
 const TARRANT_NAME_QUERY_TIMEOUT_MS = 8000;
 
 async function findByName(
-  countyQueries: Array<(address: string, mode?: QueryMode) => Promise<CadRecord[]>>,
+  countyQueries: Array<
+    (address: string, mode?: QueryMode) => Promise<CadRecord[]>
+  >,
   nameQuery: string,
   cityGuess: string,
   queryTimeoutMs: number,
@@ -3284,7 +3694,11 @@ async function findByName(
         query === queryTarrant && countyQueries.length > 1
           ? Math.min(queryTimeoutMs, TARRANT_NAME_QUERY_TIMEOUT_MS)
           : queryTimeoutMs;
-      return withTimeout(query(nameQuery, "name"), timeoutMs, [] as CadRecord[]);
+      return withTimeout(
+        query(nameQuery, "name"),
+        timeoutMs,
+        [] as CadRecord[],
+      );
     }),
   );
   // Each county's own mapper falls back to `propertyAddress ?? address` when
@@ -3303,7 +3717,10 @@ async function findByName(
     .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
     .map((c) =>
       c.propertyAddress.trim().toLowerCase() === nameQuery.trim().toLowerCase()
-        ? { ...c, propertyAddress: `${c.cad}${c.accountNumber ? ` — Account #${c.accountNumber}` : ""}` }
+        ? {
+            ...c,
+            propertyAddress: `${c.cad}${c.accountNumber ? ` — Account #${c.accountNumber}` : ""}`,
+          }
         : c,
     );
   const seen = new Set<string>();
@@ -3325,7 +3742,9 @@ async function findByName(
   // something real is better than nothing, but only once nothing real
   // exists for what was actually asked).
   if (cityGuess) {
-    const inCity = deduped.filter((r) => nameSearchCityMatches(r.propertyAddress, cityGuess));
+    const inCity = deduped.filter((r) =>
+      nameSearchCityMatches(r.propertyAddress, cityGuess),
+    );
     if (inCity.length > 0) return inCity.slice(0, 20);
   }
   return deduped.slice(0, 20);
@@ -3355,8 +3774,14 @@ const TX_INTERSTATE_HYPHEN = /\bi[\s-]+(\d{1,3})\s*([NSEW])?\b/gi;
 function normalizeRoadPrefix(address: string): string {
   return address
     .replace(TX_ROAD_PREFIX, "$1 $2")
-    .replace(TX_INTERSTATE, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`)
-    .replace(TX_INTERSTATE_HYPHEN, (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`);
+    .replace(
+      TX_INTERSTATE,
+      (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`,
+    )
+    .replace(
+      TX_INTERSTATE_HYPHEN,
+      (_m, num: string, dir?: string) => `I${num}${dir ?? ""}`,
+    );
 }
 
 // Every county query function, in priority order — the full, unhinted
@@ -3388,7 +3813,10 @@ const ALL_COUNTY_QUERIES = [
 // ALL_COUNTY_QUERIES itself (one entry per county name baked into each
 // function's own URL/comment) rather than hand-duplicated, so the two can
 // never silently drift apart.
-const COUNTY_QUERY_BY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
+const COUNTY_QUERY_BY_HINT: Record<
+  string,
+  (typeof ALL_COUNTY_QUERIES)[number]
+> = {
   collin: queryCollin,
   montgomery: queryMontgomery,
   denton: queryDenton,
@@ -3404,9 +3832,14 @@ const COUNTY_QUERY_BY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> 
   nueces: queryNueces,
 };
 
-function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+function countyQueryForHint(
+  hint: unknown,
+): (typeof ALL_COUNTY_QUERIES)[number] | undefined {
   if (typeof hint !== "string") return undefined;
-  const key = hint.toLowerCase().replace(/\s*county\s*$/i, "").trim();
+  const key = hint
+    .toLowerCase()
+    .replace(/\s*county\s*$/i, "")
+    .trim();
   return COUNTY_QUERY_BY_HINT[key];
 }
 
@@ -3431,60 +3864,61 @@ function countyQueryForHint(hint: unknown): ((typeof ALL_COUNTY_QUERIES)[number]
 // usually-fast single-county query before landing on the right answer the
 // same way an un-hinted search always did, it never excludes the real
 // county from being tried.
-const CITY_TO_COUNTY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> = {
-  "fort worth": queryTarrant,
-  "san antonio": queryBexar,
-  "the colony": queryDenton,
-  "flower mound": queryDenton,
-  "round rock": queryWilliamson,
-  "sugar land": queryFortBend,
-  "missouri city": queryFortBend,
-  "grand prairie": queryDallas,
-  "little elm": queryDenton,
-  "highland village": queryDenton,
-  "north richland hills": queryTarrant,
-  "lake dallas": queryDenton,
-  "corpus christi": queryNueces,
-  denton: queryDenton,
-  houston: queryHarris,
-  dallas: queryDallas,
-  plano: queryCollin,
-  frisco: queryCollin,
-  mckinney: queryCollin,
-  allen: queryCollin,
-  carrollton: queryDenton,
-  lewisville: queryDenton,
-  wylie: queryCollin,
-  celina: queryCollin,
-  garland: queryDallas,
-  mesquite: queryDallas,
-  irving: queryDallas,
-  arlington: queryTarrant,
-  austin: queryTravis,
-  sherman: queryGrayson,
-  denison: queryGrayson,
-  conroe: queryMontgomery,
-  katy: queryHarris,
-  georgetown: queryWilliamson,
-  humble: queryHarris,
-  spring: queryHarris,
-  stafford: queryFortBend,
-  aubrey: queryDenton,
-  porter: queryMontgomery,
-  crandall: queryKaufman,
-  forney: queryKaufman,
-  montgomery: queryMontgomery,
-  euless: queryTarrant,
-  hurst: queryTarrant,
-  bedford: queryTarrant,
-  colleyville: queryTarrant,
-  southlake: queryTarrant,
-  keller: queryTarrant,
-  burleson: queryTarrant,
-  haslet: queryTarrant,
-  roanoke: queryDenton,
-  grapevine: queryTarrant,
-};
+const CITY_TO_COUNTY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> =
+  {
+    "fort worth": queryTarrant,
+    "san antonio": queryBexar,
+    "the colony": queryDenton,
+    "flower mound": queryDenton,
+    "round rock": queryWilliamson,
+    "sugar land": queryFortBend,
+    "missouri city": queryFortBend,
+    "grand prairie": queryDallas,
+    "little elm": queryDenton,
+    "highland village": queryDenton,
+    "north richland hills": queryTarrant,
+    "lake dallas": queryDenton,
+    "corpus christi": queryNueces,
+    denton: queryDenton,
+    houston: queryHarris,
+    dallas: queryDallas,
+    plano: queryCollin,
+    frisco: queryCollin,
+    mckinney: queryCollin,
+    allen: queryCollin,
+    carrollton: queryDenton,
+    lewisville: queryDenton,
+    wylie: queryCollin,
+    celina: queryCollin,
+    garland: queryDallas,
+    mesquite: queryDallas,
+    irving: queryDallas,
+    arlington: queryTarrant,
+    austin: queryTravis,
+    sherman: queryGrayson,
+    denison: queryGrayson,
+    conroe: queryMontgomery,
+    katy: queryHarris,
+    georgetown: queryWilliamson,
+    humble: queryHarris,
+    spring: queryHarris,
+    stafford: queryFortBend,
+    aubrey: queryDenton,
+    porter: queryMontgomery,
+    crandall: queryKaufman,
+    forney: queryKaufman,
+    montgomery: queryMontgomery,
+    euless: queryTarrant,
+    hurst: queryTarrant,
+    bedford: queryTarrant,
+    colleyville: queryTarrant,
+    southlake: queryTarrant,
+    keller: queryTarrant,
+    burleson: queryTarrant,
+    haslet: queryTarrant,
+    roanoke: queryDenton,
+    grapevine: queryTarrant,
+  };
 
 // Tries the same two interpretations the rest of this file already uses to
 // find a city in free text — parseNameQuery's (a business name + city, no
@@ -3494,7 +3928,7 @@ const CITY_TO_COUNTY_HINT: Record<string, (typeof ALL_COUNTY_QUERIES)[number]> =
 // interpretation finds a recognized city, rather than guessing.
 function countyQueryFromQueryText(
   address: string,
-): ((typeof ALL_COUNTY_QUERIES)[number]) | undefined {
+): (typeof ALL_COUNTY_QUERIES)[number] | undefined {
   const nameCity = parseNameQuery(address)?.city;
   if (nameCity) {
     const hit = CITY_TO_COUNTY_HINT[nameCity.toLowerCase().trim()];
@@ -3502,7 +3936,8 @@ function countyQueryFromQueryText(
   }
   const addressCity = parseHouseAndStreet(address)?.cityStateZip;
   if (addressCity) {
-    const hit = CITY_TO_COUNTY_HINT[guessCity(addressCity).toLowerCase().trim()];
+    const hit =
+      CITY_TO_COUNTY_HINT[guessCity(addressCity).toLowerCase().trim()];
     if (hit) return hit;
   }
   return undefined;
@@ -3578,7 +4013,12 @@ async function runLookup(
   if (!parseAddressForQuery(address, "nearby")) {
     const nameQuery = parseNameQuery(address);
     if (!nameQuery?.name) return { matched: false, nearby: [] };
-    const nameResults = await findByName(countyQueriesInOrder, address, nameQuery.city, queryTimeoutMs);
+    const nameResults = await findByName(
+      countyQueriesInOrder,
+      address,
+      nameQuery.city,
+      queryTimeoutMs,
+    );
     return { matched: false, nearby: nameResults };
   }
 
@@ -3598,7 +4038,12 @@ async function runLookup(
   // needed. If an exact match is found, this promise is simply never
   // awaited — its in-flight requests cost nothing to the response, since
   // nothing here ever reads their result.
-  const nearbyPromise = findNearby(countyQueriesInOrder, address, cityGuess, queryTimeoutMs);
+  const nearbyPromise = findNearby(
+    countyQueriesInOrder,
+    address,
+    cityGuess,
+    queryTimeoutMs,
+  );
 
   // Found live 2026-08-25, a real report ("900 Willowwood St" taking 97+
   // seconds): a single slow/rate-limited county source could block the
@@ -3610,219 +4055,256 @@ async function runLookup(
   // already does, rather than holding up every other (fast) county's real
   // answer.
   const results = await Promise.allSettled(
-    countyQueriesInOrder.map((query) => withTimeout(query(address), queryTimeoutMs, [] as CadRecord[])),
+    countyQueriesInOrder.map((query) =>
+      withTimeout(query(address), queryTimeoutMs, [] as CadRecord[]),
+    ),
   );
   // Flattened in county-priority order, then row order within each county — each
   // county now returns up to MULTI_CANDIDATE_LIMIT real rows instead of just one
   // (see the comment above that constant), so the tiebreak below has every real
   // candidate to search, not just each county's arbitrary first row.
-  const candidates = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  //
+  // A row whose city doesn't confirm the typed one (or that has no city at
+  // all — Travis often, Tarrant sometimes) needs the street itself to carry
+  // the proof: drop it when its directional or street type contradicts what
+  // was typed. A row in the typed city is kept as before, so a county's own
+  // spelling quirks there still match. Found live 2026-10-08 — "1201 W 3rd
+  // Ave, Corsicana" (a county with no source here) matched Travis's "1201 E
+  // 3 ST", and "1000 W 5th St, Austin" matched "1000 S 5th ST, Richmond".
+  const typedDirectional = parsedForCity
+    ? directionalOf(parsedForCity.street)
+    : "";
+  const typedSuffix = parsedForCity
+    ? trailingSuffixOf(parsedForCity.street.trim())
+    : null;
+  const contradictsTypedStreet = (c: CadRecord): boolean => {
+    if (cityGuess && cityMatches(cityOf(c.propertyAddress), cityGuess))
+      return false;
+    const dir = directionalOf(c.propertyAddress);
+    if (typedDirectional && dir && dir !== typedDirectional) return true;
+    const suffix = trailingSuffixOf(streetPortionOf(c.propertyAddress).trim());
+    return Boolean(typedSuffix && suffix && suffix !== typedSuffix);
+  };
+  const candidates = results
+    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+    .filter((c) => !contradictsTypedStreet(c));
 
-    // It's possible (found sampling real addresses on 2026-07-26) for the SAME
-    // house number + a generic street word ("Commerce", "Marshall", "Maple", ...)
-    // to be a genuine, correctly-formatted real record in TWO different counties —
-    // not a query bug, just an honest coincidence. Picking the first in priority
-    // order alone would silently return the wrong one whenever that happens. Since
-    // the user's own input names a city, prefer whichever candidate's own returned
-    // address actually mentions that city over one that doesn't, before falling
-    // back to priority order (still needed for Tarrant, whose source has no city
-    // field at all, and any other candidate where this can't be determined).
-    let record: CadRecord | null = null;
-    // The city check below exists ONLY to disambiguate a genuine cross-county
-    // collision (see the comment above `candidates` — same house number +
-    // generic street word, coincidentally real in two DIFFERENT counties).
-    // Found live 2026-09-03 chasing a real report ("28324 Leslie Pfeiffer Dr,
-    // Fair Oaks Ranch" — a real, correctly-matched Bexar record whose OWN
-    // situs data says "FAIR OAKS", not "FAIR OAKS RANCH"): requiring the
-    // user's exact typed city as a substring was silently discarding the
-    // ONLY real candidate whenever a county's own city spelling differs even
-    // slightly from what the user typed (a colloquial/older name, a missing
-    // "Ranch"/"Heights"/etc. suffix) — there was never any actual ambiguity
-    // to resolve, since every candidate came from the same single county.
-    // Only apply the strict city match when candidates genuinely span more
-    // than one distinct CAD; a single-source result set is exactly as safe
-    // to take directly as the original `cityGuess`-empty case already did.
-    const distinctCads = new Set(candidates.map((c) => c.cad)).size;
-    if (cityGuess && distinctCads > 1) {
-      // cityOf/cityMatches, not a plain `.includes(cityGuess)` against the
-      // whole address — found live 2026-09-03 chasing the SAME "Parker Rd"
-      // report a second time, after the combined-field fix above shipped:
-      // Kaufman genuinely has an unrelated "Parker Rd" in Crandall, and
-      // Denton has one in Carrollton — a naive whole-address substring check
-      // matched BOTH purely because their own STREET happens to be named
-      // "Parker" too, the exact same class of false positive as the
-      // Ridgecrest/Forney case below, just triggered by the street name
-      // instead of a bare word coincidence.
-      record = candidates.find((c) => cityMatches(cityOf(c.propertyAddress), cityGuess)) ?? null;
-      // Found live 2026-08-25 chasing a real report ("601 Ridgecrest Rd, Forney" —
-      // Forney is in Kaufman County, which has no source here at all): falling
-      // back to candidates[0] unconditionally whenever nothing matched cityGuess
-      // silently returned a real, correctly-formatted, but WRONG property — a
-      // same-named street ("Ridgecrest") existing by coincidence in a totally
-      // different, unrelated county, with no relationship to the city the user
-      // actually typed.
-      //
-      // Only fall back to an unverified candidate when its OWN returned address
-      // has no city in it AT ALL (no comma — same tell already used below for
-      // "this source had nothing to append a city from") — a real "we can't
-      // verify, but nothing contradicts it either" situation. First tried
-      // excluding entire cityless SOURCES (Tarrant/Travis) instead, but that was
-      // still too broad: most real Tarrant rows DO carry a resolved city (via
-      // TARRANT_CITY_CODES) and should be judged on it like everyone else — only
-      // the specific rows where that resolution came back null (unincorporated
-      // county land, or an unrecognized code) are genuinely unverifiable.
-      if (!record) {
-        record = candidates.find((c) => !c.propertyAddress.includes(",")) ?? null;
-      }
-    } else {
-      record = candidates[0] ?? null;
-    }
-
-    // Tarrant (always) and Travis (often) have no city in their own data, so their
-    // propertyAddress comes back as just the street with no comma at all — that's
-    // also exactly why they can never win the tiebreak above (nothing to match
-    // cityGuess against). Now that a record has actually been chosen, append the
-    // user's own typed city/state/zip for a normal-looking display address. Only
-    // fires when there's truly no city already present (every other county always
-    // has a real comma-separated city baked in from its own source).
-    if (record && parsedForCity && !record.propertyAddress.includes(",")) {
-      record = {
-        ...record,
-        propertyAddress: `${record.propertyAddress}, ${parsedForCity.cityStateZip}`,
-      };
-    }
-
-    // A single civic address can genuinely cover more than one real, separately
-    // owned CAD account — confirmed live on a real report: "11400 Culebra, San
-    // Antonio" is BOTH a day care (PINNACLE MONTESSORI OF ALAMO RANCH LLC,
-    // account 1199177) AND a strip center (AVIGHNA HOLDINGS LLC, account
-    // 1256855) on adjacent lots of the same block. The tiebreak above silently
-    // picked whichever one happened to come first in the county's own row
-    // order — a real, previously undetectable wrong-owner report, since
-    // nothing on screen ever showed the second account existed at all.
-    // Grouped by record's own source only (not all `candidates` — a
-    // same-house-number-plus-generic-street coincidence in a DIFFERENT county
-    // is the cityGuess tiebreak's job above, not this one's): "exact" mode's
-    // WHERE clause already anchors house number + street core within one
-    // county's own query, so same-source candidates here are genuinely the
-    // same address, not a coincidence. Deduped by accountNumber first — a
-    // source occasionally returns the identical account twice, which isn't a
-    // second real property.
-    if (record) {
-      const sameSourceCandidates = candidates.filter((c) => c.cad === record!.cad);
-      const distinctAccounts = new Map<string, CadRecord>();
-      for (const c of sameSourceCandidates) {
-        const key = c.accountNumber ?? c.propertyAddress;
-        if (!distinctAccounts.has(key)) distinctAccounts.set(key, c);
-      }
-      // Bexar: the tax office also lists the accounts BCAD's parcel map can't
-      // (business personal property, mainly) — see _shared/bexar-tax-office.ts.
-      if (record.cad === "Bexar Appraisal District") {
-        const extra = await withTimeout(
-          bexarTaxOfficeRecords(record.propertyAddress),
-          TAX_OFFICE_TIMEOUT_MS,
-          [] as CadRecord[],
-        );
-        for (const r of extra) {
-          if (!r.accountNumber) continue;
-          const known = distinctAccounts.get(r.accountNumber);
-          if (!known) {
-            distinctAccounts.set(r.accountNumber, r);
-          } else if (!known.totalValue) {
-            // The parcel map often reads "N/A" for value; the tax office has it.
-            const filled = {
-              ...known,
-              totalValue: r.totalValue,
-              landValue: known.landValue ?? r.landValue,
-              improvementValue: known.improvementValue ?? r.improvementValue,
-            };
-            distinctAccounts.set(r.accountNumber, filled);
-            if (record.accountNumber === r.accountNumber) record = filled;
-          }
-        }
-      }
-      // The user's own typed directional, when there is one, disambiguates a
-      // same-house-number "multiple" result that's actually just the
-      // directional-blind query matching two DIFFERENT real streets (2601 E
-      // University Ave vs. 2601 W University Ave — see directionalOf's own
-      // comment). Only resolves directly when it narrows to EXACTLY one
-      // account; any other outcome (no directional typed, or more than one
-      // candidate somehow shares it) falls through to the real "multiple"
-      // response below unchanged, same as before this fix.
-      if (distinctAccounts.size > 1 && parsedForCity) {
-        const userDirectional = directionalOf(parsedForCity.street);
-        if (userDirectional) {
-          const matchingDirectional = [...distinctAccounts.values()].filter(
-            (c) => directionalOf(c.propertyAddress) === userDirectional,
-          );
-          if (matchingDirectional.length === 1) {
-            record = matchingDirectional[0];
-            // Same city-append this function already does for the ORIGINAL
-            // tiebreak-selected record above, and for each "multiple" option
-            // below — needed here too since this replaces `record` with a raw
-            // candidate from `candidates`, not the one that already went
-            // through that step.
-            if (parsedForCity && !record.propertyAddress.includes(",")) {
-              record = {
-                ...record,
-                propertyAddress: `${record.propertyAddress}, ${parsedForCity.cityStateZip}`,
-              };
-            }
-            distinctAccounts.clear();
-            distinctAccounts.set(record.accountNumber ?? record.propertyAddress, record);
-          }
-        }
-      }
-      if (distinctAccounts.size > 1) {
-        const options = await Promise.all(
-          [...distinctAccounts.values()].map(async (c) => {
-            const withCity =
-              parsedForCity && !c.propertyAddress.includes(",")
-                ? { ...c, propertyAddress: `${c.propertyAddress}, ${parsedForCity.cityStateZip}` }
-                : c;
-            return preview ? withCity : enrichRecord(withCity);
-          }),
-        );
-        return { matched: "multiple", options };
-      }
-    }
-
+  // It's possible (found sampling real addresses on 2026-07-26) for the SAME
+  // house number + a generic street word ("Commerce", "Marshall", "Maple", ...)
+  // to be a genuine, correctly-formatted real record in TWO different counties —
+  // not a query bug, just an honest coincidence. Picking the first in priority
+  // order alone would silently return the wrong one whenever that happens. Since
+  // the user's own input names a city, prefer whichever candidate's own returned
+  // address actually mentions that city over one that doesn't, before falling
+  // back to priority order (still needed for Tarrant, whose source has no city
+  // field at all, and any other candidate where this can't be determined).
+  let record: CadRecord | null = null;
+  // The city check below exists ONLY to disambiguate a genuine cross-county
+  // collision (see the comment above `candidates` — same house number +
+  // generic street word, coincidentally real in two DIFFERENT counties).
+  // Found live 2026-09-03 chasing a real report ("28324 Leslie Pfeiffer Dr,
+  // Fair Oaks Ranch" — a real, correctly-matched Bexar record whose OWN
+  // situs data says "FAIR OAKS", not "FAIR OAKS RANCH"): requiring the
+  // user's exact typed city as a substring was silently discarding the
+  // ONLY real candidate whenever a county's own city spelling differs even
+  // slightly from what the user typed (a colloquial/older name, a missing
+  // "Ranch"/"Heights"/etc. suffix) — there was never any actual ambiguity
+  // to resolve, since every candidate came from the same single county.
+  // Only apply the strict city match when candidates genuinely span more
+  // than one distinct CAD; a single-source result set is exactly as safe
+  // to take directly as the original `cityGuess`-empty case already did.
+  const distinctCads = new Set(candidates.map((c) => c.cad)).size;
+  if (cityGuess && distinctCads > 1) {
+    // cityOf/cityMatches, not a plain `.includes(cityGuess)` against the
+    // whole address — found live 2026-09-03 chasing the SAME "Parker Rd"
+    // report a second time, after the combined-field fix above shipped:
+    // Kaufman genuinely has an unrelated "Parker Rd" in Crandall, and
+    // Denton has one in Carrollton — a naive whole-address substring check
+    // matched BOTH purely because their own STREET happens to be named
+    // "Parker" too, the exact same class of false positive as the
+    // Ridgecrest/Forney case below, just triggered by the street name
+    // instead of a bare word coincidence.
+    record =
+      candidates.find((c) =>
+        cityMatches(cityOf(c.propertyAddress), cityGuess),
+      ) ?? null;
+    // Found live 2026-08-25 chasing a real report ("601 Ridgecrest Rd, Forney" —
+    // Forney is in Kaufman County, which has no source here at all): falling
+    // back to candidates[0] unconditionally whenever nothing matched cityGuess
+    // silently returned a real, correctly-formatted, but WRONG property — a
+    // same-named street ("Ridgecrest") existing by coincidence in a totally
+    // different, unrelated county, with no relationship to the city the user
+    // actually typed.
+    //
+    // Only fall back to an unverified candidate when its OWN returned address
+    // has no city in it AT ALL (no comma — same tell already used below for
+    // "this source had nothing to append a city from") — a real "we can't
+    // verify, but nothing contradicts it either" situation. First tried
+    // excluding entire cityless SOURCES (Tarrant/Travis) instead, but that was
+    // still too broad: most real Tarrant rows DO carry a resolved city (via
+    // TARRANT_CITY_CODES) and should be judged on it like everyone else — only
+    // the specific rows where that resolution came back null (unincorporated
+    // county land, or an unrecognized code) are genuinely unverifiable.
     if (!record) {
-      // Already well underway (started before the exact sweep even began) —
-      // usually resolves close to immediately from here, not from scratch.
-      const nearby = await nearbyPromise;
-      if (nearby.length === 0) {
-        // Falls back to a name search when the address interpretation found
-        // literally nothing — found live ("walmart south loop denton"):
-        // "loop" is itself a real street-suffix word (same as "dr" in an
-        // earlier report), so parseStreetOnly happily parses the WHOLE
-        // query as a bare road ("walmart south loop") and this never even
-        // reaches findByName at all, even though it's clearly a business
-        // name search. Rather than trying to anticipate every one of
-        // STREET_SUFFIX_ALT's ~50 words colliding with some real business
-        // name, just try the other interpretation when the first one comes
-        // up empty — address mode still gets first try (and wins if it
-        // finds anything), so this never changes behavior for a real
-        // address that happens to share a word with a business name.
-        const nameQuery = parseNameQuery(address);
-        if (nameQuery?.name) {
-          const nameResults = await findByName(
-            countyQueriesInOrder,
-            address,
-            nameQuery.city,
-            queryTimeoutMs,
-          );
-          if (nameResults.length > 0) {
-            return { matched: false, nearby: nameResults };
-          }
+      record = candidates.find((c) => !c.propertyAddress.includes(",")) ?? null;
+    }
+  } else {
+    record = candidates[0] ?? null;
+  }
+
+  // Tarrant (always) and Travis (often) have no city in their own data, so their
+  // propertyAddress comes back as just the street with no comma at all — that's
+  // also exactly why they can never win the tiebreak above (nothing to match
+  // cityGuess against). Now that a record has actually been chosen, append the
+  // user's own typed city/state/zip for a normal-looking display address. Only
+  // fires when there's truly no city already present (every other county always
+  // has a real comma-separated city baked in from its own source).
+  if (record && parsedForCity && !record.propertyAddress.includes(",")) {
+    record = {
+      ...record,
+      propertyAddress: `${record.propertyAddress}, ${parsedForCity.cityStateZip}`,
+    };
+  }
+
+  // A single civic address can genuinely cover more than one real, separately
+  // owned CAD account — confirmed live on a real report: "11400 Culebra, San
+  // Antonio" is BOTH a day care (PINNACLE MONTESSORI OF ALAMO RANCH LLC,
+  // account 1199177) AND a strip center (AVIGHNA HOLDINGS LLC, account
+  // 1256855) on adjacent lots of the same block. The tiebreak above silently
+  // picked whichever one happened to come first in the county's own row
+  // order — a real, previously undetectable wrong-owner report, since
+  // nothing on screen ever showed the second account existed at all.
+  // Grouped by record's own source only (not all `candidates` — a
+  // same-house-number-plus-generic-street coincidence in a DIFFERENT county
+  // is the cityGuess tiebreak's job above, not this one's): "exact" mode's
+  // WHERE clause already anchors house number + street core within one
+  // county's own query, so same-source candidates here are genuinely the
+  // same address, not a coincidence. Deduped by accountNumber first — a
+  // source occasionally returns the identical account twice, which isn't a
+  // second real property.
+  if (record) {
+    const sameSourceCandidates = candidates.filter(
+      (c) => c.cad === record!.cad,
+    );
+    const distinctAccounts = new Map<string, CadRecord>();
+    for (const c of sameSourceCandidates) {
+      const key = c.accountNumber ?? c.propertyAddress;
+      if (!distinctAccounts.has(key)) distinctAccounts.set(key, c);
+    }
+    // Bexar: the tax office also lists the accounts BCAD's parcel map can't
+    // (business personal property, mainly) — see _shared/bexar-tax-office.ts.
+    if (record.cad === "Bexar Appraisal District") {
+      const extra = await withTimeout(
+        bexarTaxOfficeRecords(record.propertyAddress),
+        TAX_OFFICE_TIMEOUT_MS,
+        [] as CadRecord[],
+      );
+      for (const r of extra) {
+        if (!r.accountNumber) continue;
+        const known = distinctAccounts.get(r.accountNumber);
+        if (!known) {
+          distinctAccounts.set(r.accountNumber, r);
+        } else if (!known.totalValue) {
+          // The parcel map often reads "N/A" for value; the tax office has it.
+          const filled = {
+            ...known,
+            totalValue: r.totalValue,
+            landValue: known.landValue ?? r.landValue,
+            improvementValue: known.improvementValue ?? r.improvementValue,
+          };
+          distinctAccounts.set(r.accountNumber, filled);
+          if (record.accountNumber === r.accountNumber) record = filled;
         }
       }
-      return { matched: false, nearby };
     }
+    // The user's own typed directional, when there is one, disambiguates a
+    // same-house-number "multiple" result that's actually just the
+    // directional-blind query matching two DIFFERENT real streets (2601 E
+    // University Ave vs. 2601 W University Ave — see directionalOf's own
+    // comment). Only resolves directly when it narrows to EXACTLY one
+    // account; any other outcome (no directional typed, or more than one
+    // candidate somehow shares it) falls through to the real "multiple"
+    // response below unchanged, same as before this fix.
+    if (distinctAccounts.size > 1 && parsedForCity) {
+      const userDirectional = directionalOf(parsedForCity.street);
+      if (userDirectional) {
+        const matchingDirectional = [...distinctAccounts.values()].filter(
+          (c) => directionalOf(c.propertyAddress) === userDirectional,
+        );
+        if (matchingDirectional.length === 1) {
+          record = matchingDirectional[0];
+          // Same city-append this function already does for the ORIGINAL
+          // tiebreak-selected record above, and for each "multiple" option
+          // below — needed here too since this replaces `record` with a raw
+          // candidate from `candidates`, not the one that already went
+          // through that step.
+          if (parsedForCity && !record.propertyAddress.includes(",")) {
+            record = {
+              ...record,
+              propertyAddress: `${record.propertyAddress}, ${parsedForCity.cityStateZip}`,
+            };
+          }
+          distinctAccounts.clear();
+          distinctAccounts.set(
+            record.accountNumber ?? record.propertyAddress,
+            record,
+          );
+        }
+      }
+    }
+    if (distinctAccounts.size > 1) {
+      const options = await Promise.all(
+        [...distinctAccounts.values()].map(async (c) => {
+          const withCity =
+            parsedForCity && !c.propertyAddress.includes(",")
+              ? {
+                  ...c,
+                  propertyAddress: `${c.propertyAddress}, ${parsedForCity.cityStateZip}`,
+                }
+              : c;
+          return preview ? withCity : enrichRecord(withCity);
+        }),
+      );
+      return { matched: "multiple", options };
+    }
+  }
 
-    if (!preview) record = await enrichRecord(record);
+  if (!record) {
+    // Already well underway (started before the exact sweep even began) —
+    // usually resolves close to immediately from here, not from scratch.
+    const nearby = await nearbyPromise;
+    if (nearby.length === 0) {
+      // Falls back to a name search when the address interpretation found
+      // literally nothing — found live ("walmart south loop denton"):
+      // "loop" is itself a real street-suffix word (same as "dr" in an
+      // earlier report), so parseStreetOnly happily parses the WHOLE
+      // query as a bare road ("walmart south loop") and this never even
+      // reaches findByName at all, even though it's clearly a business
+      // name search. Rather than trying to anticipate every one of
+      // STREET_SUFFIX_ALT's ~50 words colliding with some real business
+      // name, just try the other interpretation when the first one comes
+      // up empty — address mode still gets first try (and wins if it
+      // finds anything), so this never changes behavior for a real
+      // address that happens to share a word with a business name.
+      const nameQuery = parseNameQuery(address);
+      if (nameQuery?.name) {
+        const nameResults = await findByName(
+          countyQueriesInOrder,
+          address,
+          nameQuery.city,
+          queryTimeoutMs,
+        );
+        if (nameResults.length > 0) {
+          return { matched: false, nearby: nameResults };
+        }
+      }
+    }
+    return { matched: false, nearby };
+  }
 
-    return { matched: true, record };
+  if (!preview) record = await enrichRecord(record);
+
+  return { matched: true, record };
 }
 
 const TAX_OFFICE_TIMEOUT_MS = 4000;
@@ -3856,7 +4338,8 @@ async function bexarTaxOfficeRecords(situs: string): Promise<CadRecord[]> {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
     const body = await req.json();
@@ -3864,12 +4347,18 @@ Deno.serve(async (req: Request) => {
     // Manual account-number lookup (see queryByAccountNumber's own comment)
     // — a completely separate request shape from the address flow below,
     // checked first so it never touches address parsing at all.
-    if (typeof body.accountNumber === "string" && typeof body.cad === "string") {
+    if (
+      typeof body.accountNumber === "string" &&
+      typeof body.cad === "string"
+    ) {
       const record = await queryByAccountNumber(body.cad, body.accountNumber);
-      return new Response(JSON.stringify({ matched: Boolean(record), record: record ?? null }), {
-        status: 200,
-        headers: corsHeaders,
-      });
+      return new Response(
+        JSON.stringify({ matched: Boolean(record), record: record ?? null }),
+        {
+          status: 200,
+          headers: corsHeaders,
+        },
+      );
     }
 
     // ID search from the search box: the owner typed a Property ID or a
@@ -3880,16 +4369,26 @@ Deno.serve(async (req: Request) => {
     if (typeof body.idSearch === "string") {
       const id = body.idSearch.trim();
       if (!looksLikePropertyId(id)) {
-        return new Response(JSON.stringify({ records: [] }), { status: 200, headers: corsHeaders });
+        return new Response(JSON.stringify({ records: [] }), {
+          status: 200,
+          headers: corsHeaders,
+        });
       }
       const settled = await Promise.all([
         ...ARCGIS_ACCOUNT_LOOKUP.map((config) =>
-          withTimeout(queryArcgisAccount(config, id), ID_SEARCH_TIMEOUT_MS, null),
+          withTimeout(
+            queryArcgisAccount(config, id),
+            ID_SEARCH_TIMEOUT_MS,
+            null,
+          ),
         ),
         withTimeout(queryKaufmanByAccount(id), ID_SEARCH_TIMEOUT_MS, null),
       ]);
       const records = settled.filter((r): r is CadRecord => r !== null);
-      return new Response(JSON.stringify({ records }), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify({ records }), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
 
     const rawAddress = body.address;
@@ -3905,7 +4404,9 @@ Deno.serve(async (req: Request) => {
     // address" / a direct submit) — see PREVIEW_QUERY_TIMEOUT_MS's own
     // comment for why a more patient ceiling is the right tradeoff there.
     const preview = body.preview === true;
-    const queryTimeoutMs = preview ? PREVIEW_QUERY_TIMEOUT_MS : EXACT_QUERY_TIMEOUT_MS;
+    const queryTimeoutMs = preview
+      ? PREVIEW_QUERY_TIMEOUT_MS
+      : EXACT_QUERY_TIMEOUT_MS;
 
     // See COUNTY_QUERY_BY_HINT's own comment — when the caller already knows
     // the county (every Google-resolved candidate does), try just that one
@@ -3920,25 +4421,41 @@ Deno.serve(async (req: Request) => {
     // CITY_TO_COUNTY_HINT (countyQueryFromQueryText) only runs as a fallback
     // for the one path that never gets one — a search typed directly, not
     // resolved through a Google candidate (see that function's own comment).
-    const hintedQuery = countyQueryForHint(body.countyHint) ?? countyQueryFromQueryText(address);
+    const hintedQuery =
+      countyQueryForHint(body.countyHint) ?? countyQueryFromQueryText(address);
     // Same test runLookup itself uses internally to choose its name-search
     // branch — computed here too so isConfidentMatch knows which shape of
     // "confident" applies to this particular query.
     const isNameQuery = !parseAddressForQuery(address, "nearby");
     let result: LookupResult;
     if (hintedQuery) {
-      const hinted = await runLookup(address, queryTimeoutMs, [hintedQuery], preview);
+      const hinted = await runLookup(
+        address,
+        queryTimeoutMs,
+        [hintedQuery],
+        preview,
+      );
       result = isConfidentMatch(hinted, isNameQuery)
         ? hinted
         : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
     } else {
-      result = await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
+      result = await runLookup(
+        address,
+        queryTimeoutMs,
+        ALL_COUNTY_QUERIES,
+        preview,
+      );
     }
 
-    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
       { status: 502, headers: corsHeaders },
     );
   }

@@ -8,6 +8,9 @@ import {
   updateDpIntake,
   type DpIntakeState,
   type ProjectIntent,
+  type CommercialSubcategory,
+  COMMERCIAL_SUBCATEGORIES,
+  commercialSubcategoryLabel,
 } from "@/lib/dp-intake";
 import { runPermittingAnalysis } from "@/lib/analysis";
 import { generateFeasibilitySummary, type FeasibilitySummary } from "@/lib/ai";
@@ -376,6 +379,30 @@ function ProjectStep({
             </span>
           </div>
         </div>
+        {pr.sector === "commercial" && (
+          <div className="sm:max-w-sm">
+            <Field label="Commercial subcategory (optional)">
+              <select
+                className={inputCls}
+                value={pr.subcategory ?? ""}
+                onChange={(e) =>
+                  patch({
+                    project: {
+                      subcategory: (e.target.value || undefined) as CommercialSubcategory | undefined,
+                    },
+                  })
+                }
+              >
+                <option value="">Select a subcategory</option>
+                {COMMERCIAL_SUBCATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Lot size" hint="e.g. 2 acres">
             <input
@@ -595,6 +622,7 @@ function AiFeasibilitySummary({
         state: property.state,
         intent: project.intent,
         sector: project.sector,
+        subcategory: commercialSubcategoryLabel(project.subcategory) ?? undefined,
         zoning: analysis.zoning,
         feasibility: analysis.feasibility,
         permits: analysis.permits.map((p) => ({ name: p.name, category: p.category })),

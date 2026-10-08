@@ -26,7 +26,12 @@ const EARTH_RADIUS_MILES = 3958.8;
 // longitude at these latitudes (~29-33°N) that a naive Euclidean distance on
 // raw degrees measurably over/under-counts miles depending on which county
 // this runs for.
-function milesBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+function milesBetween(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -37,7 +42,8 @@ function milesBetween(lat1: number, lon1: number, lat2: number, lon2: number): n
 }
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
@@ -54,7 +60,12 @@ const TRUEPRODIGY_OFFICE_BY_CAD: Record<string, string> = {
 // address/totalValue are only used to find the subject when the saved account
 // number isn't the county's own id; totalValue picks between several parcels
 // that share one street address (condo units, split lots).
-type CompsInput = { cad?: string; accountNumber?: string; address?: string; totalValue?: number };
+type CompsInput = {
+  cad?: string;
+  accountNumber?: string;
+  address?: string;
+  totalValue?: number;
+};
 
 type CompProperty = {
   pid: number;
@@ -84,6 +95,145 @@ type CompProperty = {
   zoning: string | null;
 };
 
+// Where TrueProdigy withholds values ("N/A", seen live for Denton in
+// 2026-10 on every row and year), the county's own GIS parcel layer still
+// publishes them — keyed by the same pid — so comps keep real values.
+const GIS_VALUES_BY_OFFICE: Record<
+  string,
+  {
+    url: string;
+    idField: string;
+    // Tarrant's layer keys by an 8-digit, zero-padded account string.
+    quotedPad?: number;
+    market: string;
+    land: string[];
+    improvement: string;
+  }
+> = {
+  Denton: {
+    url: "https://gis.dentoncounty.gov/arcgis/rest/services/Parcels_FC/MapServer/0/query",
+    idField: "pid",
+    market: "ownerMarketValue",
+    land: ["landHSValue", "landNHSValue"],
+    improvement: "improvementValue",
+  },
+};
+
+async function gisValues(
+  office: string,
+  pids: number[],
+): Promise<
+  Map<
+    number,
+    { market: number | null; land: number | null; improvement: number | null }
+  >
+> {
+  const cfg = GIS_VALUES_BY_OFFICE[office];
+  const out = new Map<
+    number,
+    { market: number | null; land: number | null; improvement: number | null }
+  >();
+  if (!cfg || pids.length === 0) return out;
+  for (let i = 0; i < pids.length; i += 100) {
+    const u = new URL(cfg.url);
+    const ids = pids
+      .slice(i, i + 100)
+      .map((p) =>
+        cfg.quotedPad
+          ? `'${String(p).padStart(cfg.quotedPad, "0")}'`
+          : String(p),
+      );
+    u.searchParams.set("where", `${cfg.idField} IN (${ids.join(",")})`);
+    u.searchParams.set(
+      "outFields",
+      [cfg.idField, cfg.market, ...cfg.land, cfg.improvement].join(","),
+    );
+    u.searchParams.set("returnGeometry", "false");
+    u.searchParams.set("f", "json");
+    const res = await fetch(u).catch(() => null);
+    if (!res?.ok) continue;
+    const json = (await res.json().catch(() => ({}))) as {
+      features?: { attributes: Record<string, unknown> }[];
+    };
+    for (const feat of json.features ?? []) {
+      const a = feat.attributes;
+      const pid = parseNum(a[cfg.idField]);
+      if (pid == null) continue;
+      const landParts = cfg.land.map((k) => parseNum(a[k]));
+      const positive = (n: number | null) => (n != null && n > 0 ? n : null);
+      out.set(pid, {
+        market: positive(parseNum(a[cfg.market])),
+        land: landParts.every((x) => x == null)
+          ? null
+          : landParts.reduce((t, x) => (t ?? 0) + (x ?? 0), 0),
+        improvement: parseNum(a[cfg.improvement]),
+      });
+    }
+  }
+  return out;
+}
+
+// A comp found under a neighborhood code that only exists on next year's
+// not-yet-valued rows (seen live in Tarrant) still has valued earlier years
+// under its pid — fetch every candidate's history in one "in" query and take
+// its latest valued year.
+async function fillFromHistory(
+  headers: Record<string, string>,
+  props: CompProperty[],
+): Promise<void> {
+  const missing = props
+    .filter((p) => p.marketValue == null)
+    .map((p) => String(p.pid));
+  if (missing.length === 0) return;
+  for (let i = 0; i < missing.length; i += 50) {
+    const res = await fetch(
+      "https://prod-container.trueprodigyapi.com/public/property/search",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          pid: { operator: "in", value: missing.slice(i, i + 50) },
+        }),
+      },
+    ).catch(() => null);
+    if (!res?.ok) continue;
+    const json = (await res.json().catch(() => ({}))) as {
+      results?: Array<Record<string, unknown>>;
+    };
+    const best = new Map<number, CompProperty>();
+    for (const row of dedupeBestYear(json.results ?? [])) {
+      const c = toCompProperty(row);
+      if (c && c.marketValue != null) best.set(c.pid, c);
+    }
+    for (const p of props) {
+      const b = best.get(p.pid);
+      if (!b || p.marketValue != null) continue;
+      p.marketValue = b.marketValue;
+      p.appraisedValue = p.appraisedValue ?? b.appraisedValue;
+      p.landValue = p.landValue ?? b.landValue;
+      p.improvementValue = p.improvementValue ?? b.improvementValue;
+    }
+  }
+}
+
+// Fills values TrueProdigy withheld, in place.
+async function fillMissingValues(
+  office: string,
+  props: CompProperty[],
+): Promise<void> {
+  const missing = props.filter((p) => p.marketValue == null).map((p) => p.pid);
+  if (missing.length === 0) return;
+  const values = await gisValues(office, missing);
+  for (const p of props) {
+    const v = values.get(p.pid);
+    if (!v || p.marketValue != null) continue;
+    p.marketValue = v.market;
+    p.appraisedValue = p.appraisedValue ?? v.market;
+    p.landValue = p.landValue ?? v.land;
+    p.improvementValue = p.improvementValue ?? v.improvement;
+  }
+}
+
 type CompsResult = {
   subject: (CompProperty & { asCode: string }) | null;
   comps: CompProperty[];
@@ -98,10 +248,12 @@ async function getToken(office: string): Promise<string> {
       body: JSON.stringify({ office }),
     },
   );
-  if (!res.ok) throw new Error(`TrueProdigy auth failed for ${office}: ${res.status}`);
+  if (!res.ok)
+    throw new Error(`TrueProdigy auth failed for ${office}: ${res.status}`);
   const json = (await res.json()) as { user?: { token?: string } };
   const token = json.user?.token;
-  if (!token) throw new Error(`TrueProdigy auth returned no token for ${office}`);
+  if (!token)
+    throw new Error(`TrueProdigy auth returned no token for ${office}`);
   return token;
 }
 
@@ -142,7 +294,9 @@ function toCompProperty(row: Record<string, unknown>): CompProperty | null {
 // the true latest pYear present is often next year's not-yet-assessed placeholder
 // row (confirmed live: pid 740576's own "2027" row has every value field null),
 // so picking by raw year alone would silently produce valueless comps.
-function dedupeBestYear(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+function dedupeBestYear(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
   const byPid = new Map<number, Record<string, unknown>>();
   for (const row of rows) {
     const pid = parseNum(row.pid);
@@ -156,7 +310,8 @@ function dedupeBestYear(rows: Array<Record<string, unknown>>): Array<Record<stri
       continue;
     }
     const existingHasValue = parseNum(existing.marketValue) != null;
-    const existingScore = (existingHasValue ? 1_000_000 : 0) + (parseNum(existing.pYear) ?? 0);
+    const existingScore =
+      (existingHasValue ? 1_000_000 : 0) + (parseNum(existing.pYear) ?? 0);
     if (score > existingScore) byPid.set(pid, row);
   }
   return [...byPid.values()];
@@ -258,21 +413,34 @@ type ArcgisFeature = {
   geometry?: { rings?: number[][][] };
 };
 
-async function arcgisQuery(url: string, params: Record<string, string>): Promise<ArcgisFeature[]> {
+async function arcgisQuery(
+  url: string,
+  params: Record<string, string>,
+): Promise<ArcgisFeature[]> {
   const qs = new URLSearchParams({ f: "json", outSR: "4326", ...params });
-  const res = await fetch(`${url}?${qs.toString()}`, { signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(`${url}?${qs.toString()}`, {
+    signal: AbortSignal.timeout(15_000),
+  });
   if (!res.ok) throw new Error(`parcel layer ${res.status}`);
-  const json = (await res.json()) as { features?: ArcgisFeature[]; error?: { message?: string } };
+  const json = (await res.json()) as {
+    features?: ArcgisFeature[];
+    error?: { message?: string };
+  };
   if (json.error) throw new Error(json.error.message ?? "parcel layer error");
   return json.features ?? [];
 }
 
 // Vertex average of the largest ring — plenty accurate at parcel scale for a
 // map pin and a miles-level distance filter.
-function centroidOf(g: ArcgisFeature["geometry"]): { lat: number; lon: number } | null {
+function centroidOf(
+  g: ArcgisFeature["geometry"],
+): { lat: number; lon: number } | null {
   const rings = g?.rings;
   if (!rings || rings.length === 0) return null;
-  const ring = rings.reduce((big, r) => (r.length > big.length ? r : big), rings[0]);
+  const ring = rings.reduce(
+    (big, r) => (r.length > big.length ? r : big),
+    rings[0],
+  );
   if (ring.length === 0) return null;
   const lon = ring.reduce((s, p) => s + p[0], 0) / ring.length;
   const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
@@ -289,7 +457,10 @@ function idClause(cfg: SpatialConfig, op: "=" | "<>", id: string): string {
     : `${cfg.idField}${op}'${escapeSql(id)}'`;
 }
 
-async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<CompsResult> {
+async function spatialComps(
+  cfg: SpatialConfig,
+  input: CompsInput,
+): Promise<CompsResult> {
   const empty: CompsResult = { subject: null, comps: [] };
   const outFields = cfg.outFields;
 
@@ -302,7 +473,8 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
     where = idClause(cfg, "=", acct);
   } else if (input.address) {
     const street = input.address.split(",")[0].trim().toUpperCase();
-    if (/^\d+\s+\S+/.test(street)) where = `${cfg.addressField} LIKE '${escapeSql(street)}%'`;
+    if (/^\d+\s+\S+/.test(street))
+      where = `${cfg.addressField} LIKE '${escapeSql(street)}%'`;
   }
   if (!where) return empty;
 
@@ -321,7 +493,10 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
       )
     : [];
   const candidates = inCity.length > 0 ? inCity : subjRows;
-  const target = typeof input.totalValue === "number" && input.totalValue > 0 ? input.totalValue : null;
+  const target =
+    typeof input.totalValue === "number" && input.totalValue > 0
+      ? input.totalValue
+      : null;
   const subjFeature = target
     ? candidates.reduce<ArcgisFeature | undefined>((best, r) => {
         const v = cfg.map(r.attributes).value;
@@ -390,7 +565,11 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
     comps = rows
       .map(toComp)
       .filter((c): c is CompProperty => c !== null)
-      .filter((c) => milesBetween(at.lat, at.lon, c.latitude, c.longitude) <= COMPS_RADIUS_MILES)
+      .filter(
+        (c) =>
+          milesBetween(at.lat, at.lon, c.latitude, c.longitude) <=
+          COMPS_RADIUS_MILES,
+      )
       // Same 0.5x-2x band as the server-side filter, re-applied here so a
       // layer whose value isn't reliably filterable in SQL still can't hand
       // back an unrelated parcel.
@@ -414,7 +593,8 @@ async function spatialComps(cfg: SpatialConfig, input: CompsInput): Promise<Comp
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
     const input = (await req.json()) as CompsInput;
@@ -424,41 +604,80 @@ Deno.serve(async (req: Request) => {
     const spatialCfg = input.cad ? SPATIAL_BY_CAD[input.cad] : undefined;
     if (!office && spatialCfg) {
       const result = await spatialComps(spatialCfg, input);
-      return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
 
     if (!office || !input.accountNumber) {
-      return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(emptyResult), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
     const subjectPid = parseInt(input.accountNumber, 10);
     if (!Number.isFinite(subjectPid)) {
-      return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(emptyResult), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
 
     const token = await getToken(office);
-    const headers = { "Content-Type": "application/json", Authorization: token };
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: token,
+    };
 
     const subjectRes = await fetch(
       "https://prod-container.trueprodigyapi.com/public/property/search",
       {
         method: "POST",
         headers,
-        body: JSON.stringify({ pid: { operator: "=", value: String(subjectPid) } }),
+        body: JSON.stringify({
+          pid: { operator: "=", value: String(subjectPid) },
+        }),
       },
     );
     if (!subjectRes.ok) {
-      return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(emptyResult), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
-    const subjectJson = (await subjectRes.json()) as { results?: Array<Record<string, unknown>> };
+    const subjectJson = (await subjectRes.json()) as {
+      results?: Array<Record<string, unknown>>;
+    };
     const subjectRows = subjectJson.results ?? [];
     if (subjectRows.length === 0) {
-      return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(emptyResult), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
     const [subjectBest] = dedupeBestYear(subjectRows);
-    const asCode = subjectBest?.asCode as string | undefined;
+    // The row with a value can carry a placeholder neighborhood code ("0" —
+    // seen live in Tarrant: the valued 2026 row had "0", the 2027 row the
+    // real code), which matches no comps. Use the best row's code when it's
+    // real, otherwise the latest row that has one.
+    const realCode = (v: unknown) => {
+      const c =
+        typeof v === "string" || typeof v === "number" ? String(v).trim() : "";
+      return c && c !== "0" ? c : undefined;
+    };
+    const asCode =
+      realCode(subjectBest?.asCode) ??
+      [...subjectRows]
+        .sort((a, b) => (parseNum(b.pYear) ?? 0) - (parseNum(a.pYear) ?? 0))
+        .map((r) => realCode(r.asCode))
+        .find(Boolean);
     const subjectProp = subjectBest ? toCompProperty(subjectBest) : null;
     if (!asCode || !subjectProp) {
-      return new Response(JSON.stringify(emptyResult), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify(emptyResult), {
+        status: 200,
+        headers: corsHeaders,
+      });
     }
 
     const compsRes = await fetch(
@@ -470,32 +689,53 @@ Deno.serve(async (req: Request) => {
       },
     );
     const compsJson = compsRes.ok
-      ? ((await compsRes.json()) as { results?: Array<Record<string, unknown>> })
+      ? ((await compsRes.json()) as {
+          results?: Array<Record<string, unknown>>;
+        })
       : {};
     const dedupedRows = dedupeBestYear(compsJson.results ?? []);
 
-    const comps = dedupedRows
+    const candidates = dedupedRows
       .filter((row) => parseNum(row.pid) !== subjectPid)
       .map(toCompProperty)
       .filter((c): c is CompProperty => c !== null)
       .filter(
         (c) =>
-          milesBetween(subjectProp.latitude, subjectProp.longitude, c.latitude, c.longitude) <=
-          COMPS_RADIUS_MILES,
-      )
+          milesBetween(
+            subjectProp.latitude,
+            subjectProp.longitude,
+            c.latitude,
+            c.longitude,
+          ) <= COMPS_RADIUS_MILES,
+      );
+    // Before ranking by value: fill any values TrueProdigy withheld.
+    await fillFromHistory(headers, [subjectProp, ...candidates]);
+    await fillMissingValues(office, [subjectProp, ...candidates]);
+    const comps = candidates
       .sort((a, b) => {
         const subjectValue = subjectProp.marketValue ?? 0;
-        const da = a.marketValue == null ? Infinity : Math.abs(a.marketValue - subjectValue);
-        const db = b.marketValue == null ? Infinity : Math.abs(b.marketValue - subjectValue);
+        const da =
+          a.marketValue == null
+            ? Infinity
+            : Math.abs(a.marketValue - subjectValue);
+        const db =
+          b.marketValue == null
+            ? Infinity
+            : Math.abs(b.marketValue - subjectValue);
         return da - db;
       })
       .slice(0, 10);
 
     const result: CompsResult = { subject: { ...subjectProp, asCode }, comps };
-    return new Response(JSON.stringify(result), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
       { status: 500, headers: corsHeaders },
     );
   }

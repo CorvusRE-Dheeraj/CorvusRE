@@ -17,6 +17,7 @@ export type ProjectRow = {
   zoning_category: string | null;
   intent: string | null;
   sector: string | null;
+  sector_subcategory: string | null;
   lot_size: string | null;
   building_area: string | null;
   floors: string | null;
@@ -103,6 +104,7 @@ export async function saveProjectFromIntake(
       zoning_category: analysis.zoning.category,
       intent: project.intent ?? null,
       sector: project.sector ?? null,
+      sector_subcategory: project.subcategory ?? null,
       lot_size: project.lotSize ?? property.approxSiteArea ?? null,
       building_area: project.buildingArea ?? null,
       floors: project.floors ?? null,

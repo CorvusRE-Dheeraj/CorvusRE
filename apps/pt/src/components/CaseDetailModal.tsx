@@ -22,11 +22,7 @@ import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
 import { CourtAppealWorkflow } from "@/components/CourtAppealWorkflow";
 import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
-import {
-  updatePropertyIdentity,
-  setAutoRefile,
-  type PropertyRecord,
-} from "@/lib/properties";
+import { updatePropertyIdentity, setAutoRefile, type PropertyRecord } from "@/lib/properties";
 import {
   acknowledgeGuidance,
   updateProtestTaxYear,
@@ -5082,6 +5078,49 @@ function InformalReviewSection({
           ))}
         </select>
       </div>
+
+      {/* The offer itself, where the owner works the informal review — the
+          amount, how it compares, and where to accept it. */}
+      {protest.settlementOfferValue != null && protest.status !== "resolved" && (
+        <div className="mt-3 grid gap-2 rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+          <div>
+            <span className="font-semibold">
+              {property.cad ?? "The district"} offered {currency(protest.settlementOfferValue)}
+            </span>
+            {protest.settlementOfferReceivedAt && (
+              <span className="text-muted-foreground">
+                {" "}
+                on{" "}
+                {new Date(
+                  `${protest.settlementOfferReceivedAt.slice(0, 10)}T12:00:00`,
+                ).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            {protest.originalValue != null && protest.originalValue > 0 && (
+              <span className="text-muted-foreground">
+                {" "}
+                — down from {currency(protest.originalValue)}
+              </span>
+            )}
+            .
+          </div>
+          <SettlementHistory
+            compact
+            cad={property.cad}
+            propertyType={property.propertyType}
+            value={protest.originalValue ?? property.totalValue}
+            offer={
+              protest.originalValue
+                ? { original: protest.originalValue, offer: protest.settlementOfferValue }
+                : null
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            To accept it, use Accept Offer under Case Progress on Overview — or, if it&apos;s
+            settled in writing, submit the signed settlement below.
+          </p>
+        </div>
+      )}
 
       {protest.status === "resolved" && protest.arbDecision == null && (
         <div className="mt-3 rounded-md border border-border p-3 text-sm">

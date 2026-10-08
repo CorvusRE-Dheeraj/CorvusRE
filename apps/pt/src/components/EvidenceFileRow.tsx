@@ -64,7 +64,10 @@ export function EvidenceFileRow({
 
   async function moveTo(slug: string) {
     await run(async () => {
-      await setDocumentType(doc.id, slug ? `${CATEGORY_PREFIX}${slug}` : PROTEST_EVIDENCE_DOCUMENT_TYPE);
+      await setDocumentType(
+        doc.id,
+        slug ? `${CATEGORY_PREFIX}${slug}` : PROTEST_EVIDENCE_DOCUMENT_TYPE,
+      );
       const label = categories.find((c) => c.slug === slug)?.label ?? "Uncategorized";
       toast.success(`Moved to ${label}.`);
     }, "Could not move this file.");

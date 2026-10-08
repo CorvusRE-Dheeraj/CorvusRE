@@ -393,13 +393,16 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
   const propertiesWithResolvedCurrentProtest = new Set(
     protests
       .filter(
-        (p) => p.status === "resolved" && p.taxYear != null && p.taxYear >= currentYear && p.propertyId,
+        (p) =>
+          p.status === "resolved" && p.taxYear != null && p.taxYear >= currentYear && p.propertyId,
       )
       .map((p) => p.propertyId as string),
   );
 
   const events: CalendarEvent[] = [
-    ...properties.flatMap((p) => fromProperty(p, taxBillPropertyIds, propertiesWithResolvedCurrentProtest)),
+    ...properties.flatMap((p) =>
+      fromProperty(p, taxBillPropertyIds, propertiesWithResolvedCurrentProtest),
+    ),
     ...protests.flatMap((pr) => fromProtest(pr, properties, propertiesWithCurrentProtest)),
     ...taxBills.flatMap((b) => fromTaxBill(b, properties)),
     ...bppAccounts.flatMap((a) => fromBppAccount(a, now)),

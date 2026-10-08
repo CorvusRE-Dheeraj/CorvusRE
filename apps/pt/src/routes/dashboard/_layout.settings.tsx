@@ -569,7 +569,6 @@ function Settings() {
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              autoFocus
             />
           </label>
           <div className="mt-2 flex justify-end gap-2">

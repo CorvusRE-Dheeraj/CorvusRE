@@ -78,13 +78,13 @@ function Landing() {
               <Sparkles className="h-3.5 w-3.5" /> One of the five CorvusRE doors
             </span>
             <h1 className="mt-5 max-w-4xl font-serif text-[2.6rem] font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-              Permitting and design for real estate development,
-              <span className="text-gradient"> done with AI.</span>
+              AI-Powered Design and Permitting,
+              <span className="text-gradient"> Mapped from Address to Approval</span>
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">
               Every jurisdiction has its own requirements, timelines, and reviewers. CorvusDP turns an
-              address and a project scope into a clear permitting roadmap and a design brief —
-              following local best practice, whatever the project size.
+              address and project scope into two connected tracks: a design brief and a permitting
+              map built around local codes, reviewers, timelines, and submission requirements.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link to="/permitting" className="btn-accent text-base">

@@ -178,9 +178,15 @@ function Admin() {
     return left <= 60;
   });
   const visiblePermits =
-    permitFilter === "at_risk" ? atRiskPermits : permitFilter === "expiring" ? expiringPermits : permitRows;
+    permitFilter === "at_risk"
+      ? atRiskPermits
+      : permitFilter === "expiring"
+        ? expiringPermits
+        : permitRows;
 
-  const pendingEngagements = (engagements.data ?? []).filter((e) => e.status === "requested").length;
+  const pendingEngagements = (engagements.data ?? []).filter(
+    (e) => e.status === "requested",
+  ).length;
 
   return (
     <div className="container-page py-10">
@@ -243,11 +249,22 @@ function Admin() {
             subtitle="Advance a request through concept → development → final drawings once the design team is engaged."
           >
             <Table
-              cols={["Location", "Scope", "Sector", "Stage", "Created", ""]}
+              cols={["Location", "Scope", "Sector", "Consultation", "Stage", "Created", ""]}
               rows={(design.data ?? []).map((d) => [
                 d.address ?? d.city ?? "—",
                 humanize(d.scope),
                 humanize(d.sector),
+                d.consultation_requested_at ? (
+                  <span key="c" className="text-xs">
+                    <span className="font-medium">{d.consultation_phone ?? "Requested"}</span>
+                    <span className="block text-muted-foreground">
+                      {dateShort(d.consultation_requested_at)}
+                      {d.consultation_best_time ? ` · ${d.consultation_best_time}` : ""}
+                    </span>
+                  </span>
+                ) : (
+                  "—"
+                ),
                 <Pill key="s" tone={d.stage === "completed" ? "green" : "blue"}>
                   {DESIGN_STAGE_LABEL[d.stage as DesignStage] ?? humanize(d.stage)}
                 </Pill>,
@@ -324,7 +341,10 @@ function Admin() {
               <Table
                 cols={["Project", "Permit", "Status", "Days open", "Expiry", "Reviewer"]}
                 rows={visiblePermits.map((p) => {
-                  const age = p.status === "approved" ? null : -(daysUntil(p.submitted_at ?? p.created_at) ?? 0);
+                  const age =
+                    p.status === "approved"
+                      ? null
+                      : -(daysUntil(p.submitted_at ?? p.created_at) ?? 0);
                   const expiryLeft = p.expiry_date ? daysUntil(p.expiry_date) : null;
                   return [
                     p.project_address ?? "—",
@@ -597,9 +617,7 @@ function UserCard({
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
         {userRow.email}
-        {userRow.referral_code && (
-          <span className="font-mono"> · ref {userRow.referral_code}</span>
-        )}
+        {userRow.referral_code && <span className="font-mono"> · ref {userRow.referral_code}</span>}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">Joined {dateShort(userRow.created_at)}</p>
 
@@ -661,10 +679,17 @@ function InviteForm({ onSent }: { onSent: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3">
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
+    >
       <div className="min-w-[10rem]">
         <Field label="First name">
-          <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          <input
+            className={inputCls}
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+          />
         </Field>
       </div>
       <div className="min-w-[14rem] flex-1">
@@ -758,19 +783,14 @@ function AiLogEntry({ log }: { log: AiLogRow }) {
   );
 }
 
-function DesignStageAction({
-  row,
-  onChanged,
-}: {
-  row: AdminDesignRow;
-  onChanged: () => void;
-}) {
+function DesignStageAction({ row, onChanged }: { row: AdminDesignRow; onChanged: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const next = nextDesignStage(row.stage);
   // Nothing to advance to from "brief" here — that transition is the
   // customer's own "Approve & start detailed design" action, not staff's.
-  if (!next || row.stage === "brief") return <span className="text-xs text-muted-foreground">—</span>;
+  if (!next || row.stage === "brief")
+    return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <div className="grid gap-1">
       <button
@@ -805,13 +825,7 @@ function DesignStageAction({
   );
 }
 
-function EngagementActions({
-  row,
-  onChanged,
-}: {
-  row: AdminEngagementRow;
-  onChanged: () => void;
-}) {
+function EngagementActions({ row, onChanged }: { row: AdminEngagementRow; onChanged: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nextStatus =

@@ -35,7 +35,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 type NavLink = { to: string; label: string; icon: typeof LayoutDashboard };
 type NavSubgroup = { heading: string; items: NavLink[] };
@@ -47,7 +53,17 @@ type NavSubgroup = { heading: string; items: NavLink[] };
 // once, and workflow subgroups (below) give the eye something to scan
 // instead of 10 flat rows in a dropdown.
 const OVERVIEW: NavLink = { to: "/dashboard", label: "Overview", icon: LayoutDashboard };
-const DESIGN: NavLink = { to: "/dashboard/design", label: "Design", icon: DraftingCompass };
+// The Design track's own workspace — the same kinds of pages the permitting
+// side has (site data, checklist, fees, roadmap, timeline), scoped to the
+// active design request instead of the active permitting project.
+const DESIGN_ITEMS: NavLink[] = [
+  { to: "/dashboard/design", label: "Design Overview", icon: DraftingCompass },
+  { to: "/dashboard/design-site", label: "Site Data", icon: Layers },
+  { to: "/dashboard/design-checklist", label: "Checklist", icon: ListChecks },
+  { to: "/dashboard/design-fees", label: "Fees", icon: Receipt },
+  { to: "/dashboard/design-roadmap", label: "Roadmap", icon: RouteIcon },
+  { to: "/dashboard/design-timeline", label: "Timeline", icon: CalendarClock },
+];
 // The whole permitting lifecycle on one page, with the project's train on it —
 // sits above the two subgroups as the permitting section's overview.
 const TRACK_MAP: NavLink = { to: "/dashboard/track-map", label: "Track Map", icon: TrainTrack };
@@ -131,7 +147,13 @@ function SidebarLink({
   );
 }
 
-function SidebarSectionLabel({ icon: Icon, label }: { icon: typeof LayoutDashboard; label: string }) {
+function SidebarSectionLabel({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof LayoutDashboard;
+  label: string;
+}) {
   return (
     <div className="mt-5 flex items-center gap-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
       <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -149,7 +171,11 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav aria-label="Dashboard" className="flex flex-col gap-1">
       <SidebarLink item={OVERVIEW} exact onNavigate={onNavigate} />
-      <SidebarLink item={DESIGN} onNavigate={onNavigate} />
+
+      <SidebarSectionLabel icon={DraftingCompass} label="Design" />
+      {DESIGN_ITEMS.map((item) => (
+        <SidebarLink key={item.to} item={item} exact onNavigate={onNavigate} />
+      ))}
 
       <SidebarSectionLabel icon={FileStack} label="Permitting" />
       <SidebarLink item={TRACK_MAP} onNavigate={onNavigate} />
@@ -243,7 +269,9 @@ function ProjectSwitcher() {
         aria-label="Switch or delete property"
       >
         <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="min-w-0 flex-1 truncate text-left">{active.name ?? active.address ?? "Property"}</span>
+        <span className="min-w-0 flex-1 truncate text-left">
+          {active.name ?? active.address ?? "Property"}
+        </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-[18rem]">
@@ -348,7 +376,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Menu className="h-4 w-4" aria-hidden />
               Menu
             </SheetTrigger>
-            <SheetContent side="left" className="flex w-72 flex-col gap-4 overflow-y-auto px-4 py-6">
+            <SheetContent
+              side="left"
+              className="flex w-72 flex-col gap-4 overflow-y-auto px-4 py-6"
+            >
               <SheetTitle className="px-1 text-base">Dashboard</SheetTitle>
               <SheetDescription className="sr-only">
                 Jump to any section of your CorvusDP dashboard.

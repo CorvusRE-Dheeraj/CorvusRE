@@ -42,9 +42,7 @@ test.skip("signing the authorization and requesting a protest creates a case", a
   await signIn(page, email, password);
 
   await page.goto("/dashboard/properties");
-  const firstProperty = page
-    .locator(".card-elev", { hasText: "456 CI Subscribed Ave" })
-    .first();
+  const firstProperty = page.locator(".card-elev", { hasText: "456 CI Subscribed Ave" }).first();
   await firstProperty.getByRole("button", { name: "Open AI Report" }).click();
 
   // The AI Report page swaps this button for "View Case" once its own

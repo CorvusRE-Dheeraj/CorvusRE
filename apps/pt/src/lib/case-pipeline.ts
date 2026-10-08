@@ -153,11 +153,18 @@ export function casePipeline(input: PipelineInput): Pipeline {
     appeal: settled,
   };
 
+  // An informal offer waiting for a reply comes before asking for the
+  // district's hearing evidence — the evidence request stays to do, but the
+  // offer is what needs answering now.
+  const offerPending =
+    p?.informalStatus === "proposed_value_received" && p.settlementOfferValue != null;
+
   let currentFound = false;
   const stages = PIPELINE_STAGES.map(({ id, label }) => {
     let state: StageState;
     if (skipped[id]) state = "skipped";
     else if (done[id]) state = "done";
+    else if (id === "cad_evidence" && offerPending) state = "upcoming";
     else if (!currentFound) {
       state = "current";
       currentFound = true;
@@ -418,6 +425,26 @@ export function casePipeline(input: PipelineInput): Pipeline {
         target: { kind: "anchor", anchor: "case-progress" },
       });
       break;
+  }
+
+  // The protest deadline passed with nothing filed: say so, and lay out what
+  // Texas law still allows, instead of a filing step that reads as routine.
+  if (
+    !managed &&
+    (current === "readiness" || current === "file") &&
+    deadline &&
+    deadline < today &&
+    // Only this year's deadline: an older date on file is stale, not missed.
+    deadline.slice(0, 4) === today.slice(0, 4)
+  ) {
+    next = action({
+      title: `The protest deadline passed on ${fmt(deadline)}`,
+      detail:
+        "A Notice of Protest is due by May 15 or 30 days after the appraisal notice, whichever is later (Tax Code §41.44). The review board may still accept a late protest for good cause if it's filed before the appraisal records are approved, usually in late July (§41.44(b)), and a protest is allowed if the required notice was never delivered (§41.411). Otherwise the next opportunity is next year's notice.",
+      dueDate: null,
+      dueLabel: null,
+      target: { kind: "anchor", anchor: "case-progress" },
+    });
   }
 
   return {

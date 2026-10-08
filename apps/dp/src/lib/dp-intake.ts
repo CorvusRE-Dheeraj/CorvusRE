@@ -8,6 +8,30 @@ export type ProjectIntent = "new_construction" | "addition" | "remodeling" | "si
 export type DesignScope = "new_construction" | "addition" | "remodeling" | "interior_fit_out";
 export type PropertySector = "commercial" | "residential";
 
+// Optional finer grain for a commercial project — shown once Commercial is
+// the sector.
+export const COMMERCIAL_SUBCATEGORIES = [
+  { value: "retail", label: "Retail" },
+  { value: "office", label: "Office & Professional Services" },
+  { value: "restaurant", label: "Restaurant & Food Service" },
+  { value: "hospitality", label: "Hospitality & Lodging" },
+  { value: "healthcare", label: "Healthcare & Medical" },
+  { value: "education_childcare", label: "Education & Childcare" },
+  { value: "personal_services_fitness", label: "Personal Services & Fitness" },
+  { value: "entertainment_recreation", label: "Entertainment & Recreation" },
+  { value: "automotive_fuel", label: "Automotive & Fuel" },
+  { value: "storage_warehousing", label: "Storage & Warehousing" },
+  { value: "data_center", label: "Data Center" },
+  { value: "mixed_use", label: "Mixed-Use Commercial" },
+  { value: "other", label: "Other" },
+] as const;
+
+export type CommercialSubcategory = (typeof COMMERCIAL_SUBCATEGORIES)[number]["value"];
+
+export function commercialSubcategoryLabel(v: string | null | undefined): string | null {
+  return COMMERCIAL_SUBCATEGORIES.find((c) => c.value === v)?.label ?? null;
+}
+
 export type PropertyInfo = {
   address?: string;
   city?: string;
@@ -25,6 +49,7 @@ export type PropertyInfo = {
 export type ProjectDefinition = {
   intent?: ProjectIntent;
   sector?: PropertySector;
+  subcategory?: CommercialSubcategory;
   lotSize?: string;
   buildingArea?: string;
   floors?: string;

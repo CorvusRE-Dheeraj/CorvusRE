@@ -135,11 +135,56 @@ function isSupportedCounty(county: string | undefined): boolean {
 // proceeds normally, same "only skip when we're sure" principle as
 // isSupportedCounty.
 const NON_TEXAS_STATE_CODES = new Set([
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
-  "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
-  "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
-  "OR", "PA", "RI", "SC", "SD", "TN", "UT", "VT", "VA", "WA", "WV", "WI",
-  "WY", "DC",
+  "AL",
+  "AK",
+  "AZ",
+  "AR",
+  "CA",
+  "CO",
+  "CT",
+  "DE",
+  "FL",
+  "GA",
+  "HI",
+  "ID",
+  "IL",
+  "IN",
+  "IA",
+  "KS",
+  "KY",
+  "LA",
+  "ME",
+  "MD",
+  "MA",
+  "MI",
+  "MN",
+  "MS",
+  "MO",
+  "MT",
+  "NE",
+  "NV",
+  "NH",
+  "NJ",
+  "NM",
+  "NY",
+  "NC",
+  "ND",
+  "OH",
+  "OK",
+  "OR",
+  "PA",
+  "RI",
+  "SC",
+  "SD",
+  "TN",
+  "UT",
+  "VT",
+  "VA",
+  "WA",
+  "WV",
+  "WI",
+  "WY",
+  "DC",
 ]);
 
 function detectNonTexasState(query: string): boolean {
@@ -213,13 +258,46 @@ function cadKey(r: CadRecord): string {
 // correct match; a city not in this list just falls back to the previous
 // last-word guess, the same behavior as before — never a new exclusion.
 const KNOWN_TX_CITIES = new Set([
-  "denton", "houston", "dallas", "plano", "frisco", "mckinney", "allen",
-  "carrollton", "lewisville", "wylie", "celina", "garland", "mesquite",
-  "irving", "arlington", "austin", "sherman", "denison", "conroe", "katy",
-  "georgetown", "humble", "spring", "stafford", "aubrey", "porter",
-  "crandall", "forney", "montgomery", "euless", "haltomcity", "hurst",
-  "bedford", "colleyville", "southlake", "keller", "burleson", "haslet",
-  "roanoke", "grapevine",
+  "denton",
+  "houston",
+  "dallas",
+  "plano",
+  "frisco",
+  "mckinney",
+  "allen",
+  "carrollton",
+  "lewisville",
+  "wylie",
+  "celina",
+  "garland",
+  "mesquite",
+  "irving",
+  "arlington",
+  "austin",
+  "sherman",
+  "denison",
+  "conroe",
+  "katy",
+  "georgetown",
+  "humble",
+  "spring",
+  "stafford",
+  "aubrey",
+  "porter",
+  "crandall",
+  "forney",
+  "montgomery",
+  "euless",
+  "haltomcity",
+  "hurst",
+  "bedford",
+  "colleyville",
+  "southlake",
+  "keller",
+  "burleson",
+  "haslet",
+  "roanoke",
+  "grapevine",
 ]);
 
 // Best-effort city guess — prefers a recognized Texas city anywhere in the
@@ -247,17 +325,46 @@ function guessCityWord(query: string): string {
 // picking one here has zero correctness stakes, it only ever affects
 // which name a loading message shows for a few seconds.
 const CITY_TO_COUNTY_DISPLAY: Record<string, string> = {
-  denton: "Denton", houston: "Harris", dallas: "Dallas", plano: "Collin",
-  frisco: "Collin", mckinney: "Collin", allen: "Collin", carrollton: "Denton",
-  lewisville: "Denton", wylie: "Collin", celina: "Collin", garland: "Dallas",
-  mesquite: "Dallas", irving: "Dallas", arlington: "Tarrant", austin: "Travis",
-  sherman: "Grayson", denison: "Grayson", conroe: "Montgomery", katy: "Harris",
-  georgetown: "Williamson", humble: "Harris", spring: "Harris",
-  stafford: "Fort Bend", aubrey: "Denton", porter: "Montgomery",
-  crandall: "Kaufman", forney: "Kaufman", montgomery: "Montgomery",
-  euless: "Tarrant", haltomcity: "Tarrant", hurst: "Tarrant", bedford: "Tarrant",
-  colleyville: "Tarrant", southlake: "Tarrant", keller: "Tarrant",
-  burleson: "Tarrant", haslet: "Tarrant", roanoke: "Denton", grapevine: "Tarrant",
+  denton: "Denton",
+  houston: "Harris",
+  dallas: "Dallas",
+  plano: "Collin",
+  frisco: "Collin",
+  mckinney: "Collin",
+  allen: "Collin",
+  carrollton: "Denton",
+  lewisville: "Denton",
+  wylie: "Collin",
+  celina: "Collin",
+  garland: "Dallas",
+  mesquite: "Dallas",
+  irving: "Dallas",
+  arlington: "Tarrant",
+  austin: "Travis",
+  sherman: "Grayson",
+  denison: "Grayson",
+  conroe: "Montgomery",
+  katy: "Harris",
+  georgetown: "Williamson",
+  humble: "Harris",
+  spring: "Harris",
+  stafford: "Fort Bend",
+  aubrey: "Denton",
+  porter: "Montgomery",
+  crandall: "Kaufman",
+  forney: "Kaufman",
+  montgomery: "Montgomery",
+  euless: "Tarrant",
+  haltomcity: "Tarrant",
+  hurst: "Tarrant",
+  bedford: "Tarrant",
+  colleyville: "Tarrant",
+  southlake: "Tarrant",
+  keller: "Tarrant",
+  burleson: "Tarrant",
+  haslet: "Tarrant",
+  roanoke: "Denton",
+  grapevine: "Tarrant",
 };
 
 // Best-effort "which county is this search probably in" for display only —
@@ -359,7 +466,12 @@ export async function unifiedPropertySearch(
   let timedOut = false;
 
   function emit() {
-    onUpdate(buildDisplayList(order.map((id) => byId.get(id)!), cityGuess));
+    onUpdate(
+      buildDisplayList(
+        order.map((id) => byId.get(id)!),
+        cityGuess,
+      ),
+    );
   }
 
   // insertAfter places a brand-new row right next to a related one (a
@@ -428,7 +540,11 @@ export async function unifiedPropertySearch(
             const key = cadKey(record);
             const existingRowId = rowIdByCadKey.get(key);
             if (existingRowId) {
-              upsert(existingRowId, { address: record.propertyAddress, record, cadStatus: "found" });
+              upsert(existingRowId, {
+                address: record.propertyAddress,
+                record,
+                cadStatus: "found",
+              });
             } else {
               rowIdByCadKey.set(key, key);
               upsert(key, { address: record.propertyAddress, record, cadStatus: "found" });
@@ -472,7 +588,12 @@ export async function unifiedPropertySearch(
                 cadStatus: "pending",
               });
 
-              const records = await lookupRecords(candidate.address, false, candidate.county, signal);
+              const records = await lookupRecords(
+                candidate.address,
+                false,
+                candidate.county,
+                signal,
+              );
               if (records.length === 0) {
                 // Still a real, selectable address — just no county parcel
                 // on file for it (outside a supported county, a lookup

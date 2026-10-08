@@ -14,7 +14,8 @@ export function CountUp({
   const [n, setN] = useState(0);
   useEffect(() => {
     const reduce =
-      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce || to <= 0) {
       setN(to);
       return;

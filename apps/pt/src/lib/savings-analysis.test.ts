@@ -145,9 +145,7 @@ describe("computeSavingsAnalysis", () => {
       expect(withIncome.valueBasisLabel).toBe("income approach");
       expect(withIncome.reductionBase).toBeGreaterThan(withoutIncome.reductionBase);
       expect(withIncome.annualSavings).toBeGreaterThan(withoutIncome.annualSavings);
-      expect(withIncome.assumptions.some((s) => /Module 7 \(Income Approach\)/.test(s))).toBe(
-        true,
-      );
+      expect(withIncome.assumptions.some((s) => /Module 7 \(Income Approach\)/.test(s))).toBe(true);
     });
 
     it("a module value ABOVE the baseline (income doesn't support a reduction) is ignored", () => {

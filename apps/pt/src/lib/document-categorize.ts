@@ -2,7 +2,7 @@ import { fileToDataUrl } from "./intake-store";
 import { classifyDocument, type Extraction } from "./document-ai";
 import { uploadDocument, type DocumentRecord } from "./documents";
 import { tagUploadedDocument } from "./document-modules";
-import type { PropertyRecord } from "./properties";
+import { isSameProperty, type PropertyRecord } from "./properties";
 
 // Bulk-upload-and-sort for the Documents tab: the user picks several files
 // at once with no property preselected, AI reads each one (the same real
@@ -39,6 +39,13 @@ export function matchPropertyForExtraction(
     const key = normalizeKey(extractedAddress);
     const byAddress = properties.filter((p) => normalizeKey(p.address) === key);
     if (byAddress.length === 1) return byAddress[0];
+    // Documents usually print just the street ("2735 W University Dr") while
+    // the property carries the full address with city and ZIP — match on the
+    // street (number, name, normalized suffix) and ZIP when both have one.
+    const byStreet = properties.filter((p) =>
+      isSameProperty({ address: p.address }, { address: extractedAddress }),
+    );
+    if (byStreet.length === 1) return byStreet[0];
   }
 
   return null;
