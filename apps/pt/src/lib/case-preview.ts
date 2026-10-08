@@ -210,7 +210,7 @@ export function casePreview(i: PreviewInput): CasePreview {
       label: "State ratio study",
       found: ratio != null,
       detail: ratio
-        ? `Comptroller median ratio ${ratio.medianPct}%${ratio.codOverCeiling > 0 ? `; uniformity ${ratio.cod} COD, above the standard` : ""}`
+        ? `Comptroller median ratio ${Math.round(ratio.medianPct * 100)}%${ratio.codOverCeiling > 0 ? `; uniformity ${ratio.cod} COD, above the standard` : ""}`
         : "No county study for this property type",
     },
     {

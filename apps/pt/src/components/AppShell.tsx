@@ -13,6 +13,7 @@ import {
   Lock,
   FileSignature,
   ShieldAlert,
+  Calculator,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -34,6 +35,7 @@ const NAV = [
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
   { to: "/dashboard/tax-bills", label: "Tax Bills", icon: Receipt, locked: true },
   { to: "/dashboard/issues", label: "Property Issues", icon: ShieldAlert, locked: false },
+  { to: "/dashboard/acquisition", label: "Acquisition Forecast", icon: Calculator, locked: false },
   { to: "/dashboard/agreements", label: "Agreements", icon: FileSignature, locked: false },
 ] as const;
 
@@ -68,6 +70,10 @@ const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard/issues": {
     icon: "text-rose-700",
     active: "data-[status=active]:from-rose-600 data-[status=active]:to-pink-800",
+  },
+  "/dashboard/acquisition": {
+    icon: "text-sky-700",
+    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
   },
   "/dashboard/agreements": {
     icon: "text-indigo-700",
