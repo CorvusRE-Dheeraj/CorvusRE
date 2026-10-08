@@ -3395,3 +3395,15 @@ create table if not exists public.podio_connections (
   connected_at timestamptz not null default now()
 );
 alter table public.podio_connections enable row level security;
+
+-- ── Scheduled jobs (pg_cron → edge functions) ──────────────────────────────
+-- Every job calls its function with net.http_post. pg_net's default timeout
+-- is 5 seconds, and several jobs run longer (send-hour-before-alerts ~8s,
+-- monitor-assessments ~70s), so their calls were timing out. Every job's
+-- call must pass `timeout_milliseconds := 150000` (the edge-function limit):
+--   select net.http_post(url := '…/functions/v1/<name>', headers := …,
+--     body := '{}'::jsonb, timeout_milliseconds := 150000);
+-- Applied to all existing jobs 2026-10-08:
+--   select cron.alter_job(jobid, command := regexp_replace(command,
+--     'body\s*:=\s*''\{\}''::jsonb', 'body := ''{}''::jsonb, timeout_milliseconds := 150000'))
+--   from cron.job where command like '%net.http_post%' and command not like '%timeout_milliseconds%';

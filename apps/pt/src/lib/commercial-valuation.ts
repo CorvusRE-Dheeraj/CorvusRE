@@ -166,6 +166,11 @@ export function equalUniformApproach(stats: ComparableStats | null): ApproachRes
   const basis =
     "Texas Tax Code §41.43(b)(3): your value can't exceed the median appraised value of comparable properties, appropriately adjusted.";
   if (!stats || !stats.indicated || stats.limitedData) {
+    // Say what was actually found — "add 3 comparables" next to a Market
+    // Value module showing 10 nearby properties reads as a contradiction.
+    const found = stats?.ranked.filter((c) => !c.userAdded).length ?? 0;
+    const withValue =
+      stats?.ranked.filter((c) => !c.userAdded && !c.excluded && c.marketValue != null).length ?? 0;
     return {
       id: "equity",
       name,
@@ -174,7 +179,9 @@ export function equalUniformApproach(stats: ComparableStats | null): ApproachRes
       indicatedValue: null,
       steps: [],
       missing: [
-        "At least 3 comparable properties with appraised values (from the county's records)",
+        found > 0
+          ? `At least 3 comparable properties with appraised values — ${found} nearby propert${found === 1 ? "y was" : "ies were"} found, but only ${withValue} ${withValue === 1 ? "has" : "have"} an appraised value on the county's record`
+          : "At least 3 comparable properties with appraised values (from the county's records)",
       ],
     };
   }

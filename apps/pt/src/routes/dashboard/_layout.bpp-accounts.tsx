@@ -54,6 +54,8 @@ function money(n: number | null): string {
   return n != null ? `$${n.toLocaleString("en-US")}` : "—";
 }
 
+// The lock check lives in its own component so the page's hooks always run in
+// the same order (hooks after an early return break when LOCKED changes).
 function BppAccounts() {
   if (LOCKED) {
     return (
@@ -63,6 +65,10 @@ function BppAccounts() {
       />
     );
   }
+  return <BppAccountsPage />;
+}
+
+function BppAccountsPage() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<BppAccountRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);

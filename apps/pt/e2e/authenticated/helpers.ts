@@ -53,9 +53,16 @@ export async function signIn(page: Page, email: string, password: string) {
   // finds a real session already in localStorage the moment it mounts.
   const storageKey = `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
   const sessionJson = JSON.stringify(data.session);
+  // Also mark the first-visit welcome as seen: an account created in the last
+  // day gets a full-screen welcome dialog that blocks every click, so the
+  // suite would only work against an old account (see WelcomeScreen.tsx).
+  const userId = data.session.user.id;
   await page.addInitScript(
-    ({ storageKey, sessionJson }) => window.localStorage.setItem(storageKey, sessionJson),
-    { storageKey, sessionJson },
+    ({ storageKey, sessionJson, userId }) => {
+      window.localStorage.setItem(storageKey, sessionJson);
+      window.localStorage.setItem(`corvuspt.welcomeSeen.${userId}`, "1");
+    },
+    { storageKey, sessionJson, userId },
   );
 
   await page.goto("/dashboard", { waitUntil: "networkidle" });

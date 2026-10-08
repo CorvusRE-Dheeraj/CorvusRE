@@ -113,3 +113,19 @@ describe("matchPropertyForExtraction", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("matching a document printed with just the street", () => {
+  it("finds the property by street when the document has no city or ZIP", () => {
+    const props = [
+      { id: "a", address: "2735 W UNIVERSITY DR, DENTON, TX, 76201", accountNumber: null },
+      { id: "b", address: "3500 N BONNIE BRAE ST, DENTON, TX, 76207", accountNumber: null },
+    ] as unknown as Parameters<typeof matchPropertyForExtraction>[1];
+    const m = matchPropertyForExtraction(
+      { propertyAddress: "2735 W University Drive" } as Parameters<
+        typeof matchPropertyForExtraction
+      >[0],
+      props,
+    );
+    expect(m?.id).toBe("a");
+  });
+});
