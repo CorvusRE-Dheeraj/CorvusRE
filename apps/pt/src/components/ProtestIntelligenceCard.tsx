@@ -4,6 +4,7 @@ import { ChevronDown, Info } from "lucide-react";
 import type { ArgumentStrength, Answer, ProtestIntelligence } from "@/lib/protest-intelligence";
 import type { NextAction } from "@/lib/case-pipeline";
 import { VERDICT_LABEL } from "@/lib/decision-card";
+import { SettlementHistory } from "@/components/SettlementHistory";
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const m = (n: number) =>
@@ -92,6 +93,7 @@ export function ProtestIntelligenceCard({
   onStart,
   onReviewEvidence,
   defaultOpen = true,
+  settlement,
 }: {
   intel: ProtestIntelligence;
   next: NextAction;
@@ -101,6 +103,8 @@ export function ProtestIntelligenceCard({
   onStart: () => void;
   onReviewEvidence: () => void;
   defaultOpen?: boolean;
+  // The property facts the settlement history is matched on.
+  settlement?: { cad: string | null; propertyType: string | null; value: number | null };
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const { card } = intel;
@@ -171,6 +175,19 @@ export function ProtestIntelligenceCard({
               </li>
             ))}
           </ol>
+
+          {settlement && (
+            <div className="mt-5">
+              <SettlementHistory
+                cad={settlement.cad}
+                propertyType={settlement.propertyType}
+                value={settlement.value}
+                offer={
+                  card.offer ? { original: card.offer.original, offer: card.offer.offer } : null
+                }
+              />
+            </div>
+          )}
 
           <section aria-label="Next action" className="mt-5 rounded-lg bg-secondary/50 p-4">
             <p className="text-sm">

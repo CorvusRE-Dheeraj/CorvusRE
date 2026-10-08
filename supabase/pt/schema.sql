@@ -3320,3 +3320,65 @@ create policy "Property managers can upload the owner's documents" on storage.ob
     select 1 from public.account_members m
     where m.owner_id::text = (storage.foldername(name))[1] and m.member_id = auth.uid()
       and m.status = 'active' and m.role = 'property_manager'));
+
+-- Historical settlement database: protest outcome statistics by county,
+-- tax year, property class, value band, representation and stage, built
+-- from appraisal districts' published account-level hearing results
+-- (scripts/import-settlements.ts; aggregation in
+-- functions/_shared/settlement-stats.ts). Aggregates of public records only —
+-- no owner names or accounts — so any signed-in user can read them; only the
+-- service role writes.
+create table if not exists public.settlement_stats (
+  id bigint generated always as identity primary key,
+  cad text not null,
+  tax_year integer not null,
+  property_class text not null,
+  value_band text not null,
+  representation text not null check (representation in ('all', 'agent', 'owner')),
+  stage text not null check (stage in ('all', 'informal', 'formal')),
+  protests integer not null,
+  reduced integer not null,
+  median_cut_pct numeric not null,
+  p25_cut_pct numeric not null,
+  p75_cut_pct numeric not null,
+  median_cut_when_reduced_pct numeric,
+  heard_share numeric not null,
+  source text not null,
+  imported_at timestamptz not null default now(),
+  unique (cad, tax_year, property_class, value_band, representation, stage)
+);
+alter table public.settlement_stats enable row level security;
+drop policy if exists "Signed-in users read settlement stats" on public.settlement_stats;
+create policy "Signed-in users read settlement stats" on public.settlement_stats
+  for select to authenticated using (true);
+
+-- County portal integration: the appraisal district's own published record
+-- of each case (sync-county-records, daily) — when the protest was received,
+-- the hearing's scheduled and actual dates, the final value and when it was
+-- released. One row per case; shown on the case page as the county's record.
+create table if not exists public.county_case_records (
+  protest_id uuid primary key references public.protests (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  property_id uuid references public.properties (id) on delete cascade,
+  cad text not null,
+  account text not null,
+  tax_year integer not null,
+  protested_at date,
+  protested_by text,
+  scheduled_hearing date,
+  actual_hearing date,
+  release_date date,
+  stage text,
+  initial_value numeric,
+  final_value numeric,
+  withdrawn boolean not null default false,
+  source text not null,
+  synced_at timestamptz not null default now()
+);
+alter table public.county_case_records enable row level security;
+drop policy if exists "Users read their own county records" on public.county_case_records;
+create policy "Users read their own county records" on public.county_case_records
+  for select using (auth.uid() = user_id);
+drop policy if exists "Members read" on public.county_case_records;
+create policy "Members read" on public.county_case_records
+  for select using (public.member_access(user_id, property_id, false));

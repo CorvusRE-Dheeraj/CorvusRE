@@ -662,6 +662,11 @@ function Overview() {
               propertyId={property.id}
               hasCase={hasCase}
               defaultOpen={i === 0}
+              settlement={{
+                cad: property.cad,
+                propertyType: property.propertyType,
+                value: property.totalValue,
+              }}
               onStart={() => nav({ to: "/dashboard/properties" })}
               onReviewEvidence={() => {
                 updateIntake({
