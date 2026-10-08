@@ -1460,25 +1460,17 @@ function CorvusGuidanceGate({
     <div id="case-readiness" className="mt-4 grid scroll-mt-24 gap-4">
       <div className="card-elev p-4">
         <h2 className="text-sm font-semibold">AI Guidance & Filing Notice</h2>
-        <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
+        <div className="mt-1.5 grid gap-0.5 text-xs text-muted-foreground">
           <p>
-            Corvus AI is an assistant designed to guide you through the property protest process and
-            help prepare and complete the required forms and documents.
+            Corvus AI helps prepare your protest forms — by continuing, you authorize it to fill
+            them in for you.
           </p>
           <p>
-            By proceeding, you authorize Corvus AI to assist with completing forms and preparing
-            filing materials on your behalf.
-          </p>
-          <p>
-            You are responsible for reviewing and verifying all information before signing, filing,
-            or submitting any document.
-          </p>
-          <p>
-            Corvus AI does not replace your responsibility to verify the accuracy of the information
-            or comply with county requirements.
+            You review and verify everything before signing or filing, and remain responsible for
+            county requirements.
           </p>
         </div>
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+        <p className="mt-2 border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
           {countyInfo ? (
             <>
               County procedures for {property.cad} were verified {countyInfo.verifiedAt}.{" "}
