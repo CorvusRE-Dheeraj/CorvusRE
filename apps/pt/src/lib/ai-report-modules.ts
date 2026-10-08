@@ -475,6 +475,11 @@ export async function getModuleAnalysis<K extends BatchModuleId>(
   moduleId: K,
   input: ModuleAnalysisInput,
 ): Promise<ModuleResultMap[K]> {
+  // The analysis needs a value to work from; say so plainly instead of
+  // surfacing the function's "totalValue is required".
+  if (!input.totalValue) {
+    throw new Error("No value on file yet — upload your appraisal notice to continue.");
+  }
   return invokeEdgeFunction<ModuleResultMap[K]>("ai-report-modules", { moduleId, ...input });
 }
 
