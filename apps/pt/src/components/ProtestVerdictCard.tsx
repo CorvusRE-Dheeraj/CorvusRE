@@ -79,25 +79,24 @@ export function ProtestVerdictCard({
     // just sorting it last; the result still lives on the Properties page
     // and inside the case itself (VerdictChip there is unaffected).
     .filter(({ v }) => v.tone !== "done")
-    .sort((a, b) => order.indexOf(a.v.tone) - order.indexOf(b.v.tone))
-    .slice(0, 6);
+    .sort((a, b) => order.indexOf(a.v.tone) - order.indexOf(b.v.tone));
   if (shown.length === 0) return null;
+  // Two rows keep the dashboard short; the rest are one click away.
+  const visible = shown.slice(0, 2);
   return (
     <section aria-labelledby="verdict-heading" className="grid gap-3">
       <div>
         <h2 id="verdict-heading" className="font-serif text-xl font-bold">
           Can I protest?
         </h2>
-        <p className="text-sm text-muted-foreground">
-          Our quick answer for each property. Open it for the full reasons.
-        </p>
+        <p className="text-[11px] text-muted-foreground">* Quick answer per property.</p>
       </div>
       {/* Each row is compact by design (see the compaction pass this replaced a taller
           card layout with) — on a wide screen a single column just leaves the right half
           empty, so this fills that space with a second column instead of stretching one
           row across it. */}
       <ul className="grid gap-1.5 lg:grid-cols-2 lg:gap-x-4">
-        {shown.map(({ p, v }) => {
+        {visible.map(({ p, v }) => {
           const t = TONE[v.tone];
           const Icon = t.Icon;
           const btn =
@@ -141,6 +140,11 @@ export function ProtestVerdictCard({
           );
         })}
       </ul>
+      {shown.length > visible.length && (
+        <Link to="/dashboard/properties" className="text-xs text-accent underline">
+          See all {shown.length} properties
+        </Link>
+      )}
       {properties.length > shown.length && (
         <Link to="/dashboard/properties" className="text-sm text-accent hover:underline">
           See all {properties.length} properties →
