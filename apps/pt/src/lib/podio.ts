@@ -20,7 +20,9 @@ export const podioStatus = () =>
 export async function connectPodio(): Promise<boolean> {
   const r = await invokeEdgeFunction<{ configured: boolean; url?: string }>("podio", {
     action: "start",
-    returnPath: `${import.meta.env.BASE_URL}dashboard/properties`,
+    // A full URL so the owner comes back to whichever copy of the app they
+    // started from (the live site, or localhost while developing).
+    returnPath: `${window.location.origin}${import.meta.env.BASE_URL}dashboard/properties`,
   });
   if (!r.configured || !r.url) return false;
   window.location.assign(r.url);

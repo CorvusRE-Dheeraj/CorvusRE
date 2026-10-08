@@ -26,6 +26,7 @@ import {
 } from "../_shared/podio.ts";
 import {
   itemsToGrid,
+  safeReturn,
   signState,
   verifyState,
   type PodioItem,
@@ -113,11 +114,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (body?.action === "start") {
       if (!cfg.configured) return json({ configured: false });
-      const rp = body?.returnPath;
-      const returnPath =
-        typeof rp === "string" && rp.startsWith("/") && !rp.startsWith("//")
-          ? rp
-          : FALLBACK_RETURN;
+      const returnPath = safeReturn(body?.returnPath) ?? FALLBACK_RETURN;
       const url = new URL("https://podio.com/oauth/authorize");
       url.searchParams.set("client_id", cfg.clientId);
       url.searchParams.set("redirect_uri", cfg.redirectUri);

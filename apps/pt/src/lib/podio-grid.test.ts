@@ -87,3 +87,20 @@ describe("OAuth state", () => {
     expect(await verifyState(evil, "secret", 1_000_000)).toBeNull();
   });
 });
+
+describe("safeReturn", () => {
+  it("allows the app's own origins and paths, nothing else", async () => {
+    const { safeReturn } = await import("../../../../supabase/pt/functions/_shared/podio-grid");
+    expect(safeReturn("/corvuspt/dashboard/properties")).toBe("/corvuspt/dashboard/properties");
+    expect(safeReturn("http://localhost:8081/corvuspt/dashboard/properties")).toBe(
+      "http://localhost:8081/corvuspt/dashboard/properties",
+    );
+    expect(safeReturn("https://corvusre.com/corvuspt/dashboard/properties")).toContain(
+      "corvusre.com",
+    );
+    expect(safeReturn("https://evil.com/corvuspt")).toBeNull();
+    expect(safeReturn("https://corvusre.com.evil.com/")).toBeNull();
+    expect(safeReturn("//evil.com")).toBeNull();
+    expect(safeReturn("javascript:alert(1)")).toBeNull();
+  });
+});

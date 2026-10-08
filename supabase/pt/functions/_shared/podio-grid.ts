@@ -123,6 +123,26 @@ const b64 = (s: string) =>
 const unb64 = (s: string) =>
   decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
 
+// Where the owner may be sent back to after connecting: an app-relative
+// path, or a full URL on one of the app's own origins (the live site, the
+// GitHub Pages URL, localhost while developing) — never anywhere else.
+const RETURN_ORIGINS = [
+  /^https:\/\/corvusre\.com$/,
+  /^https:\/\/corvusre-dheeraj\.github\.io$/,
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+];
+
+export function safeReturn(target: unknown): string | null {
+  if (typeof target !== "string" || !target) return null;
+  if (target.startsWith("/")) return target.startsWith("//") ? null : target;
+  try {
+    const u = new URL(target);
+    return RETURN_ORIGINS.some((re) => re.test(u.origin)) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function signState(
   userId: string,
   returnPath: string,
@@ -144,11 +164,8 @@ export async function verifyState(
   const [userId, ts, ret, sig] = parts;
   if (!userId || !Number(ts) || now - Number(ts) > maxAgeMs) return null;
   if ((await hmac(`${userId}.${ts}.${ret}`, secret)) !== sig) return null;
-  const returnPath = unb64(ret);
-  // Only an app-relative path — never an open redirect.
-  return returnPath.startsWith("/") && !returnPath.startsWith("//")
-    ? { userId, returnPath }
-    : null;
+  const returnPath = safeReturn(unb64(ret));
+  return returnPath ? { userId, returnPath } : null;
 }
 
 async function hmac(payload: string, secret: string): Promise<string> {
