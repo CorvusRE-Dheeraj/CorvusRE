@@ -10,7 +10,10 @@
 // base-data PDF is regenerated client-side on their next AI Report open (or
 // via its "Refresh" button); this job's responsibility is detect + notify.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
+import {
+  isServiceRoleRequest,
+  serviceRoleOnlyResponse,
+} from "../_shared/service-role-only.ts";
 import {
   compareYears,
   describeTrigger,
@@ -20,7 +23,8 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
@@ -43,7 +47,11 @@ type CadSnap = {
   lotSizeSqft: number | null;
   lotSizeAcres: number | null;
   valueHistory: { year: number; total: number | null }[];
-  deeds: { date: string | null; type: string | null; instrumentNum: string | null }[];
+  deeds: {
+    date: string | null;
+    type: string | null;
+    instrumentNum: string | null;
+  }[];
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,7 +75,10 @@ function trimCad(record: any): CadSnap | null {
     valueHistory: Array.isArray(record.valueHistory)
       ? record.valueHistory
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((h: any) => ({ year: h.year, total: h.appraisedValue ?? h.marketValue ?? null }))
+          .map((h: any) => ({
+            year: h.year,
+            total: h.appraisedValue ?? h.marketValue ?? null,
+          }))
           .sort((a: { year: number }, b: { year: number }) => a.year - b.year)
       : [],
     deeds: Array.isArray(record.deeds)
@@ -123,28 +134,88 @@ function diffCad(a: CadSnap | null, b: CadSnap | null): string | null {
 // The 10% / 20% / 30% increase trigger (../_shared/tax-increase.ts) for a tax
 // year that just appeared — only when `next` has a year `prev` didn't, so the
 // same increase is alerted once, not every week.
-function newYearIncrease(prev: CadSnap | null, next: CadSnap): IncreaseTrigger | null {
+function newYearIncrease(
+  prev: CadSnap | null,
+  next: CadSnap,
+): IncreaseTrigger | null {
   const points = new Map<number, number>();
-  for (const h of next.valueHistory) if (h.total != null) points.set(h.year, h.total);
-  if (next.taxYear != null && next.totalValue != null && !points.has(next.taxYear))
+  for (const h of next.valueHistory)
+    if (h.total != null) points.set(h.year, h.total);
+  if (
+    next.taxYear != null &&
+    next.totalValue != null &&
+    !points.has(next.taxYear)
+  )
     points.set(next.taxYear, next.totalValue);
   const years = [...points.keys()].sort((a, b) => a - b);
   const latest = years[years.length - 1];
   if (latest == null) return null;
   const prevYears = new Set<number>([
-    ...(prev?.valueHistory ?? []).filter((h) => h.total != null).map((h) => h.year),
+    ...(prev?.valueHistory ?? [])
+      .filter((h) => h.total != null)
+      .map((h) => h.year),
     ...(prev?.taxYear != null && prev.totalValue != null ? [prev.taxYear] : []),
   ]);
   if (prevYears.has(latest)) return null;
   return compareYears(
     "appraised",
-    points.has(latest - 1) ? { year: latest - 1, value: points.get(latest - 1)! } : undefined,
+    points.has(latest - 1)
+      ? { year: latest - 1, value: points.get(latest - 1)! }
+      : undefined,
     { year: latest, value: points.get(latest)! },
   );
 }
 
+// Keeps the saved property's own value columns current: a value that was
+// missing when it was saved (the county hadn't published yet — saved as $0)
+// fills in, and a newer year replaces an older one. Never replaces a value
+// with an older year's, and never blanks one out.
+async function syncPropertyValues(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  prop: {
+    id: string;
+    total_value: number | string | null;
+    value_year: number | null;
+  },
+  // deno-lint-ignore no-explicit-any
+  record: any,
+): Promise<void> {
+  if (!record) return;
+  const total =
+    typeof record.totalValue === "number" ? record.totalValue : null;
+  const savedTotal = prop.total_value == null ? null : Number(prop.total_value);
+  const upcoming = record.upcomingValueYear ?? null;
+  if (total != null && total > 0) {
+    const newerOrSame = (record.valueYear ?? 0) >= (prop.value_year ?? 0);
+    const missing = !savedTotal;
+    if (!(
+      missing ||
+      (newerOrSame &&
+        (total !== savedTotal || record.valueYear !== prop.value_year))
+    ))
+      return;
+    await admin
+      .from("properties")
+      .update({
+        land_value: record.landValue ?? null,
+        improvement_value: record.improvementValue ?? null,
+        total_value: total,
+        value_year: record.valueYear ?? null,
+        upcoming_value_year: upcoming,
+      })
+      .eq("id", prop.id);
+  } else if (upcoming != null) {
+    await admin
+      .from("properties")
+      .update({ upcoming_value_year: upcoming })
+      .eq("id", prop.id);
+  }
+}
+
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   // Scheduled job: only pg_cron (service-role key as Bearer auth) may run
   // this. verify_jwt alone lets any signed-in user trigger it across every
@@ -159,7 +230,7 @@ Deno.serve(async (req: Request) => {
   const { data: rows, error } = await admin
     .from("property_base_data")
     .select(
-      "property_id, user_id, snapshot, properties!inner(id, address, cad, account_number, subscription_status)",
+      "property_id, user_id, snapshot, properties!inner(id, address, cad, account_number, subscription_status, total_value, value_year)",
     );
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
@@ -193,7 +264,10 @@ Deno.serve(async (req: Request) => {
           : { address: prop.address };
       const res = await fetch(`${supabaseUrl}/functions/v1/cad-lookup`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(body),
       });
       if (!res.ok) {
@@ -204,7 +278,9 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       const json = await res.json();
-      const record = json?.record ?? (json?.matched === true ? json.record : null);
+      const record =
+        json?.record ?? (json?.matched === true ? json.record : null);
+      await syncPropertyValues(admin, prop, record);
       const nextCad = trimCad(record);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const prevCad = (row as any).snapshot?.cad ?? null;
@@ -260,7 +336,10 @@ Deno.serve(async (req: Request) => {
   }
 
   return new Response(
-    JSON.stringify({ checked: results.length, changed: results.filter((r) => r.changed).length }),
+    JSON.stringify({
+      checked: results.length,
+      changed: results.filter((r) => r.changed).length,
+    }),
     { status: 200, headers: corsHeaders },
   );
 });

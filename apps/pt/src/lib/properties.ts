@@ -31,6 +31,10 @@ export type PropertyRecord = {
   improvementValue: number | null;
   totalValue: number | null;
   taxYear: number | null;
+  // Year the values belong to / newer roll year not valued yet (optional:
+  // test fixtures and admin stubs don't carry them).
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   protestDeadline: string | null;
   paymentDueDate: string | null;
   taxAmountDue: number | null;
@@ -75,6 +79,8 @@ type PropertyRow = {
   improvement_value: number | null;
   total_value: number | null;
   tax_year: number | null;
+  value_year: number | null;
+  upcoming_value_year: number | null;
   protest_deadline: string | null;
   payment_due_date: string | null;
   tax_amount_due: number | null;
@@ -105,6 +111,8 @@ function fromRow(row: PropertyRow): PropertyRecord {
     improvementValue: row.improvement_value,
     totalValue: row.total_value,
     taxYear: row.tax_year,
+    valueYear: row.value_year,
+    upcomingValueYear: row.upcoming_value_year,
     protestDeadline: row.protest_deadline,
     paymentDueDate: row.payment_due_date,
     taxAmountDue: row.tax_amount_due,
@@ -127,7 +135,7 @@ function fromRow(row: PropertyRow): PropertyRecord {
 }
 
 const SELECT_COLUMNS =
-  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
+  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, value_year, upcoming_value_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
 
 export async function listProperties(userId: string): Promise<PropertyRecord[]> {
   const { data, error } = await supabase
@@ -245,6 +253,8 @@ export async function addProperty(
     improvementValue?: number;
     totalValue?: number;
     taxYear?: number;
+    valueYear?: number | null;
+    upcomingValueYear?: number | null;
     protestDeadline?: string;
     paymentDueDate?: string;
     taxAmountDue?: number;
@@ -269,6 +279,8 @@ export async function addProperty(
       improvement_value: property.improvementValue ?? null,
       total_value: property.totalValue ?? null,
       tax_year: property.taxYear ?? null,
+      value_year: property.valueYear ?? null,
+      upcoming_value_year: property.upcomingValueYear ?? null,
       protest_deadline: property.protestDeadline ?? null,
       payment_due_date: property.paymentDueDate ?? null,
       tax_amount_due: property.taxAmountDue ?? null,
@@ -423,6 +435,8 @@ export function buildAiReportIntakePatch(p: PropertyRecord): Partial<IntakeState
     improvementValue: p.improvementValue ?? undefined,
     totalValue: p.totalValue ?? undefined,
     taxYear: p.taxYear ?? undefined,
+    valueYear: p.valueYear ?? null,
+    upcomingValueYear: p.upcomingValueYear ?? null,
     valueHistory: p.valueHistory ?? undefined,
     confirmed: true,
   };

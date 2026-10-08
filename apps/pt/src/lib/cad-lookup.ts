@@ -27,6 +27,10 @@ export type CadRecord = {
   improvementValue: number | null;
   totalValue: number | null;
   taxYear: number | null;
+  // The year the values above belong to, and the newer roll year the county
+  // lists that isn't valued yet — set by cad-lookup's withValueYears.
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   // Only populated for the counties whose public site exposes a real JSON API
   // (Denton, Montgomery, Tarrant, Travis, Fort Bend, Grayson) — see
   // texas_cad_vendor_landscape memory for why the other 5 counties can't offer this.

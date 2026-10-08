@@ -685,7 +685,8 @@ export function CaseDetailView({
                 label: "Original value",
                 value: original ?? 0,
                 format: (n) => compactCurrency(n),
-                ...(original == null ? { text: "Not on file" } : {}),
+                // 0 means the county hasn't published this year's value yet, not $0.
+                ...(!original ? { text: "Pending" } : {}),
               },
               ...(outcome && outcome.finalValue != null
                 ? [

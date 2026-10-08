@@ -1215,6 +1215,8 @@ function Report() {
         improvementValue: state.improvementValue,
         totalValue: state.totalValue,
         taxYear: state.taxYear,
+        valueYear: state.valueYear,
+        upcomingValueYear: state.upcomingValueYear,
         valueHistory: state.valueHistory,
       });
       setResolvedProperty(property);
@@ -3016,8 +3018,17 @@ function Report() {
               <Field label="Type" value={state.propertyType} />
               <Field label="Land" value={currency(state.landValue)} />
               <Field label="Improvement" value={currency(state.improvementValue)} />
-              <Field label="Total" value={currency(state.totalValue)} bold />
+              <Field
+                label={state.valueYear ? `Total (${state.valueYear})` : "Total"}
+                value={state.totalValue ? currency(state.totalValue) : "Upcoming"}
+                bold
+              />
             </dl>
+            {state.upcomingValueYear && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                * {state.upcomingValueYear} value: upcoming
+              </p>
+            )}
             <ValueHistorySection history={state.valueHistory ?? []} />
             {user && (
               <button

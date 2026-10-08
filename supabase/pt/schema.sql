@@ -3435,3 +3435,10 @@ drop policy if exists "client errors: admin read" on public.client_errors;
 create policy "client errors: admin read" on public.client_errors
   for select using (public.is_admin());
 grant insert on public.client_errors to anon, authenticated;
+
+-- Which year a saved property's values belong to, and the newer roll year the
+-- county has opened but not valued yet (2026-10: Bexar and Denton list 2027
+-- with no values). Set from cad-lookup's valueYear/upcomingValueYear on save
+-- and by refresh-property-base-data; shown as "2025 value" + "2027 upcoming".
+alter table public.properties add column if not exists value_year integer;
+alter table public.properties add column if not exists upcoming_value_year integer;
