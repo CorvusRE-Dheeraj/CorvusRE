@@ -55,6 +55,16 @@ export type StreetViewRun =
   | { status: "ok"; comparison: ConditionComparison; locations: Record<string, string> }
   | { status: "not_enabled" | "unavailable" | "no_comps"; message: string };
 
+const notEnabled = (): StreetViewRun => ({
+  status: "not_enabled",
+  message: "Street View imagery isn't available in CorvusPT right now. We're working on it.",
+});
+
+const noSubjectImagery = (): StreetViewRun => ({
+  status: "unavailable",
+  message: "Google has no outdoor Street View imagery at this property's address.",
+});
+
 // Fetches Street View for the subject and its nearest comparables, has the
 // images rated, and compares them (lib in _shared/streetview-condition.ts).
 export async function runStreetViewComparison(subject: {
@@ -63,6 +73,12 @@ export async function runStreetViewComparison(subject: {
   accountNumber?: string;
   totalValue?: number;
 }): Promise<StreetViewRun> {
+  // Ask about the subject first (a free call), so a key without Street View
+  // enabled doesn't cost a county comps lookup before saying so.
+  const subjectMeta = await meta(subject.address).catch(() => null);
+  if (subjectMeta?.denied) return notEnabled();
+  if (subjectMeta && !subjectMeta.ok) return noSubjectImagery();
+
   const comps = await getComps({
     cad: subject.cad,
     accountNumber: subject.accountNumber,
@@ -92,20 +108,16 @@ export async function runStreetViewComparison(subject: {
       })),
   ];
 
-  const metas = await Promise.all(locations.map((l) => meta(l.location).catch(() => null)));
-  if (metas.some((m) => m?.denied))
-    return {
-      status: "not_enabled",
-      message: "Street View imagery isn't available in CorvusPT right now. We're working on it.",
-    };
+  const metas = await Promise.all(
+    locations.map((l, i) =>
+      i === 0 && subjectMeta ? subjectMeta : meta(l.location).catch(() => null),
+    ),
+  );
+  if (metas.some((m) => m?.denied)) return notEnabled();
   const available = locations
     .map((l, i) => ({ ...l, date: metas[i]?.ok ? metas[i]!.date : null, ok: !!metas[i]?.ok }))
     .filter((l) => l.ok);
-  if (!available.some((l) => l.key === "subject"))
-    return {
-      status: "unavailable",
-      message: "Google has no outdoor Street View imagery at this property's address.",
-    };
+  if (!available.some((l) => l.key === "subject")) return noSubjectImagery();
 
   const images = await Promise.all(
     available.map(async (l) => ({

@@ -183,7 +183,9 @@ function EventRow({
             {event.amount != null ? ` • $${event.amount.toLocaleString()}` : ""}
             {isReminder && event.missed && !event.resolved && (
               <span className="ml-1 font-medium text-destructive">
-                {daysUntil(event.date) < 0 ? "— passed without being marked done" : "— marked missed"}
+                {daysUntil(event.date) < 0
+                  ? "— passed without being marked done"
+                  : "— marked missed"}
               </span>
             )}
             {!isReminder && event.resolved && event.resolvedNote && (
@@ -1144,7 +1146,7 @@ function CalendarPage() {
                     onEditReminder={openEditReminder}
                     onDeleteReminder={handleDeleteReminder}
                     onToggleReminderDone={handleToggleReminderDone}
-              onToggleReminderMissed={handleToggleReminderMissed}
+                    onToggleReminderMissed={handleToggleReminderMissed}
                     onOpenProperty={openProperty}
                   />
                 ))

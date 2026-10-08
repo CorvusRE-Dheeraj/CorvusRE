@@ -369,7 +369,10 @@ function Overview() {
     protests
       .filter(
         (pr) =>
-          pr.status === "resolved" && pr.taxYear != null && pr.taxYear >= CURRENT_TAX_YEAR && pr.propertyId,
+          pr.status === "resolved" &&
+          pr.taxYear != null &&
+          pr.taxYear >= CURRENT_TAX_YEAR &&
+          pr.propertyId,
       )
       .map((pr) => pr.propertyId as string),
   );

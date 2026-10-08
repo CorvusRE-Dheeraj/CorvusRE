@@ -167,9 +167,7 @@ export function isAnswered(q: Question, answers: Record<string, Answer>): boolea
   if (Array.isArray(v) && v.length > 0) return true;
   const other = answers[`${q.id}__other`];
   return (
-    (q.type === "single" || q.type === "multi") &&
-    typeof other === "string" &&
-    other.trim() !== ""
+    (q.type === "single" || q.type === "multi") && typeof other === "string" && other.trim() !== ""
   );
 }
 

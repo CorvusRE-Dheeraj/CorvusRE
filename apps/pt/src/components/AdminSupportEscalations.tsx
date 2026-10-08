@@ -117,7 +117,9 @@ export function AdminSupportEscalations() {
                   aria-expanded={open}
                   className="rounded-md border border-input px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+                  />
                 </button>
               </div>
             </div>
@@ -128,7 +130,9 @@ export function AdminSupportEscalations() {
                 ) : (
                   r.transcript.map((t, i) => (
                     <p key={i}>
-                      <span className="font-semibold">{t.role === "user" ? "User: " : "Bot: "}</span>
+                      <span className="font-semibold">
+                        {t.role === "user" ? "User: " : "Bot: "}
+                      </span>
                       {t.text}
                     </p>
                   ))

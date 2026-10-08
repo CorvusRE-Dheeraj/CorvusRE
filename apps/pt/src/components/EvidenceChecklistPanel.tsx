@@ -187,7 +187,9 @@ export function EvidenceChecklistPanel({
   if (!items) return null;
 
   const evPriority = (it: EvidenceItem) => it.priority ?? "Supporting";
-  const needsActionItems = items.filter((i) => i.status === "Missing" && evPriority(i) === "Critical");
+  const needsActionItems = items.filter(
+    (i) => i.status === "Missing" && evPriority(i) === "Critical",
+  );
   const onFileItems = items.filter((i) => i.status !== "Missing");
   const strengthenItems = items.filter(
     (i) => i.status === "Missing" && evPriority(i) !== "Critical",

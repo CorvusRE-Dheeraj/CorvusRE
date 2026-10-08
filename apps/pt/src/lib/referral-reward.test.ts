@@ -68,7 +68,9 @@ function makeAdmin(tables: Tables, opts: { failUpdates?: () => boolean } = {}): 
             }
             if (sort) {
               const { col, asc } = sort;
-              hit = [...hit].sort((a, b) => String(a[col]).localeCompare(String(b[col])) * (asc ? 1 : -1));
+              hit = [...hit].sort(
+                (a, b) => String(a[col]).localeCompare(String(b[col])) * (asc ? 1 : -1),
+              );
             }
             return { data: hit.slice(0, max), error: null };
           })().then(resolve, reject);
@@ -86,7 +88,9 @@ function makeStripe(failFirst = 0, dedupeKeys = true) {
   const credits: { customerId: string; amount: number; key?: string }[] = [];
   const stripe: StripeLike = {
     subscriptions: {
-      retrieve: vi.fn(async () => ({ items: { data: [{ price: { unit_amount: 30_000 }, quantity: 1 }] } })),
+      retrieve: vi.fn(async () => ({
+        items: { data: [{ price: { unit_amount: 30_000 }, quantity: 1 }] },
+      })),
     },
     customers: {
       createBalanceTransaction: vi.fn(async (customerId, params, o) => {
@@ -95,7 +99,8 @@ function makeStripe(failFirst = 0, dedupeKeys = true) {
           throw new Error("stripe down");
         }
         // Real Stripe returns the SAME transaction for a repeated key.
-        if (dedupeKeys && o?.idempotencyKey && credits.some((c) => c.key === o.idempotencyKey)) return {};
+        if (dedupeKeys && o?.idempotencyKey && credits.some((c) => c.key === o.idempotencyKey))
+          return {};
         credits.push({ customerId, amount: params.amount, key: o?.idempotencyKey });
         return {};
       }),
@@ -108,24 +113,49 @@ let tables: Tables;
 beforeEach(() => {
   tables = {
     profiles: [
-      { id: "referrer", stripe_customer_id: "cus_ref", referred_by: null, referral_reward_granted_at: null },
-      { id: "friend", stripe_customer_id: "cus_friend", referred_by: "referrer", referral_reward_granted_at: null },
+      {
+        id: "referrer",
+        stripe_customer_id: "cus_ref",
+        referred_by: null,
+        referral_reward_granted_at: null,
+      },
+      {
+        id: "friend",
+        stripe_customer_id: "cus_friend",
+        referred_by: "referrer",
+        referral_reward_granted_at: null,
+      },
     ],
     properties: [
-      { id: "p1", user_id: "referrer", subscription_status: "active", stripe_subscription_id: "sub_ref", created_at: "2026-01-01" },
-      { id: "p2", user_id: "friend", subscription_status: "active", stripe_subscription_id: "sub_friend", created_at: "2026-02-01" },
+      {
+        id: "p1",
+        user_id: "referrer",
+        subscription_status: "active",
+        stripe_subscription_id: "sub_ref",
+        created_at: "2026-01-01",
+      },
+      {
+        id: "p2",
+        user_id: "friend",
+        subscription_status: "active",
+        stripe_subscription_id: "sub_friend",
+        created_at: "2026-02-01",
+      },
     ],
     bpp_accounts: [],
   };
 });
 
-const granted = (id: string) => tables.profiles.find((p) => p.id === id)!.referral_reward_granted_at;
+const granted = (id: string) =>
+  tables.profiles.find((p) => p.id === id)!.referral_reward_granted_at;
 
 describe("grantReferralRewardIfDue", () => {
   it("credits the referrer the amount of their own subscription, once", async () => {
     const { stripe, credits } = makeStripe();
     await grantReferralRewardIfDue(stripe, makeAdmin(tables), "friend");
-    expect(credits).toEqual([{ customerId: "cus_ref", amount: -30_000, key: "referral-reward:friend" }]);
+    expect(credits).toEqual([
+      { customerId: "cus_ref", amount: -30_000, key: "referral-reward:friend" },
+    ]);
     expect(granted("friend")).not.toBeNull();
   });
 
@@ -209,12 +239,26 @@ describe("grantPendingRewardsForReferrer (rewards that used to be lost)", () => 
   });
 
   it("pays each waiting referral once, even across repeated passes", async () => {
-    tables.profiles.push({ id: "friend2", stripe_customer_id: "cus_f2", referred_by: "referrer", referral_reward_granted_at: null });
-    tables.properties.push({ id: "p3", user_id: "friend2", subscription_status: "active", stripe_subscription_id: "sub_f2", created_at: "2026-03-01" });
+    tables.profiles.push({
+      id: "friend2",
+      stripe_customer_id: "cus_f2",
+      referred_by: "referrer",
+      referral_reward_granted_at: null,
+    });
+    tables.properties.push({
+      id: "p3",
+      user_id: "friend2",
+      subscription_status: "active",
+      stripe_subscription_id: "sub_f2",
+      created_at: "2026-03-01",
+    });
     const { stripe, credits } = makeStripe();
     const admin = makeAdmin(tables);
     await grantPendingRewardsForReferrer(stripe, admin, "referrer");
     await grantPendingRewardsForReferrer(stripe, admin, "referrer");
-    expect(credits.map((c) => c.key).sort()).toEqual(["referral-reward:friend", "referral-reward:friend2"]);
+    expect(credits.map((c) => c.key).sort()).toEqual([
+      "referral-reward:friend",
+      "referral-reward:friend2",
+    ]);
   });
 });

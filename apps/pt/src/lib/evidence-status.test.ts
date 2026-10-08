@@ -29,9 +29,9 @@ describe("computeEvidenceStatus — readiness phase (nothing submitted to the co
     expect(computeEvidenceStatus(input({ evidenceDocCount: 4, criticalMissingCount: 0 }))).toBe(
       "ready_to_submit",
     );
-    expect(
-      computeEvidenceStatus(input({ evidenceDocCount: 4, criticalMissingCount: null })),
-    ).toBe("ready_to_submit");
+    expect(computeEvidenceStatus(input({ evidenceDocCount: 4, criticalMissingCount: null }))).toBe(
+      "ready_to_submit",
+    );
   });
 
   it("stays ready_to_submit once a method is picked but not yet marked submitted", () => {

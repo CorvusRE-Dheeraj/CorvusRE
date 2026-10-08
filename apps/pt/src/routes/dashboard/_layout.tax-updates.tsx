@@ -493,8 +493,8 @@ function TaxUpdates() {
               Critical updates for tax year {currentTaxYear}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Enacted laws, adopted rules, and deadlines for the whole tax year — every one found
-              in any weekly check so far, not just this week's report above.
+              Enacted laws, adopted rules, and deadlines for the whole tax year — every one found in
+              any weekly check so far, not just this week's report above.
             </p>
             {sortedCriticalItems.length > 0 ? (
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -590,11 +590,11 @@ function TaxUpdates() {
           )}
           <p className="max-w-3xl">
             <strong className="text-white">How Corvus helps: </strong>
-            CorvusPT reads the official sources every week, tells you which updates may affect
-            your properties, and turns them into next steps &mdash; a protest opportunity
-            analysis, deadline and hearing alerts, evidence and hearing preparation, and every
-            stage of your case in one place. We&rsquo;re partnering with owners to shape it
-            around real needs, and as a beta customer your concerns come first.
+            CorvusPT reads the official sources every week, tells you which updates may affect your
+            properties, and turns them into next steps &mdash; a protest opportunity analysis,
+            deadline and hearing alerts, evidence and hearing preparation, and every stage of your
+            case in one place. We&rsquo;re partnering with owners to shape it around real needs, and
+            as a beta customer your concerns come first.
           </p>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">

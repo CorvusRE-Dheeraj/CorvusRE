@@ -516,6 +516,8 @@ export function JourneyBlock({
       </div>
 
       <ol
+        // Focusable so keyboard users can scroll the step strip sideways on a phone.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         aria-label="Journey steps"
         className="mt-5 flex items-start overflow-x-auto pb-1"

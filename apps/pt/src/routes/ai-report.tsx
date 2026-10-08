@@ -2626,8 +2626,7 @@ function Report() {
   // effectiveAgeYears being non-null (server-enforced null with zero real
   // photo evidence — see ai-report-modules.ts).
   const moduleImprovementData = moduleData.improvement?.data as
-    | ModuleResultMap["improvement"]
-    | undefined;
+    ModuleResultMap["improvement"] | undefined;
   const moduleIndications = useMemo<ModuleIndication[]>(() => {
     const out: ModuleIndication[] = [];
     if (incomeComputed.dataComplete && incomeComputed.indicatedValue != null) {
@@ -4231,9 +4230,7 @@ function ModuleVisual({
         </div>
         {topComp && (
           <div className={`mt-3 rounded-lg px-2.5 py-2 ${m.color.bg}`}>
-            <div
-              className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}
-            >
+            <div className={`text-[9px] font-semibold uppercase tracking-wide ${m.color.text}`}>
               Closest match — {Math.round(topComp.similarity)}% similar
             </div>
             <div className="mt-0.5 truncate text-xs font-medium text-foreground">
@@ -4359,7 +4356,11 @@ function ModuleVisual({
         );
       }
       const label =
-        d.score >= 70 ? "Strong Opportunity" : d.score >= 40 ? "Moderate Opportunity" : "Limited Opportunity";
+        d.score >= 70
+          ? "Strong Opportunity"
+          : d.score >= 40
+            ? "Moderate Opportunity"
+            : "Limited Opportunity";
       return (
         <div>
           <SpeedometerGauge value={d.score} size="sm" />
@@ -5215,8 +5216,8 @@ function CompsAdjustmentGrid({
         </span>{" "}
         ({compactCurrency(adjustedIndicated.min)}–{compactCurrency(adjustedIndicated.max)}). Each
         comp&apos;s own $/acre applied to the subject&apos;s actual size — only comps priced below
-        the subject&apos;s own $/acre are shown; a comp priced at or above it doesn&apos;t argue
-        for a lower value.
+        the subject&apos;s own $/acre are shown; a comp priced at or above it doesn&apos;t argue for
+        a lower value.
       </p>
     </div>
   );
@@ -7163,9 +7164,7 @@ function StrategyDetail({
               }
               className="mt-0.5 flex items-start gap-1 break-words text-left text-muted-foreground hover:text-accent hover:underline disabled:cursor-default disabled:opacity-60"
             >
-              <span>
-                {askingInvestigation ? "Asking…" : s.recommendedInvestigation}
-              </span>
+              <span>{askingInvestigation ? "Asking…" : s.recommendedInvestigation}</span>
               <ArrowRight className="mt-0.5 h-3 w-3 shrink-0" />
             </button>
             {investigationAnswer && (

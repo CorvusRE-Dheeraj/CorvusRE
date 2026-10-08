@@ -10,6 +10,8 @@ export function Term({ name, children }: { name: string; children?: ReactNode })
     <Tooltip>
       <TooltipTrigger asChild>
         <span
+          // Focusable so keyboard users can open the definition too.
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
           tabIndex={0}
           className="cursor-help underline decoration-dotted decoration-muted-foreground/60 underline-offset-2"
         >

@@ -361,8 +361,8 @@ export function AddOwnershipsModal({
               that reads as stuck rather than working — confirmed live. */}
           {searching && (
             <p className="text-xs text-muted-foreground">
-              Checking real county records across Texas — this can take up to 15 seconds,
-              especially if we need to look for close spelling matches.
+              Checking real county records across Texas — this can take up to 15 seconds, especially
+              if we need to look for close spelling matches.
             </p>
           )}
         </div>

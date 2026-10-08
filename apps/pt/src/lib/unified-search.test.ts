@@ -111,12 +111,20 @@ describe("unifiedPropertySearch", () => {
 
     // The row's id never changed across the whole update stream — same
     // object identity from "pending" through to "found".
-    const ids = new Set(updates.flat().filter((m) => m.googleLabel).map((m) => m.id));
+    const ids = new Set(
+      updates
+        .flat()
+        .filter((m) => m.googleLabel)
+        .map((m) => m.id),
+    );
     expect(ids.size).toBe(1);
   });
 
   it("merges a Google candidate's CAD record onto an existing row instead of duplicating it", async () => {
-    const sharedRecord = record({ accountNumber: "ACC-SHARED", propertyAddress: "1 Shared Pl, Denton, TX" });
+    const sharedRecord = record({
+      accountNumber: "ACC-SHARED",
+      propertyAddress: "1 Shared Pl, Denton, TX",
+    });
     vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
       { label: "Store A", address: "1 Shared Pl, Denton, TX", placeId: "pA" },
       { label: "Store B", address: "1 Shared Pl Suite 2, Denton, TX", placeId: "pB" },
@@ -242,7 +250,12 @@ describe("unifiedPropertySearch", () => {
     // this file's own top-of-file comment and cad-lookup/index.ts's
     // COUNTY_QUERY_BY_HINT for the full story.
     vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
-      { label: "Taco Bell", address: "681 Fort Worth Dr, Denton, TX", placeId: "p1", county: "Denton County" },
+      {
+        label: "Taco Bell",
+        address: "681 Fort Worth Dr, Denton, TX",
+        placeId: "p1",
+        county: "Denton County",
+      },
     ]);
     vi.mocked(cadLookupPreview).mockResolvedValue({ matched: false, nearby: [] });
 
@@ -264,7 +277,10 @@ describe("unifiedPropertySearch", () => {
     // parcel moments later. Only one row should ever reach the caller, and
     // it should end up WITH the Google label attached (more informative),
     // not without it.
-    const sharedRecord = record({ accountNumber: "618926", propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX" });
+    const sharedRecord = record({
+      accountNumber: "618926",
+      propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX",
+    });
     vi.mocked(cadLookupPreview).mockImplementation((q: string) =>
       q === "walmart denton" || q.includes("University")
         ? Promise.resolve({ matched: true, record: sharedRecord })
@@ -291,10 +307,15 @@ describe("unifiedPropertySearch", () => {
     // whether a row already existed when IT resolves second. Forces that
     // exact ordering here: the Google candidate's lookup resolves
     // immediately, direct's stays pending until released afterward.
-    const sharedRecord = record({ accountNumber: "618926", propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX" });
+    const sharedRecord = record({
+      accountNumber: "618926",
+      propertyAddress: "2750 W UNIVERSITY DR, DENTON, TX",
+    });
     const directGate = deferred<CadLookupResult>();
     vi.mocked(cadLookupPreview).mockImplementation((q: string) =>
-      q === "walmart denton" ? directGate.promise : Promise.resolve({ matched: true, record: sharedRecord }),
+      q === "walmart denton"
+        ? directGate.promise
+        : Promise.resolve({ matched: true, record: sharedRecord }),
     );
     vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
       { label: "Walmart Supercenter", address: "2750 W University Dr, Denton, TX", placeId: "p1" },
@@ -325,7 +346,12 @@ describe("unifiedPropertySearch", () => {
     // be recognized and skipped entirely, not just shown with a spinner
     // that eventually gives up.
     vi.mocked(fetchGoogleTextSearch).mockResolvedValue([
-      { label: "Walmart", address: "2770 West Evans Avenue, Denver, CO", placeId: "p1", county: "Denver County" },
+      {
+        label: "Walmart",
+        address: "2770 West Evans Avenue, Denver, CO",
+        placeId: "p1",
+        county: "Denver County",
+      },
     ]);
     vi.mocked(cadLookupPreview).mockResolvedValue({ matched: false, nearby: [] });
 

@@ -63,19 +63,22 @@ const SUPPORT_TOPICS: { match: RegExp; image: string; alt: string; caption: stri
     caption: "Here's where to add one:",
   },
   {
-    match: /\bupload(ing)?\b.*\b(notice|document|evidence|file)s?\b|\b(notice|document)s?\b.*\bupload/i,
+    match:
+      /\bupload(ing)?\b.*\b(notice|document|evidence|file)s?\b|\b(notice|document)s?\b.*\bupload/i,
     image: "upload-documents.png",
     alt: "The document upload area",
     caption: "Here's where to upload it:",
   },
   {
-    match: /\bfile\b.*\bprotest\b|\bstart\b.*\bprotest\b|\bhow\s+do\s+i\s+protest\b|\bprotest\s+my\s+propert/i,
+    match:
+      /\bfile\b.*\bprotest\b|\bstart\b.*\bprotest\b|\bhow\s+do\s+i\s+protest\b|\bprotest\s+my\s+propert/i,
     image: "file-protest.png",
     alt: "The Protest My Property button",
     caption: "Here's where to start a protest:",
   },
   {
-    match: /\bcase\s+status\b|\bview\s+(my\s+)?case\b|\bwhere.{0,15}\bmy\s+(case|protest)\b|\btrack\b.*\b(case|protest)\b/i,
+    match:
+      /\bcase\s+status\b|\bview\s+(my\s+)?case\b|\bwhere.{0,15}\bmy\s+(case|protest)\b|\btrack\b.*\b(case|protest)\b/i,
     image: "view-case.png",
     alt: "The View Case button on a property's row",
     caption: "Here's where to check it:",
@@ -253,7 +256,9 @@ export function AskAiWidget() {
           message:
             `A user asked ${associateName} (Ask AI) to have support call them back.\n\n` +
             `User: ${user.email}\n\nConversation:\n` +
-            transcript.map((t) => `${t.role === "user" ? "User" : associateName}: ${t.text}`).join("\n"),
+            transcript
+              .map((t) => `${t.role === "user" ? "User" : associateName}: ${t.text}`)
+              .join("\n"),
           replyToEmail: user.email ?? undefined,
         }).catch(() => {
           // The DB row above is the real record either way — a notification
@@ -304,8 +309,8 @@ export function AskAiWidget() {
 
           {messages.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Hi, I'm {associateName} from Corvus support 👋 What can I help you with — a
-              question, or something not working right?
+              Hi, I'm {associateName} from Corvus support 👋 What can I help you with — a question,
+              or something not working right?
             </p>
           )}
 
@@ -354,32 +359,31 @@ export function AskAiWidget() {
                   {associateName} is looking into that…
                 </div>
               )}
-              {user &&
-                !asking &&
-                !escalated &&
-                messages.some((m) => m.role === "assistant") && (
-                  <div className="mr-auto max-w-[90%] rounded-md border border-dashed border-border px-3 py-2 text-xs">
-                    <p className="text-muted-foreground">Still stuck? I can get a real person on it.</p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => void escalate("call")}
-                        disabled={escalating}
-                        className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
-                      >
-                        <Phone className="h-3 w-3" /> Talk to someone
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void escalate("email")}
-                        disabled={escalating}
-                        className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
-                      >
-                        <Mail className="h-3 w-3" /> Email us
-                      </button>
-                    </div>
+              {user && !asking && !escalated && messages.some((m) => m.role === "assistant") && (
+                <div className="mr-auto max-w-[90%] rounded-md border border-dashed border-border px-3 py-2 text-xs">
+                  <p className="text-muted-foreground">
+                    Still stuck? I can get a real person on it.
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void escalate("call")}
+                      disabled={escalating}
+                      className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
+                    >
+                      <Phone className="h-3 w-3" /> Talk to someone
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void escalate("email")}
+                      disabled={escalating}
+                      className="btn-outline inline-flex items-center gap-1 py-1 text-xs disabled:opacity-60"
+                    >
+                      <Mail className="h-3 w-3" /> Email us
+                    </button>
                   </div>
-                )}
+                </div>
+              )}
             </div>
           )}
 

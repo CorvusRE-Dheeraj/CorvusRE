@@ -170,7 +170,6 @@ function Home() {
       clearTimeout(t);
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
   // Shared by the form's own submit and by picking an address suggestion

@@ -22,7 +22,11 @@ function Cloud({
       className={`${className} hero-cloud-drift`}
       viewBox="0 0 100 60"
       fill="var(--hero-cloud)"
-      style={{ opacity: "var(--hero-cloud-opacity)", animationDuration: duration, animationDelay: delay }}
+      style={{
+        opacity: "var(--hero-cloud-opacity)",
+        animationDuration: duration,
+        animationDelay: delay,
+      }}
     >
       <rect x="14" y="34" width="68" height="20" rx="10" />
       <ellipse cx="30" cy="38" rx="26" ry="16" />
@@ -41,7 +45,10 @@ function Sun({ className }: { className: string }) {
         className="absolute inset-0 rounded-full blur-xl hero-sun-glow"
         style={{ background: "var(--hero-sun)", opacity: 0.5 }}
       />
-      <div className="absolute inset-[18%] rounded-full" style={{ background: "var(--hero-sun)" }} />
+      <div
+        className="absolute inset-[18%] rounded-full"
+        style={{ background: "var(--hero-sun)" }}
+      />
     </div>
   );
 }
@@ -59,7 +66,13 @@ function Moon({ className }: { className: string }) {
         <div className="absolute inset-0 rounded-full" style={{ background: "var(--hero-moon)" }} />
         <div
           className="absolute rounded-full"
-          style={{ background: "var(--hero-sky-top)", width: "85%", height: "85%", top: "-15%", right: "-28%" }}
+          style={{
+            background: "var(--hero-sky-top)",
+            width: "85%",
+            height: "85%",
+            top: "-15%",
+            right: "-28%",
+          }}
         />
       </div>
     </div>
@@ -81,7 +94,8 @@ export function HeroBackground() {
       <div
         className="absolute inset-0"
         style={{
-          background: "linear-gradient(180deg, var(--hero-sky-top) 0%, var(--hero-sky-bottom) 100%)",
+          background:
+            "linear-gradient(180deg, var(--hero-sky-top) 0%, var(--hero-sky-bottom) 100%)",
         }}
       />
       {/* Sun (light mode) / Moon (dark mode) — same spot, swapped by theme */}
@@ -94,17 +108,53 @@ export function HeroBackground() {
 
       {/* Clouds in the sky — each with its own duration/delay so they drift out
           of sync with each other instead of moving in lockstep. */}
-      <Cloud className="absolute top-8 left-[6%] h-10 w-24 md:h-12 md:w-28" duration="10s" delay="0s" />
-      <Cloud className="absolute top-20 left-[20%] h-7 w-16 md:h-8 md:w-20" duration="8s" delay="1.2s" />
-      <Cloud className="absolute top-12 right-[32%] h-9 w-20 md:h-10 md:w-24" duration="11s" delay="0.6s" />
-      <Cloud className="absolute top-4 left-[42%] h-6 w-14 md:h-7 md:w-16" duration="8.5s" delay="1.5s" />
-      <Cloud className="absolute top-24 right-[6%] h-7 w-16 md:h-8 md:w-18" duration="9.5s" delay="0.8s" />
+      <Cloud
+        className="absolute top-8 left-[6%] h-10 w-24 md:h-12 md:w-28"
+        duration="10s"
+        delay="0s"
+      />
+      <Cloud
+        className="absolute top-20 left-[20%] h-7 w-16 md:h-8 md:w-20"
+        duration="8s"
+        delay="1.2s"
+      />
+      <Cloud
+        className="absolute top-12 right-[32%] h-9 w-20 md:h-10 md:w-24"
+        duration="11s"
+        delay="0.6s"
+      />
+      <Cloud
+        className="absolute top-4 left-[42%] h-6 w-14 md:h-7 md:w-16"
+        duration="8.5s"
+        delay="1.5s"
+      />
+      <Cloud
+        className="absolute top-24 right-[6%] h-7 w-16 md:h-8 md:w-18"
+        duration="9.5s"
+        delay="0.8s"
+      />
       {/* Extra clouds right above the house */}
-      <Cloud className="hidden lg:block absolute top-28 left-[2%] h-9 w-20" duration="9s" delay="2s" />
-      <Cloud className="hidden lg:block absolute top-40 left-[12%] h-6 w-14" duration="7.5s" delay="0.3s" />
+      <Cloud
+        className="hidden lg:block absolute top-28 left-[2%] h-9 w-20"
+        duration="9s"
+        delay="2s"
+      />
+      <Cloud
+        className="hidden lg:block absolute top-40 left-[12%] h-6 w-14"
+        duration="7.5s"
+        delay="0.3s"
+      />
       {/* Extra clouds on the right, above the couple/dog-walker group */}
-      <Cloud className="hidden lg:block absolute top-6 right-[42%] h-6 w-14" duration="10.5s" delay="2.4s" />
-      <Cloud className="hidden lg:block absolute top-48 right-[10%] h-7 w-16" duration="7s" delay="0.4s" />
+      <Cloud
+        className="hidden lg:block absolute top-6 right-[42%] h-6 w-14"
+        duration="10.5s"
+        delay="2.4s"
+      />
+      <Cloud
+        className="hidden lg:block absolute top-48 right-[10%] h-7 w-16"
+        duration="7s"
+        delay="0.4s"
+      />
 
       {/* Curved field band, ~35% of the hero height */}
       <svg
@@ -129,7 +179,11 @@ export function HeroBackground() {
           extra hand-coded round tree that used to sit beside it was removed. */}
       <HouseIllustration className="hidden lg:block absolute bottom-2 left-[2%] h-48 w-auto xl:h-56" />
       {/* Car, parked a bit further off from the house */}
-      <svg className="hidden lg:block absolute bottom-2 left-[17%] h-10 w-20 xl:h-12 xl:w-24" viewBox="0 0 100 50" fill="none">
+      <svg
+        className="hidden lg:block absolute bottom-2 left-[17%] h-10 w-20 xl:h-12 xl:w-24"
+        viewBox="0 0 100 50"
+        fill="none"
+      >
         <rect x="5" y="24" width="90" height="18" rx="7" fill="var(--primary)" opacity="0.75" />
         <path d="M25 24 L34 9 L66 9 L75 24 Z" fill="var(--primary)" opacity="0.75" />
         <rect x="34" y="12" width="32" height="12" fill="var(--hero-sky-bottom)" opacity="0.8" />
