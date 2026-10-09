@@ -151,13 +151,14 @@ const fromRow = (r: ReportRow): TaxReport => ({
   generatedAt: r.generated_at,
 });
 
-// Newest first; the server keeps only the latest 5.
+// Newest first; the server keeps every week of the current tax year (and
+// at least the latest 5).
 export async function listTaxReports(): Promise<TaxReport[]> {
   const { data, error } = await supabase
     .from("tax_update_reports")
     .select("id, week_start, title, summary, updates, sources, generated_at")
     .order("week_start", { ascending: false })
-    .limit(5);
+    .limit(60);
   if (error) throw error;
   return (data as ReportRow[]).map(fromRow);
 }
@@ -471,4 +472,38 @@ export function upcomingKeyDates(today: string, count = 3): UpcomingKeyDate[] {
     }
   }
   return out.sort((a, b) => a.daysAway - b.daysAway).slice(0, count);
+}
+
+// ── The tax year's updates ───────────────────────────────────────────────
+// Everything verified so far this tax year, not just the latest week: every
+// weekly report from the year plus the year-long critical-items ledger,
+// de-duplicated (same title + counties = same update; the newest copy wins).
+// "New" means found in the latest week only.
+const updateKey = (u: TaxUpdate) =>
+  `${u.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()}|${[...u.counties].sort().join(",")}`;
+
+export function taxYearUpdates(
+  reports: TaxReport[],
+  critical: TaxUpdate[],
+  taxYear: number,
+): TaxUpdate[] {
+  const ofYear = reports
+    .filter((r) => Number(r.weekStart.slice(0, 4)) === taxYear)
+    .sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
+  const latestWeek = ofYear[0]?.weekStart;
+  const byKey = new Map<string, TaxUpdate>();
+  for (const r of ofYear) {
+    for (const u of r.updates) {
+      const k = updateKey(u);
+      if (!byKey.has(k)) byKey.set(k, { ...u, isNew: r.weekStart === latestWeek && u.isNew });
+    }
+  }
+  for (const u of critical) {
+    const k = updateKey(u);
+    if (!byKey.has(k)) byKey.set(k, { ...u, isNew: false });
+  }
+  return [...byKey.values()];
 }

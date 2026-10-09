@@ -483,12 +483,19 @@ Deno.serve(async (req: Request) => {
     );
     if (upErr) throw upErr;
 
-    // Keep only the newest KEEP_REPORTS.
+    // Keep every week of the current tax year (the page shows the whole
+    // year's updates), plus at least the newest KEEP_REPORTS across a year
+    // boundary.
     const { data: all } = await admin
       .from("tax_update_reports")
       .select("id, week_start")
       .order("week_start", { ascending: false });
-    const stale = (all ?? []).slice(KEEP_REPORTS).map((r) => r.id as string);
+    const yearStart = `${weekStart.slice(0, 4)}-01-01`;
+    const stale = (all ?? [])
+      .filter(
+        (r, i) => i >= KEEP_REPORTS && (r.week_start as string) < yearStart,
+      )
+      .map((r) => r.id as string);
     if (stale.length > 0)
       await admin.from("tax_update_reports").delete().in("id", stale);
 

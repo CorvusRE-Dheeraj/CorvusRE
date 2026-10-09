@@ -48,6 +48,7 @@ import {
   type TaxUpdateTag,
   type UpdateFilter,
   upcomingKeyDates,
+  taxYearUpdates,
 } from "@/lib/tax-updates";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -133,11 +134,13 @@ function TaxUpdates() {
   }, [user]);
 
   const report = reports[0] ?? null;
-  const visible = useMemo(
-    () => (report ? filterUpdates(report.updates, filter) : []),
-    [report, filter],
+  // The whole tax year's verified updates, not just the latest week's.
+  const yearUpdates = useMemo(
+    () => taxYearUpdates(reports, criticalItems, currentTaxYear),
+    [reports, criticalItems],
   );
-  const counties = useMemo(() => (report ? countiesIn(report.updates) : []), [report]);
+  const visible = useMemo(() => filterUpdates(yearUpdates, filter), [yearUpdates, filter]);
+  const counties = useMemo(() => countiesIn(yearUpdates), [yearUpdates]);
   const filtering = filter.scope !== "all" || filter.tags.length > 0 || filter.query.trim() !== "";
   // The year's critical items, ranked (deadlines/enacted law first) — the
   // whole ledger, never capped, unlike the weekly chapters above.
@@ -173,7 +176,7 @@ function TaxUpdates() {
         question:
           `${q}\n\nAnswer using ONLY the Texas property-tax updates and my property summary below. ` +
           "If the updates don't cover it, say so. Mention which update you're using. Do not give legal advice; remind me to verify against the official source.",
-        context: `UPDATES (${report.title}):\n${report.updates.map(updateAsText).join("\n---\n") || "(none this week)"}\n\nMY PROPERTIES AND CASES:\n${myContext || "(none)"}`,
+        context: `UPDATES (tax year ${currentTaxYear}):\n${yearUpdates.map(updateAsText).join("\n---\n") || "(none this tax year)"}\n\nMY PROPERTIES AND CASES:\n${myContext || "(none)"}`,
       });
       setAnswer(a);
     } catch (err) {
@@ -238,8 +241,8 @@ function TaxUpdates() {
                 Texas Tax Law &amp; Updates
               </h1>
               <p className="mt-1 max-w-xl text-sm text-white/85">
-                What changed this week in Texas property tax — from official sources only. Not legal
-                or tax advice.
+                What changed this tax year in Texas property tax — from official sources only. Not
+                legal or tax advice.
               </p>
             </div>
           </div>
@@ -256,9 +259,9 @@ function TaxUpdates() {
           <div className="relative mt-5 grid grid-cols-3 gap-2 sm:max-w-md">
             {(
               [
-                ["Updates", report.updates.length],
-                ["New this week", report.updates.filter((u) => u.isNew).length],
-                ["Counties", countiesIn(report.updates).length],
+                [`Updates in ${currentTaxYear}`, yearUpdates.length],
+                ["New this week", yearUpdates.filter((u) => u.isNew).length],
+                ["Counties", counties.length],
               ] as const
             ).map(([label, n]) => (
               <div key={label} className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20">
@@ -375,13 +378,13 @@ function TaxUpdates() {
                   disabled={counties.length === 0}
                   title={
                     counties.length === 0
-                      ? "No county-specific updates this week — nothing to filter by yet."
+                      ? "No county-specific updates this tax year — nothing to filter by yet."
                       : undefined
                   }
                   className="rounded-md border border-input bg-background px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">
-                    {counties.length === 0 ? "No counties this week" : "All counties"}
+                    {counties.length === 0 ? "No counties this year" : "All counties"}
                   </option>
                   {counties.map((c) => (
                     <option key={c} value={c}>
@@ -481,7 +484,7 @@ function TaxUpdates() {
                   </div>
                   {items.length === 0 && !showStanding && (
                     <p className="mt-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                      Nothing verified here this week.
+                      Nothing verified here this tax year.
                     </p>
                   )}
                   {showStanding && (
@@ -521,7 +524,7 @@ function TaxUpdates() {
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Enacted laws, adopted rules, and deadlines for the whole tax year — every one found in
-              any weekly check so far, not just this week's report above.
+              any weekly check so far.
             </p>
             {sortedCriticalItems.length > 0 ? (
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
