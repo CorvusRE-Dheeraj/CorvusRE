@@ -423,3 +423,52 @@ export function toBullets(text: string, max = 3, maxLen = 170): string[] {
     return `${(at > maxLen * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
   });
 }
+
+// ── Coming up ────────────────────────────────────────────────────────────
+// Fixed annual dates set by the Tax Code, so the page always has a timely
+// alert even in a week the official sources didn't change. Month is 1-based.
+export const KEY_DATES: { month: number; day: number; label: string; cite: string }[] = [
+  {
+    month: 1,
+    day: 1,
+    label: "Appraisal date — values are set as of today",
+    cite: "Tax Code §23.01",
+  },
+  {
+    month: 1,
+    day: 31,
+    label: "Property taxes due — delinquent after today",
+    cite: "Tax Code §31.02",
+  },
+  {
+    month: 4,
+    day: 15,
+    label: "Business personal property renditions due",
+    cite: "Tax Code §22.23",
+  },
+  { month: 4, day: 30, label: "Exemption applications generally due", cite: "Tax Code §11.43" },
+  {
+    month: 5,
+    day: 15,
+    label: "Protest deadline (or 30 days after your notice)",
+    cite: "Tax Code §41.44",
+  },
+  { month: 10, day: 1, label: "Tax bills mailed around now", cite: "Tax Code §31.01" },
+];
+
+export type UpcomingKeyDate = { date: string; label: string; cite: string; daysAway: number };
+
+// The next `count` key dates on or after `today` (YYYY-MM-DD), soonest first.
+export function upcomingKeyDates(today: string, count = 3): UpcomingKeyDate[] {
+  const base = Date.parse(`${today}T00:00:00Z`);
+  const year = Number(today.slice(0, 4));
+  const out: UpcomingKeyDate[] = [];
+  for (const y of [year, year + 1]) {
+    for (const k of KEY_DATES) {
+      const date = `${y}-${String(k.month).padStart(2, "0")}-${String(k.day).padStart(2, "0")}`;
+      const daysAway = Math.round((Date.parse(`${date}T00:00:00Z`) - base) / 86_400_000);
+      if (daysAway >= 0) out.push({ date, label: k.label, cite: k.cite, daysAway });
+    }
+  }
+  return out.sort((a, b) => a.daysAway - b.daysAway).slice(0, count);
+}

@@ -1,3 +1,4 @@
+import { localTodayIso } from "@/lib/case-pipeline";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -46,6 +47,7 @@ import {
   type TaxUpdate,
   type TaxUpdateTag,
   type UpdateFilter,
+  upcomingKeyDates,
 } from "@/lib/tax-updates";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -268,6 +270,31 @@ function TaxUpdates() {
             ))}
           </div>
         )}
+        {/* Always-on alerts: the next statutory dates, so there's something
+            timely here even in a week the official sources didn't change. */}
+        <div className="relative mt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
+            Coming up
+          </div>
+          <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
+            {upcomingKeyDates(localTodayIso()).map((k) => (
+              <div key={k.date} className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20">
+                <div className="text-sm font-semibold">
+                  {new Date(`${k.date}T12:00:00`).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}{" "}
+                  <span className="font-normal text-white/80">
+                    · {k.daysAway === 0 ? "today" : `in ${k.daysAway} days`}
+                  </span>
+                </div>
+                <div className="text-xs text-white/90">{k.label}</div>
+                <div className="text-[10px] text-white/70">{k.cite}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading ? (
