@@ -15,7 +15,7 @@ import {
   isLaunchDiscountActive,
   type PlanValue,
 } from "@/lib/billing";
-import { ShieldCheck, CalendarCheck, FileCheck2, Scale, BadgePercent } from "lucide-react";
+import { ShieldCheck, CalendarCheck, FileCheck2, Scale, BadgePercent, Lock } from "lucide-react";
 import { LaneComparisonTable } from "@/components/ServiceLanes";
 
 export const Route = createFileRoute("/pricing")({
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/pricing")({
       {
         name: "description",
         content:
-          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help, where our team files and represents you — fixed price, % of savings, or custom above $5M. Franchise owners get 50% off.",
+          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help (coming soon), where our team files and represents you. Franchise owners get 50% off.",
       },
       { property: "og:title", content: "CorvusPT Pricing" },
       {
@@ -139,11 +139,6 @@ function Page() {
           <h1 className="mt-3 text-4xl md:text-5xl font-semibold">
             Three lanes. Pick the one that fits.
           </h1>
-          <p className="mt-4 text-lg text-muted-foreground">
-            Start with a free review. Then either protest it yourself with CorvusPT&apos;s AI, or
-            have our team file and represent you. Each lane is its own workflow — you always know
-            who files, who goes to the hearing and who talks to the county.
-          </p>
         </div>
       </div>
 
@@ -186,9 +181,11 @@ function Page() {
               <span className="text-4xl font-semibold">{dollars(MONTHLY_PRICE)}</span>
               <span className="text-muted-foreground text-sm">/month, per property</span>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Billed annually — {dollars(ANNUAL_PRICE)}/year ·{" "}
+            <p className="mt-2 text-xl font-semibold">
               {PLAN_BRACKET.label.replace(" - ", "–")} property value
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Billed annually — {dollars(ANNUAL_PRICE)}/year
             </p>
             {launchActive && (
               <div className="mt-4 rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm">
@@ -201,7 +198,8 @@ function Page() {
                   <span className="font-semibold text-foreground">
                     {dollars(LAUNCH_FIRST_YEAR_PRICE)}
                   </span>{" "}
-                  for year one when you sign up before {LAUNCH_DEADLINE_LABEL}.
+                  for year one when you sign up before{" "}
+                  <span className="font-bold text-foreground">{LAUNCH_DEADLINE_LABEL}</span>.
                 </p>
               </div>
             )}
@@ -209,7 +207,10 @@ function Page() {
               <span className="font-semibold">
                 You file, you attend the hearing, you talk to the county
               </span>{" "}
-              — CorvusPT&apos;s AI prepares everything and tells you what to do and when.
+              —{" "}
+              <span className="font-bold">
+                CorvusPT&apos;s AI prepares everything and tells you what to do and when.
+              </span>
             </p>
             <ul className="mt-4 space-y-2 text-sm">
               {OWNER_FEATURES.map((f) => (
@@ -232,20 +233,24 @@ function Page() {
             </p>
           </ScrollReveal>
 
-          {/* Expert/Managed Help — three ways to pay for the same service.
-              Success-based and $5M+ are quoted and billed by the team, not
-              through Stripe checkout — so no rate is printed for them. */}
+          {/* Expert/Managed Help — upcoming (locked). $5M+ is quoted by the
+              team, not through Stripe checkout — so no rate is printed. */}
           <ScrollReveal
             delay={240}
-            className="card-elev p-6 flex flex-col h-full ring-2 ring-violet-500/50"
+            className="card-elev p-6 flex flex-col h-full ring-2 ring-violet-500/30 opacity-80"
           >
-            <div className="badge-soft self-start">Lane 3 · We file</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="badge-soft">Lane 3 · We file</div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                <Lock className="h-3 w-3" aria-hidden="true" /> Upcoming
+              </span>
+            </div>
             <h2 className="mt-3 font-serif text-2xl">Expert/Managed Help</h2>
             <p className="mt-2 text-sm">
               <span className="font-semibold">
                 CorvusPT&apos;s team files, talks to the county and represents you at the hearing
-              </span>{" "}
-              as your property tax agent. Nothing is settled without your approval.
+              </span>
+              . Nothing is settled without your approval.
             </p>
             <div className="mt-4 grid gap-3 text-sm">
               <div className="rounded-lg border border-border p-3">
@@ -253,18 +258,11 @@ function Page() {
                   <span className="font-semibold">Fixed price</span>
                   <span className="font-semibold">{dollars(MANAGED_MONTHLY_PRICE)}/mo</span>
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Per property, billed annually · {PLAN_BRACKET.label.replace(" - ", "–")}. Includes
-                  Savings Protection.
+                <p className="mt-1 text-base font-semibold">
+                  {PLAN_BRACKET.label.replace(" - ", "–")} property value
                 </p>
-              </div>
-              <div className="rounded-lg border border-warning/60 bg-warning/5 p-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-semibold">Success-based</span>
-                  <span className="font-semibold">% of savings</span>
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Pay only as a percentage of the tax savings CorvusPT secures.
+                <p className="text-xs text-muted-foreground">
+                  Per property, billed annually. Includes Savings Protection.
                 </p>
               </div>
               <div className="rounded-lg border border-border p-3">
@@ -276,12 +274,13 @@ function Page() {
               </div>
             </div>
             <div className="mt-6 flex-1" />
-            <Link to="/contact" className="w-full btn-outline text-center">
-              Talk to Our Team
-            </Link>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              You sign the Appointment of Agent (Form 50-162) once, so we can act for you.
-            </p>
+            <button
+              type="button"
+              disabled
+              className="w-full btn-outline inline-flex items-center justify-center gap-1.5 cursor-not-allowed opacity-70"
+            >
+              <Lock className="h-4 w-4" aria-hidden="true" /> Coming soon
+            </button>
           </ScrollReveal>
         </div>
 
