@@ -611,149 +611,6 @@ function Overview() {
         />
       )}
 
-      {loaded && decisionCards.length > 0 && (
-        <section aria-labelledby="protest-intelligence" className="grid gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
-              Protest Intelligence
-            </h2>
-            {decisionCards.length > 1 && (
-              <select
-                aria-label="Property"
-                className="max-w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm sm:max-w-md"
-                value={intelPropertyId ?? decisionCards[0].property.id}
-                onChange={(e) => setIntelPropertyId(e.target.value)}
-              >
-                {decisionCards.map(({ property }) => (
-                  <option key={property.id} value={property.id}>
-                    {property.address}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          {[decisionCards.find((c) => c.property.id === intelPropertyId) ?? decisionCards[0]].map(
-            ({ property, pipeline, intel, hasCase }) => (
-              <ProtestIntelligenceCard
-                key={property.id}
-                intel={intel}
-                next={pipeline.next}
-                address={property.address}
-                propertyId={property.id}
-                hasCase={hasCase}
-                defaultOpen={false}
-                settlement={{
-                  cad: property.cad,
-                  propertyType: property.propertyType,
-                  value: property.totalValue,
-                }}
-                onStart={() => openAiReport(property)}
-                onReviewEvidence={() => {
-                  updateIntake({
-                    address: property.address,
-                    cad: property.cad ?? undefined,
-                    accountNumber: property.accountNumber ?? undefined,
-                    ownerName: property.ownerName ?? undefined,
-                    propertyType: property.propertyType ?? undefined,
-                    landValue: property.landValue ?? undefined,
-                    improvementValue: property.improvementValue ?? undefined,
-                    totalValue: property.totalValue ?? undefined,
-                    taxYear: property.taxYear ?? undefined,
-                    valueHistory: property.valueHistory ?? undefined,
-                    confirmed: true,
-                  });
-                  nav({
-                    to: "/ai-report",
-                    search: { openModule: "evidence", propertyId: property.id },
-                  });
-                }}
-              />
-            ),
-          )}
-        </section>
-      )}
-
-      {nudge && urgentProperties.length > 0 && (
-        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{nudge}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {urgentProperties[0].property.address}
-              {urgentProperties.length > 1 &&
-                ` — +${urgentProperties.length - 1} other propert${urgentProperties.length - 1 === 1 ? "y" : "ies"} also need attention`}
-            </p>
-            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
-              Review &amp; Request Protest
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {hearingNudge && hearingReminders.length > 0 && (
-        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{hearingNudge}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {hearingReminders[0].property.address}
-              {hearingReminders.length > 1 &&
-                ` — +${hearingReminders.length - 1} other hearing${hearingReminders.length - 1 === 1 ? "" : "s"} coming up`}
-            </p>
-            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
-              View Case
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {showFeedbackBanner && properties.length > 0 && (
-        <div className="card-elev p-4 flex items-start gap-3">
-          <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Help us make Corvus better</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
-              next.
-            </p>
-            <button
-              type="button"
-              onClick={openFeedbackWidget}
-              className="btn-outline text-sm mt-3 inline-flex"
-            >
-              Give Feedback
-            </button>
-          </div>
-          <button
-            onClick={dismissFeedbackBanner}
-            aria-label="Dismiss"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {loaded && (
-        <ProtestVerdictCard
-          properties={properties}
-          protests={protests}
-          healthScores={healthScores}
-          onOpenReport={openAiReport}
-        />
-      )}
-
-      <MyAppointments />
-
-      {loaded && (
-        <GettingStarted
-          properties={properties.length}
-          documents={documents.length}
-          protests={protests.length}
-          resolved={protests.filter((p) => p.status === "resolved").length}
-        />
-      )}
-
       {/* Entry points */}
       <div>
         <h2 className="font-serif text-xl font-bold">Quick Actions</h2>
@@ -976,6 +833,149 @@ function Overview() {
           />
         </div>
       </div>
+
+      {loaded && decisionCards.length > 0 && (
+        <section aria-labelledby="protest-intelligence" className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
+              Protest Intelligence
+            </h2>
+            {decisionCards.length > 1 && (
+              <select
+                aria-label="Property"
+                className="max-w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm sm:max-w-md"
+                value={intelPropertyId ?? decisionCards[0].property.id}
+                onChange={(e) => setIntelPropertyId(e.target.value)}
+              >
+                {decisionCards.map(({ property }) => (
+                  <option key={property.id} value={property.id}>
+                    {property.address}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {[decisionCards.find((c) => c.property.id === intelPropertyId) ?? decisionCards[0]].map(
+            ({ property, pipeline, intel, hasCase }) => (
+              <ProtestIntelligenceCard
+                key={property.id}
+                intel={intel}
+                next={pipeline.next}
+                address={property.address}
+                propertyId={property.id}
+                hasCase={hasCase}
+                defaultOpen={false}
+                settlement={{
+                  cad: property.cad,
+                  propertyType: property.propertyType,
+                  value: property.totalValue,
+                }}
+                onStart={() => openAiReport(property)}
+                onReviewEvidence={() => {
+                  updateIntake({
+                    address: property.address,
+                    cad: property.cad ?? undefined,
+                    accountNumber: property.accountNumber ?? undefined,
+                    ownerName: property.ownerName ?? undefined,
+                    propertyType: property.propertyType ?? undefined,
+                    landValue: property.landValue ?? undefined,
+                    improvementValue: property.improvementValue ?? undefined,
+                    totalValue: property.totalValue ?? undefined,
+                    taxYear: property.taxYear ?? undefined,
+                    valueHistory: property.valueHistory ?? undefined,
+                    confirmed: true,
+                  });
+                  nav({
+                    to: "/ai-report",
+                    search: { openModule: "evidence", propertyId: property.id },
+                  });
+                }}
+              />
+            ),
+          )}
+        </section>
+      )}
+
+      {nudge && urgentProperties.length > 0 && (
+        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{nudge}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {urgentProperties[0].property.address}
+              {urgentProperties.length > 1 &&
+                ` — +${urgentProperties.length - 1} other propert${urgentProperties.length - 1 === 1 ? "y" : "ies"} also need attention`}
+            </p>
+            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
+              Review &amp; Request Protest
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {hearingNudge && hearingReminders.length > 0 && (
+        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{hearingNudge}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {hearingReminders[0].property.address}
+              {hearingReminders.length > 1 &&
+                ` — +${hearingReminders.length - 1} other hearing${hearingReminders.length - 1 === 1 ? "" : "s"} coming up`}
+            </p>
+            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
+              View Case
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {showFeedbackBanner && properties.length > 0 && (
+        <div className="card-elev p-4 flex items-start gap-3">
+          <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Help us make Corvus better</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
+              next.
+            </p>
+            <button
+              type="button"
+              onClick={openFeedbackWidget}
+              className="btn-outline text-sm mt-3 inline-flex"
+            >
+              Give Feedback
+            </button>
+          </div>
+          <button
+            onClick={dismissFeedbackBanner}
+            aria-label="Dismiss"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {loaded && (
+        <ProtestVerdictCard
+          properties={properties}
+          protests={protests}
+          healthScores={healthScores}
+          onOpenReport={openAiReport}
+        />
+      )}
+
+      <MyAppointments />
+
+      {loaded && (
+        <GettingStarted
+          properties={properties.length}
+          documents={documents.length}
+          protests={protests.length}
+          resolved={protests.filter((p) => p.status === "resolved").length}
+        />
+      )}
 
       <div>
         <h2 className="font-serif text-xl font-bold">Insights &amp; Activity</h2>
