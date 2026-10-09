@@ -286,6 +286,7 @@ export function SiteNav() {
                 linkRefs.current[item.to] = el;
               }}
               to={item.to}
+              data-tour={item.to === "/dashboard/tax-updates" ? "tax-updates" : undefined}
               onClick={feedbackItemClick(item.to)}
               className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1500px]:px-3 min-[1500px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}

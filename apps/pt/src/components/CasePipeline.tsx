@@ -229,7 +229,7 @@ export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; t
   };
 
   return (
-    <section aria-label="Most urgent next actions" className="grid gap-2">
+    <section aria-label="Most urgent next actions" className="grid gap-2" data-tour="next-actions">
       <span className="text-xs font-black uppercase tracking-[0.18em] text-foreground">
         Next required actions
       </span>

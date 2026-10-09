@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 const KEY = "corvuspt.tourSeen";
 export const OPEN_TOUR_EVENT = "corvuspt:open-tour";
@@ -34,13 +35,30 @@ const STEPS: Step[] = [
     target: "add-property",
     text: "Start here — add a property by address or appraisal notice, and our AI checks whether you have a case.",
   },
+  {
+    target: "next-actions",
+    text: "Your most urgent tasks — due this week — are always at the top.",
+  },
+  { target: "portfolio", text: "Your properties, documents, cases and savings at a glance." },
+  {
+    target: "protest-intelligence",
+    text: "Protest Intelligence: is there a case, what value to argue, and how strong it is — per property.",
+  },
   { target: "nav-properties", text: "All your properties are listed here." },
   {
     target: "nav-documents",
     text: "Keep your notices, photos and evidence here — AI files each one under the right property.",
   },
   { target: "nav-calendar", text: "Deadlines and hearings show up on your calendar." },
+  { target: "nav-issues", text: "Track code violations and other property issues here." },
+  { target: "nav-acquisition", text: "Thinking of buying? Forecast a property's future tax bill." },
+  { target: "nav-agreements", text: "Your signed agreements and authorization forms." },
+  {
+    target: "tax-updates",
+    text: "Texas property tax law changes and upcoming deadlines, checked every week.",
+  },
   { target: "notifications", text: "We'll remind you here before every deadline and hearing." },
+  { target: "ask-ai", text: "Ask AI anything about your properties, cases or Texas property tax." },
   { target: "help", text: "Questions? Help, a plain-English glossary and this tour live here." },
   { target: "profile", text: "View / update your contact information, billing and settings here." },
 ];
@@ -99,15 +117,20 @@ export function WelcomeTour() {
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const captionRef = useRef<HTMLDivElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
-
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const onDashboard = /\/dashboard\/?$/.test(pathname);
+  // Opened from the ? menu on another page, the tour would only find the
+  // header (4 steps) — it walks the dashboard, so go there first.
   useEffect(() => {
     const show = () => {
+      if (!onDashboard) void navigate({ to: "/dashboard" });
       setI(0);
       setOpen(true);
     };
     window.addEventListener(OPEN_TOUR_EVENT, show);
     return () => window.removeEventListener(OPEN_TOUR_EVENT, show);
-  }, []);
+  }, [onDashboard, navigate]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -125,8 +148,11 @@ export function WelcomeTour() {
   const last = nextIndex === -1;
 
   function next() {
-    if (last) close();
-    else setI(nextIndex);
+    // Re-check at click time — the dashboard may have finished loading since
+    // this step rendered (the tour can open before its sections exist).
+    const n = STEPS.findIndex((s, k) => k > i && isAvailable(s));
+    if (n === -1) close();
+    else setI(n);
   }
 
   // Bring the step's element into view (the tab strip scrolls sideways on phones).
@@ -284,7 +310,7 @@ export function WelcomeTour() {
           ) : (
             <span />
           )}
-          {available.length > 1 && (
+          {available.length > 1 && i > 0 && (
             <span className="text-xs text-white/70">
               {position} of {available.length}
             </span>

@@ -779,7 +779,7 @@ function Overview() {
       </div>
 
       {/* Stats */}
-      <div>
+      <div data-tour="portfolio">
         <h2 className="font-serif text-xl font-bold">Your Portfolio at a Glance</h2>
         <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6">
           <StatCard
@@ -835,7 +835,11 @@ function Overview() {
       </div>
 
       {loaded && decisionCards.length > 0 && (
-        <section aria-labelledby="protest-intelligence" className="grid gap-3">
+        <section
+          aria-labelledby="protest-intelligence"
+          className="grid gap-3"
+          data-tour="protest-intelligence"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
               Protest Intelligence
