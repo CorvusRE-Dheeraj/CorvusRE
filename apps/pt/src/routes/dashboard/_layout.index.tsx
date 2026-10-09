@@ -840,20 +840,6 @@ function Overview() {
             <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
               Protest Intelligence
             </h2>
-            {decisionCards.length > 1 && (
-              <select
-                aria-label="Property"
-                className="max-w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm sm:max-w-md"
-                value={intelPropertyId ?? decisionCards[0].property.id}
-                onChange={(e) => setIntelPropertyId(e.target.value)}
-              >
-                {decisionCards.map(({ property }) => (
-                  <option key={property.id} value={property.id}>
-                    {property.address}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
           {[decisionCards.find((c) => c.property.id === intelPropertyId) ?? decisionCards[0]].map(
             ({ property, pipeline, intel, hasCase }) => (
@@ -865,6 +851,16 @@ function Overview() {
                 propertyId={property.id}
                 hasCase={hasCase}
                 defaultOpen={false}
+                picker={{
+                  options: decisionCards.map((c) => ({
+                    id: c.property.id,
+                    address: c.property.address,
+                    verdict: c.intel.card.verdict,
+                    strength: c.intel.card.strength,
+                    savings: c.intel.card.savingsAtSettlement ?? null,
+                  })),
+                  onSelect: setIntelPropertyId,
+                }}
                 settlement={{
                   cad: property.cad,
                   propertyType: property.propertyType,
