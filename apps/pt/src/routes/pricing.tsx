@@ -11,7 +11,6 @@ import {
   CUSTOM_TIER,
   LAUNCH_DISCOUNT,
   LAUNCH_DISCOUNT_DEADLINE,
-  FRANCHISE_DISCOUNT,
   isLaunchDiscountActive,
   type PlanValue,
 } from "@/lib/billing";
@@ -25,7 +24,7 @@ export const Route = createFileRoute("/pricing")({
       {
         name: "description",
         content:
-          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help (coming soon), where our team files and represents you. Franchise owners get 50% off.",
+          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help (coming soon), where our team files and represents you.",
       },
       { property: "og:title", content: "CorvusPT Pricing" },
       {
@@ -59,7 +58,6 @@ const MONTHLY_PRICE = TIER_BRACKET_PRICES.owner_managed[PLAN_BRACKET.value];
 const ANNUAL_PRICE = MONTHLY_PRICE * 12;
 const MANAGED_MONTHLY_PRICE = TIER_BRACKET_PRICES.corvusrf_managed[PLAN_BRACKET.value];
 const LAUNCH_FIRST_YEAR_PRICE = ANNUAL_PRICE * (1 - LAUNCH_DISCOUNT);
-const FRANCHISE_ANNUAL_PRICE = ANNUAL_PRICE * (1 - FRANCHISE_DISCOUNT);
 
 // The deadline is stored as midnight US Central in UTC — format it in that
 // zone so it never reads as "Jan 31" for a visitor west of it.
@@ -292,28 +290,6 @@ function Page() {
           <div className="mt-4">
             <LaneComparisonTable />
           </div>
-        </ScrollReveal>
-
-        {/* A discount on whichever option above applies, not a plan of its
-            own — so a full-width strip rather than a fourth card. */}
-        <ScrollReveal className="mt-6 flex flex-col gap-4 rounded-xl border border-warning/60 bg-warning/10 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <BadgePercent className="mt-0.5 h-6 w-6 shrink-0 text-warning" aria-hidden="true" />
-            <div>
-              <h2 className="font-serif text-lg font-semibold">
-                Franchise owners: {pct(FRANCHISE_DISCOUNT)} off
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {pct(FRANCHISE_DISCOUNT)} off the applicable CorvusPT pricing — e.g.{" "}
-                {dollars(FRANCHISE_ANNUAL_PRICE)}/year instead of {dollars(ANNUAL_PRICE)} on the{" "}
-                {PLAN_BRACKET.label.replace(" - ", "–")} plan. Once your franchise is verified, it's
-                applied automatically at checkout.
-              </p>
-            </div>
-          </div>
-          <Link to="/contact" className="btn-outline shrink-0 text-center">
-            Verify Franchise Status
-          </Link>
         </ScrollReveal>
       </div>
 
