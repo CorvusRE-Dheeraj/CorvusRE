@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { AlertTriangle, ArrowRight, Check, Clock, Users } from "lucide-react";
 import type { NextAction, Pipeline, Urgency } from "@/lib/case-pipeline";
 import { daysBetween } from "@/lib/case-pipeline";
@@ -189,5 +190,84 @@ export function PipelineStepper({ pipeline }: { pipeline: Pipeline }) {
         ];
       })}
     </ol>
+  );
+}
+
+export type UrgentTileItem = {
+  key: string;
+  title: string;
+  address: string;
+  dueDate: string | null;
+  urgency: Urgency;
+  onOpen: () => void;
+};
+
+const WEEK_DAYS = 7;
+
+// The dashboard's next-action strip: the most urgent tasks due within a week
+// (overdue first), as up to three bold tiles. With more than three, the third
+// tile becomes "+N" and opens the full list. Falls back to the nearest tasks
+// when nothing is due that soon, so the strip never goes blank.
+export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; today: string }) {
+  const [showAll, setShowAll] = useState(false);
+  if (items.length === 0) return null;
+  const dueSoon = items.filter((i) => i.dueDate && daysBetween(today, i.dueDate) <= WEEK_DAYS);
+  const pool = dueSoon.length > 0 ? dueSoon : items;
+  const overflow = pool.length > 3;
+  const shown = showAll ? pool : overflow ? pool.slice(0, 2) : pool;
+
+  const dueShort = (d: string | null) => {
+    if (!d) return null;
+    const n = daysBetween(today, d);
+    return n < 0
+      ? `${-n}d overdue`
+      : n === 0
+        ? "Due today"
+        : n === 1
+          ? "Due tomorrow"
+          : `Due in ${n}d`;
+  };
+
+  return (
+    <section aria-label="Most urgent next actions" className="grid gap-2">
+      <span className="text-xs font-black uppercase tracking-[0.18em] text-foreground">
+        Next required actions
+      </span>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {shown.map((i) => (
+          <button
+            key={i.key}
+            type="button"
+            onClick={i.onOpen}
+            className={`flex min-w-0 flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-colors hover:bg-secondary/40 ${URGENCY_STYLE[i.urgency].box}`}
+          >
+            <span className="text-base font-bold leading-snug">{i.title}</span>
+            <span className="w-full truncate text-[11px] text-muted-foreground">
+              {i.address}
+              {dueShort(i.dueDate) ? ` · ${dueShort(i.dueDate)}` : ""}
+            </span>
+          </button>
+        ))}
+        {overflow && !showAll && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="grid place-items-center rounded-xl border-2 border-dashed border-border p-4 text-2xl font-bold text-foreground hover:bg-secondary/40"
+            aria-label={`Show ${pool.length - 2} more actions`}
+          >
+            +{pool.length - 2}
+          </button>
+        )}
+      </div>
+      {showAll && overflow && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="justify-self-start text-xs text-accent underline"
+        >
+          Show less
+        </button>
+      )}
+    </section>
   );
 }

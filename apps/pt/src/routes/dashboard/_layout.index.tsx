@@ -61,7 +61,7 @@ import {
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
 import { listNoticeFilings } from "@/lib/protest-form-submissions";
 import { casePipeline, localTodayIso, type NoticeFiling, type Urgency } from "@/lib/case-pipeline";
-import { NextRequiredAction } from "@/components/CasePipeline";
+import { UrgentActionTiles } from "@/components/CasePipeline";
 import { ProtestIntelligenceCard } from "@/components/ProtestIntelligenceCard";
 import { protestIntelligence } from "@/lib/protest-intelligence";
 import { listValuationSummaries, type WorksheetSummary } from "@/lib/valuation-worksheet";
@@ -588,64 +588,27 @@ function Overview() {
       )}
 
       {loaded && nextActions.length > 0 && (
-        <section aria-label="Next required actions" className="grid gap-3">
-          <NextRequiredAction
-            pipeline={nextActions[0].pipeline}
-            today={today}
-            propertyId={nextActions[0].property.id}
-            address={nextActions[0].property.address}
-            onStart={() => openAiReport(nextActions[0].property)}
-          />
-          {nextActions.length > 1 && (
-            <div className="card-elev p-4">
-              <h2 className="text-xs font-black uppercase tracking-[0.18em]">
-                Then, for your other properties
-              </h2>
-              <ul className="mt-2 divide-y divide-border">
-                {nextActions.slice(1, 4).map(({ property, pipeline }) => (
-                  <li
-                    key={property.id}
-                    className="flex flex-wrap items-center justify-between gap-2 py-2.5"
-                  >
-                    <div className="min-w-0 flex-1 basis-64">
-                      <div className="text-sm font-medium">{pipeline.next.title}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {property.address}
-                        {pipeline.next.dueDate &&
-                          ` · ${pipeline.next.urgency === "overdue" ? "overdue since" : "by"} ${new Date(`${pipeline.next.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
-                      </div>
-                    </div>
-                    {pipeline.next.target.kind === "anchor" ? (
-                      <Link
-                        to="/dashboard/case"
-                        search={{ propertyId: property.id, anchor: pipeline.next.target.anchor }}
-                        className="btn-outline px-3 py-1 text-xs"
-                      >
-                        Open
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => openAiReport(property)}
-                        className="btn-outline px-3 py-1 text-xs"
-                      >
-                        Open
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {nextActions.length > 4 && (
-                <Link
-                  to="/dashboard/properties"
-                  className="mt-2 inline-block text-xs text-accent underline"
-                >
-                  See all {nextActions.length} properties
-                </Link>
-              )}
-            </div>
-          )}
-        </section>
+        <UrgentActionTiles
+          today={today}
+          items={nextActions.map(({ property, pipeline }) => ({
+            key: property.id,
+            title: pipeline.next.title,
+            address: property.address,
+            dueDate: pipeline.next.dueDate,
+            urgency: pipeline.next.urgency,
+            onOpen: () => {
+              const target = pipeline.next.target;
+              if (target.kind === "anchor") {
+                nav({
+                  to: "/dashboard/case",
+                  search: { propertyId: property.id, anchor: target.anchor },
+                });
+              } else {
+                openAiReport(property);
+              }
+            },
+          }))}
+        />
       )}
 
       {loaded && decisionCards.length > 0 && (
