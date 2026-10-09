@@ -356,11 +356,12 @@ function Page() {
           <ScrollReveal delay={300} className="card-elev p-5">
             <Scale className="h-5 w-5 text-accent" aria-hidden="true" />
             <h3 className="mt-2 font-serif text-base font-semibold">
-              Binding arbitration, automatically tracked
+              Arbitrations &amp; court appeals automatically tracked
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              If your hearing doesn't go your way, Texas law (Tax Code §41A) lets you escalate to
-              binding arbitration — CorvusPT tracks your eligibility, deadline, and deposit for you.
+              If your hearing doesn't go your way, Texas law lets you escalate to binding
+              arbitration (Tax Code §41A) or a district court appeal (Tax Code §42) — CorvusPT
+              tracks your eligibility, deadlines, and deposits for you.
             </p>
           </ScrollReveal>
         </div>
