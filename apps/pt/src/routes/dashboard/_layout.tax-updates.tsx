@@ -543,27 +543,6 @@ function TaxUpdates() {
                 No enacted laws or adopted rules found yet this tax year.
               </p>
             )}
-            <div className="mt-4 rounded-md border border-dashed border-border p-4 text-sm sm:text-base">
-              <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Standing deadlines (for reference — not new)
-              </div>
-              <ul className="mt-2 grid gap-1.5">
-                {STANDING_DEADLINES.map((d) => (
-                  <li key={d.label}>
-                    <span className="font-medium">{d.label}:</span>{" "}
-                    <span className="text-muted-foreground">{d.detail}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href={STANDING_SOURCE.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block text-accent hover:underline"
-              >
-                {STANDING_SOURCE.name} →
-              </a>
-            </div>
           </section>
         </>
       )}
