@@ -140,6 +140,31 @@ function Page() {
         </div>
       </div>
 
+      {/* At the top, above the lanes — the first thing read on the page. */}
+      <div className="container-page mt-8">
+        <ScrollReveal className="relative overflow-hidden rounded-2xl border-2 border-accent bg-accent/10 p-6 md:p-8 shadow-elev">
+          <span className="brand-gradient absolute inset-x-0 top-0 h-1.5" />
+          <div className="flex flex-col gap-5 md:flex-row md:items-center">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+              <ShieldCheck className="h-7 w-7" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="font-serif text-2xl md:text-3xl font-semibold">
+                CorvusPT Savings Protection
+              </h2>
+              <p className="mt-2 max-w-3xl text-base md:text-lg">
+                If CorvusPT does not identify any savings for you during the year 2027, your unused
+                value carries forward to the following year —{" "}
+                <span className="font-semibold">and your next year protest support is free.</span>
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Included with Owner-Managed CorvusPT and the fixed-price Expert/Managed Help plan.
+              </p>
+            </div>
+          </div>
+        </ScrollReveal>
+      </div>
+
       {/* One card per lane (lib/service-lanes.ts). Always visible,
           regardless of sign-in/subscription state — the plain price
           reference. */}
@@ -289,32 +314,6 @@ function Page() {
           </p>
           <div className="mt-4">
             <LaneComparisonTable />
-          </div>
-        </ScrollReveal>
-      </div>
-
-      {/* Directly below the pricing section, deliberately loud, so it's read
-          before anything further down the page. */}
-      <div className="container-page mt-8">
-        <ScrollReveal className="relative overflow-hidden rounded-2xl border-2 border-accent bg-accent/10 p-6 md:p-8 shadow-elev">
-          <span className="brand-gradient absolute inset-x-0 top-0 h-1.5" />
-          <div className="flex flex-col gap-5 md:flex-row md:items-center">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
-              <ShieldCheck className="h-7 w-7" aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="font-serif text-2xl md:text-3xl font-semibold">
-                CorvusPT Savings Protection
-              </h2>
-              <p className="mt-2 max-w-3xl text-base md:text-lg">
-                If CorvusPT does not identify any savings for you during the year 2027, your unused
-                value carries forward to the following year —{" "}
-                <span className="font-semibold">and your next year protest support is free.</span>
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Included with Owner-Managed CorvusPT and the fixed-price Expert/Managed Help plan.
-              </p>
-            </div>
           </div>
         </ScrollReveal>
       </div>
