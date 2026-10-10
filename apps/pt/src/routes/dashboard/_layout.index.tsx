@@ -313,6 +313,16 @@ function Overview() {
     nav({ to: "/ai-report", search: { propertyId: p.id } });
   }
 
+  // A Deadlines row opens that property's case, or its report when there's
+  // no case yet (where one is started).
+  function openDeadline(p: PropertyRecord) {
+    if (protests.some((pr) => pr.propertyId === p.id)) {
+      nav({ to: "/dashboard/case", search: { propertyId: p.id } });
+    } else {
+      openAiReport(p);
+    }
+  }
+
   // Protest Intelligence shows one property at a time (dropdown), so the page
   // doesn't grow with every property on file.
   const [intelPropertyId, setIntelPropertyId] = useState<string | null>(null);
@@ -818,6 +828,7 @@ function Overview() {
             label="Est. Savings"
             value={loaded ? estimatedSavings : null}
             format={compactCurrency}
+            to="/dashboard/properties"
             delayMs={160}
             icon={TrendingDown}
             color={ICON_COLORS[5]}
@@ -1009,10 +1020,13 @@ function Overview() {
               {upcoming.length > 0 ? (
                 <div className="mt-3 grid min-w-0 gap-2">
                   {upcoming.map((u, i) => (
-                    <div
+                    <button
                       key={i}
-                      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm min-w-0 ${
-                        u.missed ? "-mx-2 bg-destructive/10" : ""
+                      type="button"
+                      onClick={() => openDeadline(u.property)}
+                      title={`Open ${u.property.address}`}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-sm min-w-0 transition-colors hover:bg-secondary ${
+                        u.missed ? "-mx-2 bg-destructive/10 hover:bg-destructive/15" : ""
                       }`}
                     >
                       <span className={`truncate min-w-0 ${u.missed ? "text-destructive" : ""}`}>
@@ -1028,7 +1042,7 @@ function Overview() {
                           {u.when.toLocaleDateString()}
                         </span>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -1311,12 +1325,31 @@ function ProtestStatusChart({
         </div>
       </div>
       <div className="mt-4 grid min-w-0 gap-2 border-t border-border pt-3">
-        {protests.slice(0, 3).map((pr) => (
-          <div key={pr.id} className="flex items-center justify-between gap-2 text-sm min-w-0">
-            <span className="truncate min-w-0">{addressFor(pr.propertyId)}</span>
-            <span className="badge-soft shrink-0">{STATUS_LABEL[pr.status]}</span>
-          </div>
-        ))}
+        {protests.slice(0, 3).map((pr) => {
+          const row = (
+            <>
+              <span className="truncate min-w-0">{addressFor(pr.propertyId)}</span>
+              <span className="badge-soft shrink-0">{STATUS_LABEL[pr.status]}</span>
+            </>
+          );
+          const cls =
+            "-mx-2 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm min-w-0 transition-colors hover:bg-secondary";
+          // Each row opens its case (a BPP case has no property — its accounts page).
+          return pr.propertyId ? (
+            <Link
+              key={pr.id}
+              to="/dashboard/case"
+              search={{ propertyId: pr.propertyId }}
+              className={cls}
+            >
+              {row}
+            </Link>
+          ) : (
+            <Link key={pr.id} to="/dashboard/bpp-accounts" className={cls}>
+              {row}
+            </Link>
+          );
+        })}
       </div>
     </>
   );
