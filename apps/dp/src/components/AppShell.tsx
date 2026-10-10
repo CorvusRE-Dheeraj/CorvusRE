@@ -26,6 +26,7 @@ import {
   Landmark,
   Menu,
   TrainTrack,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProjects, setActiveProject, deleteProject } from "@/lib/projects";
@@ -86,6 +87,7 @@ const PERMITTING_SUBGROUPS: NavSubgroup[] = [
       { to: "/dashboard/timeline", label: "Timeline", icon: CalendarClock },
       { to: "/dashboard/reviews", label: "Reviews", icon: MessagesSquare },
       { to: "/dashboard/city", label: "City", icon: Landmark },
+      { to: "/dashboard/portal", label: "City Portal Login", icon: KeyRound },
       { to: "/dashboard/approvals", label: "Approvals", icon: BadgeCheck },
     ],
   },
