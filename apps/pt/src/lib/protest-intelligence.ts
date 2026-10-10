@@ -147,14 +147,14 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     question: "Is there a protest opportunity?",
     headline:
       card.verdict === "PROTEST"
-        ? `Corvus identifies a potential protest opportunity — ${card.strength.toLowerCase()} case`
+        ? `Corvus AI identifies a potential protest opportunity — ${card.strength.toLowerCase()} case`
         : card.verdict === "REVIEW"
-          ? "A possible opportunity — Corvus needs more evidence to assess it"
-          : "Corvus hasn't identified a clear opportunity on the evidence so far",
+          ? "A possible opportunity — Corvus AI needs more evidence to assess it"
+          : "Corvus AI hasn't identified a clear opportunity on the evidence so far",
     points: [
       ...(card.savingsAtSettlement != null && card.likelySettlement != null
         ? [
-            `Corvus estimates about ${usd(card.savingsAtSettlement)} a year in tax savings if the value settles near ${m(card.likelySettlement)}.`,
+            `Corvus AI estimates about ${usd(card.savingsAtSettlement)} a year in tax savings if the value settles near ${m(card.likelySettlement)}.`,
           ]
         : []),
       ...(card.verdict !== "PROTEST" && !range
@@ -235,7 +235,7 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     question: "How strong is each argument?",
     headline:
       winning.length > 0
-        ? `Corvus rates ${winning[0].name} strongest${winning[1] ? `, then ${winning[1].name}` : ""}`
+        ? `Corvus AI rates ${winning[0].name} strongest${winning[1] ? `, then ${winning[1].name}` : ""}`
         : "No argument below the county's value yet",
     points: [],
     tone: winning.some((a) => a.strength === "Strong") ? "good" : "caution",
@@ -256,7 +256,7 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     points: [
       ...(i.cadReview
         ? [
-            `Corvus found ${i.cadReview.weaknesses.length} weakness${i.cadReview.weaknesses.length === 1 ? "" : "es"} in its evidence${
+            `Corvus AI found ${i.cadReview.weaknesses.length} weakness${i.cadReview.weaknesses.length === 1 ? "" : "es"} in its evidence${
               i.cadReview.weaknesses.length
                 ? `: ${[...new Set(i.cadReview.weaknesses.map((w) => WEAKNESS_LABEL[w.category].toLowerCase()))].slice(0, 4).join(", ")}`
                 : ""
@@ -284,13 +284,13 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
       card.offer != null
         ? `The ${m(card.offer.offer)} offer: ${OFFER_LABEL[card.offer.decision].toLowerCase()}`
         : acceptUpTo != null
-          ? `Corvus's estimated likely outcome: ${m(acceptUpTo)} or lower`
-          : "Estimated once Corvus has a supportable range",
+          ? `Corvus AI's estimated likely outcome: ${m(acceptUpTo)} or lower`
+          : "Estimated once Corvus AI has a supportable range",
     points: [
       ...(card.offer ? [card.offer.reasoning] : []),
       ...(acceptUpTo != null && judgmentUpTo != null
         ? [
-            `At or below ${m(acceptUpTo)}: within Corvus's estimated outcome — by its analysis, an ARB hearing may not do better.`,
+            `At or below ${m(acceptUpTo)}: within Corvus AI's estimated outcome — by its analysis, an ARB hearing may not do better.`,
             `${m(acceptUpTo)}–${m(judgmentUpTo)}: a judgment call between certainty now and possible further savings at the ARB.`,
             `Above ${m(judgmentUpTo)}: above the range the evidence supports — a formal ARB hearing is an option to consider.`,
           ]
@@ -305,21 +305,21 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     question: "What value could be presented to the ARB?",
     headline:
       range && lead?.value != null
-        ? `Corvus estimates ${m(Math.max(range.low, lead.value))} as a potential value to consider, based on the ${lead.name}`
+        ? `Corvus AI estimates ${m(Math.max(range.low, lead.value))} as a potential value to consider, based on the ${lead.name}`
         : range
-          ? `Corvus estimates ${m(range.low)} as a potential value to consider`
-          : "Estimated once Corvus has a supportable range",
+          ? `Corvus AI estimates ${m(range.low)} as a potential value to consider`
+          : "Estimated once Corvus AI has a supportable range",
     points: [
       ...(lead
         ? [
-            `By Corvus's ranking, ${lead.name} is the strongest argument${winning[1] ? `, with ${winning[1].name} as corroboration` : ""}.`,
+            `By Corvus AI's ranking, ${lead.name} is the strongest argument${winning[1] ? `, with ${winning[1].name} as corroboration` : ""}.`,
           ]
         : []),
       ...(i.cadReview?.hearingResponse
-        ? ["Corvus has drafted a hearing response to the district's evidence for your review."]
+        ? ["Corvus AI has drafted a hearing response to the district's evidence for your review."]
         : []),
       ...(card.likelySettlement != null
-        ? [`Corvus estimates a realistic outcome around ${m(card.likelySettlement)}.`]
+        ? [`Corvus AI estimates a realistic outcome around ${m(card.likelySettlement)}.`]
         : []),
     ],
     tone: range ? "good" : "neutral",
@@ -345,13 +345,13 @@ export function protestIntelligence(i: IntelligenceInput): ProtestIntelligence {
     const threshold = Math.round(range.low + APPEAL_MIN_ANNUAL_SAVINGS / rate);
     appealHeadline = `Worth reviewing if the ARB's value is above ${m(threshold)}`;
     appealPoints.push(
-      `Below that, Corvus estimates less than ${usd(APPEAL_MIN_ANNUAL_SAVINGS)} a year would still be at stake — often less than an arbitration deposit or attorney fees.`,
+      `Below that, Corvus AI estimates less than ${usd(APPEAL_MIN_ANNUAL_SAVINGS)} a year would still be at stake — often less than an arbitration deposit or attorney fees.`,
       "The appeal deadline is 60 days from receiving the ARB's order (Tax Code §41A.03, §42.21).",
     );
   } else {
     appealHeadline = "Assessed after the ARB's order";
     appealPoints.push(
-      "Corvus will compare the ARB's value with the range it estimates the evidence supports.",
+      "Corvus AI will compare the ARB's value with the range it estimates the evidence supports.",
     );
   }
   answers.push({

@@ -612,7 +612,7 @@ export function strongestPoints(
   ) {
     out.push({
       title: `The district's ${usd(analysis.comparison.proposedValue)} is ${analysis.comparison.gapPct}% above what your evidence supports`,
-      detail: `Corvus's valuation approaches support ${usd(analysis.comparison.corvusLow)}–${usd(analysis.comparison.corvusHigh)}.`,
+      detail: `Corvus AI's valuation approaches support ${usd(analysis.comparison.corvusLow)}–${usd(analysis.comparison.corvusHigh)}.`,
       source: "calculated",
     });
   }

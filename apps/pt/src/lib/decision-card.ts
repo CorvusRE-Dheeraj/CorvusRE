@@ -27,7 +27,7 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
 };
 export type OfferAssessment = "Accept" | "Borderline" | "Proceed to ARB";
 export const OFFER_LABEL: Record<OfferAssessment, string> = {
-  Accept: "Within Corvus's estimated outcome",
+  Accept: "Within Corvus AI's estimated outcome",
   Borderline: "A judgment call",
   "Proceed to ARB": "Above the range the evidence supports",
 };
@@ -239,7 +239,7 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
     const savingsAtOffer = Math.round(Math.max(0, cad - offerValue) * rate);
     let decision: OfferAssessment = "Borderline";
     let reasoning =
-      "Corvus doesn't have a supportable range for this property yet, so it can't compare the offer with the evidence.";
+      "Corvus AI doesn't have a supportable range for this property yet, so it can't compare the offer with the evidence.";
     let additional: Range | null = null;
     if (range) {
       additional = {
@@ -249,12 +249,12 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
       if (likely != null && offerValue <= likely) {
         decision = "Accept";
         reasoning =
-          "The offer is at or below Corvus's estimated likely outcome — by Corvus's analysis, an ARB hearing may not produce a lower value.";
+          "The offer is at or below Corvus AI's estimated likely outcome — by Corvus's analysis, an ARB hearing may not produce a lower value.";
       } else if (offerValue > range.high * 1.05) {
         decision = "Proceed to ARB";
-        reasoning = `The offer is well above the range Corvus estimates the evidence supports. Corvus estimates an ARB hearing could produce another ${usd(additional.low)}–${usd(additional.high)} a year in savings, with no guarantee.`;
+        reasoning = `The offer is well above the range Corvus AI estimates the evidence supports. Corvus estimates an ARB hearing could produce another ${usd(additional.low)}–${usd(additional.high)} a year in savings, with no guarantee.`;
       } else {
-        reasoning = `Corvus estimates a formal hearing could add ~${usd(additional.low)}–${usd(additional.high)} in annual savings, with more uncertainty about the outcome.`;
+        reasoning = `Corvus AI estimates a formal hearing could add ~${usd(additional.low)}–${usd(additional.high)} in annual savings, with more uncertainty about the outcome.`;
       }
     }
     card.offer = {
@@ -294,8 +294,8 @@ export function decisionCard(i: DecisionCardInput): DecisionCard {
       furtherAppeal: worth ? "Worth reviewing" : "Low priority",
       furtherAppealReason: range
         ? worth
-          ? `The final value is still above the low end of the range Corvus estimates the evidence supports — Corvus estimates up to ~${usd(remaining)} a year more is at stake.`
-          : "The final value is at or close to the value Corvus estimates the evidence supports."
+          ? `The final value is still above the low end of the range Corvus AI estimates the evidence supports — Corvus estimates up to ~${usd(remaining)} a year more is at stake.`
+          : "The final value is at or close to the value Corvus AI estimates the evidence supports."
         : "No supportable range on file to compare against.",
     };
   }

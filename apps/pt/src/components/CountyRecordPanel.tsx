@@ -77,8 +77,8 @@ export function CountyRecordPanel({ protestId }: { protestId: string }) {
         <p className="mt-1 text-muted-foreground">No entry for this protest yet.</p>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
-        From {r.source}, checked {fmt(r.synced_at)}. Corvus fills in your case from it automatically
-        and never overwrites what you&apos;ve entered.
+        From {r.source}, checked {fmt(r.synced_at)}. Corvus AI fills in your case from it
+        automatically and never overwrites what you&apos;ve entered.
       </p>
     </section>
   );

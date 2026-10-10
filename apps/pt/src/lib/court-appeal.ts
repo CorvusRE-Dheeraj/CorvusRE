@@ -122,7 +122,7 @@ export function reviewCourtAppeal(
 }
 
 export const COURT_DISCLAIMER =
-  "A court appeal is a legal proceeding. Corvus organizes your case, deadlines and documents — it does not file the petition, give legal advice, or predict an outcome. Deadlines run from the date you received the order and can turn on facts only you or an attorney can confirm; verify every date before you rely on it.";
+  "A court appeal is a legal proceeding. Corvus AI organizes your case, deadlines and documents — it does not file the petition, give legal advice, or predict an outcome. Deadlines run from the date you received the order and can turn on facts only you or an attorney can confirm; verify every date before you rely on it.";
 
 // ── Stages & next action ─────────────────────────────────────────────────
 export type CourtStageId =

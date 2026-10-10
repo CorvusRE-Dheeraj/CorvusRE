@@ -425,9 +425,9 @@ function Settings() {
         <div className="mt-8 card-elev p-6">
           <h2 className="font-semibold">Assessment Monitoring</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Corvus regularly re-checks each of your properties against the appraisal district&apos;s
-            record. When a value changes — a new year&apos;s notice or a revision — it updates the
-            property, re-runs the screening and shows the change on your dashboard.
+            Corvus AI regularly re-checks each of your properties against the appraisal
+            district&apos;s record. When a value changes — a new year&apos;s notice or a revision —
+            it updates the property, re-runs the screening and shows the change on your dashboard.
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
             <input

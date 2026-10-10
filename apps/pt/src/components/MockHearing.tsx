@@ -109,7 +109,7 @@ function DebriefView({ d }: { d: Debrief }) {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
-        A practice debrief from Corvus&apos;s analysis of this run — not a prediction of how the
+        A practice debrief from Corvus AI&apos;s analysis of this run — not a prediction of how the
         real panel will rule.
       </p>
     </div>

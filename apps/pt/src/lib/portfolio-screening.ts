@@ -51,7 +51,7 @@ export function screenProperty(
     return {
       ...base,
       tier: "low",
-      reason: "Corvus doesn't estimate meaningful savings from the county data.",
+      reason: "Corvus AI doesn't estimate meaningful savings from the county data.",
     };
   }
   if (planCost != null && savings < planCost) {

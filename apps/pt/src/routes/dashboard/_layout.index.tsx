@@ -934,7 +934,7 @@ function Overview() {
         <div className="card-elev p-4 flex items-start gap-3">
           <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Help us make Corvus better</p>
+            <p className="text-sm font-medium">Help us make CorvusPT better</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
               next.

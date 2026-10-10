@@ -306,8 +306,8 @@ export function ProtestIntelligenceCard({
             </div>
           </section>
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Corvus&apos;s analysis is computed from your county record, its valuation approaches and
-            your case. It presents estimates and options to inform your own decisions — it
+            Corvus AI&apos;s analysis is computed from your county record, its valuation approaches
+            and your case. It presents estimates and options to inform your own decisions — it
             isn&apos;t property tax advice or a guarantee of any outcome.
           </p>
         </div>

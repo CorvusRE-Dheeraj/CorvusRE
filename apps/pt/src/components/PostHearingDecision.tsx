@@ -214,7 +214,7 @@ export function PostHearingDecision({
                           {r.title}
                           {r.recommended && r.eligible && (
                             <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                              Strongest by Corvus&apos;s numbers
+                              Strongest by Corvus AI&apos;s numbers
                             </span>
                           )}
                         </div>

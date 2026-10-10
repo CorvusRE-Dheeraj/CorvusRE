@@ -132,8 +132,8 @@ export function StreetViewComparison({
         </button>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Corvus pulls Street View images of this property and its most similar county comparables and
-        rates the visible exterior — facade, paving, site upkeep — on the same scale.
+        Corvus AI pulls Street View images of this property and its most similar county comparables
+        and rates the visible exterior — facade, paving, site upkeep — on the same scale.
       </p>
       {notice && <p className="mt-2 text-sm text-muted-foreground">{notice}</p>}
       {c && (
@@ -151,7 +151,7 @@ export function StreetViewComparison({
               <li key={x}>· {x}</li>
             ))}
             <li>
-              · Ratings are Corvus&apos;s read of the images, run{" "}
+              · Ratings are Corvus AI&apos;s read of the images, run{" "}
               {new Date(saved!.createdAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",

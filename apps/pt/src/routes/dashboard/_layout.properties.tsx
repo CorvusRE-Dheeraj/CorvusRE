@@ -1348,8 +1348,8 @@ function Properties() {
           <div className="p-6">
             <h2 className="font-serif text-xl font-bold">Protest this property</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Here&apos;s what Corvus found for {protestingProperty.address}. Review it, then choose
-              how you want to run the protest.
+              Here&apos;s what Corvus AI found for {protestingProperty.address}. Review it, then
+              choose how you want to run the protest.
             </p>
             <div className="mt-4">
               <CasePreviewFor
@@ -1378,12 +1378,12 @@ function Properties() {
                       {
                         tier: "owner_managed" as const,
                         tagline:
-                          "You file and attend; Corvus does the AI analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
+                          "You file and attend; Corvus AI does the analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
                       },
                       {
                         tier: "corvusrf_managed" as const,
                         tagline:
-                          "Corvus handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
+                          "CorvusPT's team handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
                       },
                     ] as const
                   ).map(({ tier, tagline }) => {

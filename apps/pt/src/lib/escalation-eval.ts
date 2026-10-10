@@ -488,7 +488,7 @@ export function evaluateEscalation(
 
   const headline = available
     ? pick.id === "no_further_action"
-      ? "Escalation may be available — by Corvus's numbers, the ARB value may be the more practical place to stop"
+      ? "Escalation may be available — by Corvus AI's numbers, the ARB value may be the more practical place to stop"
       : `Escalation may be available — ${pick.title.toLowerCase()} is worth a closer look`
     : "Escalation options are not open for this case yet";
 

@@ -96,10 +96,10 @@ function opportunity(i: PreviewInput): CasePreview["opportunity"] {
     level,
     label:
       level === "potential"
-        ? "Corvus identifies a potential protest opportunity"
+        ? "Corvus AI identifies a potential protest opportunity"
         : level === "possible"
-          ? "Corvus sees a possible opportunity — the full analysis would confirm it"
-          : "Corvus hasn't identified a clear opportunity yet",
+          ? "Corvus AI sees a possible opportunity — the full analysis would confirm it"
+          : "Corvus AI hasn't identified a clear opportunity yet",
     score: s,
     reasons: (i.score?.factors ?? []).slice(0, 3),
   };
@@ -258,11 +258,11 @@ export function casePreview(i: PreviewInput): CasePreview {
   const hearingPlan: HearingStep[] = [
     {
       title: "Opening — the value in question",
-      detail: `${p.cad ?? "The district"}'s ${usd(p.totalValue ?? 0)}${savingsRange ? `, against the range Corvus estimates the evidence supports` : ""}.`,
+      detail: `${p.cad ?? "The district"}'s ${usd(p.totalValue ?? 0)}${savingsRange ? `, against the range Corvus AI estimates the evidence supports` : ""}.`,
       locked: false,
     },
     {
-      title: `Argument Corvus rates first: ${lead}`,
+      title: `Argument Corvus AI rates first: ${lead}`,
       detail:
         lead === "Equal & uniform comparison"
           ? `${belowSubject} of ${count} comparables are appraised below this property${stats?.valuationGapPct != null ? `; this property is appraised ${stats.valuationGapPct}% above their median` : ""} (Tax Code §41.43(b)(3)).`
@@ -290,7 +290,7 @@ export function casePreview(i: PreviewInput): CasePreview {
     },
     {
       title: "Settlement considerations",
-      detail: "Corvus's estimated outcome range.",
+      detail: "Corvus AI's estimated outcome range.",
       locked: true,
     },
   ];
@@ -339,7 +339,7 @@ export const UNLOCKS: { title: string; detail: string }[] = [
   {
     title: "Every comparable",
     detail:
-      "The full comp set with similarity scores, adjustments and the ones Corvus suggests excluding.",
+      "The full comp set with similarity scores, adjustments and the ones Corvus AI suggests excluding.",
   },
   {
     title: "Evidence Builder packet",

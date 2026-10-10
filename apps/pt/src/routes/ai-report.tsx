@@ -3677,7 +3677,7 @@ function Report() {
           <Modal wide onClose={() => setCheckoutPreview(null)}>
             <h3 className="font-serif text-2xl font-semibold">Before you subscribe</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Here&apos;s what Corvus found for this property, and exactly what unlocks.
+              Here&apos;s what Corvus AI found for this property, and exactly what unlocks.
             </p>
             <div className="mt-4">
               <CasePreviewFor property={checkoutPreview.property} />
@@ -12077,7 +12077,7 @@ function ModulePreviewContent({
             />
             <div className="min-w-0 flex-1">
               <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Corvus Assessment
+                Corvus AI Assessment
               </div>
               <div className="mt-0.5 font-serif text-lg font-bold">
                 {RECOMMENDED_ACTION_LABEL[d.recommendedAction] ?? d.recommendedAction}

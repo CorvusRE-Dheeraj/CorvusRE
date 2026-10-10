@@ -146,7 +146,7 @@ describe("analyzeCadEvidence", () => {
     expect(uneven.findings.some((f) => f.kind === "inconsistent")).toBe(true);
   });
 
-  it("compares the proposed value with Corvus's evidence", () => {
+  it("compares the proposed value with Corvus AI's evidence", () => {
     expect(a.comparison).toMatchObject({
       proposedValue: 8_450_000,
       gapToHigh: 1_050_000,

@@ -309,8 +309,8 @@ export function AskAiWidget() {
 
           {messages.length === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Hi, I'm {associateName} from Corvus support 👋 What can I help you with — a question,
-              or something not working right?
+              Hi, I'm {associateName} from CorvusPT support 👋 What can I help you with — a
+              question, or something not working right?
             </p>
           )}
 

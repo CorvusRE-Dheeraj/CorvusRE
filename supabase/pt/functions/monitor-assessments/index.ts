@@ -277,14 +277,14 @@ ${f.deadline ? `<div style="color:#475467; font-size:13px;">Protest deadline: ab
           ? `Assessment changed: ${list[0].property.address}`
           : `${list.length} of your property assessments changed`;
       const text = [
-        "Corvus found a change in your county appraisal values:",
+        "Corvus AI found a change in your county appraisal values:",
         "",
         ...list.map(
           (f) =>
             `- ${f.property.address}: ${describeChange(f.change)}${f.deadline ? ` Protest deadline about ${longDate(f.deadline)} (check your notice).` : ""}`,
         ),
         "",
-        `Corvus has updated your properties and re-screened them: ${appUrl}/dashboard/properties`,
+        `Corvus AI has updated your properties and re-screened them: ${appUrl}/dashboard/properties`,
         "",
         `Turn off assessment alerts: ${unsubscribeUrl}`,
       ].join("\n");
@@ -295,12 +295,12 @@ ${f.deadline ? `<div style="color:#475467; font-size:13px;">Protest deadline: ab
             ? "An assessment changed"
             : `${list.length} assessments changed`,
         intro:
-          "Corvus regularly re-checks every property's county record. It found the change below, updated the property and re-ran its screening, so you can see whether it's worth a protest.",
+          "Corvus AI regularly re-checks every property's county record. It found the change below, updated the property and re-ran its screening, so you can see whether it's worth a protest.",
         bodyRows: rows,
         ctaLabel: "Review in CorvusPT",
         ctaHref: `${appUrl}/dashboard/properties`,
         footnote:
-          "Values come from the appraisal district's public record. Corvus's estimates aren't a guarantee of any outcome.",
+          "Values come from the appraisal district's public record. Corvus AI's estimates aren't a guarantee of any outcome.",
         unsubscribeUrl,
       });
       try {

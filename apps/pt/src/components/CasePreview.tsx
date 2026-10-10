@@ -101,7 +101,7 @@ export function CasePreview({ preview, address }: { preview: Preview | null; add
   if (!preview) {
     return (
       <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-        Gathering what Corvus found for {address}…
+        Gathering what Corvus AI found for {address}…
       </div>
     );
   }
@@ -110,7 +110,7 @@ export function CasePreview({ preview, address }: { preview: Preview | null; add
     <div className="rounded-lg border border-border">
       <div className="border-b border-border p-4">
         <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-          What Corvus found — before you pay
+          What Corvus AI found — before you pay
         </div>
         <div className={`mt-1 font-serif text-lg font-semibold ${LEVEL_TONE[o.level]}`}>
           {o.label}

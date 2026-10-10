@@ -35,7 +35,7 @@ export function PortfolioScreening({
         Free portfolio screening
       </div>
       <h2 id="screening-title" className="mt-1 font-serif text-xl font-semibold">
-        Corvus screened {total} {total === 1 ? "property" : "properties"}
+        Corvus AI screened {total} {total === 1 ? "property" : "properties"}
       </h2>
       <ul className="mt-2 grid gap-1 text-sm">
         <li>
@@ -131,7 +131,7 @@ export function PortfolioScreening({
       </div>
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        Screening is free. You pay only to activate a case. Corvus earns the same per property
+        Screening is free. You pay only to activate a case. CorvusPT earns the same per property
         either way, so it has no reason to enroll a case it doesn&apos;t think is worth it.
         Estimates come from your county record and comparables; they aren&apos;t a guarantee of any
         outcome.

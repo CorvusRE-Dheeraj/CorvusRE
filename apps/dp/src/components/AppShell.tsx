@@ -15,10 +15,6 @@ import {
   Layers,
   ClipboardCheck,
   Bell,
-  ClipboardList,
-  NotebookPen,
-  HelpCircle,
-  HardHat,
   ChevronDown,
   Building2,
   Check,
@@ -26,6 +22,7 @@ import {
   Landmark,
   Menu,
   TrainTrack,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProjects, setActiveProject, deleteProject } from "@/lib/projects";
@@ -86,15 +83,10 @@ const PERMITTING_SUBGROUPS: NavSubgroup[] = [
       { to: "/dashboard/timeline", label: "Timeline", icon: CalendarClock },
       { to: "/dashboard/reviews", label: "Reviews", icon: MessagesSquare },
       { to: "/dashboard/city", label: "City", icon: Landmark },
+      { to: "/dashboard/portal", label: "City Portal Login", icon: KeyRound },
       { to: "/dashboard/approvals", label: "Approvals", icon: BadgeCheck },
     ],
   },
-];
-
-const CONSTRUCTION_ITEMS: NavLink[] = [
-  { to: "/dashboard/inspections", label: "Inspections", icon: ClipboardList },
-  { to: "/dashboard/daily-log", label: "Daily Log", icon: NotebookPen },
-  { to: "/dashboard/rfis", label: "Submittals & RFIs", icon: HelpCircle },
 ];
 
 const ACCOUNT_ITEMS: NavLink[] = [
@@ -188,11 +180,6 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             <SidebarLink key={item.to} item={item} onNavigate={onNavigate} />
           ))}
         </div>
-      ))}
-
-      <SidebarSectionLabel icon={HardHat} label="Construction" />
-      {CONSTRUCTION_ITEMS.map((item) => (
-        <SidebarLink key={item.to} item={item} onNavigate={onNavigate} />
       ))}
 
       <div className="mt-5 flex flex-col gap-1 border-t border-border pt-3">

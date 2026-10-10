@@ -110,7 +110,7 @@ export function AssessmentChangesBanner({
         })}
       </ul>
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Corvus re-checks every property&apos;s county record regularly and has updated the values
+        Corvus AI re-checks every property&apos;s county record regularly and has updated the values
         and the screening above.
       </p>
     </section>

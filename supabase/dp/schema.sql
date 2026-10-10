@@ -867,3 +867,121 @@ alter table public.profiles add column if not exists unsubscribe_token text;
 create unique index if not exists profiles_unsubscribe_token_key
   on public.profiles (unsubscribe_token)
   where unsubscribe_token is not null;
+
+-- ---------------------------------------------------------------------------
+-- City portal logins (dashboard → File & track → City Portal): the
+-- city/municipality portal a project's permits are submitted and tracked in.
+-- One row per portal per project. The password is never stored here — it
+-- lives encrypted in Supabase Vault (password_secret_id), written and read
+-- only through the two security-definer functions below, which check
+-- owns_project() (the project's owner, or staff via is_admin()).
+-- ---------------------------------------------------------------------------
+create table if not exists public.project_portal_logins (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  portal_name text not null,
+  portal_url text,
+  username text,
+  account_ref text,
+  notes text,
+  password_secret_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users (id) on delete set null
+);
+create index if not exists project_portal_logins_project_idx
+  on public.project_portal_logins (project_id);
+alter table public.project_portal_logins enable row level security;
+drop policy if exists "portal logins: project access" on public.project_portal_logins;
+create policy "portal logins: project access" on public.project_portal_logins
+  for all using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+-- The secret id is set only by set_portal_password: a column-level revoke
+-- does nothing while a table-level UPDATE grant exists, so update is granted
+-- column by column instead (otherwise a user could point their row at
+-- another project's secret and reveal it).
+revoke update on public.project_portal_logins from authenticated, anon;
+grant update (portal_name, portal_url, username, account_ref, notes, updated_at, updated_by)
+  on public.project_portal_logins to authenticated;
+revoke insert on public.project_portal_logins from authenticated, anon;
+grant insert (project_id, portal_name, portal_url, username, account_ref, notes, updated_by)
+  on public.project_portal_logins to authenticated;
+
+create or replace function public.set_portal_password(p_login_id uuid, p_password text)
+returns void
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+declare
+  v_project uuid;
+  v_secret uuid;
+begin
+  select project_id, password_secret_id into v_project, v_secret
+    from public.project_portal_logins where id = p_login_id;
+  if v_project is null or not public.owns_project(v_project) then
+    raise exception 'not allowed';
+  end if;
+  if coalesce(p_password, '') = '' then
+    if v_secret is not null then delete from vault.secrets where id = v_secret; end if;
+    update public.project_portal_logins
+      set password_secret_id = null, updated_at = now(), updated_by = auth.uid()
+      where id = p_login_id;
+  elsif v_secret is null then
+    v_secret := vault.create_secret(p_password, 'portal_login_' || p_login_id::text);
+    update public.project_portal_logins
+      set password_secret_id = v_secret, updated_at = now(), updated_by = auth.uid()
+      where id = p_login_id;
+  else
+    perform vault.update_secret(v_secret, p_password);
+    update public.project_portal_logins
+      set updated_at = now(), updated_by = auth.uid()
+      where id = p_login_id;
+  end if;
+end;
+$$;
+
+create or replace function public.reveal_portal_password(p_login_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+declare
+  v_project uuid;
+  v_secret uuid;
+  v_value text;
+begin
+  select project_id, password_secret_id into v_project, v_secret
+    from public.project_portal_logins where id = p_login_id;
+  if v_project is null or not public.owns_project(v_project) then
+    raise exception 'not allowed';
+  end if;
+  if v_secret is null then return null; end if;
+  select decrypted_secret into v_value from vault.decrypted_secrets where id = v_secret;
+  return v_value;
+end;
+$$;
+
+-- Removing a login removes its stored password too.
+create or replace function public.portal_login_cleanup()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+begin
+  if old.password_secret_id is not null then
+    delete from vault.secrets where id = old.password_secret_id;
+  end if;
+  return old;
+end;
+$$;
+drop trigger if exists portal_login_cleanup on public.project_portal_logins;
+create trigger portal_login_cleanup after delete on public.project_portal_logins
+  for each row execute function public.portal_login_cleanup();
+
+revoke all on function public.set_portal_password(uuid, text) from public, anon;
+revoke all on function public.reveal_portal_password(uuid) from public, anon;
+revoke all on function public.portal_login_cleanup() from public, anon, authenticated;
+grant execute on function public.set_portal_password(uuid, text) to authenticated;
+grant execute on function public.reveal_portal_password(uuid) to authenticated;

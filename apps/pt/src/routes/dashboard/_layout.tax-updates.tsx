@@ -598,7 +598,7 @@ function TaxUpdates() {
             </p>
           )}
           <p className="max-w-3xl">
-            <strong className="text-white">How Corvus helps: </strong>
+            <strong className="text-white">How CorvusPT helps: </strong>
             CorvusPT reads the official sources every week, tells you which updates may affect your
             properties, and turns them into next steps &mdash; a protest opportunity analysis,
             deadline and hearing alerts, evidence and hearing preparation, and every stage of your

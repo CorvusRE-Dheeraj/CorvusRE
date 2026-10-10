@@ -45,6 +45,7 @@ import { Route as DashboardLayoutFeesRouteImport } from './routes/dashboard/_lay
 import { Route as DashboardLayoutInspectionsRouteImport } from './routes/dashboard/_layout.inspections'
 import { Route as DashboardLayoutNotificationsRouteImport } from './routes/dashboard/_layout.notifications'
 import { Route as DashboardLayoutPermitsRouteImport } from './routes/dashboard/_layout.permits'
+import { Route as DashboardLayoutPortalRouteImport } from './routes/dashboard/_layout.portal'
 import { Route as DashboardLayoutPrepareRouteImport } from './routes/dashboard/_layout.prepare'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutReviewsRouteImport } from './routes/dashboard/_layout.reviews'
@@ -246,6 +247,11 @@ const DashboardLayoutPermitsRoute = DashboardLayoutPermitsRouteImport.update({
   path: '/permits',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutPortalRoute = DashboardLayoutPortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutPrepareRoute = DashboardLayoutPrepareRouteImport.update({
   id: '/prepare',
   path: '/prepare',
@@ -330,6 +336,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
+  '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
@@ -376,6 +383,7 @@ export interface FileRoutesByTo {
   '/dashboard/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
+  '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
@@ -424,6 +432,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/inspections': typeof DashboardLayoutInspectionsRoute
   '/dashboard/_layout/notifications': typeof DashboardLayoutNotificationsRoute
   '/dashboard/_layout/permits': typeof DashboardLayoutPermitsRoute
+  '/dashboard/_layout/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/_layout/prepare': typeof DashboardLayoutPrepareRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/reviews': typeof DashboardLayoutReviewsRoute
@@ -473,6 +482,7 @@ export interface FileRouteTypes {
     | '/dashboard/inspections'
     | '/dashboard/notifications'
     | '/dashboard/permits'
+    | '/dashboard/portal'
     | '/dashboard/prepare'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
@@ -519,6 +529,7 @@ export interface FileRouteTypes {
     | '/dashboard/inspections'
     | '/dashboard/notifications'
     | '/dashboard/permits'
+    | '/dashboard/portal'
     | '/dashboard/prepare'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
@@ -566,6 +577,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/inspections'
     | '/dashboard/_layout/notifications'
     | '/dashboard/_layout/permits'
+    | '/dashboard/_layout/portal'
     | '/dashboard/_layout/prepare'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/reviews'
@@ -854,6 +866,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutPermitsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/portal': {
+      id: '/dashboard/_layout/portal'
+      path: '/portal'
+      fullPath: '/dashboard/portal'
+      preLoaderRoute: typeof DashboardLayoutPortalRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/prepare': {
       id: '/dashboard/_layout/prepare'
       path: '/prepare'
@@ -937,6 +956,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutInspectionsRoute: typeof DashboardLayoutInspectionsRoute
   DashboardLayoutNotificationsRoute: typeof DashboardLayoutNotificationsRoute
   DashboardLayoutPermitsRoute: typeof DashboardLayoutPermitsRoute
+  DashboardLayoutPortalRoute: typeof DashboardLayoutPortalRoute
   DashboardLayoutPrepareRoute: typeof DashboardLayoutPrepareRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutReviewsRoute: typeof DashboardLayoutReviewsRoute
@@ -966,6 +986,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutInspectionsRoute: DashboardLayoutInspectionsRoute,
   DashboardLayoutNotificationsRoute: DashboardLayoutNotificationsRoute,
   DashboardLayoutPermitsRoute: DashboardLayoutPermitsRoute,
+  DashboardLayoutPortalRoute: DashboardLayoutPortalRoute,
   DashboardLayoutPrepareRoute: DashboardLayoutPrepareRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutReviewsRoute: DashboardLayoutReviewsRoute,

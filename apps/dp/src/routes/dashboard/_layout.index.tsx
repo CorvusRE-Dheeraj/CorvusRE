@@ -189,7 +189,6 @@ const WALKTHROUGH_ITEMS: { to: string; label: string; desc: string }[] = [
   { to: "/dashboard/checklist", label: "Checklist / Prepare", desc: "what to submit and who owns it" },
   { to: "/dashboard/reviews", label: "Reviews / City", desc: "reviewer comments vs. informal jurisdiction contact" },
   { to: "/dashboard/approvals", label: "Approvals", desc: "approved permits, clearance, and expiry" },
-  { to: "/dashboard/inspections", label: "Construction", desc: "inspections, daily logs, and submittals/RFIs once you're building" },
   { to: "/dashboard/design", label: "Design", desc: "your design brief, cost breakdown, and stage progress" },
   { to: "/dashboard/notifications", label: "Alerts", desc: "a log of every status change" },
 ];
