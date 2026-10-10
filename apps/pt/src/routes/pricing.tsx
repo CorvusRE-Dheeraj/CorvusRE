@@ -232,7 +232,7 @@ function Page() {
               </span>{" "}
               —{" "}
               <span className="font-bold">
-                CorvusPT&apos;s AI prepares everything and tells you what to do and when.
+                Corvus AI prepares everything and tells you what to do and when.
               </span>
             </p>
             <ul className="mt-4 space-y-2 text-sm">

@@ -143,10 +143,10 @@ export function compareConditions(
         : "similar";
   const summary =
     finding === "worse"
-      ? `Corvus rates the subject's visible exterior ${s}/5 against a ${compsMedian}/5 median for ${comps.length} comparables — rated below ${worseThan} of them. That may support a condition adjustment to consider alongside photos and repair bids.`
+      ? `Corvus AI rates the subject's visible exterior ${s}/5 against a ${compsMedian}/5 median for ${comps.length} comparables — rated below ${worseThan} of them. That may support a condition adjustment to consider alongside photos and repair bids.`
       : finding === "better"
-        ? `Corvus rates the subject's visible exterior ${s}/5 against a ${compsMedian}/5 median for ${comps.length} comparables — in better visible condition than most. The district may point to that; condition isn't a strong argument here.`
-        : `Corvus rates the subject's visible exterior ${s}/5, in line with the ${compsMedian}/5 median for ${comps.length} comparables — no visible condition difference to argue from the street.`;
+        ? `Corvus AI rates the subject's visible exterior ${s}/5 against a ${compsMedian}/5 median for ${comps.length} comparables — in better visible condition than most. The district may point to that; condition isn't a strong argument here.`
+        : `Corvus AI rates the subject's visible exterior ${s}/5, in line with the ${compsMedian}/5 median for ${comps.length} comparables — no visible condition difference to argue from the street.`;
   return {
     subject,
     comps,

@@ -290,7 +290,7 @@ export function CourtAppealWorkflow({
         }
         const bytes = await buildAttorneyPackagePdf({
           title: "Case Package for Attorney Review",
-          subtitle: `${property.address} - prepared ${new Date().toLocaleDateString()} by Corvus (organization only, not legal advice)`,
+          subtitle: `${property.address} - prepared ${new Date().toLocaleDateString()} by Corvus AI (organization only, not legal advice)`,
           sections: summarySections(),
           evidence: files,
         });
@@ -486,8 +486,8 @@ export function CourtAppealWorkflow({
         <h2 className={h}>Court appeal review</h2>
         {!review.ready ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            Record the ARB decision on the Decision tab (upload the ARB order) so Corvus can count
-            your deadline.
+            Record the ARB decision on the Decision tab (upload the ARB order) so Corvus AI can
+            count your deadline.
           </p>
         ) : (
           <>
@@ -761,7 +761,7 @@ export function CourtAppealWorkflow({
             <section id="court-petition" className={card}>
               <h2 className={h}>Confirm petition filed</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                You and your attorney file the petition with the court — Corvus does not. Once
+                You and your attorney file the petition with the court — CorvusPT does not. Once
                 it&apos;s filed, confirm it here to start tracking the court case.
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -869,7 +869,7 @@ export function CourtAppealWorkflow({
                 value={upd.notes}
                 onChange={(e) => setUpd((u) => ({ ...u, notes: e.target.value }))}
                 rows={2}
-                placeholder="Notes (optional — or upload the document and Corvus will summarize it)"
+                placeholder="Notes (optional — or upload the document and Corvus AI will summarize it)"
                 className={input}
               />
               <div className="flex flex-wrap items-center gap-3">
@@ -916,7 +916,7 @@ export function CourtAppealWorkflow({
           <h2 className={h}>Case resolved?</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             When the court case ends (judgment or settlement), upload the document or enter the
-            final value. Corvus updates your case and returns the property to tax monitoring.
+            final value. Corvus AI updates your case and returns the property to tax monitoring.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input

@@ -79,7 +79,7 @@ export function PodioImportPanel({ onGrid }: { onGrid: (g: SpreadsheetGrid) => v
       ) : !status.connected ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Connect your Podio account, pick the app that holds your properties, and Corvus reads
+            Connect your Podio account, pick the app that holds your properties, and Corvus AI reads
             every item — the same mapping, county matching and duplicate checks as a file.
           </p>
           <button type="button" onClick={connect} className="btn-outline w-fit text-sm">

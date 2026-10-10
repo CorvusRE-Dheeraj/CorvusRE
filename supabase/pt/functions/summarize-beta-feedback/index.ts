@@ -20,14 +20,19 @@ import { GEMINI_MODEL_REASONING, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
 const GEMINI_TIMEOUT_MS = 75_000;
 
 type Theme = { theme: string; count: number; examples: string[] };
-type Insights = { painPoints: Theme[]; featureRequests: Theme[]; wouldMiss: Theme[] };
+type Insights = {
+  painPoints: Theme[];
+  featureRequests: Theme[];
+  wouldMiss: Theme[];
+};
 
 async function clusterTheme(
   apiKey: string,
@@ -36,14 +41,16 @@ async function clusterTheme(
 ): Promise<Theme[]> {
   if (answers.length === 0) return [];
   const system =
-    `You're analyzing open-ended answers from beta testers of Corvus, an AI property-tax-protest ` +
+    `You're analyzing open-ended answers from beta testers of CorvusPT, an AI property-tax-protest ` +
     `platform, to the question "${label}". Group the answers below into 3-8 recurring THEMES ` +
     `(not one theme per answer) — merge near-duplicates, ignore one-off noise. For each theme, ` +
     `count how many of the given answers genuinely belong to it and pick up to 3 short verbatim ` +
     `example quotes (trim but don't paraphrase). Order themes by count, descending.\n\n` +
     `Return ONLY a JSON object: {"themes": [{"theme": "<short label, <=8 words>", "count": <int>, ` +
     `"examples": ["<verbatim quote>", ...]}]}`;
-  const numbered = answers.map((a, i) => `${i + 1}. ${a.slice(0, 500)}`).join("\n");
+  const numbered = answers
+    .map((a, i) => `${i + 1}. ${a.slice(0, 500)}`)
+    .join("\n");
 
   const body = {
     systemInstruction: { parts: [{ text: system }] },
@@ -71,7 +78,10 @@ async function clusterTheme(
   } finally {
     clearTimeout(t);
   }
-  if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok)
+    throw new Error(
+      `Gemini API error ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
 
   const json = (await res.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -87,7 +97,10 @@ async function clusterTheme(
   return Array.isArray(parsed.themes) ? parsed.themes : [];
 }
 
-function collectAnswers(rows: { answers: Record<string, unknown> }[], questionId: string): string[] {
+function collectAnswers(
+  rows: { answers: Record<string, unknown> }[],
+  questionId: string,
+): string[] {
   return rows
     .map((r) => r.answers?.[questionId])
     .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
@@ -95,13 +108,18 @@ function collectAnswers(rows: { answers: Record<string, unknown> }[], questionId
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+      {
+        global: {
+          headers: { Authorization: req.headers.get("Authorization") ?? "" },
+        },
+      },
     );
     const {
       data: { user },
@@ -118,7 +136,11 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
     if (!profile?.is_admin) {
       return new Response(JSON.stringify({ error: "not authorized" }), {
         status: 403,
@@ -137,15 +159,19 @@ Deno.serve(async (req: Request) => {
     const responses = (rows ?? []) as { answers: Record<string, unknown> }[];
 
     const [painPoints, featureRequests, wouldMiss] = await Promise.all([
-      clusterTheme(apiKey, "Where did you feel unsure about what you were supposed to do next?", collectAnswers(responses, "f14_where")),
       clusterTheme(
         apiKey,
-        "If you could add one feature to Corvus tomorrow, what would it be?",
+        "Where did you feel unsure about what you were supposed to do next?",
+        collectAnswers(responses, "f14_where"),
+      ),
+      clusterTheme(
+        apiKey,
+        "If you could add one feature to CorvusPT tomorrow, what would it be?",
         collectAnswers(responses, "f19"),
       ),
       clusterTheme(
         apiKey,
-        "Complete this sentence: I would use Corvus every year if ...",
+        "Complete this sentence: I would use CorvusPT every year if ...",
         collectAnswers(responses, "f20"),
       ),
     ]);
@@ -153,21 +179,29 @@ Deno.serve(async (req: Request) => {
     const insights: Insights = { painPoints, featureRequests, wouldMiss };
     const generatedAt = new Date().toISOString();
 
-    const { error: upsertErr } = await admin.from("beta_feedback_insights").upsert({
-      id: 1,
-      insights,
-      response_count: responses.length,
-      generated_at: generatedAt,
-    });
+    const { error: upsertErr } = await admin
+      .from("beta_feedback_insights")
+      .upsert({
+        id: 1,
+        insights,
+        response_count: responses.length,
+        generated_at: generatedAt,
+      });
     if (upsertErr) throw upsertErr;
 
     return new Response(
-      JSON.stringify({ insights, responseCount: responses.length, generatedAt }),
+      JSON.stringify({
+        insights,
+        responseCount: responses.length,
+        generatedAt,
+      }),
       { status: 200, headers: corsHeaders },
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
       { status: 500, headers: corsHeaders },
     );
   }

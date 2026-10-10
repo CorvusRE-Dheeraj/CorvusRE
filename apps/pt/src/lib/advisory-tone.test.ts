@@ -35,7 +35,7 @@ describe("advisory tone", () => {
     expect(p.startsWith("You are CorvusPT's analyst.")).toBe(true);
     expect(p).toContain(ADVISORY_TONE);
     expect(ADVISORY_TONE).toContain("Occupations Code ch. 1152");
-    expect(ADVISORY_TONE).toContain("Corvus estimates $3.6M as a potential value to consider");
+    expect(ADVISORY_TONE).toContain("Corvus AI estimates $3.6M as a potential value to consider");
   });
 
   it("flags directive phrasing", () => {
@@ -43,7 +43,7 @@ describe("advisory tone", () => {
     expect(directivePhrases("Accept $6.9M or lower")).not.toHaveLength(0);
     expect(directivePhrases("Above $7.8M: decline and go to the ARB.")).not.toHaveLength(0);
     expect(
-      directivePhrases("Corvus identifies this as a potential protest opportunity."),
+      directivePhrases("Corvus AI identifies this as a potential protest opportunity."),
     ).toHaveLength(0);
   });
 

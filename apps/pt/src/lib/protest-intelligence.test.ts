@@ -103,7 +103,7 @@ describe("protestIntelligence", () => {
 
   it("identifies the protest opportunity and explains why", () => {
     expect(answer(pi, "should").headline).toBe(
-      "Corvus identifies a potential protest opportunity — strong case",
+      "Corvus AI identifies a potential protest opportunity — strong case",
     );
     expect(answer(pi, "should").points[0]).toContain("$26,400");
     expect(answer(pi, "why").headline).toBe(
@@ -117,7 +117,7 @@ describe("protestIntelligence", () => {
     expect(answer(pi, "evidence").points[0]).toContain("Rent Roll 2026.pdf");
     expect(answer(pi, "evidence").points[1]).toContain("Cost Approach");
     expect(answer(pi, "strength").headline).toBe(
-      "Corvus rates Equal & Uniform strongest, then Income Approach",
+      "Corvus AI rates Equal & Uniform strongest, then Income Approach",
     );
   });
 
@@ -130,10 +130,10 @@ describe("protestIntelligence", () => {
   });
 
   it("sets informal-acceptance bands and the ARB ask", () => {
-    expect(answer(pi, "accept").headline).toMatch(/^Corvus's estimated likely outcome: \$\d/);
+    expect(answer(pi, "accept").headline).toMatch(/^Corvus AI's estimated likely outcome: \$\d/);
     expect(answer(pi, "accept").points).toHaveLength(3);
     expect(answer(pi, "ask").headline).toBe(
-      "Corvus estimates $6.9M as a potential value to consider, based on the Equal & Uniform",
+      "Corvus AI estimates $6.9M as a potential value to consider, based on the Equal & Uniform",
     );
   });
 
@@ -160,7 +160,7 @@ describe("protestIntelligence", () => {
     expect(cad.headline).toBe("Its evidence points to $8.6M");
     expect(cad.points[0]).toContain("1 weakness");
     expect(answer(withReview, "ask").points).toContain(
-      "Corvus has drafted a hearing response to the district's evidence for your review.",
+      "Corvus AI has drafted a hearing response to the district's evidence for your review.",
     );
   });
 });

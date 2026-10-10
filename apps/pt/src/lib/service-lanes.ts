@@ -34,7 +34,7 @@ export const SERVICE_LANES: ServiceLane[] = [
     price: "Free",
     priceNote: "No card required · screen your whole portfolio",
     buying:
-      "An AI review of each property's assessed value against your county's official record and comparable properties, with an estimate of what a protest could save. Add your whole portfolio and Corvus screens it into high-priority, moderate and probably-not-worth-it cases — you pay only to activate the ones you choose.",
+      "An AI review of each property's assessed value against your county's official record and comparable properties, with an estimate of what a protest could save. Add your whole portfolio and Corvus AI screens it into high-priority, moderate and probably-not-worth-it cases — you pay only to activate the ones you choose.",
     whoFiles: "Nothing is filed — this is a review only.",
     whoAppears: "No hearing.",
     whoCommunicates: "No one contacts the county.",
@@ -43,14 +43,14 @@ export const SERVICE_LANES: ServiceLane[] = [
   {
     id: "owner_managed",
     name: "Owner-Managed CorvusPT",
-    tagline: "You protest. CorvusPT's AI prepares everything.",
+    tagline: "You protest. Corvus AI prepares everything.",
     price: `${usd(MONTHLY)}/mo`,
     priceNote: `per property, billed annually (${usd(MONTHLY * 12)}/yr)`,
     buying:
       "All 10 AI modules, the AI Executive Protest Report and an evidence packet, filing instructions for your county, deadline tracking and hearing prep — for you to use yourself.",
     whoFiles:
       "You do. CorvusPT prepares the evidence and tells you exactly what to file, where and by when.",
-    whoAppears: "You do, with CorvusPT's AI hearing-prep guide.",
+    whoAppears: "You do, with Corvus AI's hearing-prep guide.",
     whoCommunicates:
       "You do. Your deadlines and the county's notices are tracked in your dashboard.",
     cta: { label: "Add a Property to Subscribe", to: "/dashboard/properties" },

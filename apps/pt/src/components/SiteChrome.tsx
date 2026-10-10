@@ -443,8 +443,8 @@ export function SiteNav() {
           <DialogHeader>
             <DialogTitle>Got a couple minutes before you go?</DialogTitle>
             <DialogDescription>
-              You're one of our beta testers, and we haven't heard from you yet. Help us make Corvus
-              better — it's 7-10 minutes, and it really helps.
+              You're one of our beta testers, and we haven't heard from you yet. Help us make
+              CorvusPT better — it's 7-10 minutes, and it really helps.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

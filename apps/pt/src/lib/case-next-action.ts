@@ -145,7 +145,7 @@ function computePrepareFileAction(
 
   if (preFilingBlocked) {
     current = "file";
-    summary = "Corvus needs you to confirm or correct a detail before this case can be filed.";
+    summary = "Corvus AI needs you to confirm or correct a detail before this case can be filed.";
     action = { label: "Resolve in View Case", kind: "internal", href: VIEW_CASE_HREF };
   } else if (deliverToCounty) {
     current = "file";

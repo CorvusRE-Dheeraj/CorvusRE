@@ -1498,7 +1498,7 @@ function CorvusGuidanceGate({
         <h2 className="text-sm font-semibold">County Requirements Check</h2>
         {verifyState === "loading" ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Corvus is verifying this case against {property.cad || "the county"}'s requirements…
+            Corvus AI is verifying this case against {property.cad || "the county"}'s requirements…
           </p>
         ) : verifyState === "error" ? (
           <p className="mt-2 text-xs text-muted-foreground">
@@ -3196,7 +3196,7 @@ function FiledProtestStatusCard({
         </p>
       ) : !started ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Corvus walks you through it one step at a time — the Pre-Filing Check, the exact county
+          Corvus AI walks you through it one step at a time — the Pre-Filing Check, the exact county
           forms you need (Notice of Protest, and an agent or affidavit form only if they apply),
           signing, filing, and your evidence package.
         </p>
@@ -3931,7 +3931,7 @@ export function DocumentsSection({
     <div id="case-documents">
       <h2 className="font-serif text-lg font-semibold">File Your Protest</h2>
       <p className="text-xs text-muted-foreground">
-        Corvus takes you through only the steps this case needs — one at a time. Official Texas
+        Corvus AI takes you through only the steps this case needs — one at a time. Official Texas
         Comptroller forms, pre-filled; review every field, then sign. Completed forms save to your
         Documents.
       </p>
@@ -3959,7 +3959,7 @@ export function DocumentsSection({
           />
           {preFilingBlocked ? (
             <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              Corvus can't confirm this case is ready to file — resolve the field(s) marked
+              Corvus AI can't confirm this case is ready to file — resolve the field(s) marked
               "Missing" or "Needs review" above (use the editor beside each). The filing steps
               unlock once this is clear.
             </div>
@@ -4012,9 +4012,9 @@ export function DocumentsSection({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Opens the Notice of Protest (Form 50-132) pre-filled from your case — Corvus drafts the
-            "reasons" from your evidence; review every field, then Save, Sign &amp; download. The
-            signed form is saved to your Documents.
+            Opens the Notice of Protest (Form 50-132) pre-filled from your case — Corvus AI drafts
+            the "reasons" from your evidence; review every field, then Save, Sign &amp; download.
+            The signed form is saved to your Documents.
           </p>
 
           {noticeSignedAt ? (
@@ -4604,7 +4604,7 @@ function EvidencePackageBuilder({
         Generate Evidence Package
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Corvus pre-selected the documents Module 8 already matched to your case — add, remove, or
+        Corvus AI pre-selected the documents Module 8 already matched to your case — add, remove, or
         reorder before generating.
       </p>
       <p className="mt-1 text-xs text-muted-foreground">

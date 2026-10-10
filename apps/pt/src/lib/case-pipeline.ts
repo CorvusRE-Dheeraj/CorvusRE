@@ -213,7 +213,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         ? action({
             title: "Start your protest case",
             detail:
-              "Open a case for this property so Corvus can check it's ready to file — county, account, tax year, owner and deadline.",
+              "Open a case for this property so Corvus AI can check it's ready to file — county, account, tax year, owner and deadline.",
             dueDate: deadline,
             dueLabel: "Protest deadline",
             target: { kind: "start" },
@@ -221,7 +221,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         : action({
             title: "Run the case-readiness check",
             detail:
-              "Read the filing guidance and let Corvus confirm the county, property, tax year, owner and deadline before anything is filed.",
+              "Read the filing guidance and let Corvus AI confirm the county, property, tax year, owner and deadline before anything is filed.",
             dueDate: deadline,
             dueLabel: "Protest deadline",
             target: { kind: "anchor", anchor: "case-readiness" },
@@ -239,7 +239,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         ? action({
             title: `File your signed Notice of Protest with ${cad}`,
             detail:
-              "Submit it online, by mail, in person or by email — your county's accepted methods and address are in the filing step. Then tell Corvus how you sent it.",
+              "Submit it online, by mail, in person or by email — your county's accepted methods and address are in the filing step. Then tell Corvus AI how you sent it.",
             dueDate: deadline,
             dueLabel: "Protest deadline",
             target: { kind: "anchor", anchor: "case-documents" },
@@ -247,7 +247,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         : action({
             title: "Complete and sign your Notice of Protest (Form 50-132)",
             detail:
-              "Corvus has pre-filled it from your property record. Review it, choose your protest reasons and sign.",
+              "Corvus AI has pre-filled it from your property record. Review it, choose your protest reasons and sign.",
             dueDate: deadline,
             dueLabel: "Protest deadline",
             target: { kind: "anchor", anchor: "case-documents" },
@@ -292,7 +292,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         ? team(`CorvusPT is requesting ${cad}'s evidence for your hearing`)
         : action({
             title: `Request ${cad}'s evidence`,
-            detail: `Ask in writing for the evidence the district will use at your hearing (Tax Code §41.461) — it must give it to you at least ${CAD_EVIDENCE_LEAD_DAYS} days before the hearing. Corvus drafts the request for you.`,
+            detail: `Ask in writing for the evidence the district will use at your hearing (Tax Code §41.461) — it must give it to you at least ${CAD_EVIDENCE_LEAD_DAYS} days before the hearing. Corvus AI drafts the request for you.`,
             dueDate: hearingDate ? addDays(hearingDate, -CAD_EVIDENCE_LEAD_DAYS) : null,
             dueLabel: hearingDate ? "Request well before" : null,
             target: { kind: "anchor", anchor: "case-cad-evidence" },
@@ -305,7 +305,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         next = action({
           title: `Review the county's offer${p?.settlementOfferValue ? ` of ${usd(p.settlementOfferValue)}` : ""}`,
           detail:
-            "Accepting settles the protest at that value; declining moves it to a formal ARB hearing. The decision is yours — Corvus's comparison of the offer is on your dashboard.",
+            "Accepting settles the protest at that value; declining moves it to a formal ARB hearing. The decision is yours — Corvus AI's comparison of the offer is on your dashboard.",
           dueDate: null,
           dueLabel: null,
           target: { kind: "anchor", anchor: "case-informal-review" },
@@ -355,7 +355,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         next = action({
           title: "Watch for your ARB hearing notice",
           detail:
-            "The county mails it at least 15 days before the hearing. Upload it as soon as it arrives so Corvus can track the date.",
+            "The county mails it at least 15 days before the hearing. Upload it as soon as it arrives so Corvus AI can track the date.",
           dueDate: null,
           dueLabel: null,
           target: { kind: "anchor", anchor: "case-hearing-notice" },
@@ -373,7 +373,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
         next = action({
           title: "Mark your ARB hearing as held",
           detail:
-            "Tell Corvus the hearing happened so it can watch for the ARB's written decision.",
+            "Tell Corvus AI the hearing happened so it can watch for the ARB's written decision.",
           dueDate: null,
           dueLabel: null,
           target: { kind: "anchor", anchor: "case-hearing-prep" },
@@ -418,7 +418,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
           ? "CorvusPT is closing your case"
           : "Record the final value and close your case",
         detail:
-          "Enter the final appraised value so Corvus can calculate your savings and roll the property into next year.",
+          "Enter the final appraised value so Corvus AI can calculate your savings and roll the property into next year.",
         dueDate: null,
         dueLabel: null,
         owner: managed ? "corvus" : "you",

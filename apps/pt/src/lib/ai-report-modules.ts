@@ -520,11 +520,11 @@ export const RECOMMENDED_ACTION_LABEL: Record<
   ModuleResultMap["executive"]["recommendedAction"],
   string
 > = {
-  "Proceed with Protest": "Corvus identifies a potential protest opportunity",
+  "Proceed with Protest": "Corvus AI identifies a potential protest opportunity",
   "Proceed with Protest After Completing Recommended Evidence":
     "Potential protest opportunity — more evidence would strengthen it",
   "Additional Information Needed Before Proceeding":
-    "More information needed for Corvus to assess the opportunity",
+    "More information needed for Corvus AI to assess the opportunity",
   "Limited Protest Opportunity Based on Available Information":
     "Limited protest opportunity identified on the available information",
 };

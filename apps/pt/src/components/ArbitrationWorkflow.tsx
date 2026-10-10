@@ -653,9 +653,9 @@ export function ArbitrationWorkflow({
                 <div className="mt-3 rounded-md border border-success/40 bg-success/10 p-3 text-sm">
                   <p className="font-medium">Ready to file.</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Corvus doesn&apos;t file this for you. File the Request for Binding Arbitration
-                    with {property.cad ?? "your appraisal district"} (with the deposit) using the
-                    links below, then come back and confirm.
+                    CorvusPT doesn&apos;t file this for you. File the Request for Binding
+                    Arbitration with {property.cad ?? "your appraisal district"} (with the deposit)
+                    using the links below, then come back and confirm.
                     {countyInfo?.arbContact?.phone
                       ? ` County contact: ${countyInfo.arbContact.phone}.`
                       : ""}
@@ -713,7 +713,7 @@ export function ArbitrationWorkflow({
         <section className="rounded-md border border-border p-4">
           <h2 className="text-sm font-semibold">Add the arbitration result</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Upload the arbitrator&apos;s award or settlement. Corvus reads the final value and
+            Upload the arbitrator&apos;s award or settlement. Corvus AI reads the final value and
             updates this case.
           </p>
           <label

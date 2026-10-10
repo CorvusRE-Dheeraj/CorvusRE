@@ -578,7 +578,7 @@ function AdminPanel() {
     },
     {
       key: "corvus_managed",
-      label: "Corvus Managed",
+      label: "CorvusPT Managed",
       count: usersLoading ? null : corvusManagedUsers.length,
     },
     { key: "admins", label: "Admins", count: usersLoading ? null : adminUsers.length },
@@ -692,7 +692,7 @@ function AdminPanel() {
       {activeTab === "corvus_managed" && (
         <div className="mt-8">
           <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="font-serif text-xl font-semibold">Corvus Managed</h2>
+            <h2 className="font-serif text-xl font-semibold">CorvusPT Managed</h2>
             {!usersLoading && (
               <span className="badge-soft">
                 {corvusManagedUsers.length} user{corvusManagedUsers.length === 1 ? "" : "s"}

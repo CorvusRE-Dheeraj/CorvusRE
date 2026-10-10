@@ -27,7 +27,8 @@ import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
@@ -35,7 +36,8 @@ const MAX_SENDS = 3;
 const MIN_GAP_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   // sendBeacon is fire-and-forget — the client never reads this response —
   // so every path below returns 200 regardless of outcome. Real failures
@@ -63,10 +65,15 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const admin = createClient(
+      supabaseUrl,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
     const { data: profile } = await admin
       .from("profiles")
-      .select("plan, email, first_name, beta_feedback_invite_sent_at, beta_feedback_invite_count")
+      .select(
+        "plan, email, first_name, beta_feedback_invite_sent_at, beta_feedback_invite_count",
+      )
       .eq("id", user.id)
       .maybeSingle();
 
@@ -86,11 +93,17 @@ Deno.serve(async (req: Request) => {
       });
     }
     const lastSentAt = profile.beta_feedback_invite_sent_at as string | null;
-    if (lastSentAt && Date.now() - new Date(lastSentAt).getTime() < MIN_GAP_MS) {
-      return new Response(JSON.stringify({ ignored: "too soon since last send" }), {
-        status: 200,
-        headers: corsHeaders,
-      });
+    if (
+      lastSentAt &&
+      Date.now() - new Date(lastSentAt).getTime() < MIN_GAP_MS
+    ) {
+      return new Response(
+        JSON.stringify({ ignored: "too soon since last send" }),
+        {
+          status: 200,
+          headers: corsHeaders,
+        },
+      );
     }
 
     const { data: existingResponse } = await admin
@@ -120,9 +133,9 @@ Deno.serve(async (req: Request) => {
       eyebrow: "Beta feedback",
       heading: "Got 7-10 minutes for us?",
       intro:
-        `${firstName ? `Hi ${escapeHtml(firstName)}, ` : ""}we noticed you stepped away from Corvus — ` +
+        `${firstName ? `Hi ${escapeHtml(firstName)}, ` : ""}we noticed you stepped away from CorvusPT — ` +
         `we'd love to know what's actually working and what isn't before you go much further. Help us ` +
-        `break Corvus, in a good way.`,
+        `break CorvusPT, in a good way.`,
       ctaLabel: "Give Feedback",
       ctaHref: `${appUrl}/dashboard/feedback`,
       footnote:
@@ -132,11 +145,14 @@ Deno.serve(async (req: Request) => {
     });
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from: "CorvusPT <info@corvusre.com>",
         to: [to],
-        subject: "Got 7-10 minutes to help us make Corvus better?",
+        subject: "Got 7-10 minutes to help us make CorvusPT better?",
         html,
       }),
     });
@@ -150,15 +166,23 @@ Deno.serve(async (req: Request) => {
       })
       .eq("id", user.id);
 
-    return new Response(JSON.stringify({ sent: true, sendNumber: nextSendNumber }), {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(
+      JSON.stringify({ sent: true, sendNumber: nextSendNumber }),
+      {
+        status: 200,
+        headers: corsHeaders,
+      },
+    );
   } catch (err) {
     console.error("beacon-feedback-nudge failed:", err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }), {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
+      {
+        status: 200,
+        headers: corsHeaders,
+      },
+    );
   }
 });

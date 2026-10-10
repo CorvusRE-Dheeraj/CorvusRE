@@ -83,9 +83,9 @@ describe("casePreview", () => {
     expect(p.assessment.changePct).toBe(19);
   });
 
-  it("states the opportunity as Corvus's analysis, never an instruction", () => {
+  it("states the opportunity as Corvus AI's analysis, never an instruction", () => {
     expect(p.opportunity.level).toBe("potential");
-    expect(p.opportunity.label).toBe("Corvus identifies a potential protest opportunity");
+    expect(p.opportunity.label).toBe("Corvus AI identifies a potential protest opportunity");
     expect(p.opportunity.reasons).toHaveLength(2);
   });
 
@@ -115,7 +115,9 @@ describe("casePreview", () => {
   });
 
   it("fills the first hearing-plan steps and locks the rest", () => {
-    expect(p.hearingPlan[1].title).toBe("Argument Corvus rates first: Equal & uniform comparison");
+    expect(p.hearingPlan[1].title).toBe(
+      "Argument Corvus AI rates first: Equal & uniform comparison",
+    );
     expect(p.hearingPlan[1].detail).toContain("3 of 4 comparables");
     expect(p.hearingPlan.filter((s) => !s.locked)).toHaveLength(2);
   });
@@ -131,7 +133,9 @@ describe("casePreview", () => {
     expect(empty.opportunity.level).toBe("not_yet");
     expect(empty.savingsRange).toBeNull();
     expect(empty.comps.quality).toBe("None");
-    expect(empty.hearingPlan[1].title).toBe("Argument Corvus rates first: Market value evidence");
+    expect(empty.hearingPlan[1].title).toBe(
+      "Argument Corvus AI rates first: Market value evidence",
+    );
   });
 
   it("uses no directive wording", () => {

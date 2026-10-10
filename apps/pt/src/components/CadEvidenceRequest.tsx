@@ -346,7 +346,7 @@ function CadEvidenceReviewPanel({
       setReview(r);
       onReceived();
       toast.success(
-        `Corvus read ${r.extraction.comps.length} comp${r.extraction.comps.length === 1 ? "" : "s"} from the district's evidence.`,
+        `Corvus AI read ${r.extraction.comps.length} comp${r.extraction.comps.length === 1 ? "" : "s"} from the district's evidence.`,
       );
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not analyze the district's evidence."));
@@ -363,9 +363,9 @@ function CadEvidenceReviewPanel({
       </div>
       {!review && (
         <p className="mt-1 text-sm text-muted-foreground">
-          When the district&apos;s evidence arrives, upload it. Corvus extracts every comp, checks
-          each one against your property, and builds your rebuttal and the strongest points to make
-          at the hearing.
+          When the district&apos;s evidence arrives, upload it. Corvus AI extracts every comp,
+          checks each one against your property, and builds your rebuttal and the strongest points
+          to make at the hearing.
         </p>
       )}
 
@@ -579,7 +579,7 @@ function CadEvidenceReviewPanel({
       >
         <Upload className="h-4 w-4" aria-hidden="true" />
         {analyzing
-          ? "Corvus is reading the evidence…"
+          ? "Corvus AI is reading the evidence…"
           : review
             ? "Upload updated evidence"
             : "Upload the district's evidence"}

@@ -329,7 +329,7 @@ export function FeedbackWidget() {
           >
             <span className="font-semibold">Hi! 👋</span>
             <br />
-            We&apos;d love your feedback on your experience with Corvus.
+            We&apos;d love your feedback on your experience with CorvusPT.
           </button>
           <button
             type="button"
