@@ -22,7 +22,8 @@ import { isServiceRoleRequest } from "../_shared/service-role-only.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
@@ -103,7 +104,9 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-async function fetchPage(url: string): Promise<{ text: string } | { error: string }> {
+async function fetchPage(
+  url: string,
+): Promise<{ text: string } | { error: string }> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -118,7 +121,8 @@ async function fetchPage(url: string): Promise<{ text: string } | { error: strin
     });
     if (!res.ok) return { error: `HTTP ${res.status}` };
     const text = htmlToText(await res.text());
-    if (text.length < 400) return { error: "Page returned almost no readable text" };
+    if (text.length < 400)
+      return { error: "Page returned almost no readable text" };
     return { text: text.slice(0, PAGE_CHARS) };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "fetch failed" };
@@ -134,15 +138,19 @@ const SYSTEM =
   "- Use ONLY the page text provided. Never use outside knowledge, never guess, never add facts.\n" +
   "- Report only information that is NEW or CHANGED and important to property owners: law changes, adopted or proposed rules, forms, calendars, deadlines, tax-rate or valuation changes, and protest / ARB / arbitration / court-appeal process changes.\n" +
   "- Skip general background, marketing, navigation, contact info and evergreen how-to text.\n" +
-  "- If the page has nothing that qualifies, return {\"updates\": []}. An empty result is correct and expected.\n" +
-  "- Every update MUST include \"quote\": a short (under 200 characters) EXACT verbatim excerpt copied from the page text that supports it.\n" +
-  "- If a field is not stated in the page, use null (for effectiveDate) or \"Not stated\" (other text fields). Never invent dates.\n" +
+  '- If the page has nothing that qualifies, return {"updates": []}. An empty result is correct and expected.\n' +
+  '- Every update MUST include "quote": a short (under 200 characters) EXACT verbatim excerpt copied from the page text that supports it.\n' +
+  '- If a field is not stated in the page, use null (for effectiveDate) or "Not stated" (other text fields). Never invent dates.\n' +
   `- status must be one of: ${STATUSES.join(", ")}. Use enacted_law only for law the page says has been enacted; adopted_rule for a rule the page says is adopted/effective; proposed_rule for a proposed rule; pending_legislation / failed_legislation for bills; otherwise notice_guidance.\n` +
   `- tags: choose any that apply from: ${TAGS.join(", ")}.\n` +
   "- chapter: 1 Texas statewide updates; 2 county updates (only for a county-specific page); 3 current-year rules & law changes; 4 commercial property updates; 5 protest, ARB & appeals; 6 important deadlines; 7 what property owners should know or do.\n" +
-  "Return ONLY JSON: {\"updates\":[{\"title\",\"chapter\",\"whatChanged\",\"effectiveDate\",\"affects\",\"whyItMatters\",\"actionNeeded\",\"status\",\"tags\",\"quote\"}]}";
+  'Return ONLY JSON: {"updates":[{"title","chapter","whatChanged","effectiveDate","affects","whyItMatters","actionNeeded","status","tags","quote"}]}';
 
-async function extract(apiKey: string, source: Source, text: string): Promise<unknown[]> {
+async function extract(
+  apiKey: string,
+  source: Source,
+  text: string,
+): Promise<unknown[]> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
@@ -161,7 +169,10 @@ async function extract(apiKey: string, source: Source, text: string): Promise<un
             ],
           },
         ],
-        generationConfig: { responseMimeType: "application/json", temperature: 0 },
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
       }),
       signal: controller.signal,
     });
@@ -184,7 +195,11 @@ async function extract(apiKey: string, source: Source, text: string): Promise<un
 }
 
 // ── Validation: only what the page actually says survives ────────────────
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 
 function validate(
   raw: unknown,
@@ -204,12 +219,17 @@ function validate(
   // The quote must really be on the page.
   if (!norm(pageText).includes(norm(quote))) return null;
 
-  const status = STATUSES.includes(r.status as never) ? (r.status as Update["status"]) : "notice_guidance";
+  const status = STATUSES.includes(r.status as never)
+    ? (r.status as Update["status"])
+    : "notice_guidance";
   const tags = Array.isArray(r.tags)
-    ? (r.tags as unknown[]).filter((t): t is string => typeof t === "string" && TAGS.includes(t as never))
+    ? (r.tags as unknown[]).filter(
+        (t): t is string => typeof t === "string" && TAGS.includes(t as never),
+      )
     : [];
   let chapter = Number(r.chapter);
-  if (!Number.isInteger(chapter) || chapter < 1 || chapter > 7) chapter = source.county ? 2 : 1;
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > 7)
+    chapter = source.county ? 2 : 1;
   // Chapter 2 is for county pages; a county page's items are county updates
   // unless the model placed them in a more specific chapter.
   if (source.county && chapter === 1) chapter = 2;
@@ -258,11 +278,17 @@ function newLines(previous: string, current: string): string {
 function mondayOf(d: Date): string {
   const day = d.getUTCDay(); // 0 = Sunday
   const diff = (day + 6) % 7;
-  const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - diff));
+  const m = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - diff),
+  );
   return m.toISOString().slice(0, 10);
 }
 
-async function inBatches<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+async function inBatches<T, R>(
+  items: T[],
+  size: number,
+  fn: (x: T) => Promise<R>,
+): Promise<R[]> {
   const out: R[] = [];
   for (let i = 0; i < items.length; i += size) {
     out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
@@ -271,7 +297,8 @@ async function inBatches<T, R>(items: T[], size: number, fn: (x: T) => Promise<R
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
     const admin = createClient(
@@ -284,13 +311,21 @@ Deno.serve(async (req: Request) => {
       const callerClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+        {
+          global: {
+            headers: { Authorization: req.headers.get("Authorization") ?? "" },
+          },
+        },
       );
       const {
         data: { user },
       } = await callerClient.auth.getUser();
       const { data: profile } = user
-        ? await admin.from("profiles").select("is_admin").eq("id", user.id).single()
+        ? await admin
+            .from("profiles")
+            .select("is_admin")
+            .eq("id", user.id)
+            .single()
         : { data: null };
       if (!profile?.is_admin) {
         return new Response(JSON.stringify({ error: "forbidden" }), {
@@ -321,7 +356,9 @@ Deno.serve(async (req: Request) => {
         // Later checks: only text that changed since last week is examined, and
         // anything found there is "new this week".
         const baseline = source.last_text == null;
-        const examine = baseline ? page.text : newLines(source.last_text ?? "", page.text);
+        const examine = baseline
+          ? page.text
+          : newLines(source.last_text ?? "", page.text);
         let updates: Update[] = [];
         if (examine.length >= 60) {
           const raw = await extract(apiKey, source, examine);
@@ -336,7 +373,9 @@ Deno.serve(async (req: Request) => {
         return {
           source,
           ok: true,
-          note: baseline ? `${updates.length} currently posted (first check)` : `${updates.length} new`,
+          note: baseline
+            ? `${updates.length} currently posted (first check)`
+            : `${updates.length} new`,
           updates,
         };
       } catch (err) {
@@ -362,10 +401,31 @@ Deno.serve(async (req: Request) => {
       perChapter.set(u.chapter, n + 1);
       updates.push(u);
     }
+    const weekStart = mondayOf(new Date());
+
+    // Carry forward: a quiet week (nothing new on the sources) used to publish
+    // an empty report, so the page read "0 updates". Last report's verified
+    // items are still in effect — keep them, marked not-new, after this
+    // week's new ones (same dedup key and per-chapter cap).
+    const { data: prior } = await admin
+      .from("tax_update_reports")
+      .select("updates")
+      .lt("week_start", weekStart)
+      .order("week_start", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    for (const u of (prior?.updates ?? []) as Update[]) {
+      const key = `${norm(u.title)}|${u.counties.join(",")}`;
+      if (seen.has(key)) continue;
+      const n = perChapter.get(u.chapter) ?? 0;
+      if (n >= MAX_PER_CHAPTER) continue;
+      seen.add(key);
+      perChapter.set(u.chapter, n + 1);
+      updates.push({ ...u, isNew: false });
+    }
     updates.sort((a, b) => a.chapter - b.chapter);
 
     const readCount = results.filter((r) => r.ok).length;
-    const weekStart = mondayOf(new Date());
 
     // Append this week's critical items (enacted law / adopted rule /
     // deadline-tagged) to the year-long ledger — tax_update_reports only
@@ -377,20 +437,25 @@ Deno.serve(async (req: Request) => {
     const critical = updates.filter(
       (u) =>
         u.status !== "failed_legislation" &&
-        (u.status === "enacted_law" || u.status === "adopted_rule" || u.tags.includes("deadlines")),
+        (u.status === "enacted_law" ||
+          u.status === "adopted_rule" ||
+          u.tags.includes("deadlines")),
     );
     if (critical.length > 0) {
       const taxYear = new Date(weekStart).getUTCFullYear();
-      const { error: critErr } = await admin.from("tax_update_critical_items").upsert(
-        critical.map((u) => ({
-          tax_year: taxYear,
-          dedup_key: `${norm(u.title)}|${u.counties.join(",")}`,
-          first_seen_week: weekStart,
-          update: u,
-        })),
-        { onConflict: "tax_year,dedup_key", ignoreDuplicates: true },
-      );
-      if (critErr) console.error("tax_update_critical_items upsert failed:", critErr);
+      const { error: critErr } = await admin
+        .from("tax_update_critical_items")
+        .upsert(
+          critical.map((u) => ({
+            tax_year: taxYear,
+            dedup_key: `${norm(u.title)}|${u.counties.join(",")}`,
+            first_seen_week: weekStart,
+            update: u,
+          })),
+          { onConflict: "tax_year,dedup_key", ignoreDuplicates: true },
+        );
+      if (critErr)
+        console.error("tax_update_critical_items upsert failed:", critErr);
     }
     const summary =
       updates.length > 0
@@ -418,21 +483,37 @@ Deno.serve(async (req: Request) => {
     );
     if (upErr) throw upErr;
 
-    // Keep only the newest KEEP_REPORTS.
+    // Keep every week of the current tax year (the page shows the whole
+    // year's updates), plus at least the newest KEEP_REPORTS across a year
+    // boundary.
     const { data: all } = await admin
       .from("tax_update_reports")
       .select("id, week_start")
       .order("week_start", { ascending: false });
-    const stale = (all ?? []).slice(KEEP_REPORTS).map((r) => r.id as string);
-    if (stale.length > 0) await admin.from("tax_update_reports").delete().in("id", stale);
+    const yearStart = `${weekStart.slice(0, 4)}-01-01`;
+    const stale = (all ?? [])
+      .filter(
+        (r, i) => i >= KEEP_REPORTS && (r.week_start as string) < yearStart,
+      )
+      .map((r) => r.id as string);
+    if (stale.length > 0)
+      await admin.from("tax_update_reports").delete().in("id", stale);
 
     return new Response(
-      JSON.stringify({ ok: true, weekStart, updates: updates.length, sourcesRead: readCount, sources: sources.length }),
+      JSON.stringify({
+        ok: true,
+        weekStart,
+        updates: updates.length,
+        sourcesRead: readCount,
+        sources: sources.length,
+      }),
       { status: 200, headers: corsHeaders },
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
       { status: 500, headers: corsHeaders },
     );
   }
