@@ -8,6 +8,30 @@ export type ProjectIntent = "new_construction" | "addition" | "remodeling" | "si
 export type DesignScope = "new_construction" | "addition" | "remodeling" | "interior_fit_out";
 export type PropertySector = "commercial" | "residential";
 
+// Optional finer grain for a commercial project — shown once Commercial is
+// the sector.
+export const COMMERCIAL_SUBCATEGORIES = [
+  { value: "retail", label: "Retail" },
+  { value: "office", label: "Office & Professional Services" },
+  { value: "restaurant", label: "Restaurant & Food Service" },
+  { value: "hospitality", label: "Hospitality & Lodging" },
+  { value: "healthcare", label: "Healthcare & Medical" },
+  { value: "education_childcare", label: "Education & Childcare" },
+  { value: "personal_services_fitness", label: "Personal Services & Fitness" },
+  { value: "entertainment_recreation", label: "Entertainment & Recreation" },
+  { value: "automotive_fuel", label: "Automotive & Fuel" },
+  { value: "storage_warehousing", label: "Storage & Warehousing" },
+  { value: "data_center", label: "Data Center" },
+  { value: "mixed_use", label: "Mixed-Use Commercial" },
+  { value: "other", label: "Other" },
+] as const;
+
+export type CommercialSubcategory = (typeof COMMERCIAL_SUBCATEGORIES)[number]["value"];
+
+export function commercialSubcategoryLabel(v: string | null | undefined): string | null {
+  return COMMERCIAL_SUBCATEGORIES.find((c) => c.value === v)?.label ?? null;
+}
+
 export type PropertyInfo = {
   address?: string;
   city?: string;
@@ -25,6 +49,7 @@ export type PropertyInfo = {
 export type ProjectDefinition = {
   intent?: ProjectIntent;
   sector?: PropertySector;
+  subcategory?: CommercialSubcategory;
   lotSize?: string;
   buildingArea?: string;
   floors?: string;
@@ -75,8 +100,14 @@ function emptyState(): DpIntakeState {
         ? crypto.randomUUID()
         : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     property: {},
-    project: {},
-    design: {},
+    // CorvusDP is commercial-only — sector used to be a user-picked toggle
+    // (commercial/residential) on both wizards' first project step; that
+    // choice was removed per direct product decision, but sector is still a
+    // real field downstream (analysis.ts, fees.ts, reports, dashboard
+    // subtitles), so it defaults to "commercial" here rather than being left
+    // unset.
+    project: { sector: "commercial" },
+    design: { sector: "commercial" },
     step: 0,
   };
 }
@@ -95,8 +126,11 @@ export function readDpIntake(): DpIntakeState {
       ...emptyState(),
       ...parsed,
       property: { ...(parsed.property ?? {}) },
-      project: { ...(parsed.project ?? {}) },
-      design: { ...(parsed.design ?? {}) },
+      // sector defaults to "commercial" (see emptyState) for a session saved
+      // before that default existed and never set one — an already-saved
+      // value (including a pre-existing "residential" one) still wins.
+      project: { sector: "commercial", ...(parsed.project ?? {}) },
+      design: { sector: "commercial", ...(parsed.design ?? {}) },
     };
   } catch {
     return emptyState();

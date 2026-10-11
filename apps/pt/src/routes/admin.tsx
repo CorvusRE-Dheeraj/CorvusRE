@@ -7,6 +7,7 @@ import {
   listAllUsers,
   updateUserPlan,
   updateUserAdminStatus,
+  updateUserFranchiseStatus,
   deleteUserAccount,
   impersonateUser,
   createUserAccount,
@@ -50,6 +51,11 @@ import {
 } from "@/lib/app-settings";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
+import { AdminBetaFeedback } from "@/components/AdminBetaFeedback";
+import { AdminAppointments } from "@/components/AdminAppointments";
+import { AdminCountyMailbox } from "@/components/AdminCountyMailbox";
+import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
+import { CHART_COLORS, Kpi } from "@/components/AdminKpi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/CopyButton";
 import { LoadingLine } from "@/components/LoadingLine";
@@ -71,6 +77,10 @@ type AdminTab =
   | "admins"
   | "invited"
   | "beta"
+  | "beta_feedback"
+  | "appointments"
+  | "county_mail"
+  | "support"
   | "activity"
   | "settings";
 
@@ -78,7 +88,14 @@ function AdminPanel() {
   const nav = useNavigate();
   const { user, loading } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>("financials");
+  // Back from connecting the county mailbox (Google redirects here with
+  // ?mailbox_connected / ?mailbox_error) — land on that tab, not Financials.
+  const [activeTab, setActiveTab] = useState<AdminTab>(() =>
+    typeof window !== "undefined" &&
+    /[?&](mailbox_(connected|error)=|tab=county_mail\b)/.test(window.location.search)
+      ? "county_mail"
+      : "financials",
+  );
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -273,6 +290,27 @@ function AdminPanel() {
     } catch (err) {
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, isAdmin: !makeAdmin } : u)));
       toast.error(err instanceof Error ? err.message : "Could not update admin status.");
+    }
+  }
+
+  async function handleToggleFranchise(userId: string, makeFranchise: boolean) {
+    const target = users.find((u) => u.id === userId);
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, isFranchiseOwner: makeFranchise } : u)),
+    );
+    try {
+      await updateUserFranchiseStatus(userId, makeFranchise, { targetEmail: target?.email });
+      toast.success(
+        makeFranchise
+          ? "Marked as franchise owner — 50% off new subscriptions."
+          : "Franchise owner status removed.",
+      );
+      refreshAuditLog();
+    } catch (err) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isFranchiseOwner: !makeFranchise } : u)),
+      );
+      toast.error(err instanceof Error ? err.message : "Could not update franchise status.");
     }
   }
 
@@ -508,6 +546,7 @@ function AdminPanel() {
                 onToggleExpand={() => setExpandedId(expandedId === u.id ? null : u.id)}
                 onPlanChange={(plan) => handlePlanChange(u.id, plan)}
                 onToggleAdmin={(makeAdmin) => handleToggleAdmin(u.id, makeAdmin)}
+                onToggleFranchise={(makeFranchise) => handleToggleFranchise(u.id, makeFranchise)}
                 onDelete={() => handleDeleteUser(u.id)}
                 onImpersonate={() => handleImpersonateUser(u.id)}
                 delayMs={Math.min(i * 40, 320)}
@@ -539,7 +578,7 @@ function AdminPanel() {
     },
     {
       key: "corvus_managed",
-      label: "Corvus Managed",
+      label: "CorvusPT Managed",
       count: usersLoading ? null : corvusManagedUsers.length,
     },
     { key: "admins", label: "Admins", count: usersLoading ? null : adminUsers.length },
@@ -549,6 +588,10 @@ function AdminPanel() {
       count: invitedUsersLoading ? null : invitedUsers.length,
     },
     { key: "beta", label: "Beta Signups", count: betaLeadsLoading ? null : betaLeads.length },
+    { key: "beta_feedback", label: "Beta Feedback", count: null },
+    { key: "appointments", label: "Appointments", count: null },
+    { key: "county_mail", label: "County Mail", count: null },
+    { key: "support", label: "Support", count: null },
     { key: "activity", label: "Activity Log", count: auditLogLoading ? null : auditLog.length },
     { key: "settings", label: "Settings", count: null },
   ];
@@ -649,7 +692,7 @@ function AdminPanel() {
       {activeTab === "corvus_managed" && (
         <div className="mt-8">
           <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="font-serif text-xl font-semibold">Corvus Managed</h2>
+            <h2 className="font-serif text-xl font-semibold">CorvusPT Managed</h2>
             {!usersLoading && (
               <span className="badge-soft">
                 {corvusManagedUsers.length} user{corvusManagedUsers.length === 1 ? "" : "s"}
@@ -657,7 +700,7 @@ function AdminPanel() {
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Customers on the CorvusPT Managed plan, filed on their behalf.
+            Customers on the Expert/Managed Help plan, filed on their behalf.
           </p>
           {renderUserRows(corvusManagedUsers)}
         </div>
@@ -762,7 +805,8 @@ function AdminPanel() {
           <h2 className="font-serif text-xl font-semibold">Beta Signups</h2>
           <p className="text-sm text-muted-foreground">
             Everyone who submitted the "Request Beta Access" form on the hub site. Most recent
-            first.
+            first. People who tick "join as a beta tester" when creating an account are not listed
+            here: they appear under Users with the Beta plan.
           </p>
           <div className="mt-4 grid gap-2">
             {betaLeadsLoading ? (
@@ -784,6 +828,12 @@ function AdminPanel() {
           </div>
         </section>
       )}
+
+      {activeTab === "beta_feedback" && <AdminBetaFeedback />}
+
+      {activeTab === "appointments" && <AdminAppointments />}
+      {activeTab === "county_mail" && <AdminCountyMailbox />}
+      {activeTab === "support" && <AdminSupportEscalations />}
 
       {activeTab === "activity" && (
         <section className="mt-8">
@@ -1600,6 +1650,7 @@ function UserRow({
   onToggleExpand,
   onPlanChange,
   onToggleAdmin,
+  onToggleFranchise,
   onDelete,
   onImpersonate,
   delayMs = 0,
@@ -1620,6 +1671,7 @@ function UserRow({
   onToggleExpand: () => void;
   onPlanChange: (plan: PlanValue) => void;
   onToggleAdmin: (makeAdmin: boolean) => void;
+  onToggleFranchise: (makeFranchise: boolean) => void;
   onDelete: () => void;
   onImpersonate: () => void;
   delayMs?: number;
@@ -1671,6 +1723,9 @@ function UserRow({
               {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
               {record.isAdmin && (
                 <span className="ml-2 badge-soft text-[10px] align-middle">Admin</span>
+              )}
+              {record.isFranchiseOwner && (
+                <span className="ml-2 badge-soft-warning text-[10px] align-middle">Franchise</span>
               )}
             </h3>
             {subLine && <p className="text-sm text-muted-foreground">{subLine}</p>}
@@ -1732,6 +1787,14 @@ function UserRow({
               {record.isAdmin ? "Remove Admin" : "Make Admin"}
             </button>
           )}
+          {/* Verified franchise owners get 50% off every NEW property
+              subscription (applied as a Stripe coupon at checkout). */}
+          <button
+            onClick={() => onToggleFranchise(!record.isFranchiseOwner)}
+            className="btn-outline text-sm"
+          >
+            {record.isFranchiseOwner ? "Remove Franchise" : "Mark Franchise Owner"}
+          </button>
           {!isSelf && (
             <button onClick={onDelete} className="btn-outline text-sm text-destructive">
               Delete User
@@ -2142,26 +2205,6 @@ function AuditLogRow({ entry }: { entry: AdminAuditEntry }) {
         <div>{entry.actorEmail}</div>
         <div>{new Date(entry.createdAt).toLocaleString()}</div>
       </div>
-    </div>
-  );
-}
-
-const CHART_COLORS = [
-  "var(--accent)",
-  "oklch(0.62 0.17 155)",
-  "oklch(0.78 0.19 75)",
-  "oklch(0.58 0.22 27)",
-  "oklch(0.48 0.02 255)",
-];
-
-function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card-elev p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 font-serif text-2xl font-bold">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }

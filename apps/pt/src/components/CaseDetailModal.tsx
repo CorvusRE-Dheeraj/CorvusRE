@@ -1,3 +1,13 @@
+import { CasePhaseGuide } from "@/components/CasePhaseGuide";
+import { centerInStrip } from "@/lib/scroll-into-strip";
+import { GLOSSARY_MAP } from "@/lib/glossary";
+import { NextRequiredAction, PipelineStepper } from "@/components/CasePipeline";
+import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
+import { MockHearing } from "@/components/MockHearing";
+import { SettlementHistory } from "@/components/SettlementHistory";
+import { PortalCopySheet } from "@/components/PortalCopySheet";
+import { CountyRecordPanel } from "@/components/CountyRecordPanel";
+import { casePipeline, localTodayIso, type NoticeFiling } from "@/lib/case-pipeline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
@@ -5,13 +15,14 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
+import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
+import { EvidenceChecklistPanel } from "@/components/EvidenceChecklistPanel";
+import { FormalHearingActions } from "@/components/FormalHearingActions";
+import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
+import { CourtAppealWorkflow } from "@/components/CourtAppealWorkflow";
+import { RelevantTaxUpdates } from "@/components/RelevantTaxUpdates";
 import { AskAiMicButton } from "@/components/AskAiMicButton";
-import {
-  updatePropertyIdentity,
-  buildAiReportIntakePatch,
-  setAutoRefile,
-  type PropertyRecord,
-} from "@/lib/properties";
+import { updatePropertyIdentity, setAutoRefile, type PropertyRecord } from "@/lib/properties";
 import {
   acknowledgeGuidance,
   updateProtestTaxYear,
@@ -20,7 +31,7 @@ import {
   type InformalStatus,
   type AttendanceType,
 } from "@/lib/protests";
-import { currency, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency } from "@/lib/intake-store";
 import {
   getCase,
   generateCasePrep,
@@ -34,6 +45,8 @@ import {
   closeCase,
   getCaseResults,
   updateInformalStatus,
+  undoInformalSettlement,
+  undoInformalStep,
   scheduleInformalReview,
   resolveInformalSettlement,
   saveInformalAppraiserCategory,
@@ -60,7 +73,8 @@ import {
   type CaseAuditEvent,
 } from "@/lib/case-audit";
 import { saveCaseRecordFields } from "@/lib/protest-case";
-import { listDocuments } from "@/lib/documents";
+import { listDocuments, previewKind } from "@/lib/documents";
+import { useDocumentsVersion } from "@/lib/use-documents-version";
 import {
   getCountyProtestInfo,
   COUNTY_PROTEST_INFO,
@@ -81,10 +95,20 @@ import {
   getDocumentUrl,
   SETTLEMENT_DOCUMENT_TYPE,
   DECISION_DOCUMENT_TYPE,
+  setDocumentProofKind,
+  setDocumentType,
   type DocumentRecord,
 } from "@/lib/documents";
+import { COUNTY_EMAIL_DOCUMENT_TYPE } from "@/lib/county-email";
 import { getCadRecordUrl } from "@/lib/cad-record-url";
 import { verifyFilingProof, type FilingProofVerification } from "@/lib/filing-proof";
+import { useCountyProcedures } from "@/lib/county-procedures";
+import {
+  PROOF_KINDS,
+  PROOF_KINDS_BY_METHOD,
+  uspsTrackingUrl,
+  type ProofKind,
+} from "@/lib/proof-kinds";
 import {
   extractHearingNotice,
   saveHearingNotice,
@@ -164,7 +188,11 @@ import {
   EVIDENCE_STATUS_LABEL,
   type EvidenceStatusStage,
 } from "@/lib/evidence-status";
-import { selectRelevantEvidence, buildEvidencePackagePdf } from "@/lib/evidence-package";
+import {
+  selectRelevantEvidence,
+  buildEvidencePackagePdf,
+  countPdfPages,
+} from "@/lib/evidence-package";
 import { getCachedModuleResult } from "@/lib/module-results-cache";
 import type { ModuleResultMap } from "@/lib/ai-report-modules";
 import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
@@ -183,39 +211,157 @@ import { verdictMeta } from "@/lib/documents";
 import { PdfFormEditor } from "@/components/PdfFormEditor";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { Modal } from "@/components/Modal";
+import { UndoButton } from "@/components/UndoButton";
+import { FinalOutcomeSection } from "@/components/FinalOutcomeSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Scale } from "lucide-react";
+import { PageHero } from "@/components/PageHero";
+import { buildCaseOutcome, caseStageLabel } from "@/lib/case-outcome";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+import { PostHearingDecision } from "@/components/PostHearingDecision";
+
+// Every county email CorvusPT drafts copies its county address, so replies
+// file themselves under the case (see county-mail-inbound).
+const COUNTY_REPLY_LINE = `Please include ${CORVUSPT_COUNTY_EMAIL} on any reply about this protest.`;
 
 // --- Tabbed filing workflow -------------------------------------------------
 // The case work is grouped into 5 phase tabs, all shown as a roadmap; a phase
 // the case hasn't reached yet is visible but locked. The tab set and lock
 // rules are derived purely from the protest's real status/fields — no schema,
 // no new state beyond which tab is open.
-type CaseTabId = "overview" | "file" | "informal" | "hearing" | "decision" | "appeal";
+// Fired by the Arbitration / Court Appeal tab's intro line; the option comparison
+// listens and runs its AI comparison.
+const COMPARE_ESCALATION_EVENT = "corvuspt:compare-escalation";
 
-const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string }[] = [
+type CaseTabId =
+  "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court" | "outcome";
+
+// joinsPrev: shares the previous tab's step number (Arbitration and Court Appeal are
+// two buttons under one step).
+const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string; joinsPrev?: boolean }[] = [
   { id: "overview", label: "Overview", lockedHint: "" },
   {
     id: "file",
     label: "Prepare & File",
     lockedHint: "Read and accept the filing notice on Overview first.",
   },
-  { id: "informal", label: "Informal Review", lockedHint: "Unlocks once your protest is filed." },
-  { id: "hearing", label: "Formal Hearing", lockedHint: "Unlocks once your protest is filed." },
+  {
+    id: "informal",
+    label: "Informal Review",
+    lockedHint: "Unlocks once you have signed your Notice of Protest.",
+  },
+  {
+    id: "hearing",
+    label: "Formal Hearing",
+    lockedHint: "Unlocks once you have signed your Notice of Protest.",
+  },
   {
     id: "decision",
     label: "Decision",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
   {
-    id: "appeal",
-    label: "Appeal / Arbitration",
+    id: "arbitration",
+    label: "Arbitration",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
+  {
+    id: "court",
+    label: "Court Appeal",
+    lockedHint: "Unlocks after your hearing or a decision is recorded.",
+    joinsPrev: true,
+  },
+  {
+    id: "outcome",
+    label: "Final Outcome",
+    lockedHint: "Unlocks once your case is resolved.",
+  },
 ];
+
+// Arbitration / Court Appeal are done once that path was actually carried out —
+// the request or petition filed, or the case resolved through it.
+function escalationDone(id: CaseTabId, p: ProtestRecord): boolean {
+  if (id === "arbitration")
+    return (
+      !!p.arbitrationFiledAt || (p.status === "resolved" && p.escalationPath === "arbitration")
+    );
+  if (id === "court")
+    return (
+      !!p.courtAppeal?.petitionFiledAt || (p.status === "resolved" && p.escalationPath === "appeal")
+    );
+  return false;
+}
+
+// The case "road": each phase has its own colour, so where you are (and how far you've
+// come) reads at a glance. Full class strings so Tailwind can see them.
+const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: string; ping: string }> =
+  {
+    overview: {
+      grad: "from-emerald-500 to-teal-600",
+      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
+      border: "border-emerald-400",
+      ping: "bg-emerald-400",
+    },
+    file: {
+      grad: "from-sky-500 to-blue-600",
+      tint: "bg-sky-500/10 ring-1 ring-sky-500/30",
+      border: "border-sky-400",
+      ping: "bg-sky-400",
+    },
+    informal: {
+      grad: "from-amber-500 to-orange-600",
+      tint: "bg-amber-500/10 ring-1 ring-amber-500/30",
+      border: "border-amber-400",
+      ping: "bg-amber-400",
+    },
+    hearing: {
+      grad: "from-violet-500 to-purple-600",
+      tint: "bg-violet-500/10 ring-1 ring-violet-500/30",
+      border: "border-violet-400",
+      ping: "bg-violet-400",
+    },
+    decision: {
+      grad: "from-indigo-500 to-blue-700",
+      tint: "bg-indigo-500/10 ring-1 ring-indigo-500/30",
+      border: "border-indigo-400",
+      ping: "bg-indigo-400",
+    },
+    arbitration: {
+      grad: "from-rose-500 to-pink-600",
+      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
+      border: "border-rose-400",
+      ping: "bg-rose-400",
+    },
+    court: {
+      grad: "from-rose-500 to-pink-600",
+      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
+      border: "border-rose-400",
+      ping: "bg-rose-400",
+    },
+    outcome: {
+      grad: "from-emerald-500 to-lime-600",
+      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
+      border: "border-emerald-400",
+      ping: "bg-emerald-400",
+    },
+  };
+
+// Plain-English meaning of the jargon-named phases, shown on hover.
+const TAB_MEANING: Partial<Record<CaseTabId, string>> = {
+  informal: GLOSSARY_MAP["Informal review"],
+  hearing: GLOSSARY_MAP["Formal hearing"],
+  decision: GLOSSARY_MAP["ARB"],
+  arbitration: GLOSSARY_MAP["Binding arbitration"],
+  court: GLOSSARY_MAP["Court appeal"],
+};
+
+// The number shown for a tab: its position, minus tabs that share a step number.
+function stepNumber(index: number): number {
+  return index - CASE_TABS.slice(0, index + 1).filter((t) => t.joinsPrev).length;
+}
 
 // One plain sentence per phase — "what this step is for" — shown under the tab
 // bar for whichever tab is open, so landing on a tab always explains itself.
@@ -226,7 +372,9 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
   hearing:
     "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
   decision: "Record the ARB's decision.",
-  appeal: "Weigh binding arbitration or a district-court appeal.",
+  arbitration: "Weigh binding arbitration or a district-court appeal.",
+  court: "Weigh binding arbitration or a district-court appeal.",
+  outcome: "How your case ended — the final value, what you saved, and the route it took.",
 };
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
@@ -234,6 +382,7 @@ const CASE_TAB_INTRO: Record<CaseTabId, string> = {
 // tabs before scrolling.
 const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-progress": "overview",
+  "case-readiness": "overview",
   "case-record": "overview",
   "case-audit-trail": "overview",
   "case-documents": "file",
@@ -241,15 +390,21 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
   "case-hearing-notice": "hearing",
+  "case-cad-evidence": "hearing",
   "case-hearing-prep": "hearing",
   "case-decision-notice": "decision",
-  "case-escalation": "appeal",
+  "case-escalation": "decision",
 };
 
+// noticeSigned: the Notice of Protest has been signed. That opens Informal
+// Review and Formal Hearing without waiting for delivery or the county's
+// acknowledgement (which can take days) — protest.status still only flips to
+// "filed" once the county confirms.
 function caseTabUnlocked(
   id: CaseTabId,
   protest: ProtestRecord,
   needsGuidanceAck: boolean,
+  noticeSigned = false,
 ): boolean {
   const s = protest.status;
   const filed = s !== "requested";
@@ -260,9 +415,12 @@ function caseTabUnlocked(
       return filed || !needsGuidanceAck;
     case "informal":
     case "hearing":
-      return filed;
+      return filed || noticeSigned;
+    case "outcome":
+      return s === "resolved" || protest.informalStatus === "accepted";
     case "decision":
-    case "appeal":
+    case "arbitration":
+    case "court":
       return (
         ["decision_received", "appealing", "arbitrating", "resolved"].includes(s) ||
         protest.hearingDate != null ||
@@ -284,11 +442,13 @@ function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): Case
     case "hearing_scheduled":
       return "hearing";
     case "decision_received":
-    case "appealing":
-    case "arbitrating":
       return "decision";
+    case "appealing":
+      return "court";
+    case "arbitrating":
+      return "arbitration";
     case "resolved":
-      return "overview";
+      return "outcome";
     default:
       return "overview";
   }
@@ -305,11 +465,16 @@ export function CaseDetailView({
   property: propertyProp,
   protest,
   onBack,
+  initialAnchor,
+  userEmail = null,
 }: {
   userId: string;
   property: PropertyRecord;
   protest: ProtestRecord;
   onBack: () => void;
+  // Opens straight at this section (a NEXT REQUIRED ACTION link).
+  initialAnchor?: string;
+  userEmail?: string | null;
 }) {
   const [caseData, setCaseData] = useState<ProtestCase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -318,6 +483,10 @@ export function CaseDetailView({
   // correct/confirm a missing identity field (see PreFilingGate) right
   // where Corvus flags it as blocking, without leaving this modal.
   const [property, setProperty] = useState<PropertyRecord>(propertyProp);
+  // For a county without a hand-researched entry, loads what AI read off the
+  // district's own site; this re-renders the case once it arrives, so every
+  // getCountyProtestInfo() below picks it up.
+  useCountyProcedures(property.cad);
   const [acknowledging, setAcknowledging] = useState(false);
   // The step-by-step filing workflow opens in its own focused popup.
   const [filingOpen, setFilingOpen] = useState(false);
@@ -327,6 +496,9 @@ export function CaseDetailView({
   // conflated with "filed." Lifted here (not local to DocumentsSection) so
   // CorvusGuidancePanel/NextStepFooter can give correct guidance too.
   const [noticeSignedAt, setNoticeSignedAt] = useState<string | null>(null);
+  // The Notice of Protest's full filing timestamps — what the case pipeline
+  // reads for File Protest / Confirm Filing (see case-pipeline.ts).
+  const [noticeFiling, setNoticeFiling] = useState<NoticeFiling | null>(null);
   // Real "Protest Evidence"-tagged documents for this property — evidence
   // now uploads exclusively through Module 8 (ai-report.tsx), not a
   // checklist inside this modal (see CasePlanSection's "Upload Evidence —
@@ -334,6 +506,10 @@ export function CaseDetailView({
   // evidence-aware feature here (Corvus's guidance, Pre-Filing Check,
   // Generate Suggested Reason) reads from.
   const [evidenceDocuments, setEvidenceDocuments] = useState<DocumentRecord[]>([]);
+  // Signing the Notice of Protest is what opens Informal Review / Formal
+  // Hearing (see caseTabUnlocked) — noticeSignedAt already updates the moment
+  // it is signed, so this needs no extra loading.
+  const noticeSigned = !!noticeSignedAt;
   // Lifted (not local to SettlementSignatureSection) so the top-of-case
   // "informal outcome unconfirmed" banner and HearingPrepSection's inline
   // warning read the same record the settlement section writes.
@@ -347,9 +523,7 @@ export function CaseDetailView({
       .then(setCaseData)
       .catch((err) => toast.error(err instanceof Error ? err.message : "Could not load this case."))
       .finally(() => setLoading(false));
-    getSubmission(protest.id, "notice_of_protest")
-      .then((s) => setNoticeSignedAt(s?.signedAt ?? null))
-      .catch((err) => console.error("Could not load Notice of Protest signing status:", err));
+    loadNoticeFiling();
     getProtestEvidenceDocuments(userId, property.id)
       .then(setEvidenceDocuments)
       .catch((err) => console.error("Could not load this case's evidence documents:", err));
@@ -358,7 +532,27 @@ export function CaseDetailView({
       .catch((err) => console.error("Could not load this case's settlement agreement:", err));
   }
 
+  function loadNoticeFiling() {
+    getSubmission(protest.id, "notice_of_protest")
+      .then((s) => {
+        setNoticeSignedAt(s?.signedAt ?? null);
+        setNoticeFiling(s);
+      })
+      .catch((err) => console.error("Could not load Notice of Protest signing status:", err));
+  }
+
   useEffect(load, [protest.id]);
+
+  // An upload made elsewhere (the AI Report page, the Documents page, or another
+  // tab) must reach the evidence counts/checks here without a manual reload.
+  const docsVersion = useDocumentsVersion();
+  useEffect(() => {
+    if (docsVersion === 0) return;
+    getProtestEvidenceDocuments(userId, property.id)
+      .then(setEvidenceDocuments)
+      .catch((err) => console.error("Could not refresh this case's evidence documents:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docsVersion]);
 
   // If a fresher protest prop arrives with the filing notice already
   // accepted (e.g. this view stayed mounted while the parent refetched),
@@ -409,6 +603,13 @@ export function CaseDetailView({
       goToGuidanceAnchor(anchor);
       return;
     }
+    // The readiness check is the guidance notice on Overview until it's
+    // accepted; after that it's the Pre-Filing Check inside the filing popup.
+    if (anchor === "case-readiness" && !needsGuidanceAck) {
+      if (activeTab !== "file") setActiveTab("file");
+      setFilingOpen(true);
+      return;
+    }
     const targetTab = ANCHOR_TAB[anchor];
     if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
     // The filing steps live inside the popup — open it so the anchor exists.
@@ -426,8 +627,37 @@ export function CaseDetailView({
     requestAnimationFrame(tryScroll);
   }
 
+  // Which of the two escalation tabs a generic "open appeal / arbitration" link goes to.
+  const escalationTab: CaseTabId = current.escalationPath === "appeal" ? "court" : "arbitration";
+
+  const filingWasOpen = useRef(false);
+  useEffect(() => {
+    if (filingWasOpen.current && !filingOpen) loadNoticeFiling();
+    filingWasOpen.current = filingOpen;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filingOpen]);
+
+  // A NEXT REQUIRED ACTION link from another page lands on its section once.
+  const openedAnchor = useRef(false);
+  useEffect(() => {
+    if (loading || !initialAnchor || openedAnchor.current) return;
+    openedAnchor.current = true;
+    navigateTo(initialAnchor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, initialAnchor]);
+
+  const today = localTodayIso();
+  const pipeline = casePipeline({
+    protest: current,
+    notice: noticeFiling,
+    protestDeadline: property.protestDeadline,
+    cadName: property.cad,
+    managed: property.planTier === "corvusrf_managed",
+    today,
+  });
+
   function handleTabClick(id: CaseTabId) {
-    if (caseTabUnlocked(id, current, needsGuidanceAck)) {
+    if (caseTabUnlocked(id, current, needsGuidanceAck, noticeSigned)) {
       setActiveTab(id);
     } else {
       toast.info(
@@ -441,10 +671,53 @@ export function CaseDetailView({
       <button onClick={onBack} className="btn-outline text-sm mb-4">
         ← Back
       </button>
-      <h3 className="font-serif text-xl font-semibold">Case: {property.address}</h3>
-      <p className="text-xs text-muted-foreground">
-        AI-generated from your property's official CAD record.
-      </p>
+      {(() => {
+        const outcome = current.status === "resolved" ? buildCaseOutcome(property, current) : null;
+        // Some counties (Dallas among them) publish no assessed-value field at all — genuinely
+        // null, not zero. Falling back to 0 would show "$0" as if the county assessed it at
+        // nothing, so this shows "Not on file" instead of a fabricated figure.
+        const original = current.originalValue ?? property.totalValue ?? null;
+        return (
+          <PageHero
+            icon={Scale}
+            title={`Case: ${property.address}`}
+            tone={outcome ? "emerald" : current.status === "requested" ? "sky" : "violet"}
+            subtitle="AI-generated from your property's official CAD record."
+            badges={
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {caseStageLabel(current)}
+              </span>
+            }
+            stats={[
+              {
+                label: "Original value",
+                value: original ?? 0,
+                format: (n) => compactCurrency(n),
+                // 0 means the county hasn't published this year's value yet, not $0.
+                ...(!original ? { text: "Pending" } : {}),
+              },
+              ...(outcome && outcome.finalValue != null
+                ? [
+                    {
+                      label: "Final value",
+                      value: outcome.finalValue,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+              ...(outcome && outcome.taxSavings
+                ? [
+                    {
+                      label: "Saved per year",
+                      value: outcome.taxSavings,
+                      format: (n: number) => compactCurrency(n),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        );
+      })()}
 
       {loading ? (
         <div className="mt-4 grid gap-2">
@@ -453,13 +726,96 @@ export function CaseDetailView({
         </div>
       ) : (
         <>
+          {/* Case Readiness → … → Close Case, and the one NEXT REQUIRED ACTION
+              that moves it forward (case-pipeline.ts) — always at the top. */}
+          <div className="mt-4 grid gap-3">
+            <NextRequiredAction
+              pipeline={pipeline}
+              today={today}
+              propertyId={property.id}
+              onGo={navigateTo}
+            />
+            <div className="card-elev min-w-0 p-4">
+              <PipelineStepper pipeline={pipeline} />
+            </div>
+          </div>
+          {(() => {
+            // Viewing a later phase than the one the case is actually in: say so, and
+            // say what is still open, so nobody wonders why an earlier step keeps blinking.
+            const order = CASE_TABS.map((t) => t.id);
+            const isEscalation = activeTab === "arbitration" || activeTab === "court";
+            const behind: CaseTabId | null = isEscalation
+              ? current.status !== "resolved" && current.arbDecision == null
+                ? "decision"
+                : null
+              : order.indexOf(activeTab) > order.indexOf(phaseDefault) &&
+                  activeTab !== "overview" &&
+                  activeTab !== "outcome"
+                ? phaseDefault
+                : null;
+            if (!behind) return null;
+            const label = CASE_TABS.find((t) => t.id === behind)?.label ?? "";
+            const todo: Partial<Record<CaseTabId, string>> = {
+              file: "Confirm you delivered your signed protest to the county, so your deadline is protected.",
+              informal: "Record how the informal review ended.",
+              hearing: "Add your hearing notice, then record what happened.",
+              decision: "Record the ARB decision (upload the ARB order).",
+            };
+            return (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="min-w-0 flex-1 basis-64">
+                  <span className="font-semibold">Finish "{label}" first.</span> {todo[behind]}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(behind)}
+                  className="btn-primary shrink-0 text-sm"
+                >
+                  Go to {label} →
+                </button>
+              </div>
+            );
+          })()}
           <CaseTabBar
             activeTab={activeTab}
             protest={current}
             needsGuidanceAck={needsGuidanceAck}
+            noticeSigned={noticeSigned}
             onSelect={handleTabClick}
           />
-          <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+          {activeTab === "arbitration" || activeTab === "court" ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("decision");
+                  // Let the Decision tab mount, then scroll to the options and compare.
+                  setTimeout(() => {
+                    document
+                      .getElementById("case-escalation")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    window.dispatchEvent(new Event(COMPARE_ESCALATION_EVENT));
+                  }, 350);
+                }}
+                className="text-left text-accent hover:underline"
+              >
+                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on the Decision tab) →
+              </button>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
+          )}
+          <CasePhaseGuide tab={activeTab} informalStatus={current.informalStatus} />
+
+          {activeTab === "overview" && (
+            <div className="mt-3">
+              <RelevantTaxUpdates
+                property={property}
+                protest={current}
+                topics={["protest", "arb", "deadlines", "valuation", "tax_rate"]}
+              />
+            </div>
+          )}
 
           {/* --- Overview --- */}
           {activeTab === "overview" &&
@@ -479,6 +835,7 @@ export function CaseDetailView({
                   evidenceDocumentCount={evidenceDocuments.length}
                   noticeSignedAt={noticeSignedAt}
                   needsGuidanceAck={needsGuidanceAck}
+                  noticeSigned={noticeSigned}
                   onSelect={handleTabClick}
                   onNavigate={navigateTo}
                 />
@@ -547,7 +904,7 @@ export function CaseDetailView({
                   since Prepare & File is where the filing steps it tracks
                   (Submit/Track/Decision/Savings) actually get worked. */}
               <div className="mt-6">
-                <JourneyTracker />
+                <JourneyTracker propertyId={property.id} />
               </div>
             </div>
           )}
@@ -564,19 +921,26 @@ export function CaseDetailView({
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
                 onNoticeSigned={setNoticeSignedAt}
+                onFinish={() => {
+                  setFilingOpen(false);
+                  handleTabClick("informal");
+                }}
               />
             </Modal>
           )}
 
           {/* --- Informal Review --- */}
-          {activeTab === "informal" && current.status !== "requested" && (
+          {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
             <div>
               <InformalReviewSection
+                userId={userId}
                 protest={current}
                 property={property}
                 strategyRecommendation={caseData?.strategyRecommendation ?? null}
                 evidenceDocuments={evidenceDocuments}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onAgreementChange={setSettlementAgreement}
+                onOpenHearing={() => setActiveTab("hearing")}
               />
               <SettlementSignatureSection
                 userId={userId}
@@ -590,8 +954,23 @@ export function CaseDetailView({
           )}
 
           {/* --- Formal Hearing --- */}
-          {activeTab === "hearing" && current.status !== "requested" && (
+          {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
+              {/* Request CAD Evidence comes before the hearing itself. */}
+              <CadEvidenceRequest
+                userId={userId}
+                property={property}
+                protest={current}
+                userEmail={userEmail}
+                onChange={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              <FormalHearingActions
+                userId={userId}
+                protest={current}
+                property={property}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+              />
               <HearingNoticeSection
                 userId={userId}
                 protest={current}
@@ -606,34 +985,165 @@ export function CaseDetailView({
                 settlementAgreement={settlementAgreement}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
+              <MockHearing
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceFiles={evidenceDocuments.map((d) => d.fileName)}
+              />
             </div>
           )}
 
           {/* --- Decision --- */}
           {activeTab === "decision" && (
             <div>
+              {/* Once there's a final value: the outcome, bill check, appeal
+                  deadlines and economics, documents and prior year in one place. */}
+              <PostHearingDecision
+                userId={userId}
+                property={property}
+                protest={current}
+                evidenceDocumentCount={evidenceDocuments.length}
+              />
+              <CaseOutcomeSection
+                userId={userId}
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
               <DecisionNoticeSection
                 userId={userId}
                 protest={current}
                 property={property}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
-            </div>
-          )}
-
-          {/* --- Appeal / Arbitration --- */}
-          {activeTab === "appeal" && (
-            <div>
               <EscalationEvaluationSection
                 protest={current}
                 property={property}
                 evidenceDocumentCount={evidenceDocuments.length}
                 onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
               />
             </div>
           )}
+
+          {/* --- Arbitration --- */}
+          {activeTab === "arbitration" && (
+            <div>
+              {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
+                <ArbitrationWorkflow
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  evidenceDocuments={evidenceDocuments}
+                  caseData={caseData}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              ) : (
+                <EscalationStart
+                  kind="arbitration"
+                  protest={current}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onOtherTab={() => setActiveTab("court")}
+                />
+              )}
+            </div>
+          )}
+
+          {/* --- Court Appeal --- */}
+          {activeTab === "court" && (
+            <div>
+              {current.escalationPath === "appeal" || current.courtAppeal ? (
+                <CourtAppealWorkflow
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  evidenceDocuments={evidenceDocuments}
+                  caseData={caseData}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              ) : (
+                <EscalationStart
+                  kind="appeal"
+                  protest={current}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onOtherTab={() => setActiveTab("arbitration")}
+                />
+              )}
+            </div>
+          )}
+          {/* --- Final Outcome --- */}
+          {activeTab === "outcome" && (
+            <FinalOutcomeSection
+              protest={current}
+              property={property}
+              onOpenTab={(tab) => setActiveTab(tab)}
+            />
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+// The not-started state of the Arbitration / Court Appeal tabs: the option
+// evaluation (eligibility, deadlines) plus a button to begin that path. Each path
+// is independent — an owner can start one and later also start the other.
+function EscalationStart({
+  kind,
+  protest,
+  onUpdate,
+  onOtherTab,
+}: {
+  kind: "arbitration" | "appeal";
+  protest: ProtestRecord;
+  onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onOtherTab: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const label = kind === "arbitration" ? "binding arbitration" : "a court appeal";
+  async function start() {
+    setBusy(true);
+    try {
+      await recordEscalation(protest.id, kind);
+      onUpdate({ escalationPath: kind, status: kind === "appeal" ? "appealing" : "arbitrating" });
+      toast.success(
+        kind === "arbitration"
+          ? "Recorded — the case moved to arbitration."
+          : "Recorded — the case moved to a court appeal.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not record this next step."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="grid gap-4">
+      <div className="rounded-md border border-border p-4">
+        <h2 className="text-sm font-semibold">
+          {kind === "arbitration" ? "Binding arbitration" : "Court appeal"}
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          You haven&apos;t started {label} for this case yet. Starting it doesn&apos;t close the
+          other option — you can also use the{" "}
+          <button type="button" onClick={onOtherTab} className="text-accent hover:underline">
+            {kind === "arbitration" ? "Court Appeal" : "Arbitration"} tab
+          </button>{" "}
+          {kind === "arbitration" ? "before or after" : "in addition to or instead of arbitration"}.
+        </p>
+        <button
+          type="button"
+          onClick={() => void start()}
+          disabled={busy}
+          className="btn-accent mt-3 text-xs py-1.5 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : kind === "arbitration" ? "Start arbitration" : "Start court appeal"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -648,17 +1158,31 @@ function CaseTabBar({
   activeTab,
   protest,
   needsGuidanceAck,
+  noticeSigned,
   onSelect,
 }: {
   activeTab: CaseTabId;
   protest: ProtestRecord;
   needsGuidanceAck: boolean;
+  noticeSigned: boolean;
   onSelect: (id: CaseTabId) => void;
 }) {
   const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
-  const currentIdx = CASE_TABS.findIndex((t) => t.id === currentPhase);
+  // Arbitration and Court Appeal share one step, so a court-appeal case sits on that step.
+  const currentIdx = CASE_TABS.findIndex(
+    (t) => t.id === (currentPhase === "court" ? "arbitration" : currentPhase),
+  );
+  const barRef = useRef<HTMLDivElement>(null);
+  // On a narrow screen the strip scrolls sideways — keep the open tab in view.
+  useEffect(() => {
+    centerInStrip(
+      barRef.current,
+      barRef.current?.querySelector<HTMLElement>("[aria-selected=true]") ?? null,
+    );
+  }, [activeTab]);
   return (
     <div
+      ref={barRef}
       role="tablist"
       aria-label="Case phases"
       className="mt-4 flex items-center gap-1 overflow-x-auto border-b border-border pb-2"
@@ -666,47 +1190,86 @@ function CaseTabBar({
       {CASE_TABS.map((t, i) => {
         const isOpen = t.id === activeTab;
         const isHub = t.id === "overview";
-        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck);
-        const done = !isHub && !locked && i < currentIdx;
-        const isCurrent = !isHub && i === currentIdx;
-        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(i);
+        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
+        const pathDone = escalationDone(t.id, protest);
+        // The shared step 5 badge ticks once either path has been carried out.
+        const groupDone = (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
+        // Every other step only reads "done" once you've moved PAST it
+        // (i < currentIdx) — right, mid-case, since "current" means "still in
+        // progress". But Final Outcome IS the current step once the case is
+        // closed (there's nothing after it to move on to), so that same rule
+        // left it permanently stuck on its plain step number instead of a
+        // checkmark even with the case fully resolved.
+        const done =
+          !isHub &&
+          !locked &&
+          (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
+        const isCurrent =
+          !isHub &&
+          (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
+        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
+        const style = PHASE_STYLE[t.id];
         return (
           <div key={t.id} className="flex shrink-0 items-center gap-1">
-            {i > 0 && (
-              <span aria-hidden className="px-0.5 text-muted-foreground/30">
-                →
-              </span>
-            )}
+            {i > 0 &&
+              (t.joinsPrev ? (
+                <span aria-hidden className="px-0.5 text-muted-foreground/40">
+                  /
+                </span>
+              ) : (
+                // The road between steps: filled once you've passed it.
+                <span
+                  aria-hidden
+                  className={`h-1 w-6 rounded-full transition-colors ${
+                    i <= currentIdx ? "bg-emerald-400" : "bg-border"
+                  }`}
+                />
+              ))}
             <button
               type="button"
               role="tab"
               aria-selected={isOpen}
               aria-current={isCurrent ? "step" : undefined}
-              title={locked ? t.lockedHint : undefined}
+              title={locked ? t.lockedHint : TAB_MEANING[t.id]}
               onClick={() => onSelect(t.id)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
                 isOpen
-                  ? "bg-accent/10 font-semibold text-foreground"
+                  ? `${style.tint} font-semibold text-foreground`
                   : locked
                     ? "font-medium text-muted-foreground/50"
                     : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              <span
-                aria-hidden
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                  done
-                    ? "bg-success/15 text-success"
-                    : isCurrent && !locked
-                      ? "bg-accent text-accent-foreground"
-                      : locked
-                        ? "bg-muted text-muted-foreground/60"
-                        : "border border-border text-muted-foreground"
-                }`}
-              >
-                {marker}
-              </span>
+              {!t.joinsPrev && (
+                <span className="relative grid shrink-0 place-items-center">
+                  {isCurrent && !locked && !done && (
+                    <span
+                      aria-hidden
+                      className={`absolute inset-0 animate-ping rounded-full opacity-40 motion-reduce:animate-none ${style.ping}`}
+                    />
+                  )}
+                  <span
+                    aria-hidden
+                    className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold leading-none ${
+                      done
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : isCurrent && !locked
+                          ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
+                          : locked
+                            ? "bg-muted text-muted-foreground/60"
+                            : `border-2 bg-background text-muted-foreground ${style.border}`
+                    }`}
+                  >
+                    {marker}
+                  </span>
+                </span>
+              )}
               {t.label}
+              {(t.joinsPrev || t.id === "arbitration") && pathDone && (
+                <span aria-label="done" className="text-success">
+                  ✓
+                </span>
+              )}
             </button>
           </div>
         );
@@ -727,6 +1290,7 @@ function CaseRoadmap({
   evidenceDocumentCount,
   noticeSignedAt,
   needsGuidanceAck,
+  noticeSigned,
   onSelect,
   onNavigate,
 }: {
@@ -735,6 +1299,7 @@ function CaseRoadmap({
   evidenceDocumentCount: number;
   noticeSignedAt: string | null;
   needsGuidanceAck: boolean;
+  noticeSigned: boolean;
   onSelect: (id: CaseTabId) => void;
   onNavigate: (anchor: string) => void;
 }) {
@@ -757,15 +1322,24 @@ function CaseRoadmap({
       <ol className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
         {CASE_TABS.map((t, i) => {
           const isHub = t.id === "overview";
-          const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck);
-          const done = !isHub && unlocked && i < currentIdx;
+          const unlocked = caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
+          const pathDone = escalationDone(t.id, protest);
+          const groupDone =
+            (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
+          // See CaseTabBar's own version of this same fix above — Final
+          // Outcome is the current step once the case closes, so the plain
+          // "i < currentIdx" rule alone left it on a bare step number.
+          const done =
+            !isHub &&
+            unlocked &&
+            (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
           const here = i === currentIdx;
-          const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(i);
+          const marker = isHub ? "⌂" : !unlocked ? "🔒" : done ? "✓" : String(stepNumber(i));
           return (
             <li key={t.id} className="flex items-center gap-1">
               {i > 0 && (
                 <span aria-hidden className="text-muted-foreground/30">
-                  →
+                  {t.joinsPrev ? "/" : "→"}
                 </span>
               )}
               <button
@@ -782,21 +1356,26 @@ function CaseRoadmap({
                         : "text-muted-foreground/40"
                 }`}
               >
-                <span
-                  aria-hidden
-                  className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold leading-none ${
-                    here
-                      ? "bg-accent text-accent-foreground"
-                      : done
-                        ? "bg-success/20 text-success"
-                        : unlocked
-                          ? "border border-border"
-                          : "bg-muted text-muted-foreground/50"
-                  }`}
-                >
-                  {marker}
-                </span>
+                {!t.joinsPrev && (
+                  <span
+                    aria-hidden
+                    className={`grid h-4 w-4 place-items-center rounded-full text-[10px] font-semibold leading-none ${
+                      here
+                        ? "bg-accent text-accent-foreground"
+                        : done
+                          ? "bg-success/20 text-success"
+                          : unlocked
+                            ? "border border-border"
+                            : "bg-muted text-muted-foreground/50"
+                    }`}
+                  >
+                    {marker}
+                  </span>
+                )}
                 {t.label}
+                {(t.joinsPrev || t.id === "arbitration") && pathDone && (
+                  <span className="text-success">✓</span>
+                )}
               </button>
             </li>
           );
@@ -810,7 +1389,7 @@ function CaseRoadmap({
         <p className="mt-1 text-sm">{guidance.summary}</p>
         {next && (
           <div className="mt-2 text-sm">
-            <span className="font-semibold">Do this next: {next.label}.</span>
+            <span className="font-semibold">Next step: {next.label}.</span>
             {next.detail && <span className="text-muted-foreground"> {next.detail}</span>}
             {next.action && (
               <button
@@ -878,28 +1457,20 @@ function CorvusGuidanceGate({
   const canContinue = checked && (!hasHigh || concernsReviewed) && !acknowledging;
 
   return (
-    <div className="mt-4 grid gap-4">
+    <div id="case-readiness" className="mt-4 grid scroll-mt-24 gap-4">
       <div className="card-elev p-4">
-        <h4 className="text-sm font-semibold">AI Guidance & Filing Notice</h4>
-        <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
+        <h2 className="text-sm font-semibold">AI Guidance & Filing Notice</h2>
+        <div className="mt-1.5 grid gap-0.5 text-xs text-muted-foreground">
           <p>
-            Corvus AI is an assistant designed to guide you through the property protest process and
-            help prepare and complete the required forms and documents.
+            Corvus AI helps prepare your protest forms — by continuing, you authorize it to fill
+            them in for you.
           </p>
           <p>
-            By proceeding, you authorize Corvus AI to assist with completing forms and preparing
-            filing materials on your behalf.
-          </p>
-          <p>
-            You are responsible for reviewing and verifying all information before signing, filing,
-            or submitting any document.
-          </p>
-          <p>
-            Corvus AI does not replace your responsibility to verify the accuracy of the information
-            or comply with county requirements.
+            You review and verify everything before signing or filing, and remain responsible for
+            county requirements.
           </p>
         </div>
-        <p className="mt-3 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+        <p className="mt-2 border-t border-border/60 pt-1.5 text-[11px] text-muted-foreground">
           {countyInfo ? (
             <>
               County procedures for {property.cad} were verified {countyInfo.verifiedAt}.{" "}
@@ -924,10 +1495,10 @@ function CorvusGuidanceGate({
       </div>
 
       <div className="card-elev p-4">
-        <h4 className="text-sm font-semibold">County Requirements Check</h4>
+        <h2 className="text-sm font-semibold">County Requirements Check</h2>
         {verifyState === "loading" ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Corvus is verifying this case against {property.cad || "the county"}'s requirements…
+            Corvus AI is verifying this case against {property.cad || "the county"}'s requirements…
           </p>
         ) : verifyState === "error" ? (
           <p className="mt-2 text-xs text-muted-foreground">
@@ -1174,7 +1745,7 @@ function NextStepFooter({
   if (!next) return null;
 
   return (
-    <div className="mt-5 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
+    <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-accent/40 bg-card/95 p-3 text-sm shadow-lg backdrop-blur">
       <p className="text-xs font-semibold uppercase tracking-wide text-accent">
         Reminder — your next step
       </p>
@@ -1237,7 +1808,7 @@ function PreFilingCheckList({
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">Pre-Filing Check</h4>
+        <h2 className="text-sm font-semibold">Pre-Filing Check</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             blocked ? "bg-destructive/10 text-destructive" : "bg-success/15 text-success"
@@ -1401,19 +1972,12 @@ export function CasePlanSection({
   protestId,
   caseData,
   onReload,
-  // Module 8 lives on the customer's own /ai-report page, keyed to
-  // whoever is currently signed in — for staff (AdminCaseProgressModal),
-  // that's the admin, not the customer, so navigating there would try to
-  // resolve/create this property under the ADMIN's account instead.
-  // Customer view leaves this at its default (true); admin passes false.
-  allowEvidenceUpload = true,
 }: {
   userId: string;
   property: PropertyRecord;
   protestId: string;
   caseData: ProtestCase | null;
   onReload: () => void;
-  allowEvidenceUpload?: boolean;
 }) {
   const [generating, setGenerating] = useState(false);
 
@@ -1427,23 +1991,6 @@ export function CasePlanSection({
     } finally {
       setGenerating(false);
     }
-  }
-
-  // Evidence upload lives in exactly one place now — Module 8 on the AI
-  // Report page — rather than duplicated here too. Sets this property as
-  // the report's subject the same real way "View AI Report" already does
-  // from the Properties dashboard (buildAiReportIntakePatch), then deep
-  // links straight into the Evidence module (ai-report.tsx's own
-  // ?openModule=evidence handling, built for exactly this button). Opens in
-  // a new tab (window.open, not router navigate) so the case modal stays
-  // open behind it — the sessionStorage write above happens synchronously
-  // before the tab opens, so the new same-origin tab inherits it.
-  function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
-    // Pages build — a raw "/ai-report" absolute path skips that prefix and
-    // 404s in production. Always build the URL from BASE_URL.
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
   }
 
   const hasAnyPlan = !!caseData?.strategyRecommendation;
@@ -1466,7 +2013,7 @@ export function CasePlanSection({
   return (
     <div className="mt-4 grid gap-5">
       <section>
-        <h4 className="text-sm font-semibold">Strategy</h4>
+        <h2 className="text-sm font-semibold">Strategy</h2>
         {caseData?.strategyRecommendation ? (
           <div className="mt-1">
             <span className="badge-soft">{caseData.strategyRecommendation}</span>
@@ -1492,14 +2039,12 @@ export function CasePlanSection({
           </div>
         )}
       </section>
-
-      {allowEvidenceUpload && (
-        <section id="case-upload-evidence">
-          <button onClick={goToModule8} className="btn-outline w-fit text-sm">
-            Upload Evidence — Go to Module 8
-          </button>
-        </section>
-      )}
+      {/* Evidence upload lives in exactly one place on this tab now — the
+          Evidence card above (EvidenceStatusCard), which has the richer
+          context (score, critical-missing count) this section didn't. A
+          second identical button here was pure duplication — see
+          EvidenceStatusCard's own id="case-upload-evidence" for where
+          getCaseGuidance's "Go to Upload Evidence" step now lands. */}
     </div>
   );
 }
@@ -1553,6 +2098,8 @@ const EMPTY_FORM_SUBMISSION: FormSubmission = {
   submittedAt: null,
   filingConfirmedAt: null,
   additionalRequestedAt: null,
+  additionalRequestNote: null,
+  mailDeliveredAt: null,
   rejectedAt: null,
   reminderFrequency: null,
   lastReminderSentAt: null,
@@ -1641,6 +2188,12 @@ function FilingSubmissionFlow({
   const [trackingInput, setTrackingInput] = useState("");
   const [emailRecipientInput, setEmailRecipientInput] = useState("");
   const [emailSubjectInput, setEmailSubjectInput] = useState("");
+  const [showCountyRequest, setShowCountyRequest] = useState(false);
+  const [countyRequestNote, setCountyRequestNote] = useState("");
+  // County emails read from CorvusPT's agent mailbox (county-email.ts) for this
+  // property — any of them can be attached as proof in one step.
+  const [countyEmailDocs, setCountyEmailDocs] = useState<DocumentRecord[]>([]);
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -1648,11 +2201,17 @@ function FilingSubmissionFlow({
     Promise.all([
       getSubmission(protest.id, formType),
       getFilingProofDocumentsFor(userId, property.id, formType),
+      listDocuments(userId),
     ])
-      .then(([s, docs]) => {
+      .then(([s, docs, all]) => {
         if (!live) return;
         setSubmission(s);
         setProofDocs(docs);
+        setCountyEmailDocs(
+          all.filter(
+            (d) => d.propertyId === property.id && d.documentType === COUNTY_EMAIL_DOCUMENT_TYPE,
+          ),
+        );
         setConfNumInput(s?.filingConfirmationNumber ?? "");
         setTrackingInput(s?.mailTrackingNumber ?? "");
         setEmailRecipientInput(s?.emailRecipient ?? countyInfo?.filingMethod.email.address ?? "");
@@ -1667,7 +2226,7 @@ function FilingSubmissionFlow({
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [protest.id, formType, userId, property.id, refreshToken]);
+  }, [protest.id, formType, userId, property.id, refreshToken, docsVersion]);
 
   async function chooseMethod(method: FilingMethod) {
     setSavingField("method");
@@ -1753,11 +2312,97 @@ function FilingSubmissionFlow({
     setCheckingProof(true);
     setProofCheckError(null);
     try {
-      setProofCheck(await verifyFilingProof(property, docs));
+      const result = await verifyFilingProof(property, docs);
+      setProofCheck(result);
+      // Suggestions, never decisions: label proof the owner hasn't labeled yet
+      // (they can change it), and pre-fill — not save — an empty confirmation /
+      // tracking number the AI could actually read.
+      for (const f of result.findings) {
+        const doc = docs.find((d) => d.fileName === f.fileName);
+        if (doc && !doc.proofKind) {
+          setDocumentProofKind(doc.id, f.proofKind)
+            .then(() =>
+              setProofDocs((cur) =>
+                cur.map((d) => (d.id === doc.id ? { ...d, proofKind: f.proofKind } : d)),
+              ),
+            )
+            .catch((err) => console.error("Could not label proof:", err));
+        }
+      }
+      const conf = result.findings.find((f) => f.confirmationNumber)?.confirmationNumber;
+      if (conf && !confNumInput.trim()) setConfNumInput(conf);
+      const track = result.findings.find((f) => f.trackingNumber)?.trackingNumber;
+      if (track && !trackingInput.trim()) setTrackingInput(track);
+      if ((conf && !confNumInput.trim()) || (track && !trackingInput.trim())) {
+        toast.info("Found a reference number in your proof — review it and press Save.");
+      }
     } catch (err) {
       setProofCheckError(getErrorMessage(err, "Could not check this proof."));
     } finally {
       setCheckingProof(false);
+    }
+  }
+
+  // Moves a county email (received in the agent mailbox) into this document's proof (re-filing it under
+  // this form's proof type) and runs the same AI check an upload gets.
+  async function attachCountyEmail(docId: string) {
+    const doc = countyEmailDocs.find((d) => d.id === docId);
+    if (!doc) return;
+    try {
+      const type = filingProofDocumentType(formType);
+      await setDocumentType(doc.id, type);
+      const moved = { ...doc, documentType: type };
+      setCountyEmailDocs((cur) => cur.filter((d) => d.id !== doc.id));
+      const next = [...proofDocs, moved];
+      setProofDocs(next);
+      handleCheckProof(next);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not attach this email."));
+    }
+  }
+
+  async function changeProofKind(doc: DocumentRecord, kind: ProofKind) {
+    setProofDocs((cur) => cur.map((d) => (d.id === doc.id ? { ...d, proofKind: kind } : d)));
+    try {
+      await setDocumentProofKind(doc.id, kind);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this label."));
+    }
+  }
+
+  async function saveDeliveredDate(value: string) {
+    setSavingField("delivered");
+    try {
+      // A date input gives "YYYY-MM-DD" — stored as noon UTC so it reads as the
+      // same calendar day in any US timezone.
+      const at = value ? new Date(`${value}T12:00:00Z`).toISOString() : null;
+      await saveFilingProofFields(userId, protest.id, formType, { mailDeliveredAt: at });
+      setSubmission((s) => ({ ...(s ?? EMPTY_FORM_SUBMISSION), mailDeliveredAt: at }));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  // The county came back wanting more — any document, not just Evidence. The
+  // request itself can be attached below as "County request for more information".
+  async function handleCountyRequest() {
+    setConfirming(true);
+    try {
+      const note = countyRequestNote.trim() || null;
+      const at = await requestAdditionalInfo(userId, protest.id, formType, note);
+      setSubmission((s) => ({
+        ...(s ?? EMPTY_FORM_SUBMISSION),
+        additionalRequestedAt: at,
+        additionalRequestNote: note,
+      }));
+      setShowCountyRequest(false);
+      toast.info(`Logged — ${docLabel} shows as Additional Information Requested.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save this."));
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -1856,9 +2501,11 @@ function FilingSubmissionFlow({
   const emailDraft = buildFilingEmailDraft(docLabel, property);
   const emailAddress = countyInfo?.filingMethod.email.address ?? null;
   const mailtoHref = emailAddress
-    ? `mailto:${encodeURIComponent(emailAddress)}?subject=${encodeURIComponent(
+    ? `mailto:${encodeURIComponent(emailAddress)}?cc=${encodeURIComponent(
+        CORVUSPT_COUNTY_EMAIL,
+      )}&subject=${encodeURIComponent(
         emailSubjectInput || emailDraft.subject,
-      )}&body=${encodeURIComponent(emailDraft.body)}`
+      )}&body=${encodeURIComponent(`${emailDraft.body}\n\n${COUNTY_REPLY_LINE}`)}`
     : null;
   const canConfirm = hasFilingReferenceNumber(submission) || proofDocs.length > 0;
   // The submit form (method-specific input + proof + "Mark as Submitted")
@@ -1866,14 +2513,35 @@ function FilingSubmissionFlow({
   // submitted, or bounced back (rejected / additional info requested).
   const canEditSubmission =
     status === "method_chosen" || status === "rejected" || status === "additional_requested";
+  // The kinds that fit this method first, then the rest.
+  const preferredKinds = method ? PROOF_KINDS_BY_METHOD[method] : [];
+  const proofKindOptions = [
+    ...PROOF_KINDS.filter((k) => preferredKinds.includes(k.id)),
+    ...PROOF_KINDS.filter((k) => !preferredKinds.includes(k.id)),
+  ];
 
   const proofBlock = (
     <div className="mt-3">
       {proofDocs.length > 0 && (
-        <ul className="mb-2 grid gap-1 text-xs">
+        <ul className="mb-2 grid gap-1.5 text-xs">
           {proofDocs.map((doc) => (
-            <li key={doc.id} className="text-foreground">
-              {doc.fileName}
+            <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-foreground">{doc.fileName}</span>
+              <select
+                value={doc.proofKind ?? ""}
+                onChange={(e) => changeProofKind(doc, e.target.value as ProofKind)}
+                aria-label={`What kind of proof is ${doc.fileName}?`}
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+              >
+                <option value="" disabled>
+                  What kind of proof is this?
+                </option>
+                {proofKindOptions.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
             </li>
           ))}
         </ul>
@@ -1895,6 +2563,21 @@ function FilingSubmissionFlow({
           }}
         />
       </label>
+      {countyEmailDocs.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && attachCountyEmail(e.target.value)}
+          aria-label="Attach a county email as proof"
+          className="ml-2 rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+        >
+          <option value="">Attach a county email…</option>
+          {countyEmailDocs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.fileName}
+            </option>
+          ))}
+        </select>
+      )}
       {checkingProof && (
         <p className="mt-2 text-xs text-muted-foreground">Checking what this shows…</p>
       )}
@@ -2022,6 +2705,9 @@ function FilingSubmissionFlow({
                     ? ` ${countyInfo.filingMethod.online.notes}`
                     : ""}
                 </p>
+                {submission?.fieldValues && Object.keys(submission.fieldValues).length > 0 && (
+                  <PortalCopySheet values={submission.fieldValues} />
+                )}
                 <a
                   href={countyInfo.filingMethod.online.url}
                   target="_blank"
@@ -2192,6 +2878,16 @@ function FilingSubmissionFlow({
               </button>
             </div>
           </label>
+          {trackingInput.trim() && (
+            <a
+              href={uspsTrackingUrl(trackingInput)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-fit text-xs text-accent underline"
+            >
+              Track with USPS
+            </a>
+          )}
           {proofBlock}
           <button
             type="button"
@@ -2254,6 +2950,95 @@ function FilingSubmissionFlow({
           </button>
         </div>
       )}
+
+      {/* Mailed: the tracking number shows it was sent; the delivery date is
+          the carrier's own word that it arrived. */}
+      {method === "mail" &&
+        submission?.mailTrackingNumber &&
+        (status === "awaiting_confirmation" || status === "confirmed") && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border p-3 text-xs">
+            <span>
+              Tracking {submission.mailTrackingNumber} ·{" "}
+              <a
+                href={uspsTrackingUrl(submission.mailTrackingNumber)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline"
+              >
+                Track with USPS
+              </a>
+            </span>
+            <label className="flex items-center gap-2">
+              Delivered on
+              <input
+                type="date"
+                defaultValue={submission.mailDeliveredAt?.slice(0, 10) ?? ""}
+                onBlur={(e) => {
+                  const next = e.target.value;
+                  if (next !== (submission.mailDeliveredAt?.slice(0, 10) ?? ""))
+                    saveDeliveredDate(next);
+                }}
+                disabled={savingField === "delivered"}
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+              />
+            </label>
+          </div>
+        )}
+
+      {status === "additional_requested" && submission?.additionalRequestNote && (
+        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs">
+          <span className="font-semibold">What the county asked for:</span>{" "}
+          {submission.additionalRequestNote}
+        </p>
+      )}
+
+      {/* The county came back wanting more — note what they asked for and
+          attach their notice. Evidence has its own request flow below. */}
+      {formType !== "evidence" &&
+        (status === "awaiting_confirmation" || status === "confirmed") &&
+        (showCountyRequest ? (
+          <div className="mt-3 grid gap-2 rounded-md border border-border p-3 text-xs">
+            <label className="grid gap-1">
+              What did {property.cad ?? "the county"} ask for?
+              <textarea
+                value={countyRequestNote}
+                onChange={(e) => setCountyRequestNote(e.target.value)}
+                rows={2}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+            </label>
+            <p className="text-muted-foreground">
+              Attach their notice or email below, labeled &ldquo;County request for more
+              information&rdquo;.
+            </p>
+            {proofBlock}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCountyRequest}
+                disabled={confirming}
+                className="btn-accent text-xs py-1.5 disabled:opacity-60"
+              >
+                {confirming ? "Saving…" : "Log County Request"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCountyRequest(false)}
+                className="btn-outline text-xs py-1.5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowCountyRequest(true)}
+            className="mt-2 text-xs text-accent hover:underline"
+          >
+            County asked for more information?
+          </button>
+        ))}
 
       {/* Once anyone marks it submitted, the same "now what" block applies
           regardless of method — the only real difference is what confirmation
@@ -2371,12 +3156,19 @@ function FiledProtestStatusCard({
   const blocked = isPreFilingBlocked(getPreFilingCheck(property, protest, evidenceCount));
   const status = filingSubmissionStatus(submission);
   const started = status !== "unstarted";
-  const statusLabel = noticeFinalStatusLabel(status);
+  // Notice signed but its delivery never recorded — every form is done, the
+  // last step left is getting it to the county. Says so plainly instead of
+  // "Not Filed Yet / Start Filing" (which reads as if nothing was done), while
+  // still never claiming "Protest Filed" before the county confirms.
+  const signedNotDelivered = !started && !!submission?.signedAt;
+  const statusLabel = signedNotDelivered
+    ? "Signed — Not Yet Delivered"
+    : noticeFinalStatusLabel(status);
 
   return (
     <div className="mt-4 card-elev p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Filed Protest</h4>
+        <h2 className="font-serif text-base font-semibold">Filed Protest</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             status === "confirmed"
@@ -2385,7 +3177,9 @@ function FiledProtestStatusCard({
                 ? "bg-destructive/10 text-destructive"
                 : status === "awaiting_confirmation"
                   ? "bg-warning/15 text-warning-foreground"
-                  : "bg-secondary text-muted-foreground"
+                  : signedNotDelivered
+                    ? "bg-warning/15 text-warning-foreground"
+                    : "bg-secondary text-muted-foreground"
           }`}
         >
           {statusLabel}
@@ -2394,9 +3188,15 @@ function FiledProtestStatusCard({
 
       {loading ? (
         <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+      ) : signedNotDelivered ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Your Notice of Protest is signed. The last step is delivering it to the county — choose
+          how you&apos;re filing, mark it submitted, then confirm once the county acknowledges it.
+          This turns to &quot;Protest Filed&quot; when the county confirms.
+        </p>
       ) : !started ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Corvus walks you through it one step at a time — the Pre-Filing Check, the exact county
+          Corvus AI walks you through it one step at a time — the Pre-Filing Check, the exact county
           forms you need (Notice of Protest, and an agent or affidavit form only if they apply),
           signing, filing, and your evidence package.
         </p>
@@ -2448,9 +3248,11 @@ function FiledProtestStatusCard({
           ? "View Filing"
           : started
             ? "Continue Filing"
-            : blocked
-              ? "Review Pre-Filing Check"
-              : "Start Filing"}
+            : signedNotDelivered
+              ? "Deliver & Confirm Filing"
+              : blocked
+                ? "Review Pre-Filing Check"
+                : "Start Filing"}
       </button>
     </div>
   );
@@ -2480,6 +3282,7 @@ function EvidenceStatusCard({
   const [score, setScore] = useState<number | null>(null);
   const [proofCount, setProofCount] = useState(0);
   const [requesting, setRequesting] = useState(false);
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -2511,7 +3314,7 @@ function EvidenceStatusCard({
     return () => {
       live = false;
     };
-  }, [protest.id, property.id, userId]);
+  }, [protest.id, property.id, userId, docsVersion]);
 
   async function handleRequestAdditional() {
     setRequesting(true);
@@ -2526,11 +3329,10 @@ function EvidenceStatusCard({
     }
   }
 
-  // Evidence upload lives in exactly one place — Module 8 on the AI Report
-  // page — same real deep link CasePlanSection/DocumentsSection already use.
+  // Same popup-embed treatment as CasePlanSection's own — see its comment.
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    setShowEvidencePanel(true);
   }
 
   const status = loading
@@ -2545,9 +3347,9 @@ function EvidenceStatusCard({
     !["not_started", "evidence_required", "being_prepared", "ready_to_submit"].includes(status);
 
   return (
-    <div className="mt-4 card-elev p-4">
+    <div id="case-upload-evidence" className="mt-4 card-elev p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Evidence</h4>
+        <h2 className="font-serif text-base font-semibold">Evidence</h2>
         {status && (
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -2616,27 +3418,42 @@ function EvidenceStatusCard({
               status === "evidence_required" ||
               status === "being_prepared") && (
               <button onClick={goToModule8} className="btn-accent text-xs py-1.5">
-                Continue to Evidence
+                {evidenceDocuments.length > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
               </button>
             )}
             {status === "ready_to_submit" && (
-              <button onClick={onOpen} className="btn-accent text-xs py-1.5">
-                Submit Evidence
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Evidence
+                </button>
+                <button onClick={goToModule8} className="btn-outline text-xs py-1.5">
+                  Upload Additional Evidence
+                </button>
+              </>
             )}
             {status === "awaiting_confirmation" && (
-              <button onClick={onOpen} className="btn-outline text-xs py-1.5">
-                View Submission
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-outline text-xs py-1.5">
+                  View Submission
+                </button>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Additional Evidence
+                </button>
+              </>
             )}
             {(status === "confirmed" || status === "complete") && (
-              <button
-                onClick={handleRequestAdditional}
-                disabled={requesting}
-                className="text-xs text-accent hover:underline disabled:opacity-60"
-              >
-                {requesting ? "Saving…" : "County asked for more?"}
-              </button>
+              <>
+                <button onClick={onOpen} className="btn-accent text-xs py-1.5">
+                  Submit Additional Evidence
+                </button>
+                <button
+                  onClick={handleRequestAdditional}
+                  disabled={requesting}
+                  className="text-xs text-accent hover:underline disabled:opacity-60"
+                >
+                  {requesting ? "Saving…" : "County asked for more?"}
+                </button>
+              </>
             )}
             {(status === "additional_requested" || status === "rejected") && (
               <>
@@ -2649,6 +3466,11 @@ function EvidenceStatusCard({
               </>
             )}
           </div>
+          {showEvidencePanel && (
+            <Modal onClose={() => setShowEvidencePanel(false)} wide>
+              <EvidenceChecklistPanel property={property} userId={userId} />
+            </Modal>
+          )}
         </>
       )}
     </div>
@@ -2672,6 +3494,9 @@ export function DocumentsSection({
   // hide signing entirely, keeping Save Progress/Download available for
   // staff to help prep the form without ever touching the signature step.
   allowSigning = true,
+  // Called from the last filing step's footer: close the popup and move on to the
+  // next case phase. Omitted by the admin copy.
+  onFinish,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -2683,6 +3508,7 @@ export function DocumentsSection({
   onNoticeSigned: (signedAt: string | null) => void;
   onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
   allowSigning?: boolean;
+  onFinish?: () => void;
 }) {
   const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -2788,10 +3614,22 @@ export function DocumentsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingSteps.join(","), preFilingBlocked, firstIncomplete]);
 
+  // Nothing after File Protest (agent form, affidavit, evidence) opens until
+  // the Notice of Protest is signed — it's the filing everything else hangs on.
+  const noticeDone = stepDone("file");
+  const fileIndex = filingSteps.indexOf("file");
+  const stepLocked = (id: FilingStepId) =>
+    (preFilingBlocked && id !== "prefiling") ||
+    (!noticeDone && fileIndex >= 0 && filingSteps.indexOf(id) > fileIndex);
+
   function selectStep(id: FilingStepId) {
     // While the Pre-Filing Check is blocked, nothing after it is actionable.
     if (preFilingBlocked && id !== "prefiling") {
       toast.info("Finish the Pre-Filing Check first — resolve the flagged field(s).");
+      return;
+    }
+    if (stepLocked(id)) {
+      toast.info("File your Notice of Protest first.");
       return;
     }
     setActiveStep(id);
@@ -2899,17 +3737,10 @@ export function DocumentsSection({
       .catch((err) => console.error("Could not load saved Evidence Declaration draft:", err));
   }
 
-  // Same real deep link as CasePlanSection's own goToModule8 — evidence
-  // upload lives in exactly one place (Module 8 on the AI Report page), so
-  // this button just gets the user there rather than duplicating an upload
-  // widget in a second location. Opens in a new tab so the case modal
-  // stays open behind it.
+  // Same popup-embed treatment as CasePlanSection's own — see its comment.
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   function goToModule8() {
-    updateIntake(buildAiReportIntakePatch(property));
-    // import.meta.env.BASE_URL is "/" in dev and "/corvuspt/" on the GitHub
-    // Pages build — a raw "/ai-report" absolute path skips that prefix and
-    // 404s in production. Always build the URL from BASE_URL.
-    window.open(`${import.meta.env.BASE_URL}ai-report?openModule=evidence`, "_blank");
+    setShowEvidencePanel(true);
   }
 
   // Form 50-162 authorizes an agent for possibly several properties at once —
@@ -3098,9 +3929,9 @@ export function DocumentsSection({
 
   return (
     <div id="case-documents">
-      <h4 className="font-serif text-lg font-semibold">File Your Protest</h4>
+      <h2 className="font-serif text-lg font-semibold">File Your Protest</h2>
       <p className="text-xs text-muted-foreground">
-        Corvus takes you through only the steps this case needs — one at a time. Official Texas
+        Corvus AI takes you through only the steps this case needs — one at a time. Official Texas
         Comptroller forms, pre-filled; review every field, then sign. Completed forms save to your
         Documents.
       </p>
@@ -3109,7 +3940,7 @@ export function DocumentsSection({
         steps={filingSteps}
         active={activeStep}
         isDone={stepDone}
-        lockedAfterPrefiling={preFilingBlocked}
+        isLocked={stepLocked}
         onSelect={selectStep}
       />
       <p className="mt-2 text-xs text-muted-foreground">{FILING_STEP_META[activeStep].blurb}</p>
@@ -3128,7 +3959,7 @@ export function DocumentsSection({
           />
           {preFilingBlocked ? (
             <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              Corvus can't confirm this case is ready to file — resolve the field(s) marked
+              Corvus AI can't confirm this case is ready to file — resolve the field(s) marked
               "Missing" or "Needs review" above (use the editor beside each). The filing steps
               unlock once this is clear.
             </div>
@@ -3154,9 +3985,14 @@ export function DocumentsSection({
                 onClick={goToModule8}
                 className="btn-outline shrink-0 whitespace-nowrap text-xs py-1.5"
               >
-                Upload Evidence First →
+                Upload Evidence First
               </button>
             </div>
+          )}
+          {showEvidencePanel && (
+            <Modal onClose={() => setShowEvidencePanel(false)} wide>
+              <EvidenceChecklistPanel property={property} userId={userId} />
+            </Modal>
           )}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={openProtestEditor} className="btn-accent text-xs py-1.5">
@@ -3165,16 +4001,20 @@ export function DocumentsSection({
             {noticeSignedAt && (
               <>
                 <span className="text-xs text-success">✓ Signed</span>
-                <Link to="/dashboard/documents" className="text-xs text-accent hover:underline">
+                <Link
+                  to="/dashboard/documents"
+                  search={{ propertyId: property.id }}
+                  className="text-xs text-accent hover:underline"
+                >
                   View in Documents tab →
                 </Link>
               </>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Opens the Notice of Protest (Form 50-132) pre-filled from your case — Corvus drafts the
-            "reasons" from your evidence; review every field, then Save, Sign &amp; download. The
-            signed form is saved to your Documents.
+            Opens the Notice of Protest (Form 50-132) pre-filled from your case — Corvus AI drafts
+            the "reasons" from your evidence; review every field, then Save, Sign &amp; download.
+            The signed form is saved to your Documents.
           </p>
 
           {noticeSignedAt ? (
@@ -3282,10 +4122,60 @@ export function DocumentsSection({
           property={property}
           protest={protest}
           countyInfo={countyInfo}
-          onGoToModule8={goToModule8}
           onConfirmed={handleEvidenceFilingConfirmed}
         />
       )}
+
+      {(() => {
+        const idx = filingSteps.indexOf(activeStep);
+        const next = idx >= 0 ? filingSteps[idx + 1] : undefined;
+        const done = stepDone(activeStep);
+        const blocked =
+          (preFilingBlocked && activeStep === "prefiling") ||
+          (activeStep === "file" && !noticeDone);
+        return (
+          <div
+            className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
+              done ? "border-success/30 bg-success/5" : "border-border bg-secondary/40"
+            }`}
+          >
+            <div className="min-w-0 basis-56 flex-1 text-sm">
+              <div className="text-xs text-muted-foreground">
+                Step {idx + 1} of {filingSteps.length}: {FILING_STEP_META[activeStep].label}
+              </div>
+              <div className={done ? "font-medium text-success" : "font-medium"}>
+                {done
+                  ? "✓ This step is complete."
+                  : blocked
+                    ? activeStep === "file"
+                      ? "File your Notice of Protest above to continue."
+                      : "Fix the flagged items above to continue."
+                    : !next
+                      ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
+                      : "Not finished yet. Complete it above, or skip ahead."}
+              </div>
+            </div>
+            {next ? (
+              <button
+                type="button"
+                onClick={() => selectStep(next)}
+                disabled={blocked}
+                className="btn-primary shrink-0 text-sm disabled:opacity-60"
+              >
+                Next step: {FILING_STEP_META[next].label} →
+              </button>
+            ) : onFinish ? (
+              <button type="button" onClick={onFinish} className="btn-primary shrink-0 text-sm">
+                {done ? "Done — go to Informal Review →" : "Skip for now — go to Informal Review →"}
+              </button>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {done ? "All filing steps are done." : "This is the last step."}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {editingForm && (
         <PdfFormEditor
@@ -3365,14 +4255,14 @@ function FilingStepBar({
   steps,
   active,
   isDone,
-  lockedAfterPrefiling,
+  isLocked,
   onSelect,
 }: {
   steps: FilingStepId[];
   active: FilingStepId;
   isDone: (id: FilingStepId) => boolean;
-  // While the Pre-Filing Check is blocked, every step after it is inert.
-  lockedAfterPrefiling: boolean;
+  // Blocked Pre-Filing Check, or Notice of Protest not yet signed.
+  isLocked: (id: FilingStepId) => boolean;
   onSelect: (id: FilingStepId) => void;
 }) {
   return (
@@ -3380,7 +4270,7 @@ function FilingStepBar({
       {steps.map((id, i) => {
         const done = isDone(id);
         const here = id === active;
-        const locked = lockedAfterPrefiling && id !== "prefiling";
+        const locked = isLocked(id);
         return (
           <li key={id} className="flex items-center gap-1">
             {i > 0 && <span className="text-muted-foreground/40">→</span>}
@@ -3419,7 +4309,6 @@ function FilingEvidenceStep({
   property,
   protest,
   countyInfo,
-  onGoToModule8,
   onConfirmed,
 }: {
   evidenceDocuments: DocumentRecord[];
@@ -3428,7 +4317,6 @@ function FilingEvidenceStep({
   property: PropertyRecord;
   protest: ProtestRecord;
   countyInfo: CountyProtestInfo | null;
-  onGoToModule8: () => void;
   onConfirmed: (at: string) => void;
 }) {
   const withIssues = evidenceDocuments.filter(
@@ -3438,6 +4326,7 @@ function FilingEvidenceStep({
   // FilingSubmissionFlow below (which loaded its own proof list before that
   // existed) picks it up without a full page reload.
   const [refreshToken, setRefreshToken] = useState(0);
+  const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   return (
     <div className="mt-3 grid gap-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3446,10 +4335,18 @@ function FilingEvidenceStep({
           this case
           {withIssues.length > 0 && ` · ${withIssues.length} flagged by AI review`}
         </span>
-        <button onClick={onGoToModule8} className="btn-outline shrink-0 text-xs py-1.5">
-          Add / organize evidence in Module 8 →
+        <button
+          onClick={() => setShowEvidencePanel(true)}
+          className="btn-outline shrink-0 text-xs py-1.5"
+        >
+          Add / organize evidence
         </button>
       </div>
+      {showEvidencePanel && (
+        <Modal onClose={() => setShowEvidencePanel(false)} wide>
+          <EvidenceChecklistPanel property={property} userId={userId} />
+        </Modal>
+      )}
 
       {evidenceDocuments.length === 0 ? (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
@@ -3539,7 +4436,39 @@ function EvidencePackageBuilder({
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
+  const [previewPages, setPreviewPages] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  // Every OTHER document already uploaded for this property (survey, permit,
+  // photos...) that Module 8 didn't tag as evidence — offered below so the
+  // package can include them without re-uploading anything.
+  const [otherDocs, setOtherDocs] = useState<DocumentRecord[]>([]);
+  const [showOthers, setShowOthers] = useState(false);
+  const docsVersion = useDocumentsVersion();
+
+  useEffect(() => {
+    let live = true;
+    listDocuments(userId)
+      .then((docs) => {
+        if (!live) return;
+        const inEvidence = new Set(evidenceDocuments.map((d) => d.id));
+        setOtherDocs(
+          docs.filter(
+            (d) =>
+              d.propertyId === property.id &&
+              !inEvidence.has(d.id) &&
+              // Only what can actually be merged into the PDF, and never the
+              // filing-proof copies (a previous package or signed forms).
+              previewKind(d.fileName) !== "none" &&
+              !d.documentType?.startsWith("Filing Proof"),
+          ),
+        );
+      })
+      .catch((err) => console.error("Could not load this property's other documents:", err));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, property.id, docsVersion, evidenceDocuments.length]);
 
   useEffect(() => {
     let live = true;
@@ -3581,6 +4510,11 @@ function EvidencePackageBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id, protest.id]);
 
+  const allDocs = [...evidenceDocuments, ...otherDocs];
+  // The main list: the evidence documents, plus any extra the user has ticked.
+  const listedDocs = [...evidenceDocuments, ...otherDocs.filter((d) => selectedIds.includes(d.id))];
+  const addableDocs = otherDocs.filter((d) => !selectedIds.includes(d.id));
+
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
@@ -3607,7 +4541,7 @@ function EvidencePackageBuilder({
     setGenerating(true);
     try {
       const selectedDocs = selectedIds
-        .map((id) => evidenceDocuments.find((d) => d.id === id))
+        .map((id) => allDocs.find((d) => d.id === id))
         .filter((d): d is DocumentRecord => !!d);
       const files = [];
       for (const d of selectedDocs) {
@@ -3617,6 +4551,7 @@ function EvidencePackageBuilder({
       }
       const pdfBytes = await buildEvidencePackagePdf(files);
       setPreviewBytes(pdfBytes);
+      setPreviewPages(await countPdfPages(pdfBytes).catch(() => null));
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(new Blob([pdfBytes as BlobPart], { type: "application/pdf" }));
@@ -3669,7 +4604,7 @@ function EvidencePackageBuilder({
         Generate Evidence Package
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Corvus pre-selected the documents Module 8 already matched to your case — add, remove, or
+        Corvus AI pre-selected the documents Module 8 already matched to your case — add, remove, or
         reorder before generating.
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
@@ -3679,7 +4614,7 @@ function EvidencePackageBuilder({
       </p>
 
       <ul className="mt-2 grid gap-1">
-        {evidenceDocuments.map((d) => {
+        {listedDocs.map((d) => {
           const idx = selectedIds.indexOf(d.id);
           const checked = idx !== -1;
           return (
@@ -3716,6 +4651,46 @@ function EvidencePackageBuilder({
         })}
       </ul>
 
+      {addableDocs.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowOthers((v) => !v)}
+            aria-expanded={showOthers}
+            className="text-xs text-accent hover:underline"
+          >
+            {showOthers
+              ? "Hide other documents"
+              : `+ Add from your other documents (${addableDocs.length})`}
+          </button>
+          {showOthers && (
+            <ul className="mt-1.5 grid gap-1">
+              {addableDocs.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1 text-xs"
+                >
+                  <span className="min-w-0 flex-1 truncate">{d.fileName}</span>
+                  {d.documentType && (
+                    <span className="hidden shrink-0 text-muted-foreground sm:inline">
+                      {d.documentType.replace(/^Evidence Category: /, "")}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggle(d.id)}
+                    className="shrink-0 font-medium text-accent hover:underline"
+                    aria-label={`Add ${d.fileName} to the package`}
+                  >
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <label className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         Remind me:
         <select
@@ -3742,12 +4717,27 @@ function EvidencePackageBuilder({
 
       {previewUrl && (
         <div className="mt-3">
+          {previewPages != null && previewBytes && (
+            <p className="mb-1 text-xs text-muted-foreground">
+              Package ready — {previewPages} page{previewPages === 1 ? "" : "s"},{" "}
+              {(previewBytes.byteLength / (1024 * 1024)).toFixed(1)} MB. If the preview below is
+              blank, your browser is blocking its built-in PDF viewer — use Open in new tab or
+              Download.
+            </p>
+          )}
           <iframe
             title="Evidence package preview"
             src={previewUrl}
             className="h-64 w-full rounded-md border border-border"
           />
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+              className="btn-outline text-xs py-1.5"
+            >
+              Open in new tab
+            </button>
             <button
               type="button"
               onClick={handleSaveToDocuments}
@@ -3780,6 +4770,7 @@ const INFORMAL_STATUS_OPTIONS: { value: InformalStatus; label: string }[] = [
   { value: "accepted", label: "Accepted" },
   { value: "rejected", label: "Rejected" },
   { value: "no_informal_available", label: "No Informal Available" },
+  { value: "completed", label: "Informal Review Completed" },
 ];
 
 // "14:30" (the value an <input type="time"> yields) → "2:30 PM", the same
@@ -3832,17 +4823,23 @@ const INFORMAL_REVIEW_MODES: HearingMode[] = [
 ];
 
 function InformalReviewSection({
+  userId,
   protest,
   property,
   strategyRecommendation,
   evidenceDocuments,
   onUpdate,
+  onAgreementChange,
+  onOpenHearing,
 }: {
+  userId: string;
   protest: ProtestRecord;
   property: PropertyRecord;
   strategyRecommendation: string | null;
   evidenceDocuments: DocumentRecord[];
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  onAgreementChange: (a: SettlementAgreementRecord | null) => void;
+  onOpenHearing: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
@@ -3856,6 +4853,14 @@ function InformalReviewSection({
   const [loadingGuidance, setLoadingGuidance] = useState(false);
   const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [notice, setNotice] = useState<HearingNoticeRecord | null>(null);
+  // "Submit Settlement Document": the file is read, uploaded, and the protest
+  // closed at the settled value. If the value can't be read off the document,
+  // the user types it (settleNeedsValue) before the case is closed.
+  const [settling, setSettling] = useState(false);
+  const [settleFile, setSettleFile] = useState<File | null>(null);
+  const [settleExtraction, setSettleExtraction] = useState<DecisionExtraction | null>(null);
+  const [settleNeedsValue, setSettleNeedsValue] = useState(false);
+  const [settleValueInput, setSettleValueInput] = useState("");
 
   // Inline Q&A — stateless, same engine as the site-wide Ask AI widget
   // (ask-about-document). Only the latest question/answer is kept on screen.
@@ -3892,6 +4897,80 @@ function InformalReviewSection({
     } finally {
       setUpdatingStatus(false);
     }
+  }
+
+  async function handleInformalCompleted() {
+    await handleStatusChange("completed");
+    toast.success(
+      "Informal review marked completed. If you reached a settlement, submit the settlement document — otherwise continue to the Formal Hearing tab.",
+    );
+  }
+
+  // The owner is not satisfied with what the informal review produced — same
+  // "rejected" informal status the settlement flow uses, which is what moves the
+  // case to the formal hearing.
+  async function handleUnsatisfied() {
+    await handleStatusChange("rejected");
+    toast.success("Recorded — the case moved to a formal hearing.");
+  }
+
+  async function closeWithSettlement(
+    file: File,
+    extraction: DecisionExtraction | null,
+    settledValue: number,
+  ) {
+    setSettling(true);
+    try {
+      const doc = await uploadDocument(userId, property.id, file, SETTLEMENT_DOCUMENT_TYPE);
+      if (extraction) {
+        onAgreementChange(await saveSettlementAgreement(userId, protest.id, doc.id, extraction));
+      }
+      await resolveInformalSettlement(protest.id, settledValue);
+      onUpdate({
+        status: "resolved",
+        finalValue: settledValue,
+        escalationPath: "accept",
+        closedAt: new Date().toISOString(),
+        informalStatus: "accepted",
+      });
+      setSettleFile(null);
+      setSettleExtraction(null);
+      setSettleNeedsValue(false);
+      toast.success(`Settlement document submitted — protest closed at ${currency(settledValue)}.`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not submit the settlement document."));
+    } finally {
+      setSettling(false);
+    }
+  }
+
+  async function handleSettlementFile(file: File) {
+    setSettling(true);
+    let extraction: DecisionExtraction | null = null;
+    try {
+      extraction = await extractSettlementDocument(property, protest, file);
+    } catch {
+      // Unreadable by AI — fall through to asking for the settled value.
+    }
+    setSettling(false);
+    const value = extraction?.finalValue ?? null;
+    if (value != null && value > 0) {
+      await closeWithSettlement(file, extraction, value);
+      return;
+    }
+    setSettleFile(file);
+    setSettleExtraction(extraction);
+    setSettleValueInput("");
+    setSettleNeedsValue(true);
+  }
+
+  async function handleConfirmSettleValue() {
+    const value = Number(settleValueInput.replace(/[^0-9.]/g, ""));
+    if (!settleFile || !Number.isFinite(value) || value <= 0) {
+      toast.error("Enter the settled value from the document.");
+      return;
+    }
+    await closeWithSettlement(settleFile, settleExtraction, value);
   }
 
   async function handleSaveSchedule(e: FormEvent) {
@@ -3998,11 +5077,12 @@ function InformalReviewSection({
 
   return (
     <div id="case-informal-review" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Informal Review</h4>
+      <h2 className="text-sm font-semibold">Informal Review</h2>
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         <span className="badge-soft">{INFORMAL_STATUS_LABEL[protest.informalStatus]}</span>
         <select
+          aria-label="Informal review status"
           value={protest.informalStatus}
           disabled={updatingStatus}
           onChange={(e) => handleStatusChange(e.target.value as InformalStatus)}
@@ -4015,6 +5095,186 @@ function InformalReviewSection({
           ))}
         </select>
       </div>
+
+      {/* The offer itself, where the owner works the informal review — the
+          amount, how it compares, and where to accept it. */}
+      {protest.settlementOfferValue != null && protest.status !== "resolved" && (
+        <div className="mt-3 grid gap-2 rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+          <div>
+            <span className="font-semibold">
+              {property.cad ?? "The district"} offered {currency(protest.settlementOfferValue)}
+            </span>
+            {protest.settlementOfferReceivedAt && (
+              <span className="text-muted-foreground">
+                {" "}
+                on{" "}
+                {new Date(
+                  `${protest.settlementOfferReceivedAt.slice(0, 10)}T12:00:00`,
+                ).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            {protest.originalValue != null && protest.originalValue > 0 && (
+              <span className="text-muted-foreground">
+                {" "}
+                — down from {currency(protest.originalValue)}
+              </span>
+            )}
+            .
+          </div>
+          <SettlementHistory
+            compact
+            cad={property.cad}
+            propertyType={property.propertyType}
+            value={protest.originalValue ?? property.totalValue}
+            offer={
+              protest.originalValue
+                ? { original: protest.originalValue, offer: protest.settlementOfferValue }
+                : null
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            To accept it, use Accept Offer under Case Progress on Overview — or, if it&apos;s
+            settled in writing, submit the signed settlement below.
+          </p>
+        </div>
+      )}
+
+      {protest.status === "resolved" && protest.arbDecision == null && (
+        <div className="mt-3 rounded-md border border-border p-3 text-sm">
+          <p className="font-medium">This protest was closed by an informal settlement.</p>
+          <UndoButton
+            className="mt-2 block"
+            label="Undo this settlement"
+            confirm="This removes the settlement record and reopens the case at the informal review. You can then upload the correct document, or mark Unsatisfied to go to a formal hearing (and then arbitration or a court appeal). The uploaded file stays in your Documents tab."
+            successMessage="Undone — the informal review is open again."
+            onUndo={async () => {
+              const patch = await undoInformalSettlement(protest);
+              onAgreementChange(null);
+              onUpdate(patch);
+            }}
+          />
+        </div>
+      )}
+      {protest.status !== "resolved" && protest.informalStatus === "completed" && (
+        <div className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 text-sm">
+          <div className="font-semibold">Next: tell us how the informal review ended</div>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            <li>
+              <span className="font-medium text-foreground">You agreed on a value:</span> upload the
+              signed settlement below. That closes your protest.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">You did not agree:</span> click
+              Unsatisfied below. We will move you on to a formal hearing.
+            </li>
+          </ul>
+        </div>
+      )}
+      {protest.status !== "resolved" &&
+        ["completed", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+          <UndoButton
+            className="mt-3 block"
+            label="Undo my last informal step"
+            confirm="This puts the informal review back to where it was, so you can mark it completed, upload the settlement, or choose Unsatisfied again."
+            successMessage="Undone — the informal review is open again."
+            onUndo={async () => onUpdate(await undoInformalStep(protest))}
+          />
+        )}
+      {protest.status !== "resolved" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+            protest.informalStatus,
+          ) && (
+            <button
+              type="button"
+              onClick={() => void handleInformalCompleted()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 disabled:opacity-60"
+            >
+              Informal review completed
+            </button>
+          )}
+          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={() => void handleUnsatisfied()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
+            >
+              Unsatisfied
+            </button>
+          )}
+          <label
+            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {settling ? "Submitting…" : "Submit Settlement document"}
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              disabled={settling}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleSettlementFile(file);
+              }}
+            />
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            Uploading the signed settlement closes this protest.
+          </span>
+        </div>
+      )}
+      {protest.status !== "resolved" && protest.informalStatus === "rejected" && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+          <p className="font-medium">
+            Informal review result was unsatisfactory, so the case moved to a formal hearing.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenHearing}
+            className="mt-1.5 text-xs text-accent hover:underline"
+          >
+            Go to Formal Hearing →
+          </button>
+        </div>
+      )}
+      {settleNeedsValue && settleFile && (
+        <div className="mt-2 rounded-md border border-border p-3 text-xs">
+          <p className="text-muted-foreground">
+            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
+            close the protest.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={settleValueInput}
+              onChange={(e) => setSettleValueInput(e.target.value)}
+              inputMode="decimal"
+              placeholder="Settled value, e.g. 480000"
+              aria-label="Settled value"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void handleConfirmSettleValue()}
+              disabled={settling}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {settling ? "Closing…" : "Close protest"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSettleNeedsValue(false);
+                setSettleFile(null);
+              }}
+              className="text-muted-foreground hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Schedule — always available, not gated behind the status dropdown.
           Saving it sets the status to "scheduled" and feeds the in-platform
@@ -4426,7 +5686,7 @@ function HearingNoticeSection({
 
   return (
     <div id="case-hearing-notice" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Hearing Notice</h4>
+      <h2 className="text-sm font-semibold">Hearing Notice</h2>
 
       {!notice && !pending && (
         <div className="mt-2 rounded-md border border-accent/30 bg-accent/5 p-3 text-sm">
@@ -4693,7 +5953,7 @@ function HearingPrepSection({
   return (
     <div id="case-hearing-prep" className="mt-5 border-t border-border pt-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">Hearing Preparation</h4>
+        <h2 className="text-sm font-semibold">Hearing Preparation</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${HEARING_STATUS_STYLE[hearingStatus]}`}
         >
@@ -4960,7 +6220,7 @@ function DecisionNoticeSection({
 
   return (
     <div id="case-decision-notice" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Hearing Decision</h4>
+      <h2 className="text-sm font-semibold">Hearing Decision</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         After your hearing, upload the ARB Order, hearing decision, settlement, revised value
         notice, or other final determination you receive.
@@ -5411,7 +6671,7 @@ function SettlementSignatureSection({
 
   return (
     <div id="case-settlement-signature" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Settlement / Proposed Value</h4>
+      <h2 className="text-sm font-semibold">Settlement / Proposed Value</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         When the county proposes a value or sends a settlement, upload it here. AI reads the real
         settled value and terms; you tell us whether you&apos;ve already accepted or rejected it, or
@@ -5753,6 +7013,7 @@ function CaseRecordSection({
   const [channel, setChannel] = useState(protest.filingChannel ?? "");
   const [tracking, setTracking] = useState(protest.certifiedMailTracking ?? "");
   const [reloadKey, setReloadKey] = useState(0);
+  const docsVersion = useDocumentsVersion();
 
   useEffect(() => {
     let live = true;
@@ -5766,7 +7027,7 @@ function CaseRecordSection({
     return () => {
       live = false;
     };
-  }, [userId, property.id, protest.id, reloadKey]);
+  }, [userId, property.id, protest.id, reloadKey, docsVersion]);
 
   const stage = caseRecordStage(protest);
   const items = getCaseRecord(protest, {
@@ -5816,7 +7077,7 @@ function CaseRecordSection({
   return (
     <div id="case-record" className="mt-4 card-elev p-4">
       <div className="flex items-baseline justify-between gap-2">
-        <h4 className="font-serif text-base font-semibold">Case Record</h4>
+        <h2 className="font-serif text-base font-semibold">Case Record</h2>
         <span className="text-xs text-muted-foreground">
           {onFile}/{applicable} on file
         </span>
@@ -6048,7 +7309,7 @@ function CaseAuditTrailSection({ protestId }: { protestId: string }) {
 
   return (
     <div id="case-audit-trail" className="mt-4 card-elev p-4">
-      <h4 className="font-serif text-base font-semibold">Audit Trail</h4>
+      <h2 className="font-serif text-base font-semibold">Audit Trail</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Every change and county contact on this case, timestamped.
       </p>
@@ -6116,12 +7377,17 @@ function EscalationEvaluationSection({
   property,
   evidenceDocumentCount,
   onUpdate,
+  onChosen,
 }: {
   protest: ProtestRecord;
   property: PropertyRecord;
   evidenceDocumentCount: number;
   onUpdate: (patch: Partial<ProtestRecord>) => void;
+  // Called after a path is recorded, so the page can jump to that path's tab.
+  onChosen?: (path: "appeal" | "arbitration") => void;
 }) {
+  const [comparison, setComparison] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
   const [opinionInput, setOpinionInput] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
@@ -6137,7 +7403,43 @@ function EscalationEvaluationSection({
     evidenceDocumentCount,
     opinionOfValue && opinionOfValue > 0 ? opinionOfValue : null,
   );
+  const compareRef = useRef<() => void>(() => {});
+  compareRef.current = () => void compareWithAi();
+  useEffect(() => {
+    const run = () => compareRef.current();
+    window.addEventListener(COMPARE_ESCALATION_EVENT, run);
+    return () => window.removeEventListener(COMPARE_ESCALATION_EVENT, run);
+  }, []);
   if (!evalr.available) return null;
+
+  async function compareWithAi() {
+    if (comparing || !evalr.available) return;
+    setComparing(true);
+    try {
+      const lines = evalr.options.map(
+        (o) =>
+          `- ${o.title} (${o.statute}): ${o.eligible ? "available" : "not available"}; deadline ${o.deadline.date ?? "n/a"}; ` +
+          `est. cost ${o.estimatedCost ? `${currency(o.estimatedCost.min)}-${currency(o.estimatedCost.max)}` : "n/a"}; ` +
+          `added savings/yr ${o.potentialAdditionalSavings.amount != null ? currency(o.potentialAdditionalSavings.amount) : "n/a"}; ` +
+          `ROI ${o.estimatedRoi.ratio != null ? `${o.estimatedRoi.ratio}x` : "n/a"}; evidence ${o.evidenceStrength}; risk ${o.risk.band}. ${o.practicalBenefit}`,
+      );
+      const { answer } = await askAboutDocument({
+        question:
+          "Compare these remedies for my case in plain language: binding arbitration versus a district-court appeal (and any other listed option). " +
+          "Reply as short bullets under these labels: Best fit for my case; Arbitration vs court appeal; Main risks; Questions to ask the county or an attorney. " +
+          "Use only the data below. Do not give legal advice or predict outcomes; remind me to verify deadlines with the county.",
+        context:
+          `CASE: ${property.address}; ARB decision ${protest.arbDecision ?? "n/a"}; original value ${protest.originalValue ?? "n/a"}; final value ${protest.finalValue ?? "n/a"}.\n` +
+          `HEADLINE: ${evalr.headline}\nMARKET-DISCONNECT EVIDENCE: ${evalr.marketDisconnectEvidence.narrative}\n` +
+          `OPTIONS:\n${lines.join("\n")}`,
+      });
+      setComparison(answer);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not compare the options.");
+    } finally {
+      setComparing(false);
+    }
+  }
 
   const eligibleValueRemedies = evalr.options.filter(
     (o) =>
@@ -6162,6 +7464,7 @@ function EscalationEvaluationSection({
           : "Recorded — binding arbitration. This is handled with the Comptroller's office.",
       );
       setShowApprove(false);
+      onChosen?.(path);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not record this next step.");
     } finally {
@@ -6188,11 +7491,36 @@ function EscalationEvaluationSection({
 
   return (
     <div id="case-escalation" className="mt-5 border-t border-border pt-5">
-      <h4 className="text-sm font-semibold">Escalation May Be Available</h4>
+      <h2 className="text-sm font-semibold">Escalation May Be Available</h2>
       <p className="mt-1 text-sm text-foreground">{evalr.headline}</p>
       <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-snug text-warning-foreground">
         {evalr.disclaimer}
       </p>
+
+      {evalr.marketDisconnectEvidence.available && (
+        <div
+          className={`mt-3 rounded-md border px-3 py-2 text-xs leading-relaxed ${
+            evalr.marketDisconnectEvidence.overCeiling
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : "border-border bg-muted/40 text-muted-foreground"
+          }`}
+        >
+          <span className="font-semibold">
+            {evalr.marketDisconnectEvidence.overCeiling
+              ? "Statistical evidence: "
+              : "Countywide ratio study: "}
+          </span>
+          {evalr.marketDisconnectEvidence.narrative}{" "}
+          <a
+            href={evalr.marketDisconnectEvidence.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2"
+          >
+            Source: Texas Comptroller ratio study
+          </a>
+        </div>
+      )}
 
       <label className="mt-3 block text-xs font-medium text-muted-foreground">
         Your opinion of value (optional — enables the savings &amp; ROI columns)
@@ -6219,6 +7547,14 @@ function EscalationEvaluationSection({
         >
           {expanded ? "Hide detail" : "Review Escalation"}
         </button>
+        <button
+          type="button"
+          onClick={() => void compareWithAi()}
+          disabled={comparing}
+          className="btn-outline text-sm py-1.5 disabled:opacity-60"
+        >
+          {comparing ? "Comparing…" : comparison ? "Compare again with AI" : "Compare with AI"}
+        </button>
         {eligibleValueRemedies.length > 0 && (
           <button
             type="button"
@@ -6243,6 +7579,13 @@ function EscalationEvaluationSection({
           Close Case
         </button>
       </div>
+
+      {comparison && (
+        <div className="mt-3 rounded-md border border-border bg-secondary/30 p-3">
+          <div className="text-xs font-semibold">AI comparison of your options</div>
+          <MarkdownLite text={comparison} className="mt-1 text-xs text-muted-foreground" />
+        </div>
+      )}
 
       {showApprove && eligibleValueRemedies.length > 0 && (
         <div className="mt-3 rounded-md border border-border p-3">
@@ -6576,10 +7919,11 @@ export function CaseProgress({
 
   return (
     <div id="case-progress" className="mt-4 card-elev p-4">
-      <h4 className="font-serif text-base font-semibold">Case Progress</h4>
+      <h2 className="font-serif text-base font-semibold">Case Progress</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Record what has happened — settlement offers, the hearing date, the ARB&apos;s decision.
       </p>
+      <CountyRecordPanel protestId={protest.id} />
 
       {protest.status === "resolved" ? (
         results ? (
@@ -6648,6 +7992,21 @@ export function CaseProgress({
                   or schedule a hearing below to proceed instead
                 </span>
               </div>
+              {protest.settlementOfferValue != null && (
+                <div className="mt-3">
+                  <SettlementHistory
+                    compact
+                    cad={property.cad}
+                    propertyType={property.propertyType}
+                    value={protest.originalValue ?? property.totalValue}
+                    offer={
+                      protest.originalValue
+                        ? { original: protest.originalValue, offer: protest.settlementOfferValue }
+                        : null
+                    }
+                  />
+                </div>
+              )}
             </div>
           ) : (
             protest.status !== "decision_received" &&

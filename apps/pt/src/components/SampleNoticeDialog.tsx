@@ -49,8 +49,8 @@ export function SampleNoticeDialog({
           <DialogTitle>What a Texas appraisal notice looks like</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Illustrative example only — every county's exact layout varies, but a real notice
-          or tax bill will have most of these fields. Upload the page(s) that show these.
+          Illustrative example only — every county's exact layout varies, but a real notice or tax
+          bill will have most of these fields. Upload the page(s) that show these.
         </p>
         <div className="rounded-lg border border-border bg-secondary/30 p-4">
           <div className="grid gap-2.5">

@@ -1,0 +1,148 @@
+import type { ComponentType, ReactNode } from "react";
+import { CountUp } from "@/components/CountUp";
+
+// `text`, when set, replaces the animated number entirely — for a stat that has no real
+// figure to show yet (e.g. a county that hasn't published an assessed value), so the tile
+// reads "Not on file" instead of a fabricated $0 that looks like a real, zero-dollar answer.
+export type HeroStat = {
+  label: string;
+  value: number;
+  format?: (n: number) => string;
+  text?: string;
+};
+
+export type HeroTone =
+  "emerald" | "sky" | "violet" | "amber" | "teal" | "rose" | "indigo" | "slate";
+
+// One gradient per tone — full class strings so Tailwind can see them.
+const TONE: Record<HeroTone, { bg: string; blob1: string; blob2: string }> = {
+  emerald: {
+    bg: "from-emerald-700 via-teal-700 to-cyan-800",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/15",
+  },
+  sky: {
+    bg: "from-sky-800 via-blue-800 to-indigo-900",
+    blob1: "bg-white/10",
+    blob2: "bg-sky-300/15",
+  },
+  violet: {
+    bg: "from-violet-900 via-purple-900 to-indigo-950",
+    blob1: "bg-white/10",
+    blob2: "bg-fuchsia-300/12",
+  },
+  amber: {
+    bg: "from-amber-700 via-orange-700 to-rose-800",
+    blob1: "bg-white/10",
+    blob2: "bg-amber-200/12",
+  },
+  teal: {
+    bg: "from-teal-700 via-cyan-800 to-blue-900",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/15",
+  },
+  rose: {
+    bg: "from-rose-700 via-pink-800 to-purple-900",
+    blob1: "bg-white/10",
+    blob2: "bg-rose-200/12",
+  },
+  indigo: {
+    bg: "from-indigo-700 via-blue-800 to-slate-900",
+    blob1: "bg-white/10",
+    blob2: "bg-sky-300/15",
+  },
+  slate: {
+    bg: "from-slate-700 via-slate-800 to-emerald-950",
+    blob1: "bg-white/10",
+    blob2: "bg-emerald-300/12",
+  },
+};
+
+// The colourful banner at the top of a dashboard page: a gradient with soft glowing
+// blobs, a floating icon tile, the page title and a one-line description, and room on
+// the right for the page's main actions. Purely presentational.
+export function PageHero({
+  icon: Icon,
+  title,
+  subtitle,
+  tone = "emerald",
+  children,
+  badges,
+  stats,
+  className = "",
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  subtitle?: ReactNode;
+  tone?: HeroTone;
+  // Actions (buttons/links) shown on the right.
+  children?: ReactNode;
+  // Small chips shown next to the title.
+  badges?: ReactNode;
+  // Live numbers shown in tiles under the title; they count up when the page loads.
+  stats?: HeroStat[];
+  className?: string;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      className={`tu-rise relative overflow-hidden rounded-2xl bg-gradient-to-br p-5 text-white shadow-sm sm:p-6 ${t.bg} ${className}`}
+    >
+      <div
+        className={`tu-glow pointer-events-none absolute -right-10 -top-10 h-52 w-52 rounded-full blur-3xl ${t.blob1}`}
+      />
+      <div
+        className={`tu-glow pointer-events-none absolute -bottom-16 left-1/3 h-44 w-44 rounded-full blur-3xl ${t.blob2}`}
+      />
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="tu-float hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur sm:grid sm:h-14 sm:w-14">
+            <Icon className="h-6 w-6 sm:h-7 sm:w-7" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-serif text-2xl font-semibold sm:text-3xl">{title}</h1>
+              {badges}
+            </div>
+            {subtitle && <p className="mt-1 max-w-2xl text-sm text-white/85">{subtitle}</p>}
+          </div>
+        </div>
+        {/* Stats sit up here on the right, next to the title, instead of their own
+            row below — that second row was making the banner taller than its
+            content needed and leaving the space beside the title empty. On a
+            narrow screen this whole group still wraps below the title (same as
+            before), where the grid keeps the tiles evenly sized. */}
+        {((stats && stats.length > 0) || children) && (
+          <div className="flex w-full flex-wrap items-center justify-end gap-4 sm:w-auto">
+            {stats && stats.length > 0 && (
+              <div
+                className={`grid w-full gap-2 sm:w-auto sm:flex sm:flex-wrap ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+              >
+                {stats.map((st) => (
+                  <div
+                    key={st.label}
+                    className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20 sm:px-4"
+                  >
+                    <div className="text-xl font-semibold tabular-nums sm:text-2xl">
+                      {st.text ?? <CountUp to={st.value} format={st.format} />}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-white/80 sm:text-[11px]">
+                      {st.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A white "glass" button style for use on the hero's coloured background.
+export const heroButton =
+  "inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-transform hover:scale-[1.03] disabled:opacity-60";
+export const heroButtonGhost =
+  "inline-flex items-center gap-2 rounded-full border border-white/50 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10";

@@ -16,7 +16,7 @@ export const FILING_STEP_META: Record<FilingStepId, { label: string; blurb: stri
   prefiling: {
     label: "Pre-Filing Check",
     blurb:
-      "Corvus confirms the case's county, property, tax year, owner, deadline, and county requirements before you file.",
+      "Corvus AI confirms the case's county, property, tax year, owner, deadline, and county requirements before you file.",
   },
   file: {
     label: "File Protest",

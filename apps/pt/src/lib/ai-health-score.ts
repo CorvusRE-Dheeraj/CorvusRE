@@ -20,6 +20,8 @@ export type HealthScoreInput = {
   // reporting them as missing.
   valueHistory?: { year: number; total: number }[];
   evidenceFileNames?: string[];
+  // Deterministic reading of what the uploaded evidence says about value (evidence-value.ts).
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
   // The % gap between the CAD value and the comps' (adjusted) indicated value,
   // straight from computeComparableStats — fed to the deterministic score
   // formula (see computeHealthScore). Null / absent when there are no comps.
@@ -39,7 +41,14 @@ export type HealthScoreInput = {
   lastTransferDate?: string | null;
 };
 
-export type HealthScoreBreakdownEntry = { label: string; score: number };
+// `reason` added per direct user research: CorvusPT's own beta testers,
+// independently, in every one of 3 real feedback sessions, asked for the
+// score to "show the math" / "explain how it reached the conclusion"
+// instead of just stating a number ("I don't trust the estimate yet.").
+// Computed deterministically in computeHealthScore from the exact same
+// real numbers the score itself uses — never an AI paraphrase, so it can
+// never drift from, or contradict, the number it's explaining.
+export type HealthScoreBreakdownEntry = { label: string; score: number; reason: string };
 
 export type HealthScoreResult = {
   score: number;
@@ -80,6 +89,7 @@ export async function getHealthScore(input: HealthScoreInput): Promise<HealthSco
         : null,
     buildingSqft: input.buildingSqft ?? null,
     evidenceCount: input.evidenceFileNames?.length ?? 0,
+    evidence: input.evidence ?? null,
   });
 
   const prose = await invokeEdgeFunction<HealthScoreProse>("ai-health-score", {

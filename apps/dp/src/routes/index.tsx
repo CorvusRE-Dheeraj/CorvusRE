@@ -13,7 +13,6 @@ import { ScrollReveal } from "@/components/ScrollReveal";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { BlueprintScene } from "@/components/illustrations/BlueprintScene";
 import { SitePlanScene } from "@/components/illustrations/SitePlanScene";
-import { ConstructionScene } from "@/components/illustrations/ConstructionScene";
 import layeredSiteModelImg from "@/assets/layered-site-model.png";
 import type { ComponentType } from "react";
 
@@ -78,13 +77,13 @@ function Landing() {
               <Sparkles className="h-3.5 w-3.5" /> One of the five CorvusRE doors
             </span>
             <h1 className="mt-5 max-w-4xl font-serif text-[2.6rem] font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-              Permitting and design for real estate development,
-              <span className="text-gradient"> done with AI.</span>
+              AI-Powered Design and Permitting,
+              <span className="text-gradient"> Mapped from Address to Approval</span>
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">
               Every jurisdiction has its own requirements, timelines, and reviewers. CorvusDP turns an
-              address and a project scope into a clear permitting roadmap and a design brief —
-              following local best practice, whatever the project size.
+              address and project scope into two connected tracks: a design brief and a permitting
+              map built around local codes, reviewers, timelines, and submission requirements.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link to="/permitting" className="btn-accent text-base">
@@ -178,21 +177,15 @@ function Landing() {
               One project, drawn end to end
             </h2>
             <p className="mt-2 max-w-xl text-muted-foreground">
-              The same site moves from a permitting layout to an elevation to a structure on site —
+              The same site moves from a permitting layout to an elevation —
               CorvusDP carries the context across each door.
             </p>
           </ScrollReveal>
-          <div className="mt-10 grid gap-6 lg:grid-cols-3">
+          <div className="mt-10 grid gap-6 sm:grid-cols-2">
             {(
               [
                 { to: "/permitting", Scene: SitePlanScene, label: "Site plan", tag: "C-2 · setbacks" },
                 { to: "/design", Scene: BlueprintScene, label: "Elevation", tag: "Permit set" },
-                {
-                  to: "/construction",
-                  Scene: ConstructionScene,
-                  label: "On site",
-                  tag: "Phase 3 · structure",
-                },
               ] as { to: string; Scene: ComponentType<{ className?: string }>; label: string; tag: string }[]
             ).map(({ to, Scene, label, tag }, i) => (
               <ScrollReveal key={to} delay={i * 90}>

@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { SignatureValue } from "@/components/SignaturePad";
-import type { Tier, PropertyValueBracket } from "./billing";
+import type { Tier, BppValueBracket } from "./billing";
 
 // Business Personal Property tax accounts — distinct from public.properties (real
 // estate): a business can render BPP for a location without owning the real estate
@@ -33,7 +33,7 @@ export type BppAccountRecord = {
   stripeSubscriptionId: string | null;
   subscriptionStatus: string | null;
   planTier: Tier | null;
-  valueBracket: PropertyValueBracket | null;
+  valueBracket: BppValueBracket | null;
   cancelAtPeriodEnd: boolean;
   cancelAt: string | null;
   autoRefile: boolean;
@@ -61,7 +61,7 @@ type BppAccountRow = {
   stripe_subscription_id: string | null;
   subscription_status: string | null;
   plan_tier: Tier | null;
-  value_bracket: PropertyValueBracket | null;
+  value_bracket: BppValueBracket | null;
   cancel_at_period_end: boolean;
   cancel_at: string | null;
   auto_refile: boolean;

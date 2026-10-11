@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { fileToDataUrl } from "./intake-store";
 import { invokeEdgeFunction } from "./edge-functions";
+import { notifyDocumentsChanged } from "./documents";
 
 // The canonical set of "module" tags a document can be assigned to — the AI
 // Report modules plus the case sections that consume documents. `id` is what
@@ -141,6 +142,7 @@ export async function setDocumentModules(docId: string, modules: string[]): Prom
   const clean = Array.from(new Set(modules.filter((m) => VALID_MODULE_IDS.has(m))));
   const { error } = await supabase.from("documents").update({ modules: clean }).eq("id", docId);
   if (error) throw error;
+  notifyDocumentsChanged();
 }
 
 // Convenience for the upload paths: classify one just-uploaded file and

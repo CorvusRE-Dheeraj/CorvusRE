@@ -46,9 +46,23 @@ function sleep(ms: number) {
 // used to surface as a module spinning on "Analyzing" forever with no way out.
 // A 504 means Gemini was slow/congested that one time, not that the request is
 // bad — see MAX_RETRIES_504 above for why it gets its own, more generous budget.
+// `signal` — found live chasing a real "can anything else make search
+// faster?" report: supabase.functions.invoke() has always supported an
+// AbortSignal option, but nothing here ever passed one, so an abandoned
+// live-search keystroke's CAD lookup kept running to completion on both our
+// own edge function AND the county's own government server, even after the
+// client had already moved on to a newer, superseded search (the existing
+// liveMatchRequestRef staleness check only ever suppressed DISPLAYING the
+// stale result, never actually stopped the work generating it). Rapid
+// typing could leave several overlapping, uncancelled requests to the SAME
+// county in flight at once — a real, avoidable source of load and
+// contention, and a plausible contributor to some of this session's
+// "county X is randomly slow" measurements that were never actually
+// isolated to a single in-flight request.
 export async function invokeEdgeFunction<T>(
   name: string,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let refreshedOn401 = false;
 
@@ -74,8 +88,16 @@ export async function invokeEdgeFunction<T>(
     const { data, error } = await supabase.functions.invoke<T>(name, {
       body,
       ...(authHeaders ? { headers: authHeaders } : {}),
+      ...(signal ? { signal } : {}),
     });
     if (!error) return data as T;
+
+    // An abort is a deliberate "stop," not a transient failure to retry —
+    // it has no context (no Response object, same shape as a genuine
+    // network blip), so without this check it would fall into the retry
+    // path below and fire up to MAX_RETRIES_NETWORK more requests for
+    // exactly the work the caller just asked to cancel.
+    if (signal?.aborted) throw error;
 
     const context = (error as { context?: Response }).context;
     let extractedMessage: string | undefined;

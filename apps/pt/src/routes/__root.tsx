@@ -8,35 +8,50 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import {
+  newErrorRef,
+  errorMessage,
+  logClientError,
+  isStaleBuildError,
+  canReloadFresh,
+  reloadFresh,
+  stripFreshParam,
+} from "../lib/client-errors";
 import { SiteNav, SiteFooter } from "../components/SiteChrome";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { Toaster } from "../components/ui/sonner";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
 import { AskAiWidget } from "../components/AskAiWidget";
-import { LegalGate } from "../components/LegalGate";
-import { ProfileGate } from "../components/ProfileGate";
+import { FeedbackWidget } from "../components/FeedbackWidget";
+import { HourBeforeAlert } from "../components/HourBeforeAlert";
+import { EngagementPacketHost } from "../components/EngagementPacketHost";
 import { AppShell, shouldShowShell } from "../components/AppShell";
 
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+        <div className="tu-float mx-auto grid h-20 w-20 place-items-center rounded-3xl bg-gradient-to-br from-emerald-600 to-cyan-800 text-3xl font-bold text-white shadow-lg">
+          ?
+        </div>
+        <h1 className="mt-5 text-5xl font-bold text-foreground">Oops — page not found</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist or has moved. Here's where most people go next:
         </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link to="/" className="btn-primary btn-primary-hover">
             Go home
+          </Link>
+          <Link to="/dashboard" className="btn-outline">
+            My dashboard
+          </Link>
+          <Link to="/contact" className="btn-outline">
+            Contact us
           </Link>
         </div>
       </div>
@@ -47,9 +62,28 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  // One reference per error shown, stored with the error itself (see
+  // lib/client-errors.ts) so a screenshot of this page is enough to find it.
+  const [ref] = useState(newErrorRef);
+  // A deploy replaced this page's code while the tab was open — fetch the
+  // fresh version instead of showing an error (see isStaleBuildError).
+  const [updating] = useState(() => isStaleBuildError(error) && canReloadFresh());
   useEffect(() => {
+    if (updating) {
+      reloadFresh();
+      return;
+    }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    void logClientError(ref, error);
+  }, [error, ref, updating]);
+
+  if (updating) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Updating CorvusPT to the latest version…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -82,6 +116,16 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
             Go home
           </a>
         </div>
+        <p className="mt-6 text-xs text-muted-foreground">
+          Reference <span className="font-mono font-semibold text-foreground">{ref}</span> — include
+          it if you contact us.
+        </p>
+        <details className="mt-2 text-left text-xs text-muted-foreground">
+          <summary className="cursor-pointer text-center">Technical details</summary>
+          <p className="mt-2 break-words rounded-md border border-border bg-muted/40 p-2 font-mono">
+            {errorMessage(error)}
+          </p>
+        </details>
       </div>
     </div>
   );
@@ -123,6 +167,13 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script
+          // Re-apply a saved dark-mode choice before first paint (no flash of light).
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark');var z=localStorage.getItem('corvuspt.textSize');if(z&&z!=='100')document.documentElement.style.fontSize=z+'%'}catch(e){}",
+          }}
+        />
         <HeadContent />
       </head>
       <body>
@@ -135,6 +186,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useEffect(stripFreshParam, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -167,8 +219,9 @@ function RootComponent() {
             <SiteFooter />
           </div>
           <AskAiWidget />
-          <LegalGate />
-          <ProfileGate />
+          <FeedbackWidget />
+          <HourBeforeAlert />
+          <EngagementPacketHost />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

@@ -1,19 +1,22 @@
-# Normalize line endings to LF for all text files, regardless of which OS
-# checks them out or edits them -- without this, every commit from a
-# Windows checkout warns "LF will be replaced by CRLF" (git's default
-# core.autocrlf=true behavior on Windows), which doesn't affect what's
-# actually committed but is pure noise on every single commit.
+# Pin line endings for the whole repo instead of relying on each contributor's own
+# core.autocrlf setting. Without this, Git for Windows' default core.autocrlf=true
+# disagrees with the LF-only files this repo stores, and every edited file shows as
+# "modified" with a 0-byte diff, or every commit warns "LF will be replaced by CRLF" —
+# pure line-ending noise. `eol=lf` matches what every source file already uses on disk.
 * text=auto eol=lf
 
 # Windows-only scripts genuinely need CRLF; everything else stays LF.
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Binary assets -- never touched by line-ending normalization.
+# Binary formats — never touched by line-ending conversion. `text=auto` already
+# autodetects these, but an explicit list survives a misdetection.
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.gif binary
 *.ico binary
+*.pdf binary
 *.woff binary
 *.woff2 binary
+*.ttf binary

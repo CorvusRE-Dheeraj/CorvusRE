@@ -36,6 +36,8 @@ export type ModuleAnalysisInput = {
   // "health" only — the comps valuation gap % (from computeComparableStats),
   // fed to the deterministic health-score formula.
   compsGapPct?: number | null;
+  // What the owner's uploaded evidence says about value (evidence-value.ts) — moves the Module 1 score.
+  evidence?: { valueGapPct: number | null; strength: number; otherNet?: number } | null;
   // Module 8 (evidence) only — what the app can already verify before asking
   // the user for anything. evidenceOnFile: the protest-evidence documents
   // actually uploaded (+ their analyze-document read). authoritativeFacts:
@@ -473,6 +475,11 @@ export async function getModuleAnalysis<K extends BatchModuleId>(
   moduleId: K,
   input: ModuleAnalysisInput,
 ): Promise<ModuleResultMap[K]> {
+  // The analysis needs a value to work from; say so plainly instead of
+  // surfacing the function's "totalValue is required".
+  if (!input.totalValue) {
+    throw new Error("No value on file yet — upload your appraisal notice to continue.");
+  }
   return invokeEdgeFunction<ModuleResultMap[K]>("ai-report-modules", { moduleId, ...input });
 }
 
@@ -504,3 +511,20 @@ export async function askModuleQuestion(
   });
   return result.answer;
 }
+
+// How the stored executive recommendedAction reads on screen: Corvus presents
+// analysis and options, never a directive (Texas licenses property tax
+// consulting — Occupations Code ch. 1152). The stored values stay as-is so
+// cached reports and tests keep working.
+export const RECOMMENDED_ACTION_LABEL: Record<
+  ModuleResultMap["executive"]["recommendedAction"],
+  string
+> = {
+  "Proceed with Protest": "Corvus AI identifies a potential protest opportunity",
+  "Proceed with Protest After Completing Recommended Evidence":
+    "Potential protest opportunity — more evidence would strengthen it",
+  "Additional Information Needed Before Proceeding":
+    "More information needed for Corvus AI to assess the opportunity",
+  "Limited Protest Opportunity Based on Available Information":
+    "Limited protest opportunity identified on the available information",
+};

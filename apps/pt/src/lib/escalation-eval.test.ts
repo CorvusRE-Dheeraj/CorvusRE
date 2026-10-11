@@ -200,3 +200,27 @@ describe("evaluateEscalation — savings, ROI, recommendation", () => {
     expect(evalr.disclaimer).toMatch(/not a prediction or guarantee/i);
   });
 });
+
+describe("evaluateEscalation — market-disconnect evidence", () => {
+  it("carries the Comptroller ratio-study finding for a known CAD/category", () => {
+    // baseProperty is Denton/commercial: medianPct 1.07, cod 17.96, ceiling 20.0.
+    const evalr = evaluateEscalation(baseProperty, protestWith({}), 0);
+    const ev = evalr.marketDisconnectEvidence;
+    expect(ev.available).toBe(true);
+    expect(ev.cad).toBe("Denton Central Appraisal District");
+    expect(ev.category).toBe("commercial");
+    expect(ev.cod).toBe(17.96);
+    expect(ev.overCeiling).toBe(false);
+    expect(ev.narrative).toMatch(/within the IAAO/i);
+  });
+
+  it("is honestly unavailable when there is no published study for the CAD", () => {
+    const evalr = evaluateEscalation(
+      { ...baseProperty, cad: "Some Other CAD" },
+      protestWith({}),
+      0,
+    );
+    expect(evalr.marketDisconnectEvidence.available).toBe(false);
+    expect(evalr.marketDisconnectEvidence.narrative).toMatch(/no published comptroller/i);
+  });
+});

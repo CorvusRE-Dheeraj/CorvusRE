@@ -73,6 +73,10 @@ export async function askAboutDocument(input: {
   // The answer will be spoken aloud / shown in a chat bubble — ask for a
   // natural spoken reply instead of the default bulleted/tabular format.
   conversational?: boolean;
+  // Set by the Ask AI widget's human-support mode — swaps in a warm,
+  // first-person support-associate voice instead of the generic assistant
+  // framing. Never combined with `conversational`.
+  personaName?: string;
 }): Promise<{ answer: string }> {
   return invokeEdgeFunction<{ answer: string }>("ask-about-document", input);
 }

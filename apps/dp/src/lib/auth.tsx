@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { identitySupabase } from "@/lib/identity";
 import { resetDpIntake } from "@/lib/dp-intake";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
+import { stableUser } from "@/lib/auth-user";
 import { tryBridgeFromIdentity } from "@/lib/login-bridge";
 
 type AuthState = {
@@ -117,7 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // the bridge first); this listener only needs to react to events
       // that happen AFTER that, never INITIAL_SESSION itself.
       if (event === "INITIAL_SESSION") return;
-      setState({ user: session?.user ?? null, session, loading: false });
+      // Same account re-announced (tab regaining focus): keep the existing user
+      // object so effects keyed on it don't re-run and reset forms.
+      setState((prev) => ({
+        user: stableUser(prev.user, session?.user ?? null),
+        session,
+        loading: false,
+      }));
     });
 
     return () => listener.subscription.unsubscribe();

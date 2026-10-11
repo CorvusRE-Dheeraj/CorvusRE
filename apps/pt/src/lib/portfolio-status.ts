@@ -35,7 +35,8 @@ export function getPropertyProtestStatus(
   if (daysLeft <= NEEDS_ACTION_WINDOW_DAYS) {
     return {
       status: "needs_action",
-      label: daysLeft < 0 ? "Deadline passed" : daysLeft === 0 ? "Due today" : `${daysLeft} days left`,
+      label:
+        daysLeft < 0 ? "Deadline passed" : daysLeft === 0 ? "Due today" : `${daysLeft} days left`,
       daysLeft,
     };
   }

@@ -6,7 +6,7 @@ import {
   type DocumentType,
 } from "./document-ai";
 import { getFirstPage } from "./pdf-utils";
-import type { CadDeed, CadValueHistoryEntry } from "./cad-lookup";
+import type { CadDeed, CadRecord, CadValueHistoryEntry } from "./cad-lookup";
 import type { SavingsEstimate } from "./savings-estimate";
 
 export type AuditEntry = {
@@ -49,12 +49,20 @@ export type IntakeState = {
   improvementValue?: number;
   totalValue?: number;
   taxYear?: number;
+  // See CadRecord.valueYear / upcomingValueYear.
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   noticeFileName?: string;
   confirmed?: boolean;
   previewsUsed: string[];
   legalDescription?: string | null;
   subdivision?: string | null;
   geoId?: string | null;
+  // Structure detail from the county record, when its layer publishes it —
+  // lets the Commercial Valuation panel run Cost / Sales before the
+  // property's base data is fetched (or for a guest, who has none).
+  buildingSqft?: number | null;
+  yearBuilt?: number | null;
   mailingAddress?: string | null;
   ownershipPct?: number | null;
   protestStatus?: string | null;
@@ -135,6 +143,46 @@ export function updateIntake(patch: Partial<IntakeState>): IntakeState {
   };
   writeIntake(next);
   return next;
+}
+
+// Every field intake.tsx's applyCadRecord() stores from a matched CadRecord —
+// extracted here so a second entry point (the homepage's own live address
+// search, which can also resolve a real CadRecord directly) stores the exact
+// same shape instead of a second, hand-copied field list that could silently
+// drift out of sync with the first. `resolvedAddress` is separate from
+// `record.propertyAddress` because that field can come back an empty string
+// (see applyCadRecord's own comment) — the caller already has a sensible
+// fallback (the user's typed text, or an account-number label) worked out.
+export function cadRecordToIntakePatch(
+  record: CadRecord,
+  resolvedAddress: string,
+): Partial<IntakeState> {
+  return {
+    address: resolvedAddress,
+    cad: record.cad,
+    accountNumber: record.accountNumber ?? undefined,
+    ownerName: record.ownerName ?? undefined,
+    propertyType: record.propertyType ?? undefined,
+    landValue: record.landValue ?? undefined,
+    improvementValue: record.improvementValue ?? undefined,
+    totalValue: record.totalValue ?? undefined,
+    valueYear: record.valueYear ?? null,
+    upcomingValueYear: record.upcomingValueYear ?? null,
+    // Pinned the same way applyCadRecord's own copy is — see its comment on
+    // CURRENT_TAX_YEAR in lib/tax-calendar.ts for why this isn't computed.
+    taxYear: 2026,
+    legalDescription: record.legalDescription ?? undefined,
+    subdivision: record.subdivision ?? undefined,
+    geoId: record.geoId ?? undefined,
+    buildingSqft: record.buildingSqft ?? undefined,
+    yearBuilt: record.yearBuilt ?? undefined,
+    mailingAddress: record.mailingAddress ?? undefined,
+    ownershipPct: record.ownershipPct ?? undefined,
+    protestStatus: record.protestStatus ?? undefined,
+    bisPropertyId: record.bisPropertyId ?? undefined,
+    valueHistory: record.valueHistory ?? undefined,
+    deeds: record.deeds ?? undefined,
+  };
 }
 
 export function appendAudit(entry: Omit<AuditEntry, "ts">) {

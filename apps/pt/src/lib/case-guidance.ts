@@ -159,9 +159,17 @@ export function getCaseGuidance(
         const methodStep = filingMethodStep(countyInfo);
         if (methodStep) nextSteps.push(methodStep);
       } else {
+        // Only this year's deadline counts as missed — an older date on file is
+        // just stale until the new notice arrives.
+        const missed =
+          deadline != null &&
+          !hasRealDeadline &&
+          deadline.slice(0, 4) === String(new Date().getFullYear());
         summary = hasRealDeadline
           ? `Your protest deadline is ${formatDate(deadline!)}. Review your case, gather evidence, and file your Notice of Protest before then.`
-          : "Review your case, gather evidence, and file your Notice of Protest when you're ready.";
+          : missed
+            ? `Your protest deadline was ${formatDate(deadline!)} and has passed. The review board may still accept a late protest for good cause if it's filed before the appraisal records are approved, usually in late July (Tax Code §41.44(b)) — otherwise the next opportunity is next year's notice.`
+            : "Review your case, gather evidence, and file your Notice of Protest when you're ready.";
         if (hasRealDeadline) {
           nextSteps.push({
             label: `File by ${formatDate(deadline!)}`,

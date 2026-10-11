@@ -19,6 +19,7 @@ export type AdminUserRecord = {
   phone: string | null;
   plan: PlanValue;
   isAdmin: boolean;
+  isFranchiseOwner: boolean;
   createdAt: string;
 };
 
@@ -30,6 +31,7 @@ type ProfileRow = {
   phone: string | null;
   plan: PlanValue;
   is_admin: boolean;
+  is_franchise_owner: boolean;
   created_at: string;
 };
 
@@ -42,6 +44,7 @@ function fromRow(row: ProfileRow): AdminUserRecord {
     phone: row.phone,
     plan: row.plan,
     isAdmin: row.is_admin,
+    isFranchiseOwner: row.is_franchise_owner,
     createdAt: row.created_at,
   };
 }
@@ -65,7 +68,9 @@ const CI_TEST_ACCOUNT_EMAIL = "crf-ci-e2e-test@example.com";
 export async function listAllUsers(): Promise<AdminUserRecord[]> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, first_name, last_name, phone, plan, is_admin, created_at")
+    .select(
+      "id, email, first_name, last_name, phone, plan, is_admin, is_franchise_owner, created_at",
+    )
     .neq("email", CI_TEST_ACCOUNT_EMAIL)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -232,6 +237,21 @@ export async function updateUserAdminStatus(
   await invokeEdgeFunction("admin-update-admin-status", {
     userId,
     isAdmin,
+    targetEmail: context?.targetEmail,
+  });
+}
+
+// A verified franchise owner gets the 50%-off franchise coupon on every new
+// property subscription (see supabase/pt/functions/_shared/discounts.ts).
+// Doesn't touch subscriptions that already exist.
+export async function updateUserFranchiseStatus(
+  userId: string,
+  isFranchiseOwner: boolean,
+  context?: { targetEmail?: string },
+): Promise<void> {
+  await invokeEdgeFunction("admin-update-franchise-status", {
+    userId,
+    isFranchiseOwner,
     targetEmail: context?.targetEmail,
   });
 }

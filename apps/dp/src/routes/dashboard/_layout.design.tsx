@@ -1,19 +1,41 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/lib/auth";
 import {
-  getActiveDesignRequest,
+  ArrowRight,
+  CalendarClock,
+  ListChecks,
+  Layers,
+  PhoneCall,
+  Receipt,
+  Route as RouteIcon,
+} from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { getMyProfile } from "@/lib/profile";
+import {
   approveDesignBrief,
   requestDesignConsultation,
-  DESIGN_STAGES,
   DESIGN_STAGE_LABEL,
   type DesignStage,
   type DesignRequestRow,
 } from "@/lib/design-requests";
-import { scopeLabel, type DesignBrief } from "@/lib/design";
-import { currency, currencyRange, weeksLabel, dateShort, parseArea } from "@/lib/format";
+import { designChecklist } from "@/lib/design-workspace";
+import { scopeLabel } from "@/lib/design";
+import { currencyRange, weeksLabel, dateShort } from "@/lib/format";
 import { Section, Stat, Loading, Pill, Field, inputCls } from "@/components/dp-ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useActiveDesignRequest,
+  EmptyDesign,
+  downloadText,
+  fileSlug,
+} from "@/components/design-workspace";
 
 export const Route = createFileRoute("/dashboard/_layout/design")({
   head: () => ({ meta: [{ title: "Design — CorvusDP" }] }),
@@ -21,54 +43,27 @@ export const Route = createFileRoute("/dashboard/_layout/design")({
 });
 
 function DesignDashboard() {
-  const { user } = useAuth();
-  const q = useQuery({
-    queryKey: ["design-request", user?.id],
-    queryFn: () => getActiveDesignRequest(user!.id),
-    enabled: !!user?.id,
-  });
-  const [busy, setBusy] = useState<"approve" | "consult" | null>(null);
+  const { loading, dr, brief: b, refetch } = useActiveDesignRequest();
+  const [approving, setApproving] = useState(false);
+  const [consultOpen, setConsultOpen] = useState(false);
+  const [consultNotice, setConsultNotice] = useState<string | null>(null);
 
-  if (q.isLoading) return <Loading />;
-
-  const dr = q.data;
-  if (!dr || !dr.brief) {
-    return (
-      <div className="card-elev p-8 text-center">
-        <h2 className="font-serif text-lg font-semibold">No design brief yet</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Generate one and save it to track it here.
-        </p>
-        <Link to="/design/analyze" className="btn-accent mt-4 inline-flex">
-          Start a Design Brief
-        </Link>
-      </div>
-    );
-  }
-
-  const b = dr.brief;
+  if (loading) return <Loading />;
+  if (!dr || !b) return <EmptyDesign />;
 
   async function approve() {
     if (!dr) return;
-    setBusy("approve");
+    setApproving(true);
     await approveDesignBrief(dr.id);
-    await q.refetch();
-    setBusy(null);
-  }
-  async function consult() {
-    if (!dr) return;
-    setBusy("consult");
-    await requestDesignConsultation(dr.id);
-    await q.refetch();
-    setBusy(null);
+    await refetch();
+    setApproving(false);
   }
 
   // Design Proposal (PRD 2.2.19) — "a formal document shared with the client
   // including scope, fees, timeline, and deliverables." Same plain-text
-  // Blob-download pattern as the permitting side's "Download site summary"
-  // (dashboard/_layout.constraints.tsx).
+  // download pattern as the permitting side's "Download site summary".
   function downloadProposal() {
-    if (!dr) return;
+    if (!dr || !b) return;
     const lines = [
       `CorvusDP — Design Proposal`,
       `Generated ${new Date().toLocaleString()}`,
@@ -95,14 +90,43 @@ function DesignDashboard() {
       ``,
       `Status: ${dr.approved_at ? `Approved ${dateShort(dr.approved_at)}` : "Pending approval"}`,
     ];
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `design-proposal-${(dr.address ?? "project").replace(/[^\w]+/g, "-").slice(0, 40)}.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadText(`design-proposal-${fileSlug(dr)}.txt`, lines.join("\n"));
   }
+
+  const checklist = designChecklist(dr, b);
+  const checklistDone = checklist.filter((i) => i.done).length;
+  const workspace = [
+    {
+      to: "/dashboard/design-site",
+      label: "Site Data",
+      icon: Layers,
+      desc: "Location, program, utilities, and site constraints",
+    },
+    {
+      to: "/dashboard/design-checklist",
+      label: "Checklist",
+      icon: ListChecks,
+      desc: `${checklistDone} of ${checklist.length} items done`,
+    },
+    {
+      to: "/dashboard/design-fees",
+      label: "Fees",
+      icon: Receipt,
+      desc: `${currencyRange(b.budgetLow, b.budgetHigh)} design fee by discipline`,
+    },
+    {
+      to: "/dashboard/design-roadmap",
+      label: "Roadmap",
+      icon: RouteIcon,
+      desc: "What happens before what, from brief to permit set",
+    },
+    {
+      to: "/dashboard/design-timeline",
+      label: "Timeline",
+      icon: CalendarClock,
+      desc: `${weeksLabel(b.totalWeeksMin, b.totalWeeksMax)}, phase by phase`,
+    },
+  ];
 
   return (
     <div className="grid gap-5">
@@ -131,24 +155,33 @@ function DesignDashboard() {
           {!dr.approved_at && (
             <button
               className="btn-accent disabled:opacity-60"
-              disabled={busy === "approve"}
+              disabled={approving}
               onClick={approve}
             >
-              {busy === "approve" ? "Saving…" : "Approve & start detailed design"}
+              {approving ? "Saving…" : "Approve & start detailed design"}
             </button>
           )}
-          <button
-            className="btn-outline disabled:opacity-60"
-            disabled={busy === "consult" || !!dr.consultation_requested_at}
-            onClick={consult}
-          >
-            {dr.consultation_requested_at
-              ? `Consultation requested ${dateShort(dr.consultation_requested_at)}`
-              : busy === "consult"
-                ? "Requesting…"
-                : "Schedule initial consultation call"}
-          </button>
+          {!dr.consultation_requested_at && (
+            <button className="btn-outline" onClick={() => setConsultOpen(true)}>
+              <PhoneCall className="h-4 w-4" aria-hidden /> Schedule initial consultation call
+            </button>
+          )}
         </div>
+
+        {dr.consultation_requested_at && (
+          <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium">
+              <PhoneCall className="h-4 w-4" aria-hidden />
+              Consultation requested {dateShort(dr.consultation_requested_at)}
+            </div>
+            <p className="mt-1 text-muted-foreground">
+              {dr.consultation_phone
+                ? `Our design team will call you at ${dr.consultation_phone}${dr.consultation_best_time ? ` (${dr.consultation_best_time})` : ""}.`
+                : "Our design team will be in touch."}
+            </p>
+            {consultNotice && <p className="mt-1 text-muted-foreground">{consultNotice}</p>}
+          </div>
+        )}
       </Section>
 
       {dr.stage !== "brief" && dr.stage !== "approved" && (
@@ -160,53 +193,39 @@ function DesignDashboard() {
         </Section>
       )}
 
-      <Section
-        title="Cost breakdown"
-        subtitle="Estimated design fee by discipline."
-        right={
-          <button className="btn-outline text-sm" onClick={() => downloadCostBreakdownCsv(dr, b)}>
-            Export CSV
-          </button>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-                <th className="px-2 py-2 font-medium">Discipline</th>
-                <th className="px-2 py-2 font-medium">Estimated fee</th>
-              </tr>
-            </thead>
-            <tbody>
-              {b.costBreakdown.map((c) => (
-                <tr key={c.discipline} className="row-hover border-b border-border/60">
-                  <td className="px-2 py-2">{c.discipline}</td>
-                  <td className="px-2 py-2 tabular-nums">{currencyRange(c.low, c.high)}</td>
-                </tr>
-              ))}
-              <tr className="font-semibold">
-                <td className="px-2 py-2">Total design fee</td>
-                <td className="px-2 py-2 tabular-nums">
-                  {currencyRange(b.budgetLow, b.budgetHigh)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      <Section title="Design workspace" subtitle="Everything about this design, one page each.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {workspace.map((w) => {
+            const Icon = w.icon;
+            return (
+              <Link
+                key={w.to}
+                to={w.to}
+                className="group flex items-start gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:bg-secondary/50"
+              >
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
+                  <Icon className="h-4 w-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 font-medium">
+                    {w.label}
+                    <ArrowRight
+                      className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-hidden
+                    />
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{w.desc}</span>
+                </span>
+              </Link>
+            );
+          })}
         </div>
-        <ul className="mt-3 grid gap-1 text-sm text-muted-foreground">
-          {b.costDrivers.map((c) => (
-            <li key={c}>• {c}</li>
-          ))}
-        </ul>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Approximate constructed cost ({currency(b.buildCostLow)}–{currency(b.buildCostHigh)}) is
-          separate from the design fee.
-        </p>
       </Section>
 
-      <InvestmentSnapshot buildCostLow={b.buildCostLow} buildCostHigh={b.buildCostHigh} buildingArea={dr.building_area} />
-
-      <Section title="Suggested approach" subtitle="Delivery approaches worth considering for this project.">
+      <Section
+        title="Suggested approach"
+        subtitle="Delivery approaches worth considering for this project."
+      >
         <div className="grid gap-3 sm:grid-cols-3">
           {b.approaches.map((ap) => (
             <div key={ap.name} className="rounded-lg border border-border p-3 text-sm">
@@ -219,20 +238,6 @@ function DesignDashboard() {
             </div>
           ))}
         </div>
-      </Section>
-
-      <Section title="Phase breakdown & tracking">
-        <ol className="grid gap-2">
-          {b.timeline.map((t, i) => (
-            <li key={i} className="rounded-lg border border-border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{t.phase}</span>
-                <span className="text-muted-foreground">{weeksLabel(t.weeksMin, t.weeksMax)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">{t.note}</p>
-            </li>
-          ))}
-        </ol>
       </Section>
 
       <Section title="Full space planning">
@@ -253,110 +258,140 @@ function DesignDashboard() {
           ))}
         </ul>
       </Section>
+
+      <ConsultationDialog
+        dr={dr}
+        open={consultOpen}
+        onOpenChange={setConsultOpen}
+        onRequested={async (emailed) => {
+          setConsultNotice(
+            emailed
+              ? "We've emailed you a confirmation."
+              : "Your request is saved, but the confirmation email didn't go out — we'll still see it.",
+          );
+          await refetch();
+        }}
+      />
     </div>
   );
 }
 
-// Competitor-inspired (Zenerate/ArchiWise-style pro forma) — a real
-// deterministic calculation from the user's OWN inputs, never an AI-guessed
-// rent number. Purely client-side/ephemeral: nothing persisted, so it's
-// safe to add with no schema change and free to recompute on every
-// keystroke.
-function InvestmentSnapshot({
-  buildCostLow,
-  buildCostHigh,
-  buildingArea,
-}: {
-  buildCostLow: number;
-  buildCostHigh: number;
-  buildingArea: string | null;
-}) {
-  const [rentPerSf, setRentPerSf] = useState("");
-  const [opexPct, setOpexPct] = useState("35");
-  const [capRate, setCapRate] = useState("6");
-
-  const area = parseArea(buildingArea);
-  const rent = parseFloat(rentPerSf);
-  const opex = parseFloat(opexPct);
-  const cap = parseFloat(capRate);
-  const ready = area != null && rent > 0 && opex >= 0 && opex < 100 && cap > 0;
-
-  const gpi = ready ? rent * area! : null;
-  const noi = ready ? gpi! * (1 - opex / 100) : null;
-  const impliedValue = ready ? noi! / (cap / 100) : null;
-  const avgCost = (buildCostLow + buildCostHigh) / 2;
-  const yieldOnCost = ready && avgCost > 0 ? (noi! / avgCost) * 100 : null;
-
-  return (
-    <Section
-      title="Investment snapshot"
-      subtitle="A quick pro forma from your own rent assumption — a real calculation, not an AI guess at your market."
-    >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Expected rent ($/sf/yr)" hint="Net operating rent for this market">
-          <input
-            type="number"
-            min="0"
-            step="0.5"
-            className={inputCls}
-            value={rentPerSf}
-            onChange={(e) => setRentPerSf(e.target.value)}
-            placeholder="e.g. 24"
-          />
-        </Field>
-        <Field label="Operating expense ratio (%)">
-          <input
-            type="number"
-            min="0"
-            max="99"
-            className={inputCls}
-            value={opexPct}
-            onChange={(e) => setOpexPct(e.target.value)}
-          />
-        </Field>
-        <Field label="Target cap rate (%)">
-          <input
-            type="number"
-            min="0.1"
-            step="0.1"
-            className={inputCls}
-            value={capRate}
-            onChange={(e) => setCapRate(e.target.value)}
-          />
-        </Field>
-      </div>
-      {ready ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <Stat label="Gross potential income" value={currency(gpi)} />
-          <Stat label="Net operating income" value={currency(noi)} />
-          <Stat label="Implied value" value={currency(impliedValue)} />
-          <Stat label="Yield on cost" value={`${yieldOnCost!.toFixed(1)}%`} />
-        </div>
-      ) : (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Enter an expected rent per square foot to see NOI, implied value at your target cap
-          rate, and yield on the estimated build cost{area == null ? " (needs a building area on file)" : ""}.
-        </p>
-      )}
-    </Section>
-  );
+// US numbers: 10 digits, or 11 starting with 1.
+function normalizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  const d = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (d.length !== 10) return null;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
-function downloadCostBreakdownCsv(dr: DesignRequestRow, b: DesignBrief) {
-  const rows = [
-    ["Discipline", "Low", "High"],
-    ...b.costBreakdown.map((c) => [c.discipline, String(c.low), String(c.high)]),
-    ["Total design fee", String(b.budgetLow), String(b.budgetHigh)],
-    ["Estimated build cost", String(b.buildCostLow), String(b.buildCostHigh)],
-  ];
-  const csv = rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `design-cost-breakdown-${(dr.address ?? "project").replace(/[^\w]+/g, "-").slice(0, 40)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+function ConsultationDialog({
+  dr,
+  open,
+  onOpenChange,
+  onRequested,
+}: {
+  dr: DesignRequestRow;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRequested: (emailed: boolean) => Promise<void>;
+}) {
+  const { user } = useAuth();
+  const profile = useQuery({
+    queryKey: ["my-profile", user?.id],
+    queryFn: () => getMyProfile(user!.id),
+    enabled: !!user?.id,
+  });
+  const [phone, setPhone] = useState<string | null>(null);
+  const [bestTime, setBestTime] = useState("");
+  const [notes, setNotes] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const phoneValue = phone ?? profile.data?.phone ?? "";
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const normalized = normalizePhone(phoneValue);
+    if (!normalized) {
+      setError("Enter a 10-digit US cell number, e.g. (469) 555-0123.");
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const { emailed } = await requestDesignConsultation(dr, {
+        phone: normalized,
+        bestTime: bestTime.trim(),
+        notes: notes.trim(),
+      });
+      onOpenChange(false);
+      await onRequested(emailed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send the request. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Schedule an initial consultation call</DialogTitle>
+          <DialogDescription>
+            Our design team will call you to talk through {dr.address ?? "your project"}. You'll get
+            an email confirming the request.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-4">
+          <Field label="Cell number" required>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              className={inputCls}
+              placeholder="(469) 555-0123"
+              value={phoneValue}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setError(null);
+              }}
+              required
+            />
+          </Field>
+          <Field label="Best time to call (optional)">
+            <select
+              className={inputCls}
+              value={bestTime}
+              onChange={(e) => setBestTime(e.target.value)}
+            >
+              <option value="">Any time</option>
+              <option value="Weekday mornings">Weekday mornings</option>
+              <option value="Weekday afternoons">Weekday afternoons</option>
+              <option value="Weekday evenings">Weekday evenings</option>
+            </select>
+          </Field>
+          <Field label="Anything we should know? (optional)">
+            <textarea
+              className={inputCls}
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Tenant is a medical office; we'd like to break ground in spring."
+            />
+          </Field>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-accent disabled:opacity-60" disabled={sending}>
+              {sending ? "Sending…" : "Request call"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // PRD 1.2.19.B — "Timeline bar / milestones." Staff advance the underlying

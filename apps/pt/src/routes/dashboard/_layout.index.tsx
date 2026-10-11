@@ -1,3 +1,5 @@
+import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
+import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -17,6 +19,8 @@ import {
   Mic,
   Volume2,
   VolumeX,
+  MessageSquareHeart,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -38,9 +42,10 @@ import {
   classifyAndStoreDocument,
   updateIntake,
 } from "@/lib/intake-store";
-import { listProperties, type PropertyRecord } from "@/lib/properties";
+import { buildAiReportIntakePatch, listProperties, type PropertyRecord } from "@/lib/properties";
 import { useSavingsBackfill } from "@/hooks/use-savings-backfill";
 import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
+import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
 import {
   getEffectiveTaxRate,
@@ -48,8 +53,21 @@ import {
   classifyPropertyCategory,
 } from "@/lib/texas-tax-rates";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
-import { listDocuments, type DocumentRecord } from "@/lib/documents";
+import {
+  listDocuments,
+  PROTEST_EVIDENCE_DOCUMENT_TYPE,
+  type DocumentRecord,
+} from "@/lib/documents";
 import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { listNoticeFilings } from "@/lib/protest-form-submissions";
+import { casePipeline, localTodayIso, type NoticeFiling, type Urgency } from "@/lib/case-pipeline";
+import { UrgentActionTiles } from "@/components/CasePipeline";
+import { ProtestIntelligenceCard } from "@/components/ProtestIntelligenceCard";
+import { protestIntelligence } from "@/lib/protest-intelligence";
+import { listValuationSummaries, type WorksheetSummary } from "@/lib/valuation-worksheet";
+import { listCadEvidenceReviews, type StoredCadEvidenceReview } from "@/lib/cad-evidence-review";
+import { evaluateArbitrationEligibility } from "@/lib/arbitration";
+import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { computePortfolioSavings } from "@/lib/portfolio-savings";
 import { getPropertyProtestStatus } from "@/lib/portfolio-status";
 import { askRouter } from "@/lib/ask-router";
@@ -63,10 +81,24 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
+import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
+import { openFeedbackWidget } from "@/lib/feedback-widget-events";
+import { getMyBilling, propertyMonthlyPrice } from "@/lib/billing";
+import { MyAppointments } from "@/components/MyAppointments";
+import { GettingStarted } from "@/components/GettingStarted";
+import { PageHero } from "@/components/PageHero";
+import { Sparkles as HeroWelcomeIcon } from "lucide-react";
+
+const URGENCY_RANK: Record<Urgency, number> = { overdue: 0, urgent: 1, soon: 2, normal: 3 };
 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
 });
+
+// Per-viewer convenience, not a durable record of anything — a fresh
+// browser (or cleared storage) just sees the banner again, which is fine
+// since it's also gone for good the moment they actually complete the form.
+const FEEDBACK_BANNER_DISMISSED_KEY = "corvusre.feedbackBannerDismissed";
 
 const STATUS_LABEL: Record<ProtestStatus, string> = {
   requested: "Requested",
@@ -87,6 +119,11 @@ function Overview() {
   const [bppAccounts, setBppAccounts] = useState<BppAccountRecord[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
+  const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
+  // Inputs to each property's Corvus decision card.
+  const [valuations, setValuations] = useState<Map<string, WorksheetSummary>>(new Map());
+  const [cadReviews, setCadReviews] = useState<Map<string, StoredCadEvidenceReview>>(new Map());
+  const [plan, setPlan] = useState<string | null>(null);
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
   const [loaded, setLoaded] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -115,6 +152,46 @@ function Overview() {
   const nudgedPropertyId = useRef<string | null>(null);
   const [hearingNudge, setHearingNudge] = useState<string | null>(null);
   const nudgedHearingProtestId = useRef<string | null>(null);
+  const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
+
+  // Brand-new accounts (nothing added yet) get the quick tour once.
+  useEffect(() => {
+    if (!loaded || properties.length > 0 || protests.length > 0) return;
+    return maybeStartTour();
+  }, [loaded, properties.length, protests.length]);
+
+  useEffect(() => {
+    if (!user) return;
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(FEEDBACK_BANNER_DISMISSED_KEY) === "1";
+    } catch {
+      // storage blocked — just show the banner, same as any dismissible UI
+      // that can't remember a prior dismissal.
+    }
+    if (dismissed) return;
+    // Beta testers only (plan === "beta") — a real paying customer isn't
+    // part of that cohort, same reasoning as SiteChrome's sign-out/tab-close
+    // prompts.
+    Promise.all([getMyBilling(user.id), getMyFeedbackResponse(user.id)])
+      .then(([billing, r]) =>
+        setShowFeedbackBanner(billing.plan === "beta" && !isFormV2Complete(r)),
+      )
+      .catch(() => {
+        // Fail closed here (unlike SiteChrome's sign-out prompt): an
+        // unprompted banner on a page every user sees is worth skipping on
+        // a network hiccup, not worth risking on incomplete data.
+      });
+  }, [user]);
+
+  function dismissFeedbackBanner() {
+    setShowFeedbackBanner(false);
+    try {
+      localStorage.setItem(FEEDBACK_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      // best-effort only
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -131,30 +208,124 @@ function Overview() {
         setDocuments(docs);
         setProtests(prot);
         setHealthScores(scores);
+        listNoticeFilings(prot.map((pr) => pr.id))
+          .then(setNoticeFilings)
+          .catch((err) => console.error(err));
+        listValuationSummaries(props.map((p) => p.id))
+          .then(setValuations)
+          .catch((err) => console.error(err));
+        listCadEvidenceReviews(prot.map((pr) => pr.id))
+          .then(setCadReviews)
+          .catch((err) => console.error(err));
+        getMyBilling(user.id)
+          .then((b) => setPlan(b.plan))
+          .catch(() => setPlan(null));
       })
       .catch((err) => console.error(err))
       .finally(() => setLoaded(true));
   }, [user]);
 
+  // Every property's NEXT REQUIRED ACTION (case-pipeline.ts), most pressing
+  // first: overdue, then urgent, soon and the rest; within that, the earliest
+  // due date; your own actions before ones CorvusPT is handling.
+  const today = localTodayIso();
+  const nextActions = properties
+    .map((p) => {
+      const pr = protests.find((x) => x.propertyId === p.id) ?? null;
+      const pipeline = casePipeline({
+        protest: pr,
+        notice: pr ? (noticeFilings.get(pr.id) ?? null) : null,
+        protestDeadline: p.protestDeadline,
+        cadName: p.cad,
+        managed: p.planTier === "corvusrf_managed",
+        today,
+      });
+      return { property: p, pipeline };
+    })
+    .filter((x) => x.pipeline.next.stage !== null)
+    .sort((a, b) => {
+      const ua = URGENCY_RANK[a.pipeline.next.urgency];
+      const ub = URGENCY_RANK[b.pipeline.next.urgency];
+      if (ua !== ub) return ua - ub;
+      const da = a.pipeline.next.dueDate ?? "9999";
+      const db = b.pipeline.next.dueDate ?? "9999";
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.pipeline.next.owner === "you" ? 0 : 1) - (b.pipeline.next.owner === "you" ? 0 : 1);
+    });
+
+  // Each property's Corvus decision card (lib/decision-card.ts), in the same
+  // most-pressing-first order as the next actions above.
+  const decisionCards = nextActions.map(({ property, pipeline }) => {
+    const pr = protests.find((x) => x.propertyId === property.id) ?? null;
+    const evidenceCount = documents.filter(
+      (d) => d.propertyId === property.id && d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE,
+    ).length;
+    const arb =
+      pr && (pr.status === "resolved" || pr.arbDecision != null)
+        ? evaluateArbitrationEligibility(property, pr, evidenceCount)
+        : null;
+    const annualCost =
+      plan === "beta"
+        ? 0
+        : property.subscriptionStatus === "active" && property.planTier
+          ? propertyMonthlyPrice(property.planTier, "upTo5m", false) * 12
+          : null;
+    const review = pr ? (cadReviews.get(pr.id) ?? null) : null;
+    return {
+      property,
+      pipeline,
+      hasCase: !!pr,
+      intel: protestIntelligence({
+        cadValue: property.totalValue,
+        effectiveTaxRate: getEffectiveTaxRate(property.cad),
+        healthScore: healthScores[property.id]?.score ?? null,
+        worksheet: valuations.get(property.id) ?? null,
+        estimatedSavings: property.estimatedSavings,
+        protest: pr,
+        cadReview: review,
+        annualCost,
+        scoreFactors: healthScores[property.id]?.factors ?? [],
+        evidenceDocuments: documents
+          .filter(
+            (d) =>
+              d.propertyId === property.id && d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE,
+          )
+          .map((d) => d.fileName),
+        cadArguesFor: review?.cadIndicatedValue ?? null,
+        arbitration: arb
+          ? {
+              eligible:
+                arb.status === "eligible" ? true : arb.status === "not_eligible" ? false : null,
+              deadline: arb.deadline,
+              daysRemaining: arb.daysRemaining,
+            }
+          : null,
+      }),
+    };
+  });
+
   useSavingsBackfill(properties, setProperties);
   useHealthScoreBackfill(properties, healthScores, setHealthScores);
 
+  // The property's own report: summary + AI modules (where a case starts).
   function openAiReport(p: PropertyRecord) {
-    updateIntake({
-      address: p.address,
-      cad: p.cad ?? undefined,
-      accountNumber: p.accountNumber ?? undefined,
-      ownerName: p.ownerName ?? undefined,
-      propertyType: p.propertyType ?? undefined,
-      landValue: p.landValue ?? undefined,
-      improvementValue: p.improvementValue ?? undefined,
-      totalValue: p.totalValue ?? undefined,
-      taxYear: p.taxYear ?? undefined,
-      valueHistory: p.valueHistory ?? undefined,
-      confirmed: true,
-    });
-    nav({ to: "/ai-report" });
+    updateIntake(buildAiReportIntakePatch(p));
+    nav({ to: "/ai-report", search: { propertyId: p.id } });
   }
+
+  // A Deadlines row opens that property's case, or its report when there's
+  // no case yet (where one is started).
+  function openDeadline(p: PropertyRecord) {
+    if (protests.some((pr) => pr.propertyId === p.id)) {
+      nav({ to: "/dashboard/case", search: { propertyId: p.id } });
+    } else {
+      openAiReport(p);
+    }
+  }
+
+  // Protest Intelligence shows one property at a time (dropdown), so the page
+  // doesn't grow with every property on file.
+  const [intelPropertyId, setIntelPropertyId] = useState<string | null>(null);
 
   const addressFor = (propertyId: string | null) =>
     propertyId
@@ -193,29 +364,83 @@ function Overview() {
     [protests, properties, bppAccounts],
   );
 
+  // Same "already settled" signal getCalendarEvents/fromProperty use for the
+  // full Calendar page — without it, a protest deadline kept showing here as
+  // a plain pending date forever, even after the case actually resolved,
+  // since the county's deadline date itself never moves once a case closes.
+  const propertiesWithResolvedCurrentProtest = new Set(
+    protests
+      .filter(
+        (pr) =>
+          pr.status === "resolved" &&
+          pr.taxYear != null &&
+          pr.taxYear >= CURRENT_TAX_YEAR &&
+          pr.propertyId,
+      )
+      .map((pr) => pr.propertyId as string),
+  );
+  // `resolved` (a real settlement/payment/etc.) drops the row from this
+  // widget entirely once it's true — a closed case doesn't need to keep
+  // occupying a "Deadlines" slot forever, same call as ProtestVerdictCard's
+  // own "done" cases. `missed` is the opposite kind of "not upcoming
+  // anymore": the date passed with NOTHING resolved (never filed, never
+  // paid) — that's worth a red flag, not a quiet green checkmark, since
+  // conflating "passed" with "done" would hide a real missed deadline.
   const deadlines = properties
     .filter((p) => !!p.protestDeadline)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.protestDeadline as string),
-      label: "Protest deadline",
-    }));
+    .map((p) => {
+      const settled = propertiesWithResolvedCurrentProtest.has(p.id);
+      const past = new Date(p.protestDeadline as string) < new Date();
+      return {
+        property: p,
+        when: new Date(p.protestDeadline as string),
+        label: settled
+          ? "Protest settled"
+          : past
+            ? "Protest deadline passed — no case on file"
+            : "Protest deadline",
+        resolved: settled,
+        missed: !settled && past,
+      };
+    });
   const bills = properties
     .filter((p) => !!p.paymentDueDate && !p.paidAt)
-    .map((p) => ({
-      property: p,
-      when: new Date(p.paymentDueDate as string),
-      label: "Tax bill due",
-    }));
+    .map((p) => {
+      const past = new Date(p.paymentDueDate as string) < new Date();
+      return {
+        property: p,
+        when: new Date(p.paymentDueDate as string),
+        label: past ? "Tax bill overdue" : "Tax bill due",
+        resolved: false,
+        missed: past,
+      };
+    });
   const hearingDates = protests
     .filter((pr) => pr.status === "hearing_scheduled" && !!pr.hearingDate)
-    .map((pr) => ({
-      property: properties.find((p) => p.id === pr.propertyId),
-      when: new Date(pr.hearingDate as string),
-      label: "ARB hearing",
-    }))
-    .filter((h): h is { property: PropertyRecord; when: Date; label: string } => !!h.property);
+    .map((pr) => {
+      const when = new Date(pr.hearingDate as string);
+      const past = when < new Date();
+      return {
+        property: properties.find((p) => p.id === pr.propertyId),
+        when,
+        label: past ? "ARB hearing date passed — check status" : "ARB hearing",
+        resolved: false,
+        missed: past,
+      };
+    })
+    .filter(
+      (
+        h,
+      ): h is {
+        property: PropertyRecord;
+        when: Date;
+        label: string;
+        resolved: boolean;
+        missed: boolean;
+      } => !!h.property,
+    );
   const upcoming = [...deadlines, ...bills, ...hearingDates]
+    .filter((u) => !u.resolved)
     .sort((a, b) => a.when.getTime() - b.when.getTime())
     .slice(0, 4);
 
@@ -335,50 +560,65 @@ function Overview() {
 
   return (
     <div className="dashboard-contrast grid grid-cols-1 min-w-0 gap-6">
-      <div>
-        <span className="badge-soft">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" /> AI is watching your properties
-        </span>
-        <h1 className="mt-3 font-serif text-3xl font-bold">
-          Welcome back{firstName ? `, ${firstName}` : ""}.
-        </h1>
-        <p className="text-muted-foreground">
-          Pick any entry point below — AI figures out the right workflow.
-        </p>
-      </div>
+      <PageHero
+        icon={HeroWelcomeIcon}
+        title={`${loaded && properties.length === 0 && protests.length === 0 ? "Welcome" : "Welcome back"}${firstName ? `, ${firstName}` : ""}.`}
+        tone="emerald"
+        subtitle={
+          loaded && properties.length > 0
+            ? "Here is where your properties stand and what to do next."
+            : "New here? Start with the checklist below. Everything else is one click away."
+        }
+        stats={
+          loaded
+            ? [
+                { label: "Properties", value: properties.length },
+                {
+                  label: "Open cases",
+                  value: protests.filter((p) => p.status !== "resolved").length,
+                },
+                {
+                  label: "Lifetime savings",
+                  value: lifetimeSavings,
+                  format: (n) => compactCurrency(n),
+                },
+              ]
+            : undefined
+        }
+        badges={
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime-300" /> AI is watching
+            your properties
+          </span>
+        }
+      />
 
-      {nudge && urgentProperties.length > 0 && (
-        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{nudge}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {urgentProperties[0].property.address}
-              {urgentProperties.length > 1 &&
-                ` — +${urgentProperties.length - 1} other propert${urgentProperties.length - 1 === 1 ? "y" : "ies"} also need attention`}
-            </p>
-            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
-              Review &amp; Request Protest
-            </Link>
-          </div>
-        </div>
+      {loaded && user && properties.length > 0 && (
+        <AssessmentChangesBanner userId={user.id} properties={properties} onReview={openAiReport} />
       )}
 
-      {hearingNudge && hearingReminders.length > 0 && (
-        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{hearingNudge}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {hearingReminders[0].property.address}
-              {hearingReminders.length > 1 &&
-                ` — +${hearingReminders.length - 1} other hearing${hearingReminders.length - 1 === 1 ? "" : "s"} coming up`}
-            </p>
-            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
-              View Case
-            </Link>
-          </div>
-        </div>
+      {loaded && nextActions.length > 0 && (
+        <UrgentActionTiles
+          today={today}
+          items={nextActions.map(({ property, pipeline }) => ({
+            key: property.id,
+            title: pipeline.next.title,
+            address: property.address,
+            dueDate: pipeline.next.dueDate,
+            urgency: pipeline.next.urgency,
+            onOpen: () => {
+              const target = pipeline.next.target;
+              if (target.kind === "anchor") {
+                nav({
+                  to: "/dashboard/case",
+                  search: { propertyId: property.id, anchor: target.anchor },
+                });
+              } else {
+                openAiReport(property);
+              }
+            },
+          }))}
+        />
       )}
 
       {/* Entry points */}
@@ -388,6 +628,7 @@ function Overview() {
           <Link
             to="/intake"
             onClick={() => resetIntake()}
+            data-tour="add-property"
             className="card-elev flex items-center gap-2.5 p-3 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
           >
             <span
@@ -548,9 +789,9 @@ function Overview() {
       </div>
 
       {/* Stats */}
-      <div>
+      <div data-tour="portfolio">
         <h2 className="font-serif text-xl font-bold">Your Portfolio at a Glance</h2>
-        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Properties"
             value={loaded ? properties.length : null}
@@ -587,6 +828,7 @@ function Overview() {
             label="Est. Savings"
             value={loaded ? estimatedSavings : null}
             format={compactCurrency}
+            to="/dashboard/properties"
             delayMs={160}
             icon={TrendingDown}
             color={ICON_COLORS[5]}
@@ -602,6 +844,149 @@ function Overview() {
           />
         </div>
       </div>
+
+      {loaded && decisionCards.length > 0 && (
+        <section
+          aria-labelledby="protest-intelligence"
+          className="grid gap-3"
+          data-tour="protest-intelligence"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="protest-intelligence" className="font-serif text-2xl font-semibold">
+              Protest Intelligence
+            </h2>
+          </div>
+          {[decisionCards.find((c) => c.property.id === intelPropertyId) ?? decisionCards[0]].map(
+            ({ property, pipeline, intel, hasCase }) => (
+              <ProtestIntelligenceCard
+                key={property.id}
+                intel={intel}
+                next={pipeline.next}
+                address={property.address}
+                propertyId={property.id}
+                hasCase={hasCase}
+                defaultOpen={false}
+                picker={{
+                  options: decisionCards.map((c) => ({
+                    id: c.property.id,
+                    address: c.property.address,
+                    verdict: c.intel.card.verdict,
+                    strength: c.intel.card.strength,
+                    savings: c.intel.card.savingsAtSettlement ?? null,
+                  })),
+                  onSelect: setIntelPropertyId,
+                }}
+                settlement={{
+                  cad: property.cad,
+                  propertyType: property.propertyType,
+                  value: property.totalValue,
+                }}
+                onStart={() => openAiReport(property)}
+                onReviewEvidence={() => {
+                  updateIntake({
+                    address: property.address,
+                    cad: property.cad ?? undefined,
+                    accountNumber: property.accountNumber ?? undefined,
+                    ownerName: property.ownerName ?? undefined,
+                    propertyType: property.propertyType ?? undefined,
+                    landValue: property.landValue ?? undefined,
+                    improvementValue: property.improvementValue ?? undefined,
+                    totalValue: property.totalValue ?? undefined,
+                    taxYear: property.taxYear ?? undefined,
+                    valueHistory: property.valueHistory ?? undefined,
+                    confirmed: true,
+                  });
+                  nav({
+                    to: "/ai-report",
+                    search: { openModule: "evidence", propertyId: property.id },
+                  });
+                }}
+              />
+            ),
+          )}
+        </section>
+      )}
+
+      {nudge && urgentProperties.length > 0 && (
+        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{nudge}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {urgentProperties[0].property.address}
+              {urgentProperties.length > 1 &&
+                ` — +${urgentProperties.length - 1} other propert${urgentProperties.length - 1 === 1 ? "y" : "ies"} also need attention`}
+            </p>
+            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
+              Review &amp; Request Protest
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {hearingNudge && hearingReminders.length > 0 && (
+        <div className="card-elev p-4 border-destructive/30 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{hearingNudge}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {hearingReminders[0].property.address}
+              {hearingReminders.length > 1 &&
+                ` — +${hearingReminders.length - 1} other hearing${hearingReminders.length - 1 === 1 ? "" : "s"} coming up`}
+            </p>
+            <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
+              View Case
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {showFeedbackBanner && properties.length > 0 && (
+        <div className="card-elev p-4 flex items-start gap-3">
+          <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Help us make CorvusPT better</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
+              next.
+            </p>
+            <button
+              type="button"
+              onClick={openFeedbackWidget}
+              className="btn-outline text-sm mt-3 inline-flex"
+            >
+              Give Feedback
+            </button>
+          </div>
+          <button
+            onClick={dismissFeedbackBanner}
+            aria-label="Dismiss"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {loaded && (
+        <ProtestVerdictCard
+          properties={properties}
+          protests={protests}
+          healthScores={healthScores}
+          onOpenReport={openAiReport}
+        />
+      )}
+
+      <MyAppointments />
+
+      {loaded && (
+        <GettingStarted
+          properties={properties.length}
+          documents={documents.length}
+          protests={protests.length}
+          resolved={protests.filter((p) => p.status === "resolved").length}
+        />
+      )}
 
       <div>
         <h2 className="font-serif text-xl font-bold">Insights &amp; Activity</h2>
@@ -628,24 +1013,36 @@ function Overview() {
             <div className="card-elev p-5 min-w-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold">Deadlines</h3>
-                <Link to="/dashboard/deadlines" className="text-xs text-accent hover:underline">
+                <Link to="/dashboard/calendar" className="text-xs text-accent hover:underline">
                   View all
                 </Link>
               </div>
               {upcoming.length > 0 ? (
                 <div className="mt-3 grid min-w-0 gap-2">
                   {upcoming.map((u, i) => (
-                    <div
+                    <button
                       key={i}
-                      className="flex items-center justify-between gap-2 text-sm min-w-0"
+                      type="button"
+                      onClick={() => openDeadline(u.property)}
+                      title={`Open ${u.property.address}`}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-sm min-w-0 transition-colors hover:bg-secondary ${
+                        u.missed ? "-mx-2 bg-destructive/10 hover:bg-destructive/15" : ""
+                      }`}
                     >
-                      <span className="truncate min-w-0">
+                      <span className={`truncate min-w-0 ${u.missed ? "text-destructive" : ""}`}>
                         {u.label} — {u.property.address}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {u.when.toLocaleDateString()}
-                      </span>
-                    </div>
+                      {u.missed ? (
+                        <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-destructive">
+                          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                          Passed
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {u.when.toLocaleDateString()}
+                        </span>
+                      )}
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -684,10 +1081,16 @@ function StatCard({
 }) {
   const content = (
     <>
-      <span className={`grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}>
+      <span
+        aria-hidden
+        className={`tu-glow pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl ${color.bg}`}
+      />
+      <span
+        className={`relative grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}
+      >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-[2.1875rem] font-medium text-muted-foreground leading-tight">
+      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -706,7 +1109,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev flex min-h-[11rem] flex-col p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -715,7 +1118,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev flex min-h-[11rem] flex-col p-5"
+      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
@@ -745,13 +1148,25 @@ function PortfolioValueChart({
   properties: PropertyRecord[];
   onOpenReport: (p: PropertyRecord) => void;
 }) {
+  // On a wide screen show each full address on one line; on a phone there is no room, so
+  // keep the short, wrapped form.
+  const [wide, setWide] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
   const data = properties
     .filter((p) => p.totalValue != null)
     .sort((a, b) => (b.totalValue ?? 0) - (a.totalValue ?? 0))
     .slice(0, 8)
     .map((p) => ({
       id: p.id,
-      name: p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
+      name: !wide && p.address.length > 28 ? `${p.address.slice(0, 26)}…` : p.address,
       value: p.totalValue ?? 0,
       property: p,
     }));
@@ -767,10 +1182,16 @@ function PortfolioValueChart({
         <YAxis
           type="category"
           dataKey="name"
-          width={160}
+          width={
+            wide
+              ? Math.min(340, Math.max(160, Math.max(...data.map((d) => d.name.length)) * 6.6))
+              : 160
+          }
           tickLine={false}
           axisLine={false}
-          tick={(props) => <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} />}
+          tick={(props) => (
+            <PortfolioAxisTick {...props} data={data} onOpenReport={onOpenReport} oneLine={wide} />
+          )}
         />
         <Bar
           dataKey="value"
@@ -810,12 +1231,13 @@ function PortfolioAxisTick(
   } & {
     data: { name: string; property: PropertyRecord }[];
     onOpenReport: (p: PropertyRecord) => void;
+    oneLine?: boolean;
   },
 ) {
   const { x = 0, y = 0, payload, data, onOpenReport } = props;
   const row = data.find((d) => d.name === payload?.value);
   if (!row) return null;
-  const lines = row.name.split(/(?<=,)\s+/);
+  const lines = props.oneLine ? [row.name] : row.name.split(/(?<=,)\s+/);
   return (
     <text
       x={x}
@@ -870,22 +1292,25 @@ function ProtestStatusChart({
   return (
     <>
       <div className="mt-3 grid grid-cols-[7rem_1fr] items-center gap-3">
-        <ResponsiveContainer width="100%" height={110}>
-          <PieChart>
-            <Pie
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={30}
-              outerRadius={50}
-              paddingAngle={2}
-            >
-              {data.map((d) => (
-                <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
+        {/* The legend beside the ring lists the same numbers as text. */}
+        <div aria-hidden="true" inert>
+          <ResponsiveContainer width="100%" height={110}>
+            <PieChart accessibilityLayer={false}>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={30}
+                outerRadius={50}
+                paddingAngle={2}
+              >
+                {data.map((d) => (
+                  <Cell key={d.status} fill={STATUS_COLORS[d.status]} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
         <div className="grid gap-1.5">
           {data.map((d) => (
             <div key={d.status} className="flex items-center gap-2 text-sm">
@@ -900,12 +1325,31 @@ function ProtestStatusChart({
         </div>
       </div>
       <div className="mt-4 grid min-w-0 gap-2 border-t border-border pt-3">
-        {protests.slice(0, 3).map((pr) => (
-          <div key={pr.id} className="flex items-center justify-between gap-2 text-sm min-w-0">
-            <span className="truncate min-w-0">{addressFor(pr.propertyId)}</span>
-            <span className="badge-soft shrink-0">{STATUS_LABEL[pr.status]}</span>
-          </div>
-        ))}
+        {protests.slice(0, 3).map((pr) => {
+          const row = (
+            <>
+              <span className="truncate min-w-0">{addressFor(pr.propertyId)}</span>
+              <span className="badge-soft shrink-0">{STATUS_LABEL[pr.status]}</span>
+            </>
+          );
+          const cls =
+            "-mx-2 flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm min-w-0 transition-colors hover:bg-secondary";
+          // Each row opens its case (a BPP case has no property — its accounts page).
+          return pr.propertyId ? (
+            <Link
+              key={pr.id}
+              to="/dashboard/case"
+              search={{ propertyId: pr.propertyId }}
+              className={cls}
+            >
+              {row}
+            </Link>
+          ) : (
+            <Link key={pr.id} to="/dashboard/bpp-accounts" className={cls}>
+              {row}
+            </Link>
+          );
+        })}
       </div>
     </>
   );

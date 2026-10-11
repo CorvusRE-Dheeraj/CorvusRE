@@ -14,6 +14,7 @@ import type { ProtestStatus } from "@/lib/protests";
 import { Modal } from "@/components/Modal";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
+import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
 
 function fieldInputId(name: string): string {
   return `pdf-field-${name.replace(/[^a-zA-Z0-9]+/g, "-")}`;
@@ -144,13 +145,13 @@ export function PdfFormEditor({
                 : "Please review every declaration below before signing this sworn affidavit."}
           </p>
           <div className="mt-4 rounded-lg border border-accent/30 bg-accent/5 p-4">
-            <h4 className="text-sm font-semibold">
+            <h2 className="text-sm font-semibold">
               {formKind === "protest"
                 ? "Ready to File"
                 : formKind === "agent"
                   ? "Ready to Sign"
                   : "Ready to Sign — Sworn Affidavit"}
-            </h4>
+            </h2>
             {formKind === "evidence-declaration" && (
               <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
                 <span className="font-semibold">
@@ -316,9 +317,9 @@ function SignPanel({
 }) {
   return (
     <div className="mt-5 rounded-lg border border-accent/40 bg-accent/5 p-4">
-      <h4 className="text-sm font-semibold">
+      <h2 className="text-sm font-semibold">
         {formKind === "evidence-declaration" ? "Sign this affidavit" : "Sign this document"}
-      </h4>
+      </h2>
       {formKind === "evidence-declaration" ? (
         <p className="mt-1 text-xs text-muted-foreground">
           <span className="font-semibold text-destructive">
@@ -398,9 +399,9 @@ function SignedFilingGuidance({
     return (
       <div className="mt-4 grid gap-4">
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-          <h4 className="text-sm font-semibold text-destructive">
+          <h2 className="text-sm font-semibold text-destructive">
             Prepared — not yet a valid affidavit
-          </h4>
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             This affidavit is filled out and saved, but the signature you drew only prepares it.
             Texas law requires it be signed before a notary public before it has any legal effect.
@@ -459,7 +460,7 @@ function SignedFilingGuidance({
   return (
     <div className="mt-4 grid gap-4">
       <div className="rounded-lg border border-success/30 bg-success/5 p-4">
-        <h4 className="text-sm font-semibold text-success">Signed — now submit it</h4>
+        <h2 className="text-sm font-semibold text-success">Signed — now submit it</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {formKind === "protest" ? (
             <>
@@ -553,8 +554,9 @@ function buildFilingMailto(countyInfo: CountyProtestInfo, docLabel: string): str
   const subject = `${docLabel} — ${countyInfo.cad}`;
   const body = `Please find my ${docLabel} attached. (Attach your downloaded, signed PDF to this email before sending — it isn't included automatically.)${
     countyInfo.filingMethod.email.notes ? `\n\n${countyInfo.filingMethod.email.notes}` : ""
-  }`;
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }\n\nPlease include ${CORVUSPT_COUNTY_EMAIL} on any reply about this protest.`;
+  // CorvusPT's county address is copied so replies file themselves under the case.
+  return `mailto:${encodeURIComponent(to)}?cc=${encodeURIComponent(CORVUSPT_COUNTY_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 function FieldSectionView({
@@ -576,10 +578,10 @@ function FieldSectionView({
 }) {
   return (
     <section>
-      <h4 className="text-sm font-semibold border-b border-border pb-1">
+      <h2 className="text-sm font-semibold border-b border-border pb-1">
         {section.title}
         {section.requireAtLeastOne && <span className="text-destructive"> *</span>}
-      </h4>
+      </h2>
       <div className="mt-2 grid gap-3 sm:grid-cols-2">
         {section.fields.map((field) => (
           <div

@@ -12,10 +12,7 @@ import { requireTestAccount, signIn } from "./helpers";
 // Read-only: it never advances the case or writes rows, so there's nothing
 // to clean up. Skips itself (does not fail) when the account has no filed
 // protest to open.
-test("View Case opens the case page and its sections render without error", async ({
-  page,
-  context,
-}) => {
+test("View Case opens the case page and its sections render without error", async ({ page }) => {
   test.setTimeout(120_000);
   const { email, password } = requireTestAccount();
   await signIn(page, email, password);
@@ -23,14 +20,19 @@ test("View Case opens the case page and its sections render without error", asyn
   await page.goto("/dashboard/properties", { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
 
+  // In the default card view View Case sits in each property's Actions menu;
+  // the List view shows it as a link on the row.
+  const listToggle = page.getByRole("button", { name: "List", exact: true });
+  if (await listToggle.count()) await listToggle.click();
+  await page.waitForTimeout(500);
   const viewCase = page.getByRole("link", { name: "View Case" }).first();
   if ((await viewCase.count()) === 0) {
     test.skip(true, "Seeded account has no filed protest — nothing to open.");
     return;
   }
 
-  // The link opens in a new tab (target="_blank").
-  const [casePage] = await Promise.all([context.waitForEvent("page"), viewCase.click()]);
+  // It opens the case in the same tab.
+  const casePage = page;
   const runtimeErrors: string[] = [];
   casePage.on("pageerror", (err) => runtimeErrors.push(String(err)));
   const reactErrors: string[] = [];
@@ -43,7 +45,8 @@ test("View Case opens the case page and its sections render without error", asyn
     )
       reactErrors.push(msg.text());
   });
-  await casePage.waitForLoadState("domcontentloaded");
+  await viewCase.click();
+  await casePage.waitForURL(/\/dashboard\/case/, { timeout: 20_000 });
 
   expect(casePage.url()).toContain("/dashboard/case");
 

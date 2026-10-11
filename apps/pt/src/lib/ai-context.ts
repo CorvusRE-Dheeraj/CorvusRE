@@ -13,10 +13,7 @@ const STATUS_LABEL: Record<string, string> = {
 // structured schema, since ask-about-document just drops this string into a
 // "Context:\n{context}" prefix ahead of the user's question.
 export async function buildUserContext(userId: string): Promise<string> {
-  const [properties, protests] = await Promise.all([
-    listProperties(userId),
-    listProtests(userId),
-  ]);
+  const [properties, protests] = await Promise.all([listProperties(userId), listProtests(userId)]);
   if (properties.length === 0) return "";
 
   const lines = properties.map((p) => {

@@ -1,3 +1,4 @@
+import { tidyAddress } from "./tidy-address";
 import { supabase } from "./supabase";
 import { computeAndStoreHealthScore } from "./property-scores";
 import type { CadValueHistoryEntry } from "./cad-lookup";
@@ -30,6 +31,10 @@ export type PropertyRecord = {
   improvementValue: number | null;
   totalValue: number | null;
   taxYear: number | null;
+  // Year the values belong to / newer roll year not valued yet (optional:
+  // test fixtures and admin stubs don't carry them).
+  valueYear?: number | null;
+  upcomingValueYear?: number | null;
   protestDeadline: string | null;
   paymentDueDate: string | null;
   taxAmountDue: number | null;
@@ -52,7 +57,9 @@ export type PropertyRecord = {
   stripeSubscriptionId?: string | null;
   subscriptionStatus?: string | null;
   planTier?: Tier | null;
-  valueBracket?: PropertyValueBracket | null;
+  // A PropertyValueBracket, or a pre-Oct-2026 legacy key ("under2m" etc.) on a
+  // grandfathered subscription.
+  valueBracket?: PropertyValueBracket | string | null;
   cancelAtPeriodEnd?: boolean;
   cancelAt?: string | null;
   // Opt-in year-over-year auto-refile — see setAutoRefile() and the schema.sql
@@ -72,6 +79,8 @@ type PropertyRow = {
   improvement_value: number | null;
   total_value: number | null;
   tax_year: number | null;
+  value_year: number | null;
+  upcoming_value_year: number | null;
   protest_deadline: string | null;
   payment_due_date: string | null;
   tax_amount_due: number | null;
@@ -83,7 +92,7 @@ type PropertyRow = {
   stripe_subscription_id: string | null;
   subscription_status: string | null;
   plan_tier: Tier | null;
-  value_bracket: PropertyValueBracket | null;
+  value_bracket: PropertyValueBracket | string | null;
   cancel_at_period_end: boolean;
   cancel_at: string | null;
   auto_refile: boolean;
@@ -93,7 +102,7 @@ type PropertyRow = {
 function fromRow(row: PropertyRow): PropertyRecord {
   return {
     id: row.id,
-    address: row.address,
+    address: tidyAddress(row.address),
     cad: row.cad,
     accountNumber: row.account_number,
     ownerName: row.owner_name,
@@ -102,6 +111,8 @@ function fromRow(row: PropertyRow): PropertyRecord {
     improvementValue: row.improvement_value,
     totalValue: row.total_value,
     taxYear: row.tax_year,
+    valueYear: row.value_year,
+    upcomingValueYear: row.upcoming_value_year,
     protestDeadline: row.protest_deadline,
     paymentDueDate: row.payment_due_date,
     taxAmountDue: row.tax_amount_due,
@@ -124,7 +135,7 @@ function fromRow(row: PropertyRow): PropertyRecord {
 }
 
 const SELECT_COLUMNS =
-  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
+  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, value_year, upcoming_value_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
 
 export async function listProperties(userId: string): Promise<PropertyRecord[]> {
   const { data, error } = await supabase
@@ -143,19 +154,91 @@ export async function listProperties(userId: string): Promise<PropertyRecord[]> 
 // match). Returns the existing row as-is rather than updating it, since
 // properties intentionally have no update policy — re-deriving fresher data
 // means deleting and re-adding, not silently overwriting what's on file.
+//
+// Both keys are compared normalized, not raw: the same record comes back as
+// "Kaufman CAD" or "Kaufman", and the same address as
+// "601 RIDGECREST RD, FORNEY TX 75126" or "601 Ridgecrest Road, Forney, TX
+// 75126" depending on the source — an exact match missed real duplicates.
 export async function findExistingProperty(
   userId: string,
-  property: { address: string; cad?: string; accountNumber?: string },
+  property: { address: string; cad?: string | null; accountNumber?: string | null },
 ): Promise<PropertyRecord | null> {
-  let query = supabase.from("properties").select(SELECT_COLUMNS).eq("user_id", userId);
-  query =
-    property.accountNumber && property.cad
-      ? query.eq("cad", property.cad).eq("account_number", property.accountNumber)
-      : query.ilike("address", property.address.trim());
-  const { data, error } = await query.limit(1);
+  const { data, error } = await supabase
+    .from("properties")
+    .select(SELECT_COLUMNS)
+    .eq("user_id", userId);
   if (error) throw error;
-  const row = (data as PropertyRow[])[0];
+  const row = (data as PropertyRow[]).find((r) =>
+    isSameProperty(property, {
+      address: r.address,
+      cad: r.cad,
+      accountNumber: r.account_number,
+    }),
+  );
   return row ? fromRow(row) : null;
+}
+
+type PropertyKey = { address: string; cad?: string | null; accountNumber?: string | null };
+
+const normCad = (c: string) =>
+  c
+    .toLowerCase()
+    .replace(/appraisal district|central|county|\bcad\b/g, "")
+    .replace(/[^a-z]/g, "");
+const normAccount = (a: string) =>
+  a
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/^0+/, "");
+
+const STREET_SUFFIX: Record<string, string> = {
+  ROAD: "RD",
+  STREET: "ST",
+  AVENUE: "AVE",
+  DRIVE: "DR",
+  BOULEVARD: "BLVD",
+  LANE: "LN",
+  COURT: "CT",
+  CIRCLE: "CIR",
+  PARKWAY: "PKWY",
+  HIGHWAY: "HWY",
+  PLACE: "PL",
+  TRAIL: "TRL",
+  FREEWAY: "FWY",
+  NORTH: "N",
+  SOUTH: "S",
+  EAST: "E",
+  WEST: "W",
+};
+
+// "601 Ridgecrest Road, Forney, TX 75126, USA" → "601 RIDGECREST RD|75126".
+export function addressMatchKey(address: string): string | null {
+  const upper = address.toUpperCase();
+  const street = upper.split(",")[0];
+  const tokens = street
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => STREET_SUFFIX[t] ?? t);
+  if (tokens.length < 2 || !/^\d/.test(tokens[0])) return null;
+  const zip = upper.match(/\b(\d{5})(?:-\d{4})?\s*(?:,\s*USA)?\s*$/)?.[1] ?? "";
+  return `${tokens.join(" ")}|${zip}`;
+}
+
+export function isSameProperty(a: PropertyKey, b: PropertyKey): boolean {
+  if (a.accountNumber && b.accountNumber) {
+    const sameAccount = normAccount(a.accountNumber) === normAccount(b.accountNumber);
+    // Same account number in the same appraisal district is the same record;
+    // without both districts, an account match alone is too weak to trust.
+    if (a.cad && b.cad) return sameAccount && normCad(a.cad) === normCad(b.cad);
+    if (sameAccount) return true;
+  }
+  const ka = addressMatchKey(a.address);
+  const kb = addressMatchKey(b.address);
+  if (!ka || !kb) return a.address.trim().toLowerCase() === b.address.trim().toLowerCase();
+  const [sa, za] = ka.split("|");
+  const [sb, zb] = kb.split("|");
+  return sa === sb && (!za || !zb || za === zb);
 }
 
 export async function addProperty(
@@ -170,6 +253,8 @@ export async function addProperty(
     improvementValue?: number;
     totalValue?: number;
     taxYear?: number;
+    valueYear?: number | null;
+    upcomingValueYear?: number | null;
     protestDeadline?: string;
     paymentDueDate?: string;
     taxAmountDue?: number;
@@ -194,6 +279,8 @@ export async function addProperty(
       improvement_value: property.improvementValue ?? null,
       total_value: property.totalValue ?? null,
       tax_year: property.taxYear ?? null,
+      value_year: property.valueYear ?? null,
+      upcoming_value_year: property.upcomingValueYear ?? null,
       protest_deadline: property.protestDeadline ?? null,
       payment_due_date: property.paymentDueDate ?? null,
       tax_amount_due: property.taxAmountDue ?? null,
@@ -348,6 +435,8 @@ export function buildAiReportIntakePatch(p: PropertyRecord): Partial<IntakeState
     improvementValue: p.improvementValue ?? undefined,
     totalValue: p.totalValue ?? undefined,
     taxYear: p.taxYear ?? undefined,
+    valueYear: p.valueYear ?? null,
+    upcomingValueYear: p.upcomingValueYear ?? null,
     valueHistory: p.valueHistory ?? undefined,
     confirmed: true,
   };

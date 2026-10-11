@@ -42,9 +42,7 @@ describe("filingSubmissionStatus", () => {
   it("is awaiting_confirmation once marked submitted, for every method uniformly", () => {
     for (const method of ["online", "mail", "in_person", "email"] as const) {
       expect(
-        filingSubmissionStatus(
-          sub({ filingMethod: method, submittedAt: "2026-02-01T00:00:00Z" }),
-        ),
+        filingSubmissionStatus(sub({ filingMethod: method, submittedAt: "2026-02-01T00:00:00Z" })),
       ).toBe("awaiting_confirmation");
     }
   });
@@ -60,7 +58,9 @@ describe("filingSubmissionStatus", () => {
       ),
     ).toBe("confirmed");
     expect(
-      filingSubmissionStatus(sub({ filingMethod: "online", filingConfirmedAt: "2026-02-10T00:00:00Z" })),
+      filingSubmissionStatus(
+        sub({ filingMethod: "online", filingConfirmedAt: "2026-02-10T00:00:00Z" }),
+      ),
     ).toBe("confirmed");
   });
 

@@ -18,9 +18,11 @@ test("permitting analyze wizard walks a guest to a locked report", async ({ page
   await page.getByLabel("Property address").fill("123 Test Street, Denton, TX 76201");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Step 2: Project
+  // Step 2: Project — Sector is no longer a user choice (CorvusDP is
+  // commercial-only; see dp-intake.ts's emptyState), just a fixed
+  // non-interactive "Commercial" chip, so there's nothing to click here
+  // any more.
   await page.getByRole("button", { name: "New Construction" }).click();
-  await page.getByRole("button", { name: "commercial" }).click();
   await page.getByRole("button", { name: "Analyze property" }).click();
 
   // Step 3: Zoning & Jurisdiction

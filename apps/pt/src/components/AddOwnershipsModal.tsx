@@ -271,6 +271,8 @@ export function AddOwnershipsModal({
           landValue: row.record.landValue ?? undefined,
           improvementValue: row.record.improvementValue ?? undefined,
           totalValue: row.record.totalValue ?? undefined,
+          valueYear: row.record.valueYear ?? null,
+          upcomingValueYear: row.record.upcomingValueYear ?? null,
           // Pinned to 2026 regardless of the county feed — see
           // CURRENT_TAX_YEAR in lib/tax-calendar.ts.
           taxYear: 2026,
@@ -361,8 +363,8 @@ export function AddOwnershipsModal({
               that reads as stuck rather than working — confirmed live. */}
           {searching && (
             <p className="text-xs text-muted-foreground">
-              Checking real county records across Texas — this can take up to 15 seconds,
-              especially if we need to look for close spelling matches.
+              Checking real county records across Texas — this can take up to 15 seconds, especially
+              if we need to look for close spelling matches.
             </p>
           )}
         </div>

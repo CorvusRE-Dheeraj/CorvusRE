@@ -14,8 +14,12 @@ describe("getEffectiveTaxRate", () => {
     expect(getEffectiveTaxRate("Denton Central Appraisal District")).toBe(0.018);
   });
 
-  it("falls back to the statewide average for an unlisted county (e.g. Dallas)", () => {
-    expect(getEffectiveTaxRate("Dallas Central Appraisal District")).toBe(
+  it("returns Dallas's real rate now that it has a CAD data source", () => {
+    expect(getEffectiveTaxRate("Dallas Central Appraisal District")).toBe(0.021);
+  });
+
+  it("falls back to the statewide average for a county with no entry on file", () => {
+    expect(getEffectiveTaxRate("El Paso Central Appraisal District")).toBe(
       STATEWIDE_AVERAGE_EFFECTIVE_TAX_RATE,
     );
   });
@@ -173,6 +177,13 @@ describe("getAssessmentRatioInfo / applyAssessmentRatioAdjustment", () => {
     // Tarrant residential COD 10.14, ceiling 15.0 -> within, 0
     const tarrant = getAssessmentRatioInfo("Tarrant Appraisal District", "residential");
     expect(tarrant?.codOverCeiling).toBe(0);
+  });
+
+  it("has Dallas's real 2024 Comptroller ratio study on file", () => {
+    const residential = getAssessmentRatioInfo("Dallas Central Appraisal District", "residential");
+    expect(residential).toEqual({ medianPct: 1.0, cod: 6.1, codOverCeiling: 0 });
+    const commercial = getAssessmentRatioInfo("Dallas Central Appraisal District", "commercial");
+    expect(commercial).toEqual({ medianPct: 1.02, cod: 13.92, codOverCeiling: 0 });
   });
 
   it("applyAssessmentRatioAdjustment adds nothing when there's no ratio info or the county is within standard", () => {

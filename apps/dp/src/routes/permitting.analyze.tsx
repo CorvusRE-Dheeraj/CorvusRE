@@ -8,7 +8,9 @@ import {
   updateDpIntake,
   type DpIntakeState,
   type ProjectIntent,
-  type PropertySector,
+  type CommercialSubcategory,
+  COMMERCIAL_SUBCATEGORIES,
+  commercialSubcategoryLabel,
 } from "@/lib/dp-intake";
 import { runPermittingAnalysis } from "@/lib/analysis";
 import { generateFeasibilitySummary, type FeasibilitySummary } from "@/lib/ai";
@@ -362,28 +364,45 @@ function ProjectStep({
             ))}
           </div>
         </div>
+        {/* CorvusDP is commercial-only — the residential option that used to
+            sit next to this was removed per direct product decision ("we
+            will just work with commercial projects"). Sector is still a
+            field downstream (analysis.ts, fees.ts, reports) so it's kept set
+            to "commercial" rather than dropped, just no longer a user
+            choice — a single non-interactive chip, not a button, since
+            there's nothing left to toggle. */}
         <div>
           <div className="text-sm font-medium">Sector</div>
           <div className="mt-2 flex gap-2">
-            {(["commercial", "residential"] as PropertySector[]).map((s) => (
-              <button
-                key={s}
-                // Residential is shown but not offered yet.
-                disabled={s === "residential"}
-                onClick={() => patch({ project: { sector: s } })}
-                className={`rounded-lg border px-4 py-2 text-sm font-medium capitalize transition-colors ${
-                  s === "residential"
-                    ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-60"
-                    : pr.sector === s
-                      ? "border-accent bg-accent text-accent-foreground"
-                      : "border-border hover:bg-secondary"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            <span className="rounded-lg border border-accent bg-accent px-4 py-2 text-sm font-medium capitalize text-accent-foreground">
+              Commercial
+            </span>
           </div>
         </div>
+        {pr.sector === "commercial" && (
+          <div className="sm:max-w-sm">
+            <Field label="Commercial subcategory (optional)">
+              <select
+                className={inputCls}
+                value={pr.subcategory ?? ""}
+                onChange={(e) =>
+                  patch({
+                    project: {
+                      subcategory: (e.target.value || undefined) as CommercialSubcategory | undefined,
+                    },
+                  })
+                }
+              >
+                <option value="">Select a subcategory</option>
+                {COMMERCIAL_SUBCATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Lot size" hint="e.g. 2 acres">
             <input
@@ -603,6 +622,7 @@ function AiFeasibilitySummary({
         state: property.state,
         intent: project.intent,
         sector: project.sector,
+        subcategory: commercialSubcategoryLabel(project.subcategory) ?? undefined,
         zoning: analysis.zoning,
         feasibility: analysis.feasibility,
         permits: analysis.permits.map((p) => ({ name: p.name, category: p.category })),

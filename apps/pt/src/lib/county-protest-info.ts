@@ -20,6 +20,9 @@
 // address), never conflated into one field here. Every sub-object is null
 // when that specific method genuinely isn't confirmed for this county —
 // never omitted silently, never guessed from what's "typical."
+import { lookupCadDirectory, type DirectoryEntry } from "./cad-directory";
+import { getRetrievedRaw } from "./county-procedures";
+
 export type FilingChannel = { address: string; notes: string | null };
 
 export type CountyProtestInfo = {
@@ -39,6 +42,13 @@ export type CountyProtestInfo = {
   informalReview: { howToRequest: string; notes: string | null } | null;
   sourceUrl: string;
   verifiedAt: string;
+  // How this entry was built: "researched" (hand-checked, below), "ai_retrieved"
+  // (read by AI off the district's own site — see county-procedures.ts), or
+  // "directory" (the Comptroller's official contact directory only). Absent =
+  // researched.
+  basis?: "researched" | "ai_retrieved" | "directory";
+  // The district's own website, when known.
+  website?: string | null;
 };
 
 export const COUNTY_PROTEST_INFO: Record<string, CountyProtestInfo> = {
@@ -341,7 +351,76 @@ export const COUNTY_PROTEST_INFO: Record<string, CountyProtestInfo> = {
   },
 };
 
+// Every Texas county, best source first: the hand-researched entries above; else
+// what AI read off the district's own website (cached — see county-procedures.ts,
+// layered over the directory); else the Comptroller's official directory alone,
+// which gives the district's real mailing/street address, phone and website but
+// says nothing about online or email filing, so those stay unknown (null).
 export function getCountyProtestInfo(cad: string | null | undefined): CountyProtestInfo | null {
   if (!cad) return null;
-  return COUNTY_PROTEST_INFO[cad] ?? null;
+  const researched = COUNTY_PROTEST_INFO[cad];
+  if (researched) return researched;
+  const dir = lookupCadDirectory(cad);
+  if (!dir?.appraisalDistrict) return null;
+  return getRetrievedProcedures(cad, dir) ?? directoryInfo(cad, dir);
+}
+
+// The directory entry with whatever AI read off the district's own site layered
+// on top. Each AI fact was checked server-side to actually appear on a page it
+// read (see retrieve-county-procedures), and the notes say where it came from.
+function getRetrievedProcedures(cad: string, dir: DirectoryEntry): CountyProtestInfo | null {
+  const r = getRetrievedRaw(dir.countyCode);
+  if (!r) return null;
+  const base = directoryInfo(cad, dir);
+  const readOn = `Read by AI from the district's website on ${r.retrievedAt.slice(0, 10)} — confirm on the site before relying on it.`;
+  return {
+    ...base,
+    filingMethod: {
+      ...base.filingMethod,
+      online: r.onlinePortalUrl
+        ? { url: r.onlinePortalUrl, notes: [r.onlineNotes, readOn].filter(Boolean).join(" ") }
+        : null,
+      email: {
+        available: r.emailFilingAvailable,
+        address: r.emailFilingAddress,
+        notes:
+          r.emailFilingAvailable != null ? [r.emailNotes, readOn].filter(Boolean).join(" ") : null,
+      },
+    },
+    arbContact: {
+      phone: r.arbPhone ?? base.arbContact?.phone ?? null,
+      email: r.arbEmail,
+      office: base.arbContact?.office ?? null,
+    },
+    informalReview: r.informalReviewHowTo
+      ? {
+          howToRequest: r.informalReviewHowTo,
+          notes: [r.informalReviewNotes, readOn].filter(Boolean).join(" "),
+        }
+      : null,
+    sourceUrl: r.sourceUrls[0] ?? base.sourceUrl,
+    verifiedAt: r.retrievedAt.slice(0, 10),
+    basis: "ai_retrieved",
+  };
+}
+
+export function directoryInfo(cad: string, dir: DirectoryEntry): CountyProtestInfo {
+  const ad = dir.appraisalDistrict!;
+  const confirmNote =
+    "Appraisal district address from the Texas Comptroller's directory — check your Notice of Appraised Value for the exact protest address.";
+  return {
+    cad,
+    filingMethod: {
+      online: null,
+      mail: ad.mailingAddress ? { address: ad.mailingAddress, notes: confirmNote } : null,
+      inPerson: ad.streetAddress ? { address: ad.streetAddress, notes: confirmNote } : null,
+      email: { available: null, address: null, notes: null },
+    },
+    arbContact: ad.phone ? { phone: ad.phone, email: null, office: ad.name } : null,
+    informalReview: null,
+    sourceUrl: dir.sourceUrl,
+    verifiedAt: dir.builtAt,
+    basis: "directory",
+    website: ad.website,
+  };
 }

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { invokeEdgeFunction } from "./edge-functions";
 import type { DpIntakeState } from "./dp-intake";
 import { generateDesignBrief, type DesignBrief } from "./design";
 
@@ -20,6 +21,11 @@ export type DesignRequestRow = {
   stage: string;
   approved_at: string | null;
   consultation_requested_at: string | null;
+  consultation_phone: string | null;
+  consultation_best_time: string | null;
+  consultation_notes: string | null;
+  /** Keys of the design checklist items the customer has ticked off. */
+  checklist_done: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -106,10 +112,46 @@ export async function approveDesignBrief(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function requestDesignConsultation(id: string): Promise<void> {
+export type ConsultationDetails = {
+  phone: string;
+  bestTime?: string;
+  notes?: string;
+};
+
+// Saves the request with the customer's callback details, then emails the
+// CorvusDP team and sends the customer a confirmation (send-inquiry-email,
+// kind "consultation"). The saved row is the real record, so an email
+// failure is reported back without undoing it.
+export async function requestDesignConsultation(
+  dr: DesignRequestRow,
+  details: ConsultationDetails,
+): Promise<{ emailed: boolean }> {
   const { error } = await supabase
     .from("design_requests")
-    .update({ consultation_requested_at: new Date().toISOString() })
+    .update({
+      consultation_requested_at: new Date().toISOString(),
+      consultation_phone: details.phone,
+      consultation_best_time: details.bestTime || null,
+      consultation_notes: details.notes || null,
+    })
+    .eq("id", dr.id);
+  if (error) throw error;
+  try {
+    await invokeEdgeFunction("send-inquiry-email", {
+      kind: "consultation",
+      designRequestId: dr.id,
+    });
+    return { emailed: true };
+  } catch (err) {
+    console.error("Consultation email failed:", err);
+    return { emailed: false };
+  }
+}
+
+export async function setDesignChecklistDone(id: string, keys: string[]): Promise<void> {
+  const { error } = await supabase
+    .from("design_requests")
+    .update({ checklist_done: keys })
     .eq("id", id);
   if (error) throw error;
 }

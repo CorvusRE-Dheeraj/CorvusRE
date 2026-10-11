@@ -8,12 +8,19 @@ export type NotificationPrefs = {
   permit_status: boolean;
 };
 
+// permit_status defaults OFF (2026-09) — a permit's real-world status can
+// move through several stages in quick succession (a demo, a bulk city
+// update, testing), and each one fired its own separate, immediate email
+// with no batching — a real flood, not a bug in any single send. Off by
+// default for now; a user can still turn it back on here in Settings.
+// send-notification-email's own default (supabase/dp/functions/
+// send-notification-email/index.ts) must stay in sync with this.
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   email: true,
   sms: false,
   in_app: true,
   weekly: true,
-  permit_status: true,
+  permit_status: false,
 };
 
 export type MyProfile = {

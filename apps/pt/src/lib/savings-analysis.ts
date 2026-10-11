@@ -90,6 +90,14 @@ const num = (v: number | null | undefined): number | null =>
 const money = (v: number) => `$${Math.round(v).toLocaleString()}`;
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
+// A single other AI module's own real, evidence-backed indicated value for
+// this property (Module 7's NOI ÷ cap rate, Module 5's condition-adjusted
+// value) — see the `moduleIndications` doc below for how these are used.
+export type ModuleIndication = {
+  source: "income" | "improvement";
+  value: number;
+};
+
 export function computeSavingsAnalysis(args: {
   cadValue: number | null;
   taxYear: number | null;
@@ -97,6 +105,20 @@ export function computeSavingsAnalysis(args: {
   estimate: SavingsEstimate;
   compsIndicated: { min: number; median: number; max: number } | null;
   taxInputs: SavingsTaxInputs;
+  // Other modules' own real indicated values (Module 7 Income Approach,
+  // Module 5 Improvement Condition) — each is only ever used to pull the
+  // final indicated value DOWN below the comps/formula baseline, which is
+  // the only direction that ever increases the savings estimate. A module
+  // arguing the property is worth MORE than the CAD value (e.g. Income
+  // Value > CAD Value — the income approach doesn't support a reduction)
+  // is deliberately never passed as a lower indication here, so it's a
+  // no-op for this number, same as it is today. The single lowest
+  // qualifying indication wins, since that's the strongest available
+  // overvaluation argument. Callers only pass a module's figure once it's
+  // real/complete (e.g. Module 5 gated on effectiveAgeYears != null, which
+  // itself is only non-null once real photo evidence exists — see
+  // ai-report-modules.ts).
+  moduleIndications?: ModuleIndication[];
 }): SavingsAnalysis {
   const { taxYear, cad, estimate, compsIndicated, taxInputs } = args;
   const cadValue = num(args.cadValue) ?? 0;
@@ -135,7 +157,7 @@ export function computeSavingsAnalysis(args: {
   }
 
   // ── base indication ──────────────────────────────────────────────────
-  const valueBasisLabel = !estimate
+  let valueBasisLabel = !estimate
     ? "unavailable"
     : estimate.basis === "comps"
       ? "comparable sales"
@@ -146,6 +168,26 @@ export function computeSavingsAnalysis(args: {
     indicatedValue = Math.max(0, Math.round(estimate.compsMedian));
   } else if (estimate?.basis === "formula") {
     indicatedValue = Math.max(0, Math.round(cadValue * (1 - estimate.reductionPct / 100)));
+  }
+
+  // A module's own indication only ever replaces indicatedValue when it's
+  // BELOW the baseline above — a stronger overvaluation argument than
+  // comps/formula alone found. The lowest qualifying one wins. Anything
+  // that argues the property is worth the same or more (e.g. this exact
+  // Income Value > CAD Value case) never reaches here at all — see
+  // moduleAdjustment's doc comment above.
+  const baselineIndicatedValue = indicatedValue;
+  const baselineBasisLabel = valueBasisLabel;
+  let moduleAdjustment: ModuleIndication | null = null;
+  for (const mi of args.moduleIndications ?? []) {
+    if (mi.value > 0 && mi.value < indicatedValue) {
+      if (!moduleAdjustment || mi.value < moduleAdjustment.value) moduleAdjustment = mi;
+    }
+  }
+  if (moduleAdjustment) {
+    indicatedValue = moduleAdjustment.value;
+    valueBasisLabel =
+      moduleAdjustment.source === "income" ? "income approach" : "improvement condition";
   }
 
   const clampRed = (r: number) => Math.max(0, Math.min(cadValue, Math.round(r)));
@@ -241,6 +283,15 @@ export function computeSavingsAnalysis(args: {
   if (multiYearSavings != null) {
     assumptions.push(
       `Multi-year figure = annual savings x ${projectionYears} years; assumes the reduced value holds as the base. Actual carry-over depends on the county's re-appraisal.`,
+    );
+  }
+  if (moduleAdjustment) {
+    const moduleLabel =
+      moduleAdjustment.source === "income"
+        ? "Module 7 (Income Approach)"
+        : "Module 5 (Improvement Condition)";
+    assumptions.push(
+      `Value further reduced using ${moduleLabel}'s own indicated value (${money(moduleAdjustment.value)}), which came in below the ${baselineBasisLabel} baseline of ${money(baselineIndicatedValue)}.`,
     );
   }
 

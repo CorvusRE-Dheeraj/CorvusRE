@@ -30,6 +30,10 @@ export function selectRelevantEvidence(
   });
 }
 
+export async function countPdfPages(bytes: Uint8Array): Promise<number> {
+  return (await PDFDocument.load(bytes)).getPageCount();
+}
+
 export type PackageFile = {
   fileName: string;
   bytes: ArrayBuffer;

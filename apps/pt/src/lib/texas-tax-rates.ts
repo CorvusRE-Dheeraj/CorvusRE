@@ -18,11 +18,23 @@ export const COUNTY_EFFECTIVE_TAX_RATE: Record<string, number> = {
   "Travis Central Appraisal District": 0.021,
   "Bexar Appraisal District": 0.0225,
   "Montgomery Central Appraisal District": 0.02,
+  // Dallas now has a real CAD enrichment source (see enrichDallas() in
+  // cad-record-url.ts / the main cad-lookup engine) — it just never got a
+  // rate entry added when that landed. Sources disagree by methodology more
+  // than any other county checked: SmartAsset (1.41%) and taxbycounty.com
+  // (1.58%) are homestead-exemption-adjusted, county-wide residential
+  // averages; Ballard Property Tax Protest puts the nominal combined
+  // City-of-Dallas + Dallas ISD mill rate at 2.22% (1.74% only after a
+  // residential homestead exemption, which commercial parcels don't get).
+  // CorvusPT's base is commercial, so the nominal rate is the relevant one —
+  // 0.021 sits with Dallas's peer high-tax urban counties already in this
+  // table (Harris 0.02, Travis 0.021, Bexar 0.0225), not dragged down by the
+  // homestead-adjusted residential-average sources.
+  "Dallas Central Appraisal District": 0.021,
 };
 
 // Texas statewide average effective property tax rate — used for any county
-// without a specific entry above (e.g. Dallas, which has no CAD data source at
-// all; see texas_cad_data_sources memory).
+// without a specific entry above.
 export const STATEWIDE_AVERAGE_EFFECTIVE_TAX_RATE = 0.018;
 
 export function getEffectiveTaxRate(cad?: string | null): number {
@@ -37,8 +49,9 @@ export type TaxRateMeta = {
   unit: "decimal";
   source: string;
   effectiveYear: number;
-  // True when this is a real per-county entry, false when it fell back to the
-  // statewide average (e.g. Dallas, which has no CAD data source at all).
+  // True when this is a real per-county entry, false when it fell back to
+  // the statewide average (any CAD not yet in COUNTY_EFFECTIVE_TAX_RATE
+  // above).
   countySpecific: boolean;
 };
 
@@ -312,10 +325,12 @@ export function applyValueTrendAdjustment(
 // below are each county's most recent published study as of this writing
 // (comptroller.texas.gov/data/property-tax/ratio-study/<year>/ — Category A =
 // single-family residential, Category F1 = commercial real property):
-// Collin/Fort Bend/Williamson/Travis/Bexar/Grayson = 2024 study; Denton/
-// Tarrant/Harris/Montgomery = 2025 study (each CAD is studied at least once
-// every two years per statute, not necessarily the same year for every
-// county).
+// Collin/Fort Bend/Williamson/Travis/Bexar/Grayson/Dallas = 2024 study;
+// Denton/Tarrant/Harris/Montgomery = 2025 study (each CAD is studied at
+// least once every two years per statute, not necessarily the same year for
+// every county). Dallas: comptroller.texas.gov/auto-data/PT2/ratio-study/
+// 2024/0570000001A.php (fetched directly, both categories cross-checked
+// against the per-category table on the same page).
 const ASSESSMENT_RATIO: Partial<
   Record<string, Partial<Record<PropertyCategory, { medianPct: number; cod: number }>>>
 > = {
@@ -359,6 +374,10 @@ const ASSESSMENT_RATIO: Partial<
     residential: { medianPct: 1.0, cod: 5.51 },
     commercial: { medianPct: 1.02, cod: 10.26 },
   },
+  "Dallas Central Appraisal District": {
+    residential: { medianPct: 1.0, cod: 6.1 },
+    commercial: { medianPct: 1.02, cod: 13.92 },
+  },
 };
 
 // IAAO Standard on Ratio Studies (2013) published acceptable COD ceilings by
@@ -369,7 +388,9 @@ const ASSESSMENT_RATIO: Partial<
 // for reasons that have nothing to do with assessment quality, so ranking
 // counties against each other's COD isn't a meaningful signal — measuring
 // each one against the same external professional standard is.
-const IAAO_COD_CEILING: Record<"residential" | "commercial", number> = {
+// Exported so escalation-eval.ts can narrate the exact ceiling a county's
+// CoD is being measured against, not just the already-clamped overage.
+export const IAAO_COD_CEILING: Record<"residential" | "commercial", number> = {
   residential: 15.0, // single-family / newer, homogeneous housing stock
   commercial: 20.0, // income-producing / commercial property
 };

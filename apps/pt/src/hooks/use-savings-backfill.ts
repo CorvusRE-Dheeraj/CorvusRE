@@ -33,7 +33,10 @@ export function useSavingsBackfill(
       })
         .then((estimate) => {
           if (!estimate) return null;
-          return updatePropertySavings(p.id, { estimatedSavings: estimate.amount, savingsBasis: estimate.basis });
+          return updatePropertySavings(p.id, {
+            estimatedSavings: estimate.amount,
+            savingsBasis: estimate.basis,
+          });
         })
         .then((updated) => {
           if (!updated) return;

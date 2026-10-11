@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,8 @@ import {
   formatMoney,
   TIER_BRACKET_PRICES,
   VALUE_BRACKETS,
+  LEGACY_TIER_BRACKET_PRICES,
+  LEGACY_VALUE_BRACKETS,
   BPP_TIER_BRACKET_PRICES,
   BPP_VALUE_BRACKETS,
   type PlanValue,
@@ -22,6 +25,9 @@ import {
 import { listProperties, type PropertyRecord } from "@/lib/properties";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
+import { PageHero } from "@/components/PageHero";
+import { CreditCard as HeroBillingIcon } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/billing")({
   component: Billing,
@@ -29,21 +35,28 @@ export const Route = createFileRoute("/dashboard/_layout/billing")({
 
 const TIER_LABEL: Record<string, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "CorvusPT-Managed",
+  corvusrf_managed: "Expert/Managed Help",
 };
 
 const BRACKET_LABEL: Record<string, string> = Object.fromEntries(
-  [...VALUE_BRACKETS, ...BPP_VALUE_BRACKETS].map((b) => [b.value, b.label]),
+  [...VALUE_BRACKETS, ...LEGACY_VALUE_BRACKETS, ...BPP_VALUE_BRACKETS].map((b) => [
+    b.value,
+    b.label,
+  ]),
 );
 
-// A subscription's list price (pre-discount), looked up from whichever
-// bracket table its bracket string actually belongs to — property brackets
-// and BPP brackets are differently-shaped strings, so this can't just be one
-// Record lookup the way TIER_BRACKET_PRICES alone was.
+// A subscription's list price per billing interval (pre-discount), looked up
+// from whichever bracket table its bracket string actually belongs to —
+// current (annual: monthly-equivalent x12), grandfathered monthly, and BPP
+// brackets are all differently-shaped strings.
 function listPriceCents(tier: string, bracket: string): number | null {
   const propertyPrices = TIER_BRACKET_PRICES[tier as keyof typeof TIER_BRACKET_PRICES];
   if (propertyPrices && bracket in propertyPrices) {
-    return propertyPrices[bracket as keyof typeof propertyPrices] * 100;
+    return propertyPrices[bracket as keyof typeof propertyPrices] * 12 * 100;
+  }
+  const legacyPrices = LEGACY_TIER_BRACKET_PRICES[tier as keyof typeof LEGACY_TIER_BRACKET_PRICES];
+  if (legacyPrices && bracket in legacyPrices) {
+    return legacyPrices[bracket] * 100;
   }
   const bppPrices = BPP_TIER_BRACKET_PRICES[tier as keyof typeof BPP_TIER_BRACKET_PRICES];
   if (bppPrices && bracket in bppPrices) {
@@ -143,7 +156,7 @@ function Billing() {
   async function handleCancel(s: MySubscription, label: string) {
     if (!s.propertyId && !s.bppAccountId) return;
     const subjectWord = s.bppAccountId ? "BPP account" : "property";
-    const ok = window.confirm(
+    const ok = await confirmDialog(
       `Cancel the subscription for ${label}? It ends immediately — you'll lose paid AI Report ` +
         `access and the ability to request a new protest filing for this ${subjectWord}.`,
     );
@@ -183,10 +196,15 @@ function Billing() {
   const bppById = new Map(bppAccounts.map((a) => [a.id, a]));
 
   // A subscription set to cancel is still billed until its period end, but it
-  // isn't part of the ongoing monthly commitment — keep it out of the running
-  // total (it still appears in the list below, with its own end date).
+  // isn't part of the ongoing commitment — keep it out of the running total
+  // (it still appears in the list below, with its own end date). Property
+  // plans are annual and BPP/grandfathered ones monthly, so the total is
+  // normalized to a yearly figure. List price, before any coupon.
   const billingSubs = subs.filter((s) => !s.cancelAtPeriodEnd);
-  const monthlyTotalCents = billingSubs.reduce((sum, s) => sum + (s.amountCents ?? 0), 0);
+  const annualTotalCents = billingSubs.reduce(
+    (sum, s) => sum + (s.amountCents ?? 0) * (s.interval === "year" ? 1 : 12),
+    0,
+  );
   const nextChargeIso =
     billingSubs
       .map((s) => s.currentPeriodEnd)
@@ -199,16 +217,16 @@ function Billing() {
     // mx-auto, which pinned a form-width column to the left edge and left a
     // large dead zone of empty space on wider screens.
     <div className="mx-auto max-w-2xl">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="font-serif text-2xl font-semibold">Billing</h1>
-        <PaymentsModeChip />
-      </div>
-      <p className="text-muted-foreground text-sm">
-        Your CorvusPT subscriptions, by property and BPP account.
-      </p>
+      <PageHero
+        icon={HeroBillingIcon}
+        title="Billing"
+        tone="indigo"
+        badges={<PaymentsModeChip />}
+        subtitle="Your CorvusPT subscriptions, by property and BPP account."
+      />
 
       {loading ? (
-        <p className="text-muted-foreground mt-6 text-sm">Loading…</p>
+        <PageSkeleton />
       ) : isBeta ? (
         <div className="card-elev mt-6 p-6">
           <div className="text-muted-foreground text-xs uppercase tracking-wide">Current plan</div>
@@ -258,12 +276,12 @@ function Billing() {
               </div>
               <div>
                 <div className="text-muted-foreground text-xs uppercase tracking-wide">
-                  Monthly total
+                  Yearly total
                 </div>
                 <div className="mt-1 font-serif text-2xl font-semibold">
-                  {money(monthlyTotalCents)}
+                  {money(annualTotalCents)}
                 </div>
-                <div className="text-muted-foreground text-xs">across all subscriptions</div>
+                <div className="text-muted-foreground text-xs">list price, before discounts</div>
               </div>
               <div>
                 <div className="text-muted-foreground text-xs uppercase tracking-wide">
@@ -353,10 +371,15 @@ function Billing() {
                     <div className="shrink-0 text-right">
                       <div className="font-semibold">
                         {money(s.amountCents)}
-                        <span className="text-muted-foreground text-xs font-normal">/mo</span>
+                        <span className="text-muted-foreground text-xs font-normal">
+                          {s.interval === "year" ? "/yr" : "/mo"}
+                        </span>
                       </div>
                       {discounted && (
                         <div className="text-accent text-[11px]">2nd-property discount applied</div>
+                      )}
+                      {s.discountName && (
+                        <div className="text-accent text-[11px]">{s.discountName}</div>
                       )}
                     </div>
                   </div>

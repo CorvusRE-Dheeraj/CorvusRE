@@ -1,7 +1,10 @@
+import { VerdictChip, verdictFor } from "@/components/ProtestVerdictCard";
+import { confirmDialog } from "@/components/ConfirmHost";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { currency, resetIntake, updateIntake } from "@/lib/intake-store";
+import { compactCurrency, currency, resetIntake, updateIntake } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
 import {
   listProperties,
@@ -18,6 +21,9 @@ import {
   syncMySubscriptions,
   bracketForValue,
   formatMoney,
+  isCustomPricedValue,
+  isLaunchDiscountActive,
+  propertyAnnualPrice,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
   type BillingInfo,
@@ -29,7 +35,20 @@ import { BulkSubscribeModal } from "@/components/BulkSubscribeModal";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
 import { useSavingsBackfill } from "@/hooks/use-savings-backfill";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
+import { listNoticeFilings } from "@/lib/protest-form-submissions";
+import {
+  casePipeline,
+  localTodayIso,
+  type NextAction,
+  type NoticeFiling,
+} from "@/lib/case-pipeline";
+import { NextRequiredAction } from "@/components/CasePipeline";
 import { listHealthScores, type PropertyAiScore } from "@/lib/property-scores";
+import { CasePreviewFor } from "@/components/CasePreview";
+import { PortfolioScreening } from "@/components/PortfolioScreening";
+import { AssessmentChangesBanner } from "@/components/AssessmentChangesBanner";
+import { screenPortfolio } from "@/lib/portfolio-screening";
+import { useHealthScoreBackfill } from "@/hooks/use-health-score-backfill";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { renderInline as renderMarkdownInline } from "@/components/MarkdownLite";
@@ -74,6 +93,10 @@ import {
   ArrowLeftRight,
   SlidersHorizontal,
 } from "lucide-react";
+import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
+import { Building2 as HeroPropertiesIcon } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -81,8 +104,13 @@ export const Route = createFileRoute("/dashboard/_layout/properties")({
   // poll for the subscription actually going active (see the effect below)
   // instead of only showing whatever it fetched at the exact instant the
   // page loaded.
-  validateSearch: (search: Record<string, unknown>): { checkout?: "success" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { checkout?: "success"; podio?: "connected" | "error" } => ({
     checkout: search.checkout === "success" ? "success" : undefined,
+    // Set by podio-oauth-callback on the way back from connecting Podio.
+    podio:
+      search.podio === "connected" ? "connected" : search.podio === "error" ? "error" : undefined,
   }),
   component: Properties,
 });
@@ -112,8 +140,8 @@ const STATUS_FILTER_OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "protested", label: "Protested" },
   { key: "not_protested", label: "Not protested" },
   { key: "needs_action", label: "Needs action" },
-  { key: "paid", label: "Paid" },
-  { key: "unpaid", label: "Not paid" },
+  { key: "paid", label: "Subscribed" },
+  { key: "unpaid", label: "Free" },
 ];
 
 const LS_VIEW = "corvus.properties.view";
@@ -207,16 +235,42 @@ function writeColumnsPref(cols: PropertyColumnKey[]) {
 
 function Properties() {
   const navigate = useNavigate();
-  const { checkout } = Route.useSearch();
-  const { user } = useAuth();
+  const { checkout, podio } = Route.useSearch();
+  const { user, workspace } = useAuth();
+  // A team member works the owner's cases but doesn't add properties or start
+  // the owner's paid plan — those stay with the owner.
+  const isMember = !!workspace;
+  function openProtest(p: PropertyRecord) {
+    if (isMember) {
+      toast.info(
+        `Activating a case starts ${workspace!.ownerName}'s subscription for it, so the owner does that from their own login.`,
+      );
+      return;
+    }
+    setProtestingProperty(p);
+  }
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
+  // Each case's Notice of Protest filing timestamps, for its NEXT REQUIRED
+  // ACTION (case-pipeline.ts) — keyed by protest id.
+  const [noticeFilings, setNoticeFilings] = useState<Map<string, NoticeFiling>>(new Map());
   const [healthScores, setHealthScores] = useState<Record<string, PropertyAiScore>>({});
+  const [scoresLoaded, setScoresLoaded] = useState(false);
   const [authorizingProperty, setAuthorizingProperty] = useState<PropertyRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Back from connecting Podio: reopen the bulk upload where the owner left off.
+  useEffect(() => {
+    if (podio === "connected") {
+      setImportOpen(true);
+      toast.success("Podio connected — choose the app that holds your properties.");
+    } else if (podio === "error") {
+      toast.error("Podio wasn't connected. Try again, or upload a Podio Excel export instead.");
+    }
+    if (podio) navigate({ to: "/dashboard/properties", search: {}, replace: true });
+  }, [podio, navigate]);
   const [ownershipsOpen, setOwnershipsOpen] = useState(false);
   const [authorizingBatch, setAuthorizingBatch] = useState<PropertyRecord[] | null>(null);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
@@ -276,11 +330,15 @@ function Properties() {
       )
       .finally(() => setPropertiesLoading(false));
     listProtests(uid)
-      .then(setProtests)
+      .then((list) => {
+        setProtests(list);
+        return listNoticeFilings(list.map((pr) => pr.id)).then(setNoticeFilings);
+      })
       .catch((err) => console.error(err));
     listHealthScores(uid)
       .then(setHealthScores)
-      .catch((err) => console.error(err));
+      .catch((err) => console.error(err))
+      .finally(() => setScoresLoaded(true));
     listDocuments(uid)
       .then(setDocuments)
       .catch((err) => console.error("Could not load documents for the Evidence column:", err));
@@ -314,6 +372,9 @@ function Properties() {
   // reload/revisit never re-triggers this.
   useEffect(() => {
     if (!user || checkout !== "success") return;
+    toast.success(
+      "Payment received. We are activating your subscription. This takes a few seconds.",
+    );
     let cancelled = false;
     const delaysMs = [1500, 3000, 5000, 8000];
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -347,6 +408,15 @@ function Properties() {
   useEffect(() => writePref(LS_FILTER, statusFilter), [statusFilter]);
 
   useSavingsBackfill(properties, setProperties);
+  // Scores the properties the screening needs — only once the stored scores
+  // have loaded, so it never recomputes one that's already on file.
+  useHealthScoreBackfill(scoresLoaded ? properties : [], healthScores, setHealthScores);
+
+  // Free portfolio screening: every property not yet activated.
+  const screening = useMemo(() => {
+    const unactivated = properties.filter((p) => !isBeta && p.subscriptionStatus !== "active");
+    return unactivated.length >= 2 ? screenPortfolio(unactivated, healthScores) : null;
+  }, [properties, healthScores, isBeta]);
 
   // Starts a real, one-click checkout for exactly this property — see
   // startPropertyCheckout in billing.ts. Opens in a new tab (newTab: true)
@@ -357,6 +427,9 @@ function Properties() {
     setSubscribing({ propertyId: p.id, tier });
     try {
       await startPropertyCheckout(p.id, tier, { newTab: true });
+      toast.info(
+        "Stripe checkout opened in a new tab. Finish paying there, then come back to this tab.",
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not start checkout. Please try again.",
@@ -369,8 +442,8 @@ function Properties() {
   // Cancels exactly this property's own subscription — unambiguous now that
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
-    const confirmed = window.confirm(
-      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property.`,
+    const confirmed = await confirmDialog(
+      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property. This takes effect immediately, not at the end of the billing period.`,
     );
     if (!confirmed) return;
     setCancelingId(p.id);
@@ -433,7 +506,7 @@ function Properties() {
         : currentPrice != null && newPrice < currentPrice
           ? "This is a downgrade — Stripe will credit your account today for the prorated difference (applied to your next invoice, not refunded directly to your card)."
           : "Stripe will settle the prorated difference today.";
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `Switch ${p.address} from ${TIER_LABEL[p.planTier as Tier] ?? "its current plan"} to ${TIER_LABEL[tier]}? ${settlementNote}`,
     );
     if (!confirmed) return;
@@ -467,7 +540,7 @@ function Properties() {
       toast.error("Cancel this property's subscription before deleting it.");
       return;
     }
-    if (!window.confirm(`Remove ${p.address} from your dashboard?`)) return;
+    if (!(await confirmDialog(`Remove ${p.address} from your dashboard?`))) return;
     setDeletingId(p.id);
     try {
       await deleteProperty(p.id);
@@ -495,12 +568,12 @@ function Properties() {
     }
     const n = deletable.length;
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Remove ${n} propert${n === 1 ? "y" : "ies"} from your dashboard?` +
           (blocked.length
             ? `\n\n${blocked.length} with an active subscription will be skipped.`
             : ""),
-      )
+      ))
     ) {
       return;
     }
@@ -606,6 +679,20 @@ function Properties() {
 
   // Per-property values both the card and the compact row need. Kept in one
   // place so the two renderers can't drift.
+  const today = localTodayIso();
+  // Case Readiness → … → Close Case for one property, and its next action.
+  function pipelineFor(p: PropertyRecord) {
+    const pr = protests.find((x) => x.propertyId === p.id) ?? null;
+    return casePipeline({
+      protest: pr,
+      notice: pr ? (noticeFilings.get(pr.id) ?? null) : null,
+      protestDeadline: p.protestDeadline,
+      cadName: p.cad,
+      managed: p.planTier === "corvusrf_managed",
+      today,
+    });
+  }
+
   function rowInfo(p: PropertyRecord) {
     const existingProtest = protests.find((pr) => pr.propertyId === p.id);
     const canReFile =
@@ -702,6 +789,28 @@ function Properties() {
     });
   }
 
+  // Selects/deselects every checkbox-eligible row currently on screen (not
+  // just the fully-subscribed ones, same as an individual row's own
+  // checkbox) — ADDS to/REMOVES from the existing selection rather than
+  // replacing it outright, so a selection made under one search/filter isn't
+  // silently dropped by toggling "select all" under a different one.
+  const eligibleDisplayed = displayProperties.filter(bulkEligible);
+  const allDisplayedSelected =
+    eligibleDisplayed.length > 0 && eligibleDisplayed.every((p) => selectedIds.has(p.id));
+  const someDisplayedSelected =
+    !allDisplayedSelected && eligibleDisplayed.some((p) => selectedIds.has(p.id));
+
+  function toggleSelectAllDisplayed() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const p of eligibleDisplayed) {
+        if (allDisplayedSelected) next.delete(p.id);
+        else next.add(p.id);
+      }
+      return next;
+    });
+  }
+
   function handleBulkDone(results: BulkSubResult[]) {
     const active = results.filter((r) => r.status === "active").length;
     const needs = results.filter((r) => r.status === "needs_action");
@@ -722,16 +831,32 @@ function Properties() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h1 className="font-serif text-2xl font-semibold">My Properties</h1>
-          {!propertiesLoading && (
-            <span className="badge-soft">
-              {properties.length} propert{properties.length === 1 ? "y" : "ies"}
-            </span>
-          )}
-          <PaymentsModeChip />
-        </div>
+      <PageHero
+        icon={HeroPropertiesIcon}
+        title="My Properties"
+        tone="emerald"
+        subtitle="Your properties, with their values, deadlines and cases. Open one to see what to do next."
+        stats={[
+          { label: "Properties", value: properties.length },
+          { label: "Open cases", value: protests.filter((p) => p.status !== "resolved").length },
+          {
+            label: "Assessed value",
+            value: properties.reduce((sum, p) => sum + (p.totalValue ?? 0), 0),
+            format: (n) => compactCurrency(n),
+          },
+        ]}
+        badges={
+          <>
+            {!propertiesLoading && (
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+                {properties.length} propert{properties.length === 1 ? "y" : "ies"}
+              </span>
+            )}
+            <PaymentsModeChip />
+          </>
+        }
+      />
+      <div className="mt-4 flex flex-wrap items-end justify-end gap-4">
         <div className="flex flex-wrap items-center gap-2">
           {/* Bulk actions for a multi-selection — once one or more property
               checkboxes are ticked, this floats and stays pinned near the top
@@ -750,7 +875,7 @@ function Properties() {
               >
                 {bulkDeleting ? "Deleting…" : "Delete"}
               </button>
-              {stripeConfigured && subscribableSelected.length > 0 && (
+              {stripeConfigured && !isMember && subscribableSelected.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setBulkOpen(true)}
@@ -771,21 +896,32 @@ function Properties() {
               </button>
             </div>
           )}
-          <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
-            Bulk Upload
-          </button>
-          <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
-            Add Ownerships
-          </button>
-          <Link
-            to="/intake"
-            onClick={() => resetIntake()}
-            className="btn-primary btn-primary-hover"
-          >
-            Add another property
-          </Link>
+          {!isMember && (
+            <>
+              <button type="button" onClick={() => setImportOpen(true)} className="btn-outline">
+                Bulk Upload
+              </button>
+              <button type="button" onClick={() => setOwnershipsOpen(true)} className="btn-outline">
+                Add Ownerships
+              </button>
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover"
+              >
+                Add another property
+              </Link>
+            </>
+          )}
         </div>
       </div>
+
+      <TaxUpdatesBanner
+        contexts={properties.map((property) => ({
+          property,
+          protest: protests.find((x) => x.propertyId === property.id) ?? null,
+        }))}
+      />
 
       {importOpen && user && (
         <ImportPropertiesModal
@@ -816,6 +952,20 @@ function Properties() {
         onOpenChange={setBulkOpen}
         onDone={handleBulkDone}
       />
+
+      {!propertiesLoading && user && properties.length > 0 && (
+        <div className="mt-6">
+          <AssessmentChangesBanner
+            userId={user.id}
+            properties={properties}
+            onReview={openAiReport}
+          />
+        </div>
+      )}
+
+      {!propertiesLoading && screening && (
+        <PortfolioScreening screening={screening} onActivate={openProtest} />
+      )}
 
       {!propertiesLoading && properties.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -944,19 +1094,21 @@ function Properties() {
             <PropertyCardSkeleton />
           </div>
         ) : properties.length === 0 ? (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Start with an address or upload an appraisal notice.
-            </p>
-            <Link
-              to="/intake"
-              onClick={() => resetIntake()}
-              className="btn-primary btn-primary-hover mt-4 inline-flex"
-            >
-              Start Free AI Property Review
-            </Link>
-          </div>
+          <EmptyState
+            kind="properties"
+            title="No properties yet."
+            action={
+              <Link
+                to="/intake"
+                onClick={() => resetIntake()}
+                className="btn-primary btn-primary-hover inline-flex"
+              >
+                Start Free AI Property Review
+              </Link>
+            }
+          >
+            Start with an address or upload an appraisal notice.
+          </EmptyState>
         ) : displayProperties.length === 0 ? (
           <div className="card-elev p-8 text-center">
             <h3 className="font-serif text-xl font-semibold">No matches.</h3>
@@ -977,7 +1129,20 @@ function Properties() {
             <table className="w-full min-w-[56rem] border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="w-9 px-3 py-2.5" />
+                  <th className="w-9 px-3 py-2.5">
+                    {eligibleDisplayed.length > 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label="Select all properties"
+                        checked={allDisplayedSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someDisplayedSelected;
+                        }}
+                        onChange={toggleSelectAllDisplayed}
+                        className="h-4 w-4"
+                      />
+                    )}
+                  </th>
                   <th className="min-w-[14rem] px-3 py-2.5">Address</th>
                   {visibleColumnOptions.map((c) => (
                     <th key={c.key} className="whitespace-nowrap px-3 py-2.5">
@@ -1006,7 +1171,10 @@ function Properties() {
                           />
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-medium">{p.address}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium">{p.address}</div>
+                        <NextActionLine next={pipelineFor(p).next} />
+                      </td>
                       {visibleColumnOptions.map((c) => (
                         <td key={c.key} className="whitespace-nowrap px-3 py-2.5">
                           {columnCell(c.key, p)}
@@ -1024,8 +1192,6 @@ function Properties() {
                             <Link
                               to="/dashboard/case"
                               search={{ propertyId: p.id }}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="btn-outline whitespace-nowrap px-2.5 py-1 text-xs"
                             >
                               View Case
@@ -1043,7 +1209,7 @@ function Properties() {
                             compact
                             onDocuments={() => setDocsProperty(p)}
                             onAuthorize={() => setAuthorizingProperty(p)}
-                            onProtest={() => setProtestingProperty(p)}
+                            onProtest={() => openProtest(p)}
                             onResume={() => handleResumeSubscription(p)}
                             onCancel={() => handleCancelSubscription(p)}
                             onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1069,11 +1235,11 @@ function Properties() {
               return (
                 <div
                   key={p.id}
-                  className="card-elev p-6"
+                  className="card-elev p-4 sm:p-6"
                   style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-60">
                       <div className="flex items-start gap-2">
                         {bulkEligible(p) && (
                           <input
@@ -1084,7 +1250,7 @@ function Properties() {
                             className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
-                        <h3 className="font-serif text-xl font-semibold">{p.address}</h3>
+                        <h2 className="font-serif text-xl font-semibold">{p.address}</h2>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
@@ -1101,6 +1267,9 @@ function Properties() {
                         • Tax year {p.taxYear}
                       </p>
                       <AiScoreBadge score={healthScores[p.id]} />
+                      <div className="mt-2">
+                        <VerdictChip verdict={verdictFor(p, protests, healthScores[p.id])} />
+                      </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-xs text-muted-foreground">Assessed value</div>
@@ -1112,6 +1281,20 @@ function Properties() {
                         savingsBasis={p.savingsBasis}
                       />
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <NextRequiredAction
+                      compact
+                      pipeline={pipelineFor(p)}
+                      today={today}
+                      propertyId={p.id}
+                      onStart={() => openProtest(p)}
+                      lockedHint={
+                        existingProtest && !isPaid
+                          ? "Subscribe to this property to open its case and continue."
+                          : undefined
+                      }
+                    />
                   </div>
                   <div className="mt-4 flex gap-2 flex-wrap items-center">
                     <button onClick={() => openAiReport(p)} className="btn-outline">
@@ -1138,7 +1321,7 @@ function Properties() {
                       subscribing={subscribing}
                       onDocuments={() => setDocsProperty(p)}
                       onAuthorize={() => setAuthorizingProperty(p)}
-                      onProtest={() => setProtestingProperty(p)}
+                      onProtest={() => openProtest(p)}
                       onResume={() => handleResumeSubscription(p)}
                       onCancel={() => handleCancelSubscription(p)}
                       onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
@@ -1161,56 +1344,104 @@ function Properties() {
       )}
 
       {protestingProperty && (
-        <Modal onClose={() => setProtestingProperty(null)}>
+        <Modal wide onClose={() => setProtestingProperty(null)}>
           <div className="p-6">
             <h2 className="font-serif text-xl font-bold">Protest this property</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {protestingProperty.address} — choose how you want to run the protest.
+              Here&apos;s what Corvus AI found for {protestingProperty.address}. Review it, then
+              choose how you want to run the protest.
             </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  {
-                    tier: "owner_managed" as const,
-                    tagline:
-                      "You file and attend; Corvus does the AI analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
-                  },
-                  {
-                    tier: "corvusrf_managed" as const,
-                    tagline:
-                      "Corvus handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
-                  },
-                ] as const
-              ).map(({ tier, tagline }) => {
-                const bracket = bracketForValue(protestingProperty.totalValue);
-                const isSubscribingThis =
-                  subscribing?.propertyId === protestingProperty.id && subscribing.tier === tier;
-                return (
-                  <div key={tier} className="flex flex-col rounded-lg border border-border p-4">
-                    <div className="text-sm font-semibold text-foreground">{TIER_LABEL[tier]}</div>
-                    <div className="mt-1 font-serif text-2xl font-bold">
-                      ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}
-                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    </div>
-                    <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
-                    <button
-                      disabled={!!subscribing}
-                      onClick={async () => {
-                        await handleSubscribe(protestingProperty, tier);
-                        setProtestingProperty(null);
-                      }}
-                      className="btn-primary btn-primary-hover mt-3 disabled:opacity-60"
-                    >
-                      {isSubscribingThis ? "Redirecting…" : `Choose ${TIER_LABEL[tier]}`}
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="mt-4">
+              <CasePreviewFor
+                property={protestingProperty}
+                score={healthScores[protestingProperty.id] ?? null}
+              />
             </div>
-            <p className="mt-4 text-[11px] text-muted-foreground">
-              You'll be taken to Stripe to start the subscription for this property. You can cancel
-              anytime from this page.
-            </p>
+            {isCustomPricedValue(protestingProperty.totalValue) ? (
+              // $5M+ never reaches checkout (create-checkout-session refuses
+              // it too) — custom pricing is quoted by the team.
+              <div className="mt-5 rounded-lg border border-border p-4 text-sm">
+                <div className="font-semibold">Custom pricing</div>
+                <p className="mt-1 text-muted-foreground">
+                  Properties valued at $5M+ are priced based on property value, portfolio size, and
+                  requirements.
+                </p>
+                <Link to="/contact" className="btn-primary btn-primary-hover mt-3 inline-block">
+                  Contact Us
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        tier: "owner_managed" as const,
+                        tagline:
+                          "You file and attend; Corvus AI does the analysis, the pre-filled forms, the evidence packet, and step-by-step guidance the whole way.",
+                      },
+                      {
+                        tier: "corvusrf_managed" as const,
+                        tagline:
+                          "CorvusPT's team handles the filing, the informal negotiation, scheduling, and hearing representation on your behalf.",
+                      },
+                    ] as const
+                  ).map(({ tier, tagline }) => {
+                    const bracket = bracketForValue(protestingProperty.totalValue);
+                    const isSubscribingThis =
+                      subscribing?.propertyId === protestingProperty.id &&
+                      subscribing.tier === tier;
+                    return (
+                      <div key={tier} className="flex flex-col rounded-lg border border-border p-4">
+                        <div className="text-sm font-semibold text-foreground">
+                          {TIER_LABEL[tier]}
+                        </div>
+                        <div className="mt-1 font-serif text-2xl font-bold">
+                          ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}
+                          <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Billed annually — $
+                          {propertyAnnualPrice(tier, bracket, false).toLocaleString("en-US")}/yr
+                        </div>
+                        <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
+                        {(() => {
+                          const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
+                          const est = protestingProperty.estimatedSavings;
+                          if (est == null || est <= 0 || est >= yearly) return null;
+                          return (
+                            <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                              Heads up: this plan costs about {currency(yearly)} a year, but the
+                              estimated tax saving for this property is only {currency(est)} a year.
+                            </p>
+                          );
+                        })()}
+                        <button
+                          disabled={!!subscribing}
+                          onClick={async () => {
+                            await handleSubscribe(protestingProperty, tier);
+                            setProtestingProperty(null);
+                          }}
+                          className="btn-primary btn-primary-hover mt-3 disabled:opacity-60"
+                        >
+                          {isSubscribingThis ? "Redirecting…" : `Choose ${TIER_LABEL[tier]}`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {isLaunchDiscountActive() && (
+                  <p className="mt-4 rounded-md border border-accent/40 bg-accent/10 p-2 text-xs">
+                    50% off your first year — applied at checkout for sign-ups before February 1,
+                    2027. Verified franchise owners get 50% off instead, every year.
+                  </p>
+                )}
+                <p className="mt-4 text-[11px] text-muted-foreground">
+                  You'll be taken to Stripe to start the annual subscription for this property. You
+                  can cancel anytime from this page.
+                </p>
+              </>
+            )}
           </div>
         </Modal>
       )}
@@ -1339,12 +1570,7 @@ function PropertyActionsMenu({
       <DropdownMenuContent align="end" className="w-56">
         {existingProtest && isPaid && (
           <DropdownMenuItem asChild>
-            <Link
-              to="/dashboard/case"
-              search={{ propertyId: p.id }}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <Link to="/dashboard/case" search={{ propertyId: p.id }}>
               <Gavel className="mr-2 h-4 w-4" /> View Case
             </Link>
           </DropdownMenuItem>
@@ -1498,7 +1724,7 @@ function PropertyDocsModal({
       {loadError ? (
         <p className="mt-6 text-sm text-destructive">Couldn't load documents.</p>
       ) : docs === null ? (
-        <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+        <PageSkeleton rows={2} />
       ) : docs.length === 0 ? (
         <div className="mt-6 rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
           No documents for this property yet.
@@ -1642,8 +1868,11 @@ function AiScoreBadge({ score }: { score: PropertyAiScore | undefined }) {
   // inline bold/code parser, used directly (no block wrapper) to keep this
   // as one line, matching the label it's appended to.
   return (
-    <p className="mt-1 text-sm text-accent">
-      AI Score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
+    <p
+      className="mt-1 text-sm text-accent"
+      title="Recalculated in the AI Report whenever you upload or remove evidence."
+    >
+      AI score: {score.score}/100 — {renderMarkdownInline(score.summary, "ai-score-summary")}
     </p>
   );
 }
@@ -1696,6 +1925,32 @@ function PropertyCardSkeleton() {
         <Skeleton className="h-9 w-20" />
         <Skeleton className="h-9 w-20" />
       </div>
+    </div>
+  );
+}
+
+const NEXT_LINE_TONE: Record<NextAction["urgency"], string> = {
+  overdue: "text-destructive font-semibold",
+  urgent: "text-destructive",
+  soon: "text-warning-foreground",
+  normal: "text-muted-foreground",
+};
+
+// The table view's one-line NEXT REQUIRED ACTION under each address.
+function NextActionLine({ next }: { next: NextAction }) {
+  return (
+    <div className={`mt-0.5 text-xs ${NEXT_LINE_TONE[next.urgency]}`}>
+      <span className="font-semibold uppercase tracking-wide">Next:</span> {next.title}
+      {next.dueDate && (
+        <>
+          {" "}
+          · {next.urgency === "overdue" ? "overdue since" : "by"}{" "}
+          {new Date(`${next.dueDate}T12:00:00`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </>
+      )}
     </div>
   );
 }

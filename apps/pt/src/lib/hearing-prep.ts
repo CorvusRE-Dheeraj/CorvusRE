@@ -55,7 +55,7 @@ export type HearingPrepComps = {
   ranked: { address: string; distanceMi: number; marketValue: number | null; similarity: number }[];
 };
 
-async function loadComps(property: PropertyRecord): Promise<HearingPrepComps> {
+export async function loadComps(property: PropertyRecord): Promise<HearingPrepComps> {
   try {
     const result = await getComps({
       cad: property.cad ?? undefined,

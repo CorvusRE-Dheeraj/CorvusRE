@@ -91,3 +91,83 @@ describe("computeHealthScore", () => {
     expect(noComps.scoreBreakdown.map((b) => b.label)).toContain("CAD Valuation");
   });
 });
+
+describe("computeHealthScore — owner evidence", () => {
+  it("is unchanged when no evidence has been read", () => {
+    expect(computeHealthScore(signals({ evidence: null }))).toEqual(computeHealthScore(signals()));
+  });
+
+  it("raises the score when evidence shows the county value is too high", () => {
+    const base = computeHealthScore(signals()).score;
+    const withEvidence = computeHealthScore(
+      signals({ evidence: { valueGapPct: 15, strength: 0.8 } }),
+    );
+    expect(withEvidence.score).toBeGreaterThan(base);
+    expect(withEvidence.scoreBreakdown.some((b) => b.label === "Owner Evidence")).toBe(true);
+  });
+
+  it("lowers the score when evidence supports the county value", () => {
+    const base = computeHealthScore(signals()).score;
+    const supporting = computeHealthScore(
+      signals({ evidence: { valueGapPct: -10, strength: 0.8 } }),
+    ).score;
+    expect(supporting).toBeLessThan(base);
+  });
+
+  it("stronger evidence moves the score further", () => {
+    const weak = computeHealthScore(signals({ evidence: { valueGapPct: 12, strength: 0.2 } }));
+    const strong = computeHealthScore(signals({ evidence: { valueGapPct: 12, strength: 1 } }));
+    expect(strong.score).toBeGreaterThanOrEqual(weak.score);
+  });
+
+  // Added per direct user research — CorvusPT's own beta testers,
+  // independently, in every one of 3 real feedback sessions, asked for the
+  // score to "show the math" instead of just stating a number. Every entry
+  // must carry a real, non-empty sentence, and that sentence must actually
+  // reflect the numbers behind it, not just exist.
+  describe("scoreBreakdown reasons", () => {
+    it("every breakdown entry has a non-empty reason", () => {
+      const r = computeHealthScore(signals());
+      expect(r.scoreBreakdown.length).toBeGreaterThan(0);
+      for (const b of r.scoreBreakdown) {
+        expect(b.reason).toBeTruthy();
+        expect(b.reason.length).toBeGreaterThan(10);
+      }
+    });
+
+    it("the Comparable Properties reason cites the real comp count and direction", () => {
+      const r = computeHealthScore(signals({ comps: { count: 5, gapPct: 12 } }));
+      const entry = r.scoreBreakdown.find((b) => b.label === "Comparable Properties")!;
+      expect(entry.reason).toContain("5");
+      expect(entry.reason).toMatch(/above/i);
+    });
+
+    it("flips direction in the reason when comps say the property is under-assessed", () => {
+      const r = computeHealthScore(signals({ comps: { count: 4, gapPct: -15 } }));
+      const entry = r.scoreBreakdown.find((b) => b.label === "Comparable Properties")!;
+      expect(entry.reason).not.toMatch(/above/i);
+    });
+
+    it("the Historical Valuation reason cites the real jump percentage", () => {
+      const r = computeHealthScore(
+        signals({
+          valueHistory: [
+            { year: 2024, total: 2_000_000 },
+            { year: 2025, total: 2_100_000 },
+            { year: 2026, total: 3_000_000 },
+          ],
+        }),
+      );
+      const entry = r.scoreBreakdown.find((b) => b.label === "Historical Valuation");
+      expect(entry).toBeDefined();
+      expect(entry!.reason).toMatch(/\d+%/);
+    });
+
+    it("the Owner Evidence reason cites the real evidence gap and confidence", () => {
+      const r = computeHealthScore(signals({ evidence: { valueGapPct: 18, strength: 0.6 } }));
+      const entry = r.scoreBreakdown.find((b) => b.label === "Owner Evidence")!;
+      expect(entry.reason).toContain("18");
+      expect(entry.reason).toContain("60");
+    });
+  });
+});

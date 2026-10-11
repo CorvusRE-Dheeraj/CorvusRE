@@ -199,3 +199,15 @@ function buildRationale(
   }
   return text;
 }
+
+// The savings as a percent of this year's estimated tax bill (assessed value
+// × effective rate) — null when there's no bill to compare against.
+export function savingsPctOfBill(
+  amount: number,
+  totalValue: number | null | undefined,
+  effectiveTaxRatePct: number,
+): number | null {
+  const bill = (totalValue ?? 0) * (effectiveTaxRatePct / 100);
+  if (!(bill > 0) || !(amount > 0)) return null;
+  return Math.min(100, (amount / bill) * 100);
+}

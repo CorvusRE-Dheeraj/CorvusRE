@@ -32,6 +32,13 @@ const DOORS = [
 // referral namespace, resolved when DP's own account is created (see
 // mint-door-session), not against this project's profiles.
 const PENDING_REF_KEY = "corvusre.pendingRef";
+// Same problem as PENDING_REF_KEY above: the beta checkbox is a sign-up-time
+// choice, but a Google signup can't carry it through the OAuth round trip
+// via signUp()'s metadata the way a password signup can (see submit()'s
+// wants_beta below) -- so it's parked here right before redirecting to
+// Google, and applied server-side (apply-beta-signup) once a real session
+// exists, same pattern as applyPendingReferral.
+const PENDING_BETA_KEY = "corvusre.pendingBeta";
 
 // A referral code has to survive a Google OAuth round trip (the query string
 // doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
@@ -43,9 +50,21 @@ async function applyPendingReferral() {
     const code = localStorage.getItem(PENDING_REF_KEY);
     if (!code) return;
     localStorage.removeItem(PENDING_REF_KEY);
-    await supabase.functions.invoke("apply-referral", { body: { referralCode: code } });
+    await supabase.functions.invoke("apply-referral", {
+      body: { referralCode: code },
+    });
   } catch {
     // ignore -- a lost referral must not break sign-in
+  }
+}
+
+async function applyPendingBeta() {
+  try {
+    if (!localStorage.getItem(PENDING_BETA_KEY)) return;
+    localStorage.removeItem(PENDING_BETA_KEY);
+    await supabase.functions.invoke("apply-beta-signup", { body: {} });
+  } catch {
+    // ignore -- a lost beta grant must not break sign-in
   }
 }
 
@@ -83,13 +102,31 @@ export function App() {
   );
   const [email, setEmail] = useState(signupCtx.email);
   const [password, setPassword] = useState("");
+  // Asked on the sign-up form itself so the app does not need a separate "your name" screen.
+  const [firstName, setFirstName] = useState(signupCtx.firstName);
+  const [lastName, setLastName] = useState(signupCtx.lastName);
+  // Only ever asked for, and only ever validated against, on the two
+  // screens that set a NEW password (sign-up, and the reset-password
+  // screen reached from an email link) -- sign-in has no confirm field, so
+  // this being non-empty there is simply never checked.
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  // Sign-up-only, self-service beta opt-in -- free, full-access grant, same
+  // as an admin invite's "Grant beta access" checkbox, just chosen by the
+  // signing-up person instead of staff. See wants_beta below and
+  // PENDING_BETA_KEY above for how each signup path (password vs Google)
+  // gets it through to handle_new_user().
+  const [wantsBeta, setWantsBeta] = useState(false);
   const [status, setStatus] = useState<Status>("checking-session");
   const [error, setError] = useState<string | null>(null);
   // A short, plain-text explanation a door sets when it sends a signed-out
   // visitor here (e.g. an idle-timeout sign-out) -- shown once on the plain
   // sign-in screen so the redirect doesn't feel unexplained. Read once on
   // mount, same as `redirect` -- this page never mutates its own URL.
-  const [reason] = useState(() => new URLSearchParams(window.location.search).get("reason"));
+  const [reason] = useState(() =>
+    new URLSearchParams(window.location.search).get("reason"),
+  );
   // Separate from `status` -- the forgot/reset screens are picked by status
   // (reached via a link click or a recovery-email URL, not the sign-in/up
   // toggle), so a failed submit on either must NOT fall back to "error"
@@ -104,9 +141,15 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  async function proceed() {
+  async function proceed(justSignedUp = false) {
     await applyPendingReferral();
-    const target = safeRedirectTarget();
+    await applyPendingBeta();
+    let target = safeRedirectTarget();
+    // A brand-new account that came from a door's marketing home page belongs on that door's
+    // dashboard, not back on the page that made them sign up.
+    const doorHome = target?.match(/^\/(corvuspt|corvusdp)\/?$/);
+    if (justSignedUp && target && doorHome)
+      target = `/${doorHome[1]}/dashboard`;
     if (target) {
       window.location.assign(target);
     } else {
@@ -114,7 +157,7 @@ export function App() {
     }
   }
 
-  // Completes the Google OAuth round trip: signInWithGoogle() below sends
+  // Completes the Google OAuth round trip: signInWithProvider() below sends
   // the browser to Google and back to THIS page (never straight to a door)
   // with the session tokens in the URL hash, specifically so this app's own
   // Supabase client (pointed at the real identity project) is what
@@ -157,7 +200,10 @@ export function App() {
     setSubmitting(true);
     setError(null);
     const redirectTo = `${window.location.origin}${window.location.pathname}`;
-    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
+      email,
+      { redirectTo },
+    );
     setSubmitting(false);
     if (resetErr) {
       setError(resetErr.message);
@@ -173,6 +219,10 @@ export function App() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    if (password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
     setSubmitting(true);
     const { error: updateErr } = await supabase.auth.updateUser({ password });
     setSubmitting(false);
@@ -185,11 +235,19 @@ export function App() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setStatus("busy");
     setError(null);
 
+    if (mode === "sign-up" && password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setStatus("busy");
+
     if (mode === "sign-in") {
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signInErr) {
         setError(signInErr.message);
         setStatus("error");
@@ -203,10 +261,18 @@ export function App() {
       email,
       password,
       options: {
+        // The confirmation link brings the person back to this screen, which finishes sign-in
+        // and sends them on to where they were headed.
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}${
+          safeRedirectTarget()
+            ? `?redirect=${encodeURIComponent(safeRedirectTarget() ?? "")}`
+            : ""
+        }`,
         data: {
-          ...(signupCtx.firstName ? { first_name: signupCtx.firstName } : {}),
-          ...(signupCtx.lastName ? { last_name: signupCtx.lastName } : {}),
+          ...(firstName.trim() ? { first_name: firstName.trim() } : {}),
+          ...(lastName.trim() ? { last_name: lastName.trim() } : {}),
           ...(signupCtx.ref ? { referral_code_used: signupCtx.ref } : {}),
+          ...(wantsBeta ? { wants_beta: "true" } : {}),
         },
       },
     });
@@ -220,12 +286,22 @@ export function App() {
       setStatus("check-email");
       return;
     }
-    proceed();
+    proceed(true);
   }
 
-  async function signInWithGoogle() {
+  // One OAuth path for every social provider -- Supabase calls Microsoft "azure".
+  async function signInWithProvider(provider: "google" | "azure") {
     setStatus("busy");
     setError(null);
+    // Only meaningful on the sign-up screen -- the same button also handles
+    // plain sign-in, which must never flip an existing account's plan.
+    if (mode === "sign-up" && wantsBeta) {
+      try {
+        localStorage.setItem(PENDING_BETA_KEY, "1");
+      } catch {
+        // storage blocked -- beta just won't attach for a social signup
+      }
+    }
     // Carries the same redirect target forward as a query param (blank if
     // there wasn't one) -- Supabase appends #access_token=... to whatever
     // URL this is, query params survive intact. Lands back on THIS page
@@ -235,8 +311,12 @@ export function App() {
       target ? `?redirect=${encodeURIComponent(target)}` : ""
     }`;
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
+      provider,
+      // Azure only returns an email address when asked for the scope.
+      options: {
+        redirectTo,
+        ...(provider === "azure" ? { scopes: "email" } : {}),
+      },
     });
     if (oauthErr) {
       setError(oauthErr.message);
@@ -289,8 +369,8 @@ export function App() {
           <Logo />
           <h1>Check your email</h1>
           <p className="notice">
-            We sent a confirmation link to <strong>{email}</strong>. Follow it to finish creating
-            your account, then come back here to sign in.
+            We sent a confirmation link to <strong>{email}</strong>. Follow it
+            to finish creating your account, then come back here to sign in.
           </p>
         </div>
       </div>
@@ -304,8 +384,8 @@ export function App() {
           <Logo />
           <h1>Check your email</h1>
           <p className="notice">
-            If an account exists for <strong>{email}</strong>, we've sent a link to reset your
-            password. Click it to choose a new one.
+            If an account exists for <strong>{email}</strong>, we've sent a link
+            to reset your password. Click it to choose a new one.
           </p>
           <div className="toggle">
             <button
@@ -331,9 +411,11 @@ export function App() {
           {status === "reset-done" ? (
             <>
               <h1>Password updated</h1>
-              <p className="notice">You're all set -- your password has been changed.</p>
+              <p className="notice">
+                You're all set -- your password has been changed.
+              </p>
               <div className="toggle">
-                <button type="button" onClick={proceed}>
+                <button type="button" onClick={() => void proceed()}>
                   Continue
                 </button>
               </div>
@@ -341,19 +423,27 @@ export function App() {
           ) : (
             <>
               <h1>Choose a new password</h1>
-              <p className="sub">One account works across every CorvusRE door.</p>
+              <p className="sub">
+                One account works across every CorvusRE door.
+              </p>
               <form onSubmit={submitNewPassword}>
-                <label>
-                  New password
-                  <input
-                    type="password"
-                    required
-                    minLength={8}
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </label>
+                <PasswordField
+                  label="New password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={setPassword}
+                  show={showPassword}
+                  onToggleShow={() => setShowPassword((v) => !v)}
+                />
+                <PasswordField
+                  label="Confirm new password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  show={showConfirmPassword}
+                  onToggleShow={() => setShowConfirmPassword((v) => !v)}
+                  minLength={1} // just needs SOMETHING typed; the real check is "matches password" below, not its own length
+                />
                 {error && <p className="error">{error}</p>}
                 <button type="submit" disabled={submitting}>
                   {submitting ? "Saving…" : "Set new password"}
@@ -373,7 +463,8 @@ export function App() {
           <Logo />
           <h1>Reset your password</h1>
           <p className="sub">
-            Enter the email on your account and we'll send you a link to reset your password.
+            Enter the email on your account and we'll send you a link to reset
+            your password.
           </p>
           <form onSubmit={submitForgotPassword}>
             <label>
@@ -409,9 +500,23 @@ export function App() {
         <p className="sub">One account works across every CorvusRE door.</p>
         {reason && <p className="notice">{reason}</p>}
 
-        <button type="button" className="google-btn" onClick={signInWithGoogle} disabled={status === "busy"}>
+        <button
+          type="button"
+          className="google-btn"
+          onClick={() => signInWithProvider("google")}
+          disabled={status === "busy"}
+        >
           <GoogleIcon />
           Continue with Google
+        </button>
+        <button
+          type="button"
+          className="google-btn"
+          onClick={() => signInWithProvider("azure")}
+          disabled={status === "busy"}
+        >
+          <MicrosoftIcon />
+          Continue with Microsoft
         </button>
 
         <div className="divider">
@@ -419,6 +524,30 @@ export function App() {
         </div>
 
         <form onSubmit={submit}>
+          {mode === "sign-up" && (
+            <div className="name-row">
+              <label>
+                First name
+                <input
+                  type="text"
+                  required
+                  autoComplete="given-name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
           <label>
             Email
             <input
@@ -429,20 +558,47 @@ export function App() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
-          <label>
-            Password
-            <input
-              type="password"
-              required
-              minLength={8}
-              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+          <PasswordField
+            label="Password"
+            autoComplete={
+              mode === "sign-in" ? "current-password" : "new-password"
+            }
+            value={password}
+            onChange={setPassword}
+            show={showPassword}
+            onToggleShow={() => setShowPassword((v) => !v)}
+          />
+          {mode === "sign-up" && (
+            <p className="hint">Use at least 8 characters.</p>
+          )}
+          {mode === "sign-up" && (
+            <PasswordField
+              label="Confirm password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              show={showConfirmPassword}
+              onToggleShow={() => setShowConfirmPassword((v) => !v)}
+              minLength={1} // just needs SOMETHING typed; the real check is "matches password" below, not its own length
             />
-          </label>
+          )}
+          {mode === "sign-up" && (
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={wantsBeta}
+                onChange={(e) => setWantsBeta(e.target.checked)}
+              />
+              <span>I'd like to join as a beta tester (free, full access)</span>
+            </label>
+          )}
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={status === "busy"}>
-            {status === "busy" ? "Please wait…" : mode === "sign-in" ? "Sign in" : "Sign up"}
+            {status === "busy"
+              ? "Please wait…"
+              : mode === "sign-in"
+                ? "Sign in"
+                : "Sign up"}
           </button>
         </form>
 
@@ -459,6 +615,10 @@ export function App() {
             </button>
           </div>
         )}
+
+        <div className="toggle">
+          <a href="/">← Back to the CorvusRE site</a>
+        </div>
 
         <div className="toggle">
           {mode === "sign-in" ? (
@@ -482,17 +642,123 @@ export function App() {
   );
 }
 
+// Shared by every "type a password" field on this screen (sign-in,
+// sign-up, and the reset-password screen's new/confirm pair) -- a show/hide
+// eye toggle plus the input itself, so the four call sites don't each
+// repeat the same wrapper markup. minLength defaults to 8 (the account
+// minimum, enforced on the primary password field of each form) and is
+// explicitly turned off on every CONFIRM field -- that field's own value
+// only ever needs to match the primary one, not independently satisfy an
+// 8-character rule the primary field already covers.
+function PasswordField({
+  label,
+  value,
+  onChange,
+  autoComplete,
+  show,
+  onToggleShow,
+  minLength = 8,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+  show: boolean;
+  onToggleShow: () => void;
+  minLength?: number;
+}) {
+  return (
+    <label>
+      {label}
+      <div className="password-field">
+        <input
+          type={show ? "text" : "password"}
+          required
+          minLength={minLength}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="password-toggle"
+          onClick={onToggleShow}
+          aria-label={show ? "Hide password" : "Show password"}
+        >
+          {show ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+    </label>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.6 20.6 0 0 1 5.06-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a20.5 20.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <path d="M1 1l22 22" />
+    </svg>
+  );
+}
+
 function Logo() {
   return (
     <div className="logo">
       <span className="mark" aria-hidden>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M4 20c3-6 5-9 8-9s5 3 8 9" strokeLinecap="round" />
           <circle cx="16" cy="7" r="2" fill="currentColor" />
         </svg>
       </span>
       <span className="word">CorvusRE</span>
     </div>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden>
+      <path fill="#F25022" d="M1 1h10v10H1z" />
+      <path fill="#7FBA00" d="M12 1h10v10H12z" />
+      <path fill="#00A4EF" d="M1 12h10v10H1z" />
+      <path fill="#FFB900" d="M12 12h10v10H12z" />
+    </svg>
   );
 }
 
