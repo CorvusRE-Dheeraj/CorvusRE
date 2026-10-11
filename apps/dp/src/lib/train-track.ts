@@ -789,6 +789,9 @@ export const ROUTES: TrackRoute[] = [
 
 const BY_N = new Map(STATIONS.map((s) => [s.n, s]));
 
+/** The end of the line — the train parks here once every route is complete. */
+const LAST_STATION = STATIONS[STATIONS.length - 1].n;
+
 export function getStation(n: number): Station | undefined {
   return BY_N.get(n);
 }
@@ -846,6 +849,9 @@ export function locateTrain(input: {
 
   const pending = permits.filter((p) => p.status !== "approved");
 
+  // Every permit approved completes the Approval route — and with it the whole
+  // line: the train arrives at the final station. An expiry inside the watch
+  // window is still called out, but no longer holds the train back.
   if (pending.length === 0) {
     const soonest = permits
       .filter((p) => p.expiry_date)
@@ -853,7 +859,7 @@ export function locateTrain(input: {
       .sort((a, b) => a.days - b.days)[0];
     if (soonest && soonest.days <= EXPIRY_WATCH_DAYS) {
       return {
-        station: 28,
+        station: LAST_STATION,
         reason:
           soonest.days < 0
             ? `All permits are approved, but ${soonest.p.name} expired ${-soonest.days} day${-soonest.days === 1 ? "" : "s"} ago.`
@@ -861,8 +867,8 @@ export function locateTrain(input: {
       };
     }
     return {
-      station: 27,
-      reason: `All ${permits.length} permit${permits.length === 1 ? " is" : "s are"} approved — next is pre-construction clearance.`,
+      station: LAST_STATION,
+      reason: `All ${permits.length} permit${permits.length === 1 ? " is" : "s are"} approved — permitting is complete.`,
     };
   }
 
@@ -909,6 +915,15 @@ export function locateTrain(input: {
     }
     default: {
       // identified / preparing: still getting ready to file.
+      // Requirements counts as complete once the first pre-app item is ticked
+      // (work on Pre-App has started); until then the train waits on it.
+      const preAppItems = checklist.filter((c) => c.kind === "pre_app");
+      if (preAppItems.length > 0 && !preAppItems.some((c) => c.done)) {
+        return {
+          station: 9,
+          reason: "Requirements are ready — tick your first pre-application item to start Pre-App.",
+        };
+      }
       const preApp = checklist.filter((c) => c.kind === "pre_app" && c.required);
       const preAppDone = preApp.filter((c) => c.done).length;
       if (preAppDone < preApp.length) {
@@ -962,10 +977,11 @@ export const PARALLEL_STOPS = ["Submitted", "Under review", "Comments / response
 // ---------------------------------------------------------------------------
 // Bogies: the data the train has collected so far.
 //
-// One wagon per route the train has reached. Each carries "crates" — short
-// labels of real data that route produced for this project (the analysis,
-// the checklist, permit rows, review comments). Routes ahead of the train
-// have no wagon yet: the train grows as the project moves down the line.
+// One wagon per route the train has COMPLETED — i.e. passed its last station.
+// Each carries "crates" — short labels of real data that route produced for
+// this project (the analysis, the checklist, permit rows, review comments).
+// The route the train is currently on, and routes ahead of it, have no wagon
+// yet: the train grows as the project moves down the line.
 
 export type Wagon = {
   route: string;
@@ -1036,7 +1052,11 @@ export function wagonCargo(input: {
     gray: [`${approved} of ${permits.length} approved`],
   };
 
-  return ROUTES.filter((r) => r.stations[0] <= trainAt).map((r) => ({
+  // Arriving at the last station means the whole line is done, Approval included.
+  const completed = (r: TrackRoute) =>
+    r.stations[r.stations.length - 1] < trainAt || trainAt === LAST_STATION;
+
+  return ROUTES.filter(completed).map((r) => ({
     route: r.name,
     color: r.color,
     crates: cargo[r.color],

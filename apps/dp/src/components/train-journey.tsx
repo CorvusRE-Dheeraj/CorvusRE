@@ -184,7 +184,9 @@ export function TrainJourney({
               );
             })}
 
-            {/* The train: wagons (earliest route first) + the locomotive in front. */}
+            {/* The train: the locomotive at the far right, with the completed wagons
+                extending left behind it — Intake nearest the engine, then
+                Requirements, Pre-App, Submission, Review, Approval. */}
             <div
               ref={trainRef}
               className={cn(
@@ -196,9 +198,9 @@ export function TrainJourney({
                 if (e.target === trainRef.current && e.propertyName === "left") setPhase("arrived");
               }}
             >
-              {wagons.map((w, i) => (
-                <WagonCar key={w.route} wagon={w} index={i} arrived={phase === "arrived"} />
-              ))}
+              {wagons
+                .map((w, i) => <WagonCar key={w.route} wagon={w} index={i} arrived={phase === "arrived"} />)
+                .reverse()}
               <Locomotive />
             </div>
 
@@ -310,10 +312,12 @@ function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arri
         )}
       >
         {SHORT[wagon.color]}
-        {/* coupling to the next car */}
+        {/* coupling to the car in front (the locomotive or the previous wagon) */}
         <span className="absolute -right-2.5 top-1/2 h-1.5 w-3 -translate-y-1/2 rounded-sm bg-slate-800" aria-hidden />
       </div>
-      <div className="-mt-2 flex w-full justify-between px-3">
+      {/* Inset (px-8) so each wagon's pair sits under its own body instead of
+          bunching with the next wagon's wheels at the coupling. */}
+      <div className="-mt-2 flex w-full justify-between px-8">
         <Wheel />
         <Wheel />
       </div>
@@ -367,8 +371,8 @@ function Locomotive() {
         <rect x="2" y="52" width="138" height="6" rx="3" fill="#0f172a" />
         <path d="M136 52 L150 64 L134 64 Z" fill="#334155" />
       </svg>
-      <div className="-mt-[12px] flex items-end justify-between pl-3 pr-8">
-        <Wheel size="h-7 w-7" />
+      {/* Two identical wheels, evenly spaced about the frame's centre (x 71). */}
+      <div className="-mt-[12px] flex items-end justify-between pl-5 pr-7">
         <Wheel size="h-9 w-9" />
         <Wheel size="h-9 w-9" />
       </div>

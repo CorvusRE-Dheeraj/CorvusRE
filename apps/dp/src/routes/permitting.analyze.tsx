@@ -368,11 +368,15 @@ function ProjectStep({
             {(["commercial", "residential"] as PropertySector[]).map((s) => (
               <button
                 key={s}
+                // Residential is shown but not offered yet.
+                disabled={s === "residential"}
                 onClick={() => patch({ project: { sector: s } })}
                 className={`rounded-lg border px-4 py-2 text-sm font-medium capitalize transition-colors ${
-                  pr.sector === s
-                    ? "border-accent bg-accent text-accent-foreground"
-                    : "border-border hover:bg-secondary"
+                  s === "residential"
+                    ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-60"
+                    : pr.sector === s
+                      ? "border-accent bg-accent text-accent-foreground"
+                      : "border-border hover:bg-secondary"
                 }`}
               >
                 {s}

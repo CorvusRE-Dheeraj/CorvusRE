@@ -190,3 +190,33 @@ button:disabled {
   border-color: var(--accent);
   background: #f7f7f5;
 }
+
+
+/* Track Map - railway connector between route sections */
+.track-link {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 48px;
+  border-left: 3px solid #9ca3af;
+  border-right: 3px solid #9ca3af;
+}
+
+/* Railway sleepers / ties */
+.track-link::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 28px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 7px,
+    #9ca3af 7px,
+    #9ca3af 10px
+  );
+  z-index: -1;
+}

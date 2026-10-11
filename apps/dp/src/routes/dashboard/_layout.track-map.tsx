@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { Check, ChevronDown, LocateFixed, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyProject, Loading, Pill, humanize, permitStatusTone } from "@/components/dp-ui";
@@ -18,6 +18,7 @@ import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
   ROUTES,
+  STATIONS,
   getStation,
   parallelTrackStop,
   wagonCargo,
@@ -25,6 +26,7 @@ import {
   type RouteColor,
   type Station,
   type TrainLocation,
+  type Wagon,
 } from "@/lib/train-track";
 import type { PermitRow } from "@/lib/projects";
 
@@ -34,6 +36,8 @@ export const Route = createFileRoute("/dashboard/_layout/track-map")({
 });
 
 type Filter = "all" | "stations" | "modules";
+
+const LAST_STATION = STATIONS[STATIONS.length - 1].n;
 
 function TrackMap() {
   const navigate = useNavigate();
@@ -159,16 +163,22 @@ function TrackMap() {
         return { route, shownStations, shownModules, showStations, showModules };
       })
         .filter((r) => r.showStations || r.showModules)
-        .map(({ route, shownStations, shownModules, showStations, showModules }, i) => {
+        .map(({ route, shownStations, shownModules, showStations, showModules }, i, shown) => {
         const style = ROUTE_STYLE[route.color];
+        const next = shown[i + 1];
 
         return (
           <Fragment key={route.name}>
-            {i > 0 && <RouteConnector color={route.color} />}
-            <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
+            <section
+              className={cn(
+                "relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5",
+                // Keeps the 2.5rem section spacing the old in-flow connector gave.
+                i > 0 && "mt-5",
+              )}
+            >
               <h2
                 className={cn(
-                  "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
+                  "absolute -top-3.5 left-4 z-10 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
                   style.solid,
                 )}
               >
@@ -184,10 +194,16 @@ function TrackMap() {
                   className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
                   style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
                 >
-                  {shownStations.map((s) => (
+                  {shownStations.map((s, j) => (
                     <StationSlot
                       key={s.n}
                       station={s}
+                      wagons={wagons}
+                      boardDelay={
+                        route.color === "gray" && location?.station === LAST_STATION && s.n < LAST_STATION
+                          ? j * 70
+                          : undefined
+                      }
                       state={
                         !location
                           ? "ahead"
@@ -236,6 +252,10 @@ function TrackMap() {
                   Outcome: faster submissions · clearer accountability · central permit review visibility ·
                   reduced permit aging risk
                 </p>
+              )}
+
+              {next && (
+                <RouteConnector color={next.route.color} />
               )}
             </section>
           </Fragment>
@@ -298,32 +318,175 @@ function CurrentLocation({
 
 // Bridges the gap between one route section and the next so the whole page
 // reads as one continuous line, not a separate disconnected track per route
-// card. Coloured to the route it leads into.
+// card. Rendered inside the section above. The whole route is the same 14px
+// track as .track-rail (.track-link is that rail turned vertical), wrapped
+// around the OUTSIDE of the box:
+//   the top rail — extended with .track-rail when its first row stops short —
+//   rounds a radius-24 curve out past the right border, runs down outside it
+//   (centreline 9px past the border, inside the page's side padding), rounds
+//   into a lower track along the middle of the gap between the boxes, back to
+//   the left, where one semicircle outside the left border (radius = half the
+//   drop from the gap track to the next rail) brings it into the next
+//   section's rail.
+// Positions are measured from the real rails, borders and gap (this app's rem
+// is 18px, and rows wrap), and the route is drawn as ONE path, so it meets the
+// rails exactly and has no internal joins: no gaps, and no overlaps to show as
+// darker seams at the 0.85 opacity. Card-coloured patches hide the straight
+// rails under the curves' ends.
+// Nothing here takes layout space. z-[5] paints it over the next section's
+// background but under the route badge and station dots (z-10) and the train
+// (z-20). Arrow is coloured to the route it leads into.
+type ConnectorGeom = {
+  w: number; // section padding-box width; all values are px from its top-left
+  ry: number | null; // top rail centreline
+  railEnd: number; // right end of the top rail's first row
+  gy: number; // middle of the gap below the section
+  ny: number | null; // next section's rail centreline
+  nTop: number; // next section's top edge
+};
+
+const CURVE = 24; // radius of the right-hand corners
+const OUT = 9; // outside track centreline, px past the box border
+
 function RouteConnector({ color }: { color: RouteColor }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [g, setG] = useState<ConnectorGeom | null>(null);
+  useEffect(() => {
+    const section = ref.current?.parentElement;
+    const next = section?.nextElementSibling;
+    if (!section || !next) return;
+    const firstRail = (el: Element) => {
+      const rails = [...el.querySelectorAll(":scope > ol > li > .track-rail")].map((r) => r.getBoundingClientRect());
+      return rails.filter((r) => Math.abs(r.top - rails[0].top) < 1);
+    };
+    const measure = () => {
+      const box = section.getBoundingClientRect();
+      const ox = box.left + section.clientLeft;
+      const oy = box.top + section.clientTop;
+      const nb = next.getBoundingClientRect();
+      const top = firstRail(section);
+      const [nr] = firstRail(next);
+      const geom: ConnectorGeom = {
+        w: section.clientWidth,
+        ry: top.length ? top[0].top + 7 - oy : null,
+        railEnd: top.length ? Math.max(...top.map((r) => r.right)) - ox : 0,
+        gy: (box.bottom + nb.top) / 2 - oy,
+        ny: nr ? nr.top + 7 - oy : null,
+        nTop: nb.top - oy,
+      };
+      setG((prev) => (JSON.stringify(prev) === JSON.stringify(geom) ? prev : geom));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(section);
+    ro.observe(next);
+    return () => ro.disconnect();
+  });
+
+  if (!g) return <span ref={ref} className="hidden" aria-hidden />;
+
+  // Centrelines of the outside verticals, past the right / left borders.
+  const xr = g.w + 1 + OUT;
+  const xl = -1 - OUT;
+  const curveStart = xr - CURVE;
+  const start = g.ry != null ? Math.min(g.railEnd, curveStart) : null;
+  const half = g.ny != null ? (g.ny - g.gy) / 2 : 14; // left turn radius
+  const gapLeft = xl + half;
+
+  // The route as one path, offset `d` px to the left of travel: d = 0 is the
+  // centreline, ±5.5 the two rails. Lines shift sideways; arcs that turn right
+  // (cw) grow by d, the left-hand semicircle (ccw) shrinks by d.
+  const route = (d: number) => {
+    const p: string[] = [];
+    if (g.ry != null && start != null) {
+      const c1y = g.ry + CURVE;
+      const c2y = g.gy - CURVE;
+      const R = CURVE + d;
+      p.push(`M${start} ${g.ry - d}`, `H${curveStart}`);
+      p.push(`A${R} ${R} 0 0 1 ${curveStart + R} ${c1y}`, `V${c2y}`);
+      p.push(`A${R} ${R} 0 0 1 ${curveStart} ${c2y + R}`);
+    } else {
+      p.push(`M${g.w} ${g.gy + d}`);
+    }
+    p.push(`H${gapLeft}`);
+    const r = half - d;
+    const cy = g.gy + half;
+    p.push(`A${r} ${r} 0 0 0 ${gapLeft - r} ${cy}`);
+    if (g.ny != null) p.push(`A${r} ${r} 0 0 0 ${gapLeft} ${cy + r}`);
+    else p.push(`V${g.nTop}`);
+    return p.join("");
+  };
+
   return (
-    <div className="relative -my-5 flex h-10 justify-start pl-9 sm:pl-11" aria-hidden>
-      <span className="track-link relative h-full">
+    <span ref={ref} className="pointer-events-none absolute inset-0 z-[5]" aria-hidden>
+      {/* Hide the straight rails where the route's curves take over from them:
+          the top rail's tail past the curve start, the next rail's head. */}
+      {g.ry != null && g.railEnd > curveStart && (
+        <span className="absolute h-[14px] bg-card" style={{ left: curveStart, width: g.w - curveStart, top: g.ry - 7 }} />
+      )}
+      {g.ny != null && <span className="absolute left-0 h-[14px] bg-card" style={{ width: gapLeft, top: g.ny - 7 }} />}
+      {/* Same track as .track-rail: 14px wide; 3px #b9c4ce sleepers every
+          14px (dashes along the centreline); 3px #566777 rails 5.5px either
+          side of it; the whole group at 0.85 opacity. */}
+      <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1">
+        <g opacity="0.85" fill="none">
+          <path d={route(0)} stroke="#b9c4ce" strokeWidth="14" strokeDasharray="3 11" />
+          <path d={route(5.5) + route(-5.5)} stroke="#566777" strokeWidth="3" />
+        </g>
+      </svg>
+      {g.ry != null && (
         <ChevronDown
-          className={cn(
-            "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
-            ROUTE_STYLE[color].text,
-          )}
+          className={cn("absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card", ROUTE_STYLE[color].text)}
+          style={{ left: xr, top: (g.ry + g.gy) / 2 }}
         />
-      </span>
-    </div>
+      )}
+    </span>
   );
+}
+
+// Approval / Clearance / Expiry only: once the line is complete, each finished
+// station box plays once — it glides into the train at the last station, then
+// fades back into place. Purely visual.
+function useBoardTrain(ref: RefObject<HTMLElement | null>, delay: number | undefined) {
+  useEffect(() => {
+    const el = ref.current;
+    const train = document.getElementById("track-train");
+    if (delay === undefined || !el || !train || !el.animate) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const from = el.getBoundingClientRect();
+    const to = train.getBoundingClientRect();
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    const opacity = getComputedStyle(el).opacity;
+    const anim = el.animate(
+      [
+        { transform: "none", opacity, offset: 0 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.2)`, opacity: 0, offset: 0.65 },
+        { transform: "none", opacity: 0, offset: 0.66 },
+        { transform: "none", opacity, offset: 1 },
+      ],
+      { duration: 900, delay, easing: "ease-in-out" },
+    );
+    return () => anim.cancel();
+  }, [ref, delay]);
 }
 
 function StationSlot({
   station,
   state,
   onOpen,
+  boardDelay,
+  wagons,
 }: {
   station: Station;
+  wagons: Wagon[];
   state: "passed" | "current" | "ahead";
   onOpen: (n: number) => void;
+  boardDelay?: number;
 }) {
   const style = ROUTE_STYLE[station.color];
+  const cardRef = useRef<HTMLButtonElement>(null);
+  useBoardTrain(cardRef, boardDelay);
   return (
     <li className="relative pt-11">
       <span className="track-rail" aria-hidden />
@@ -337,11 +500,17 @@ function StationSlot({
         {state === "passed" ? <Check className="h-4 w-4" /> : station.n}
       </span>
       {state === "current" && (
-        <span id="track-train" className="track-train absolute left-1/2 top-[-0.35rem] z-20 -translate-x-1/2">
-          <TrainWithCars color={station.color} />
+        // scale-[1.18] enlarges locomotive + wagons together; origin-bottom
+        // keeps the wheels on the rail and the train centred over the station.
+        <span
+          id="track-train"
+          className="track-train absolute left-1/2 top-[-0.35rem] z-20 origin-bottom -translate-x-1/2 scale-[1.18]"
+        >
+          <TrainWithCars wagons={wagons} />
         </span>
       )}
       <button
+        ref={cardRef}
         type="button"
         onClick={() => onOpen(station.n)}
         aria-label={`Station ${station.n}: ${station.title}${state === "current" ? " — your project is here" : ""}. Opens details in a new window.`}

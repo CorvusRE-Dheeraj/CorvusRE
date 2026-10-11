@@ -93,21 +93,72 @@ describe("locateTrain", () => {
     expect(loc.reason).toContain("round 2");
   });
 
-  it("parks at clearance when everything is approved and nothing expires soon", () => {
+  it("waits at requirements until the first pre-app item is ticked", () => {
+    const loc = locateTrain({
+      ...base,
+      permits: [permit("Building Permit", "identified")],
+      checklist: [item("pre_app", false), item("pre_app", false, false)],
+    });
+    expect(loc.station).toBe(9);
+    expect(loc.reason).toContain("pre-application");
+  });
+
+  it("reaches the end of the line when every permit is approved", () => {
     const loc = locateTrain({
       ...base,
       permits: [permit("Building Permit", "approved", { expiry_date: "2027-09-01" })],
     });
-    expect(loc.station).toBe(27);
+    expect(loc.station).toBe(29);
+    expect(loc.reason).toContain("complete");
   });
 
-  it("watches expiry when an approved permit expires within 90 days", () => {
+  it("still calls out an expiry inside 90 days at the end of the line", () => {
     const loc = locateTrain({
       ...base,
       permits: [permit("Building Permit", "approved", { expiry_date: "2026-10-28" })],
     });
-    expect(loc.station).toBe(28);
+    expect(loc.station).toBe(29);
     expect(loc.reason).toContain("30 days");
+  });
+});
+
+describe("linear six-stage progression", () => {
+  const analysis = {
+    jurisdiction: { authority: "City of Denton" },
+    zoning: { code: "C-2", label: "Commercial" },
+    permits: [{}],
+    fees: { totalLow: 1000, totalHigh: 2000 },
+    constraints: { utilities: [], criticalWarnings: [] },
+  };
+  const STAGES = ["Intake", "Requirements", "Pre-App", "Submission", "Review", "Approval"];
+  const stage = (routeName: string) => routeName.split(/ [+/] /)[0];
+
+  // One real-data state per step; step i should have the first i stages as
+  // wagons and the train on stage i (the last step: all six, at the end).
+  const steps: Parameters<typeof locateTrain>[0][] = [
+    { ...base, hasAnalysis: false, permits: [] },
+    { ...base, permits: [permit("P", "identified")], checklist: [item("pre_app", false)] },
+    {
+      ...base,
+      permits: [permit("P", "preparing")],
+      checklist: [item("pre_app", true), item("submission", false)],
+    },
+    { ...base, permits: [permit("P", "submitted")] },
+    { ...base, permits: [permit("P", "under_review")] },
+    { ...base, permits: [permit("P", "approved")] },
+  ];
+
+  it("grows one wagon per completed stage, in order, with the train on the next stage", () => {
+    steps.forEach((input, i) => {
+      const { station } = locateTrain(input);
+      const wagons = wagonCargo({ ...input, trainAt: station, analysis }).map((w) =>
+        stage(w.route),
+      );
+      const at = stage(ROUTES.find((r) => r.stations.includes(station))!.name);
+      const done = i === steps.length - 1 ? STAGES.length : i;
+      expect(wagons).toEqual(STAGES.slice(0, done));
+      expect(at).toBe(STAGES[Math.min(i, STAGES.length - 1)]);
+    });
   });
 });
 
@@ -136,21 +187,31 @@ describe("wagonCargo", () => {
     expect(wagonCargo({ trainAt: 1, analysis: null, permits: [], checklist: [], comments: [] })).toEqual([]);
   });
 
-  it("adds one wagon per route reached, loading the current one", () => {
-    const wagons = wagonCargo({ trainAt: 12, analysis, permits, checklist, comments: [] });
-    expect(wagons.map((w) => w.color)).toEqual(["blue", "purple", "orange"]);
-    expect(wagons.map((w) => w.loading)).toEqual([false, false, true]);
+  it("adds one wagon per completed route only, never the current one", () => {
+    const colors = (trainAt: number) =>
+      wagonCargo({ trainAt, analysis, permits, checklist, comments: [] }).map((w) => w.color);
+    expect(colors(1)).toEqual([]);
+    expect(colors(4)).toEqual([]);
+    expect(colors(7)).toEqual(["blue"]);
+    expect(colors(12)).toEqual(["blue", "purple"]);
+    expect(colors(18)).toEqual(["blue", "purple", "orange"]);
+    expect(colors(19)).toEqual(["blue", "purple", "orange", "teal"]);
+    expect(colors(27)).toEqual(["blue", "purple", "orange", "teal", "green"]);
+    expect(colors(29)).toEqual(["blue", "purple", "orange", "teal", "green", "gray"]);
+    expect(
+      wagonCargo({ trainAt: 19, analysis, permits, checklist, comments: [] }).map((w) => w.loading),
+    ).toEqual([false, false, false, false]);
   });
 
   it("fills crates with the project's real data", () => {
-    const [intake, reqs, preApp] = wagonCargo({ trainAt: 12, analysis, permits, checklist, comments: [] });
+    const [intake, reqs, preApp] = wagonCargo({ trainAt: 18, analysis, permits, checklist, comments: [] });
     expect(intake.crates).toEqual(["City of Denton", "Zoning C-2", "2 permits found"]);
     expect(reqs.crates).toEqual(["1 checklist item", "3 utilities checked", "1 site warning"]);
     expect(preApp.crates).toEqual(["Pre-app 1/2", "Fees $13k–$1.3M", "Package 0/1"]);
   });
 
-  it("counts filed permits once the train reaches submission", () => {
-    const wagons = wagonCargo({ trainAt: 18, analysis, permits, checklist, comments: [] });
+  it("counts filed permits once the train has passed submission", () => {
+    const wagons = wagonCargo({ trainAt: 19, analysis, permits, checklist, comments: [] });
     expect(wagons.at(-1)!.crates).toEqual(["1 of 2 permits filed"]);
   });
 });

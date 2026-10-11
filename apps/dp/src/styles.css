@@ -1085,21 +1085,11 @@ header .container-page {
     repeating-linear-gradient(180deg, #b9c4ce 0 3px, transparent 3px 14px);
   opacity: 0.85;
 }
+/* The Track Map train is parked at a station, so it stays still — no idle
+   bob. Only the smoke puff animates. */
 @media (prefers-reduced-motion: no-preference) {
-  .track-train {
-    animation: track-chug 1.6s ease-in-out infinite;
-  }
   .track-smoke {
     animation: track-smoke 2.4s ease-out infinite;
-  }
-}
-@keyframes track-chug {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -2px, 0);
   }
 }
 @keyframes track-smoke {
