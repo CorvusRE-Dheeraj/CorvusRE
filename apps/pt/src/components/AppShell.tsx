@@ -147,15 +147,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="w-full px-3 py-6 sm:px-10 sm:py-10 lg:px-16">
-      <div className="grid grid-cols-1 gap-2">
-        {/* Sticks just under SiteNav's own sticky header (top-16 matches its
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+        {/* On desktop it's a left sidebar; on a phone, a sideways strip.
+            Sticks just under SiteNav's own sticky header (top-16 matches its
             h-16) so this tab bar stays reachable on long pages (Properties,
             Documents) instead of scrolling away — bg-background keeps page
             content from showing through once it's actually stuck. */}
         <nav
           ref={tabBarRef}
           aria-label="Dashboard sections"
-          className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2"
+          className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2 lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:[justify-content:flex-start] lg:bg-transparent lg:pt-0"
         >
           {NAV.map((item) => {
             const Icon = item.icon;
@@ -170,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       description: "This section is still under development — check back soon.",
                     })
                   }
-                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed lg:w-full lg:px-3.5"
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
@@ -185,7 +186,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 to={item.to}
                 // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
                 data-tour={`nav-${item.to.split("/").pop()}`}
-                className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
+                className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
                 activeOptions={{ exact: item.to === "/dashboard" }}
               >
                 <Icon
