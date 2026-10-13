@@ -216,6 +216,14 @@ import { PdfFormEditor } from "@/components/PdfFormEditor";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { Modal } from "@/components/Modal";
 import { UndoButton } from "@/components/UndoButton";
+import { UploadedDocBar } from "@/components/UploadedDocBar";
+import {
+  removeDecisionNotice,
+  removeHearingNotice,
+  removeLatestDocumentOfType,
+  removeSettlement,
+  softDeleteDocuments,
+} from "@/lib/upload-undo";
 import { FinalOutcomeSection } from "@/components/FinalOutcomeSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
@@ -2556,6 +2564,21 @@ function FilingSubmissionFlow({
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.confirm(`Remove ${doc.fileName} from this filing's proof?`)) return;
+                  void softDeleteDocuments([doc.id])
+                    .then(() => {
+                      setProofDocs((cur) => cur.filter((d) => d.id !== doc.id));
+                      toast.success("Proof removed — upload the right file.");
+                    })
+                    .catch((err) => toast.error(getErrorMessage(err, "Could not remove it.")));
+                }}
+                className="text-destructive hover:underline"
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
@@ -5303,13 +5326,24 @@ function InformalReviewSection({
       {protest.status === "resolved" && protest.arbDecision == null && (
         <div className="mt-3 rounded-md border border-border p-3 text-sm">
           <p className="font-medium">This protest was closed by an informal settlement.</p>
-          <UndoButton
-            className="mt-2 block"
-            label="Undo this settlement"
-            confirm="This removes the settlement record and reopens the case at the informal review. You can then upload the correct document, or mark Unsatisfied to go to a formal hearing (and then arbitration or a court appeal). The uploaded file stays in your Documents tab."
-            successMessage="Undone — the informal review is open again."
-            onUndo={async () => {
-              const patch = await undoInformalSettlement(protest);
+          <UploadedDocBar
+            label="Settlement document"
+            busy={settling}
+            removeConfirm="This removes the settlement and reopens the case at the informal review."
+            onReplace={async (file) => {
+              const patch = await removeSettlement(protest, {
+                propertyId: property.id,
+                documentType: SETTLEMENT_DOCUMENT_TYPE,
+              });
+              onAgreementChange(null);
+              onUpdate(patch);
+              await handleSettlementFile(file);
+            }}
+            onRemove={async () => {
+              const patch = await removeSettlement(protest, {
+                propertyId: property.id,
+                documentType: SETTLEMENT_DOCUMENT_TYPE,
+              });
               onAgreementChange(null);
               onUpdate(patch);
             }}
@@ -5905,8 +5939,18 @@ function HearingNoticeSection({
               <Field label="County Contact" value={notice.countyContact ?? "Not stated"} />
               <Field label="Appraiser/Contact" value={notice.appraiserContact ?? "Not stated"} />
             </div>
-            {uploadButton}
           </div>
+          <UploadedDocBar
+            label="Hearing notice"
+            busy={uploading}
+            onReplace={(file) => handleUpload(file)}
+            removeConfirm="This removes the notice and the hearing date it added to your case and calendar."
+            onRemove={async () => {
+              const { patch, previous } = await removeHearingNotice(protest, notice);
+              setNotice(previous);
+              if (Object.keys(patch).length > 0) onUpdate(patch);
+            }}
+          />
           {notice.discrepancies.length > 0 && (
             <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               <span className="font-semibold">Discrepancies flagged:</span>
@@ -6445,8 +6489,18 @@ function DecisionNoticeSection({
               <Field label="Appeal Deadline" value={notice.appealDeadline ?? "Not stated"} />
               <Field label="Refund" value={notice.refundIndicator ?? "Not stated"} />
             </div>
-            {uploadButton}
           </div>
+          <UploadedDocBar
+            label="Decision document"
+            busy={uploading}
+            onReplace={(file) => handleUpload(file)}
+            removeConfirm="This removes the document and the decision it recorded — your case goes back to the formal hearing."
+            onRemove={async () => {
+              const patch = await removeDecisionNotice(protest, notice);
+              setNotice(null);
+              if (Object.keys(patch).length > 0) onUpdate(patch);
+            }}
+          />
           {notice.discrepancies.length > 0 && (
             <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               <span className="font-semibold">Discrepancies flagged:</span>
@@ -7461,6 +7515,52 @@ function CaseRecordSection({
                         />
                         {busy === it.id ? "Uploading…" : "Upload"}
                       </label>
+                    )}
+                    {it.status === "on_file" && it.fulfil === "document" && it.docType && (
+                      <span className="flex shrink-0 items-center gap-2">
+                        <label className="cursor-pointer text-accent hover:underline">
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            disabled={busy === it.id}
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              e.target.value = "";
+                              if (files.length === 0) return;
+                              void removeLatestDocumentOfType(property.id, it.docType as string)
+                                .then(() => uploadFor(it, files))
+                                .catch((err) =>
+                                  toast.error(getErrorMessage(err, "Could not replace it.")),
+                                );
+                            }}
+                          />
+                          Replace
+                        </label>
+                        <button
+                          type="button"
+                          disabled={busy === it.id}
+                          onClick={() => {
+                            if (
+                              !window.confirm(`Remove the latest ${it.label.toLowerCase()} upload?`)
+                            )
+                              return;
+                            void removeLatestDocumentOfType(property.id, it.docType as string)
+                              .then((id) => {
+                                if (id) toast.success("Removed — upload the right file.");
+                                else
+                                  toast.info("There's no uploaded file for this item to remove.");
+                                setReloadKey((k) => k + 1);
+                              })
+                              .catch((err) =>
+                                toast.error(getErrorMessage(err, "Could not remove it.")),
+                              );
+                          }}
+                          className="text-destructive hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </span>
                     )}
                   </li>
                 ))}

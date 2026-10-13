@@ -1,3 +1,5 @@
+import { UploadedDocBar } from "@/components/UploadedDocBar";
+import { removeCadEvidence } from "@/lib/upload-undo";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Check, Copy, FileSearch, Mail, ShieldAlert, Upload } from "lucide-react";
@@ -155,6 +157,7 @@ export function CadEvidenceRequest({
             onReceived={() => {
               if (!protest.cadEvidenceReceivedAt) void set("received", true);
             }}
+            onRemoved={onChange}
           />
         </div>
       ) : null}
@@ -241,11 +244,13 @@ function CadEvidenceReviewPanel({
   property,
   protest,
   onReceived,
+  onRemoved,
 }: {
   userId: string;
   property: PropertyRecord;
   protest: ProtestRecord;
   onReceived: () => void;
+  onRemoved: (patch: Partial<ProtestRecord>) => void;
 }) {
   const [review, setReview] = useState<StoredCadEvidenceReview | null>(null);
   const [facts, setFacts] = useState<Facts | null>(null);
@@ -574,27 +579,43 @@ function CadEvidenceReviewPanel({
         </div>
       )}
 
-      <label
-        className={`btn-primary btn-primary-hover mt-3 inline-flex cursor-pointer items-center gap-1.5 text-sm ${analyzing ? "pointer-events-none opacity-60" : ""}`}
-      >
-        <Upload className="h-4 w-4" aria-hidden="true" />
-        {analyzing
-          ? "Corvus AI is reading the evidence…"
-          : review
-            ? "Upload updated evidence"
-            : "Upload the district's evidence"}
-        <input
-          type="file"
+      {review && (
+        <UploadedDocBar
+          label="District's evidence"
           accept="application/pdf,image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = e.target.files ? Array.from(e.target.files) : [];
-            e.target.value = "";
-            if (files.length) void analyze(files);
+          busy={analyzing}
+          onReplace={(file) => analyze([file])}
+          removeConfirm="This removes the evidence, Corvus AI's read of it, and marks it not received yet."
+          onRemove={async () => {
+            const patch = await removeCadEvidence(protest);
+            setReview(null);
+            onRemoved(patch);
           }}
         />
-      </label>
+      )}
+      {!review && (
+        <label
+          className={`btn-primary btn-primary-hover mt-3 inline-flex cursor-pointer items-center gap-1.5 text-sm ${analyzing ? "pointer-events-none opacity-60" : ""}`}
+        >
+          <Upload className="h-4 w-4" aria-hidden="true" />
+          {analyzing
+            ? "Corvus AI is reading the evidence…"
+            : review
+              ? "Upload updated evidence"
+              : "Upload the district's evidence"}
+          <input
+            type="file"
+            accept="application/pdf,image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files ? Array.from(e.target.files) : [];
+              e.target.value = "";
+              if (files.length) void analyze(files);
+            }}
+          />
+        </label>
+      )}
     </div>
   );
 }
