@@ -1194,6 +1194,23 @@ function CaseTabBar({
   const currentIdx = CASE_TABS.findIndex(
     (t) => t.id === (currentPhase === "court" ? "arbitration" : currentPhase),
   );
+  // A closed case didn't pass through every phase: one closed at the informal
+  // review never had a hearing or decision, and arbitration / court only
+  // happened if they were actually started. Those read "not needed", not ✓.
+  const resolvedCase = protest.status === "resolved";
+  const closedAtInformal =
+    resolvedCase &&
+    (protest.informalStatus === "accepted" ||
+      (!protest.hearingCompletedAt &&
+        !protest.arbDecision &&
+        !protest.arbitrationFiledAt &&
+        !protest.courtAppeal?.petitionFiledAt));
+  const tabSkipped = (id: CaseTabId) =>
+    resolvedCase &&
+    (((id === "hearing" || id === "decision") && closedAtInformal) ||
+      ((id === "arbitration" || id === "court") &&
+        !escalationDone("arbitration", protest) &&
+        !escalationDone("court", protest)));
   const barRef = useRef<HTMLDivElement>(null);
   // On a narrow screen the strip scrolls sideways — keep the open tab in view.
   useEffect(() => {
@@ -1222,14 +1239,24 @@ function CaseTabBar({
         // closed (there's nothing after it to move on to), so that same rule
         // left it permanently stuck on its plain step number instead of a
         // checkmark even with the case fully resolved.
+        const skippedTab = !isHub && tabSkipped(t.id);
         const done =
           !isHub &&
           !locked &&
+          !skippedTab &&
           (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
         const isCurrent =
           !isHub &&
           (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
-        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
+        const marker = isHub
+          ? "⌂"
+          : skippedTab
+            ? "–"
+            : locked
+              ? "🔒"
+              : done
+                ? "✓"
+                : String(stepNumber(i));
         const style = PHASE_STYLE[t.id];
         return (
           <div key={t.id} className="flex shrink-0 items-center gap-1">
@@ -1252,7 +1279,13 @@ function CaseTabBar({
               role="tab"
               aria-selected={isOpen}
               aria-current={isCurrent ? "step" : undefined}
-              title={locked ? t.lockedHint : TAB_MEANING[t.id]}
+              title={
+                skippedTab
+                  ? "Not needed — the case closed before this step"
+                  : locked
+                    ? t.lockedHint
+                    : TAB_MEANING[t.id]
+              }
               onClick={() => onSelect(t.id)}
               className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
                 isOpen
@@ -1273,13 +1306,15 @@ function CaseTabBar({
                   <span
                     aria-hidden
                     className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                      done
-                        ? "bg-emerald-500 text-white shadow-sm"
-                        : isCurrent && !locked
-                          ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
-                          : locked
-                            ? "bg-muted text-muted-foreground/60"
-                            : `border-2 bg-background text-muted-foreground ${style.border}`
+                      skippedTab
+                        ? "bg-muted text-muted-foreground/70"
+                        : done
+                          ? "bg-emerald-500 text-white shadow-sm"
+                          : isCurrent && !locked
+                            ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
+                            : locked
+                              ? "bg-muted text-muted-foreground/60"
+                              : `border-2 bg-background text-muted-foreground ${style.border}`
                     }`}
                   >
                     {marker}
