@@ -6,6 +6,8 @@ import {
   extractDecisionDocument,
   saveDecisionNotice,
   type DecisionExtraction,
+  documentMismatch,
+  ARB_DECISION_CATEGORIES,
 } from "@/lib/decision-notice";
 import { DECISION_DOCUMENT_TYPE, uploadDocument } from "@/lib/documents";
 import {
@@ -143,6 +145,13 @@ export function FormalHearingActions({
       // Unreadable by AI — fall through to asking for the final value.
     }
     setBusy(false);
+    const wrong = ex
+      ? documentMismatch(ex, property, ARB_DECISION_CATEGORIES, "an ARB order or hearing decision")
+      : null;
+    if (wrong) {
+      toast.error(wrong);
+      return;
+    }
     const value = ex?.finalValue ?? null;
     if (value != null && value > 0) {
       await closeWithDecision(f, ex, value);

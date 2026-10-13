@@ -131,6 +131,9 @@ import {
   getLatestDecisionNotice,
   type DecisionNoticeRecord,
   type DecisionExtraction,
+  documentMismatch,
+  SETTLEMENT_CATEGORIES,
+  ARB_DECISION_CATEGORIES,
 } from "@/lib/decision-notice";
 import {
   extractSettlementDocument,
@@ -5099,6 +5102,18 @@ function InformalReviewSection({
       // Unreadable by AI — fall through to asking for the settled value.
     }
     setSettling(false);
+    const wrong = extraction
+      ? documentMismatch(
+          extraction,
+          property,
+          SETTLEMENT_CATEGORIES,
+          "a signed settlement agreement",
+        )
+      : null;
+    if (wrong) {
+      toast.error(wrong);
+      return;
+    }
     const value = extraction?.finalValue ?? null;
     if (value != null && value > 0) {
       await closeWithSettlement(file, extraction, value);
@@ -6298,6 +6313,16 @@ function DecisionNoticeSection({
     setUploadError(null);
     try {
       const extraction = await extractDecisionDocument(property, protest, file);
+      const wrong = documentMismatch(
+        extraction,
+        property,
+        ARB_DECISION_CATEGORIES,
+        "an ARB order or hearing decision",
+      );
+      if (wrong) {
+        setUploadError(wrong);
+        return;
+      }
       setPending(extraction);
       setPendingFile(file);
     } catch (err) {
@@ -6631,6 +6656,16 @@ function SettlementSignatureSection({
     setUploadError(null);
     try {
       const extraction = await extractSettlementDocument(property, protest, file);
+      const wrong = documentMismatch(
+        extraction,
+        property,
+        SETTLEMENT_CATEGORIES,
+        "a settlement offer or agreement",
+      );
+      if (wrong) {
+        setUploadError(wrong);
+        return;
+      }
       setPending(extraction);
       setPendingFile(file);
     } catch (err) {

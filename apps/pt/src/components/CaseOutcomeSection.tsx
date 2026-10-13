@@ -1,3 +1,4 @@
+import { OutcomeFigures } from "@/components/OutcomeFigures";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { PropertyRecord } from "@/lib/properties";
@@ -204,36 +205,7 @@ export function CaseOutcomeSection({
         </div>
       )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Value reduced
-          </div>
-          <div className="mt-0.5 text-sm">
-            {currency(outcome.originalValue)} → <strong>{currency(outcome.finalValue)}</strong>
-          </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">You saved</div>
-          <div className="mt-0.5 text-lg font-semibold text-success">
-            {outcome.taxSavings != null ? currency(outcome.taxSavings) : "—"}
-            <span className="text-xs font-normal text-muted-foreground"> /yr in tax</span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {pct(outcome.valueReductionPct)} lower value
-            {outcome.valueReduction != null ? ` (−${currency(outcome.valueReduction)})` : ""}
-          </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Your tax now
-          </div>
-          <div className="mt-0.5 text-sm">
-            {outcome.taxBefore != null ? currency(outcome.taxBefore) : "—"} →{" "}
-            <strong>{outcome.taxAfter != null ? currency(outcome.taxAfter) : "—"}</strong>
-          </div>
-        </div>
-      </div>
+      <OutcomeFigures outcome={outcome} />
       <p className="mt-2 text-[11px] text-muted-foreground">
         Tax figures apply your county&apos;s average combined rate (
         {(outcome.taxRate * 100).toFixed(2)}%) to the value change — an estimate; your actual bill

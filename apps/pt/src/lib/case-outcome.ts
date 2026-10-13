@@ -23,6 +23,12 @@ export type CaseOutcome = {
   taxBefore: number | null;
   taxAfter: number | null;
   taxSavings: number | null;
+  // Which way the value moved — an ARB or settlement can also raise it, and
+  // that must never read as a "reduction" with $0 saved.
+  direction: "reduced" | "increased" | "unchanged" | null;
+  valueIncrease: number | null;
+  valueIncreasePct: number | null;
+  taxIncrease: number | null;
 };
 
 export function buildCaseOutcome(
@@ -57,6 +63,21 @@ export function buildCaseOutcome(
   const taxAfter = final != null ? Math.round(final * taxRate) : null;
   const taxSavings =
     taxBefore != null && taxAfter != null ? Math.max(0, taxBefore - taxAfter) : null;
+  const direction =
+    original == null || final == null
+      ? null
+      : final < original
+        ? "reduced"
+        : final > original
+          ? "increased"
+          : "unchanged";
+  const increase = direction === "increased" ? (final as number) - (original as number) : null;
+  const increasePct =
+    increase != null && original != null && original > 0 ? (increase / original) * 100 : null;
+  const taxIncrease =
+    direction === "increased" && taxBefore != null && taxAfter != null
+      ? taxAfter - taxBefore
+      : null;
 
   const headline =
     stage === "informal"
@@ -81,6 +102,10 @@ export function buildCaseOutcome(
     taxBefore,
     taxAfter,
     taxSavings,
+    direction,
+    valueIncrease: increase,
+    valueIncreasePct: increasePct,
+    taxIncrease,
   };
 }
 

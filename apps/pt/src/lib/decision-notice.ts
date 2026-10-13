@@ -172,3 +172,58 @@ export async function getLatestDecisionNotice(
   if (error) throw error;
   return data ? fromRow(data as DecisionNoticeRow) : null;
 }
+
+// "Is this the document the step asked for?" — read from what the AI already
+// extracted. Returns a plain message for the owner when it isn't (an
+// unrelated file, the right kind of paper for a different step, or another
+// property's document), or null when it fits. Never blocks on a field the
+// AI couldn't read.
+export const SETTLEMENT_CATEGORIES: DecisionDocumentCategory[] = [
+  "Settlement",
+  "Revised Value Notice",
+  "County Decision",
+];
+export const ARB_DECISION_CATEGORIES: DecisionDocumentCategory[] = [
+  "ARB Order",
+  "Hearing Decision",
+  "County Decision",
+  "Revised Value Notice",
+];
+
+const normAccount = (a: string) =>
+  a
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/^0+/, "");
+
+export function documentMismatch(
+  extraction: Pick<DecisionExtraction, "documentCategory" | "accountNumber">,
+  property: { accountNumber: string | null },
+  expected: DecisionDocumentCategory[],
+  expectedLabel: string,
+): string | null {
+  const cat = extraction.documentCategory;
+  if (cat && !expected.includes(cat)) {
+    if (cat === "Other") {
+      return `This doesn't look like ${expectedLabel}. Corvus AI couldn't find one in this file — please check you picked the right document.`;
+    }
+    const where =
+      cat === "Settlement"
+        ? " It looks like a settlement — upload it on the Informal Review tab."
+        : cat === "ARB Order" || cat === "Hearing Decision"
+          ? " It looks like an ARB order — upload it on the Decision tab."
+          : "";
+    return `This looks like a ${cat.toLowerCase()}, not ${expectedLabel}.${where}`;
+  }
+  const docAcct = extraction.accountNumber ? normAccount(extraction.accountNumber) : "";
+  const propAcct = property.accountNumber ? normAccount(property.accountNumber) : "";
+  if (
+    docAcct.length >= 4 &&
+    propAcct.length >= 4 &&
+    !docAcct.includes(propAcct) &&
+    !propAcct.includes(docAcct)
+  ) {
+    return `This document is for account ${extraction.accountNumber}, but this property's account is ${property.accountNumber}. Please upload the document for this property.`;
+  }
+  return null;
+}
