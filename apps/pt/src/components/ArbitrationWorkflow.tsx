@@ -23,7 +23,6 @@ import { buildAiReportIntakePatch } from "@/lib/properties";
 import { getErrorMessage } from "@/lib/error-message";
 import {
   arbitrationImpact,
-  arbitrationStages,
   buildArbitrationNumbers,
   evaluateArbitrationEligibility,
   parseBulletList,
@@ -104,7 +103,6 @@ export function ArbitrationWorkflow({
     deposit: eligibility.deposit != null,
   };
   const readyToFile = Object.values(auto).every(Boolean) && checks.deposit && checks.reviewed;
-  const stages = arbitrationStages(protest, eligibility, readyToFile);
   const closed = protest.status === "resolved";
   const filed = !!protest.arbitrationFiledAt;
 
@@ -300,32 +298,6 @@ export function ArbitrationWorkflow({
 
   return (
     <div id="case-arbitration" className="grid gap-4">
-      {/* Case Progress — only the current/next stage is highlighted */}
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
-        {stages.map((s, i) => (
-          <li key={s.id} className="flex items-center gap-1">
-            {i > 0 && (
-              <span aria-hidden className="text-muted-foreground/30">
-                →
-              </span>
-            )}
-            <span
-              aria-current={s.state === "current" ? "step" : undefined}
-              className={`rounded-full px-2.5 py-1 ${
-                s.state === "current"
-                  ? "bg-accent font-semibold text-accent-foreground"
-                  : s.state === "done"
-                    ? "text-success"
-                    : "text-muted-foreground/60"
-              }`}
-            >
-              {s.state === "done" ? "✓ " : ""}
-              {s.label}
-            </span>
-          </li>
-        ))}
-      </ol>
-
       <RelevantTaxUpdates
         property={property}
         protest={protest}
