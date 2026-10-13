@@ -403,6 +403,26 @@ export async function scheduleInformalReview(
   });
 }
 
+// Marking the informal review completed cancels a meeting still on the
+// schedule — it's no longer happening, so it comes off the case and the
+// calendars (the in-app and Google calendars only show a "scheduled" review).
+export async function cancelInformalReviewMeeting(
+  protestId: string,
+  previous: { date: string; time?: string | null; mode?: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({ informal_review_date: null, informal_review_time: null, informal_review_mode: null })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(
+    protestId,
+    "deadline_set",
+    `Informal review meeting on ${previous.date}${previous.time ? ` at ${previous.time}` : ""} cancelled — the informal review was marked completed.`,
+    { cancelledInformalReviewDate: previous.date, ...previous },
+  );
+}
+
 // AI's own read of which appraiser specialty this property would route to
 // (see informal-review-guidance edge function) — saved so it's available
 // the next time this case's guidance loads, without a fresh AI call every

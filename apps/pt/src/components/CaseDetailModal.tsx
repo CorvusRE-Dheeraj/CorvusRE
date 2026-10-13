@@ -48,6 +48,7 @@ import {
   undoInformalSettlement,
   undoInformalStep,
   scheduleInformalReview,
+  cancelInformalReviewMeeting,
   resolveInformalSettlement,
   saveInformalAppraiserCategory,
   saveAttendanceType,
@@ -4963,6 +4964,8 @@ function InformalReviewSection({
   onOpenHearing: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  // Shown after marking the review completed cancelled a scheduled meeting.
+  const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
   const [timeInput, setTimeInput] = useState(parseTimeToInput(protest.informalReviewTime));
   const [modeInput, setModeInput] = useState<HearingMode>(
@@ -5013,6 +5016,28 @@ function InformalReviewSection({
     try {
       await updateInformalStatus(protest.id, status);
       onUpdate({ informalStatus: status });
+      // Completed means the meeting isn't happening any more — take a
+      // still-scheduled one off the case and the calendar, and say so.
+      if (status === "completed" && protest.informalReviewDate) {
+        const previous = {
+          date: protest.informalReviewDate,
+          time: protest.informalReviewTime ?? null,
+          mode: protest.informalReviewMode ?? null,
+        };
+        await cancelInformalReviewMeeting(protest.id, previous);
+        onUpdate({ informalReviewDate: null, informalReviewTime: null, informalReviewMode: null });
+        const when = new Date(`${previous.date.slice(0, 10)}T12:00:00`).toLocaleDateString(
+          "en-US",
+          {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          },
+        );
+        const msg = `Your informal review meeting on ${when}${previous.time ? ` at ${previous.time}` : ""} was cancelled and removed from your calendar.`;
+        setCancelledNotice(msg);
+        toast.info(msg);
+      }
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not update this status."));
     } finally {
@@ -5315,90 +5340,110 @@ function InformalReviewSection({
           </button>
         </div>
       )}
-      {/* Schedule — always available, not gated behind the status dropdown.
-          Saving it sets the status to "scheduled" and feeds the in-platform
-          calendar + Google/ICS sync (see scheduleInformalReview). */}
-      <form onSubmit={handleSaveSchedule} className="mt-3 rounded-md border border-border p-3">
-        <div className="text-xs font-semibold text-foreground">Schedule the informal review</div>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Enter the date, time, and mode you arranged with the appraisal district — it goes straight
-          onto your calendar.
-        </p>
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <div className="grid gap-1 text-xs">
-            <span>Date</span>
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Date"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                >
-                  <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-                  {dateInput
-                    ? new Date(`${dateInput}T00:00:00`).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "Pick a date"}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-0">
-                <DatePickerCalendar
-                  mode="single"
-                  selected={dateInputToDate(dateInput)}
-                  onSelect={(d) => {
-                    if (d) setDateInput(dateToDateInput(d));
-                    setCalendarOpen(false);
-                  }}
-                  disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <label className="grid gap-1 text-xs">
-            Time
-            <input
-              type="time"
-              value={timeInput}
-              onChange={(e) => setTimeInput(e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="grid gap-1 text-xs">
-            Mode
-            <select
-              value={modeInput}
-              onChange={(e) => setModeInput(e.target.value as HearingMode)}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            >
-              {INFORMAL_REVIEW_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+      {cancelledNotice && (
+        <div
+          role="alert"
+          className="mt-3 flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+        >
+          <span>{cancelledNotice}</span>
           <button
-            type="submit"
-            disabled={savingSchedule || !dateInput}
-            className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            type="button"
+            onClick={() => setCancelledNotice(null)}
+            aria-label="Dismiss"
+            className="text-muted-foreground hover:text-foreground"
           >
-            {savingSchedule ? "Saving…" : "Save & add to calendar"}
+            ×
           </button>
         </div>
-        {scheduled && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            On file: {protest.informalReviewDate}
-            {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
-            {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
-            <Link to="/dashboard/calendar" className="text-accent hover:underline">
-              View on calendar
-            </Link>
+      )}
+      {/* Schedule — available until the informal review is completed (or skipped/rejected).
+          Saving it sets the status to "scheduled" and feeds the in-platform
+          calendar + Google/ICS sync (see scheduleInformalReview). */}
+      {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+        protest.informalStatus,
+      ) && (
+        <form onSubmit={handleSaveSchedule} className="mt-3 rounded-md border border-border p-3">
+          <div className="text-xs font-semibold text-foreground">Schedule the informal review</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Enter the date, time, and mode you arranged with the appraisal district — it goes
+            straight onto your calendar.
           </p>
-        )}
-      </form>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="grid gap-1 text-xs">
+              <span>Date</span>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Date"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                    {dateInput
+                      ? new Date(`${dateInput}T00:00:00`).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "Pick a date"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-0">
+                  <DatePickerCalendar
+                    mode="single"
+                    selected={dateInputToDate(dateInput)}
+                    onSelect={(d) => {
+                      if (d) setDateInput(dateToDateInput(d));
+                      setCalendarOpen(false);
+                    }}
+                    disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <label className="grid gap-1 text-xs">
+              Time
+              <input
+                type="time"
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="grid gap-1 text-xs">
+              Mode
+              <select
+                value={modeInput}
+                onChange={(e) => setModeInput(e.target.value as HearingMode)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              >
+                {INFORMAL_REVIEW_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={savingSchedule || !dateInput}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {savingSchedule ? "Saving…" : "Save & add to calendar"}
+            </button>
+          </div>
+          {scheduled && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              On file: {protest.informalReviewDate}
+              {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
+              {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
+              <Link to="/dashboard/calendar" className="text-accent hover:underline">
+                View on calendar
+              </Link>
+            </p>
+          )}
+        </form>
+      )}
 
       <div className="mt-3">
         <button
