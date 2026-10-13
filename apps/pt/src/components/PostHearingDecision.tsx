@@ -12,7 +12,7 @@ import { evaluateArbitrationEligibility } from "@/lib/arbitration";
 import { localTodayIso } from "@/lib/case-pipeline";
 import { postHearing, type PostHearing } from "@/lib/post-hearing";
 
-const usd = (n: number) => `${n < 0 ? "−" : ""}${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
+const usd = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
 const fmtDate = (iso: string) =>
   new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("en-US", {
     month: "long",
