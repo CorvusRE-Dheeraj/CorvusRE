@@ -389,6 +389,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-upload-evidence": "file",
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
+  "case-informal-outcome": "informal",
   "case-hearing-notice": "hearing",
   "case-cad-evidence": "hearing",
   "case-hearing-prep": "hearing",
@@ -946,14 +947,19 @@ export function CaseDetailView({
                 onAgreementChange={setSettlementAgreement}
                 onOpenHearing={() => setActiveTab("hearing")}
               />
-              <SettlementSignatureSection
-                userId={userId}
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
+              {/* The settlement upload lives in the Informal Review section above
+                  (Submit Settlement document). This fuller flow only stays for a
+                  case that already started a settlement here, so it isn't lost. */}
+              {settlementAgreement && (
+                <SettlementSignatureSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  agreement={settlementAgreement}
+                  onAgreementChange={setSettlementAgreement}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
             </div>
           )}
 
@@ -5592,7 +5598,10 @@ function InformalReviewSection({
 
       {/* How the informal review ended — at the end of the section. */}
       {protest.status !== "resolved" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div
+          id="case-informal-outcome"
+          className="mt-3 flex scroll-mt-24 flex-wrap items-center gap-2"
+        >
           {!["completed", "accepted", "rejected", "no_informal_available"].includes(
             protest.informalStatus,
           ) && (
@@ -6510,13 +6519,14 @@ function InformalOutcomeBanner({
       </p>
       <button
         type="button"
-        onClick={() =>
-          onNavigate
-            ? onNavigate("case-settlement-signature")
-            : document
-                .getElementById("case-settlement-signature")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
+        onClick={() => {
+          const anchor = document.getElementById("case-settlement-signature")
+            ? "case-settlement-signature"
+            : "case-informal-outcome";
+          if (onNavigate) onNavigate(anchor);
+          else
+            document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
         className="btn-outline mt-2 text-xs py-1"
       >
         Go to the settlement section
