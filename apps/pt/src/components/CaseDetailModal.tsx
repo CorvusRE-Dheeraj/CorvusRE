@@ -5295,51 +5295,6 @@ function InformalReviewSection({
             onUndo={async () => onUpdate(await undoInformalStep(protest))}
           />
         )}
-      {protest.status !== "resolved" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
-            protest.informalStatus,
-          ) && (
-            <button
-              type="button"
-              onClick={() => void handleInformalCompleted()}
-              disabled={updatingStatus}
-              className="btn-outline text-xs py-1.5 disabled:opacity-60"
-            >
-              Informal review completed
-            </button>
-          )}
-          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
-            <button
-              type="button"
-              onClick={() => void handleUnsatisfied()}
-              disabled={updatingStatus}
-              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
-            >
-              Unsatisfied
-            </button>
-          )}
-          <label
-            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
-          >
-            {settling ? "Submitting…" : "Submit Settlement document"}
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              className="hidden"
-              disabled={settling}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void handleSettlementFile(file);
-              }}
-            />
-          </label>
-          <span className="text-[11px] text-muted-foreground">
-            Uploading the signed settlement closes this protest.
-          </span>
-        </div>
-      )}
       {protest.status !== "resolved" && protest.informalStatus === "rejected" && (
         <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
           <p className="font-medium">
@@ -5354,43 +5309,6 @@ function InformalReviewSection({
           </button>
         </div>
       )}
-      {settleNeedsValue && settleFile && (
-        <div className="mt-2 rounded-md border border-border p-3 text-xs">
-          <p className="text-muted-foreground">
-            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
-            close the protest.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              value={settleValueInput}
-              onChange={(e) => setSettleValueInput(e.target.value)}
-              inputMode="decimal"
-              placeholder="Settled value, e.g. 480000"
-              aria-label="Settled value"
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => void handleConfirmSettleValue()}
-              disabled={settling}
-              className="btn-accent text-xs py-1.5 disabled:opacity-60"
-            >
-              {settling ? "Closing…" : "Close protest"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSettleNeedsValue(false);
-                setSettleFile(null);
-              }}
-              className="text-muted-foreground hover:underline"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Schedule — always available, not gated behind the status dropdown.
           Saving it sets the status to "scheduled" and feeds the in-platform
           calendar + Google/ICS sync (see scheduleInformalReview). */}
@@ -5671,6 +5589,89 @@ function InformalReviewSection({
           </div>
         )}
       </form>
+
+      {/* How the informal review ended — at the end of the section. */}
+      {protest.status !== "resolved" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+            protest.informalStatus,
+          ) && (
+            <button
+              type="button"
+              onClick={() => void handleInformalCompleted()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 disabled:opacity-60"
+            >
+              Informal review completed
+            </button>
+          )}
+          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={() => void handleUnsatisfied()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
+            >
+              Unsatisfied
+            </button>
+          )}
+          <label
+            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {settling ? "Submitting…" : "Submit Settlement document"}
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              disabled={settling}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleSettlementFile(file);
+              }}
+            />
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            Uploading the signed settlement closes this protest.
+          </span>
+        </div>
+      )}
+      {settleNeedsValue && settleFile && (
+        <div className="mt-2 rounded-md border border-border p-3 text-xs">
+          <p className="text-muted-foreground">
+            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
+            close the protest.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={settleValueInput}
+              onChange={(e) => setSettleValueInput(e.target.value)}
+              inputMode="decimal"
+              placeholder="Settled value, e.g. 480000"
+              aria-label="Settled value"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void handleConfirmSettleValue()}
+              disabled={settling}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {settling ? "Closing…" : "Close protest"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSettleNeedsValue(false);
+                setSettleFile(null);
+              }}
+              className="text-muted-foreground hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
