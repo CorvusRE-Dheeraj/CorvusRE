@@ -28,7 +28,7 @@ describe("documentMismatch", () => {
       ),
     ).toMatch(/doesn't look like a signed settlement agreement/);
   });
-  it("points an ARB order to the Decision tab", () => {
+  it("points an ARB order to the Formal Hearing tab", () => {
     expect(
       documentMismatch(
         { documentCategory: "ARB Order", accountNumber: null },
@@ -36,7 +36,7 @@ describe("documentMismatch", () => {
         SETTLEMENT_CATEGORIES,
         "a signed settlement agreement",
       ),
-    ).toMatch(/Decision tab/);
+    ).toMatch(/Formal Hearing tab/);
   });
   it("points a settlement to the Informal Review tab", () => {
     expect(

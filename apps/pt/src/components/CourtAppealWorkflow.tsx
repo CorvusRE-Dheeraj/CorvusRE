@@ -486,7 +486,7 @@ export function CourtAppealWorkflow({
         <h2 className={h}>Court appeal review</h2>
         {!review.ready ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            Record the ARB decision on the Decision tab (upload the ARB order) so Corvus AI can
+            Record the ARB decision on the Formal Hearing tab (upload the ARB order) so Corvus AI can
             count your deadline.
           </p>
         ) : (

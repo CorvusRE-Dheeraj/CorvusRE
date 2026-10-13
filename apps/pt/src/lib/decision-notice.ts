@@ -211,7 +211,7 @@ export function documentMismatch(
       cat === "Settlement"
         ? " It looks like a settlement — upload it on the Informal Review tab."
         : cat === "ARB Order" || cat === "Hearing Decision"
-          ? " It looks like an ARB order — upload it on the Decision tab."
+          ? " It looks like an ARB order — upload it on the Formal Hearing tab."
           : "";
     return `This looks like a ${cat.toLowerCase()}, not ${expectedLabel}.${where}`;
   }

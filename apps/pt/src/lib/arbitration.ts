@@ -75,7 +75,7 @@ export function evaluateArbitrationEligibility(
     return done(
       "needs_info",
       ["Arbitration is available after the ARB issues its order."],
-      ["The ARB decision — record it on the Decision tab (upload the ARB order)."],
+      ["The ARB decision — record it on the Formal Hearing tab (upload the ARB order)."],
     );
   }
   if (protest.arbDecision === "approved") {

@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
-import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
+import { CaseOutcomeSection, StageDecisionBanner } from "@/components/CaseOutcomeSection";
 import { EvidenceChecklistPanel } from "@/components/EvidenceChecklistPanel";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
@@ -272,7 +272,7 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string; joinsPrev?:
   },
   {
     id: "decision",
-    label: "Decision",
+    label: "Post-hearing Options",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
   {
@@ -365,7 +365,8 @@ const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: strin
 const TAB_MEANING: Partial<Record<CaseTabId, string>> = {
   informal: GLOSSARY_MAP["Informal review"],
   hearing: GLOSSARY_MAP["Formal hearing"],
-  decision: GLOSSARY_MAP["ARB"],
+  decision:
+    "Your options after the hearing decision: accept it, binding arbitration or a court appeal.",
   arbitration: GLOSSARY_MAP["Binding arbitration"],
   court: GLOSSARY_MAP["Court appeal"],
 };
@@ -802,7 +803,7 @@ export function CaseDetailView({
                 type="button"
                 onClick={() => {
                   setActiveTab("decision");
-                  // Let the Decision tab mount, then scroll to the options and compare.
+                  // Let the Post-hearing Options tab mount, then scroll to the options and compare.
                   setTimeout(() => {
                     document
                       .getElementById("case-escalation")
@@ -812,7 +813,7 @@ export function CaseDetailView({
                 }}
                 className="text-left text-accent hover:underline"
               >
-                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on the Decision tab) →
+                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on Post-hearing Options) →
               </button>
             </p>
           ) : (
@@ -950,6 +951,17 @@ export function CaseDetailView({
           {/* --- Informal Review --- */}
           {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
             <div>
+              {/* Once settled, the result leads the tab. */}
+              <CaseOutcomeSection
+                userId={userId}
+                stage="informal"
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
               <InformalReviewSection
                 userId={userId}
                 protest={current}
@@ -979,6 +991,25 @@ export function CaseDetailView({
           {/* --- Formal Hearing --- */}
           {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
+              {/* Once decided, the ARB result leads the tab. */}
+              <CaseOutcomeSection
+                userId={userId}
+                stage="formal"
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              {current.arbDecision && (
+                <DecisionNoticeSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
               {/* Request CAD Evidence comes before the hearing itself. */}
               <CadEvidenceRequest
                 userId={userId}
@@ -1017,31 +1048,15 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Decision --- */}
+          {/* --- Post-hearing Options --- (the decision itself is on the
+              Informal / Formal tab it came from) */}
           {activeTab === "decision" && (
             <div>
-              {/* Once there's a final value: the outcome, bill check, appeal
-                  deadlines and economics, documents and prior year in one place. */}
               <PostHearingDecision
                 userId={userId}
                 property={property}
                 protest={current}
                 evidenceDocumentCount={evidenceDocuments.length}
-              />
-              <CaseOutcomeSection
-                userId={userId}
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onOpenAppeal={() => setActiveTab(escalationTab)}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <DecisionNoticeSection
-                userId={userId}
-                protest={current}
-                property={property}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
               <EscalationEvaluationSection
                 protest={current}
@@ -1056,6 +1071,7 @@ export function CaseDetailView({
           {/* --- Arbitration --- */}
           {activeTab === "arbitration" && (
             <div>
+              <StageDecisionBanner kind="arbitration" property={property} protest={current} />
               {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
                 <ArbitrationWorkflow
                   userId={userId}
@@ -1079,6 +1095,7 @@ export function CaseDetailView({
           {/* --- Court Appeal --- */}
           {activeTab === "court" && (
             <div>
+              <StageDecisionBanner kind="appeal" property={property} protest={current} />
               {current.escalationPath === "appeal" || current.courtAppeal ? (
                 <CourtAppealWorkflow
                   userId={userId}

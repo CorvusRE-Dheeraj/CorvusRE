@@ -213,10 +213,18 @@ export function FinalOutcomeSection({
           </ol>
           <button
             type="button"
-            onClick={() => onOpenTab("decision")}
+            onClick={() =>
+              onOpenTab(
+                protest.arbDecision
+                  ? "hearing"
+                  : protest.informalStatus === "accepted"
+                    ? "informal"
+                    : "decision",
+              )
+            }
             className="mt-3 text-xs text-muted-foreground hover:underline"
           >
-            Made a mistake? Review or undo on the Decision tab →
+            Made a mistake? Review or undo the decision →
           </button>
         </div>
       )}
