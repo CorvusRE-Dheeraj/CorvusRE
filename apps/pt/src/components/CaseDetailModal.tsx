@@ -1,13 +1,11 @@
 import { CasePhaseGuide } from "@/components/CasePhaseGuide";
-import { centerInStrip } from "@/lib/scroll-into-strip";
-import { GLOSSARY_MAP } from "@/lib/glossary";
 import { NextRequiredAction, PipelineStepper } from "@/components/CasePipeline";
 import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
 import { MockHearing } from "@/components/MockHearing";
 import { SettlementHistory } from "@/components/SettlementHistory";
 import { PortalCopySheet } from "@/components/PortalCopySheet";
 import { CountyRecordPanel } from "@/components/CountyRecordPanel";
-import { casePipeline, localTodayIso, type NoticeFiling } from "@/lib/case-pipeline";
+import { casePipeline, localTodayIso, type NoticeFiling, type StageId } from "@/lib/case-pipeline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
@@ -248,6 +246,28 @@ const COUNTY_REPLY_LINE = `Please include ${CORVUSPT_COUNTY_EMAIL} on any reply 
 // listens and runs its AI comparison.
 const COMPARE_ESCALATION_EVENT = "corvuspt:compare-escalation";
 
+// The case road's steps (case-pipeline.ts) open these tabs; Appeal Decision opens
+// Arbitration or Court Appeal, and Request CAD Evidence its section on Formal Hearing.
+const STAGE_TAB: Record<Exclude<StageId, "appeal" | "cad_evidence">, CaseTabId> = {
+  readiness: "overview",
+  file: "file",
+  confirm: "file",
+  informal: "informal",
+  arb: "hearing",
+  decision: "decision",
+  close: "outcome",
+};
+const TAB_STAGE: Record<CaseTabId, StageId> = {
+  overview: "readiness",
+  file: "file",
+  informal: "informal",
+  hearing: "arb",
+  decision: "decision",
+  arbitration: "appeal",
+  court: "appeal",
+  outcome: "close",
+};
+
 type CaseTabId =
   "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court" | "outcome";
 
@@ -307,88 +327,10 @@ function escalationDone(id: CaseTabId, p: ProtestRecord): boolean {
   return false;
 }
 
-// The case "road": each phase has its own colour, so where you are (and how far you've
-// come) reads at a glance. Full class strings so Tailwind can see them.
-const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: string; ping: string }> =
-  {
-    overview: {
-      grad: "from-emerald-500 to-teal-600",
-      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
-      border: "border-emerald-400",
-      ping: "bg-emerald-400",
-    },
-    file: {
-      grad: "from-sky-500 to-blue-600",
-      tint: "bg-sky-500/10 ring-1 ring-sky-500/30",
-      border: "border-sky-400",
-      ping: "bg-sky-400",
-    },
-    informal: {
-      grad: "from-amber-500 to-orange-600",
-      tint: "bg-amber-500/10 ring-1 ring-amber-500/30",
-      border: "border-amber-400",
-      ping: "bg-amber-400",
-    },
-    hearing: {
-      grad: "from-violet-500 to-purple-600",
-      tint: "bg-violet-500/10 ring-1 ring-violet-500/30",
-      border: "border-violet-400",
-      ping: "bg-violet-400",
-    },
-    decision: {
-      grad: "from-indigo-500 to-blue-700",
-      tint: "bg-indigo-500/10 ring-1 ring-indigo-500/30",
-      border: "border-indigo-400",
-      ping: "bg-indigo-400",
-    },
-    arbitration: {
-      grad: "from-rose-500 to-pink-600",
-      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
-      border: "border-rose-400",
-      ping: "bg-rose-400",
-    },
-    court: {
-      grad: "from-rose-500 to-pink-600",
-      tint: "bg-rose-500/10 ring-1 ring-rose-500/30",
-      border: "border-rose-400",
-      ping: "bg-rose-400",
-    },
-    outcome: {
-      grad: "from-emerald-500 to-lime-600",
-      tint: "bg-emerald-500/10 ring-1 ring-emerald-500/30",
-      border: "border-emerald-400",
-      ping: "bg-emerald-400",
-    },
-  };
-
-// Plain-English meaning of the jargon-named phases, shown on hover.
-const TAB_MEANING: Partial<Record<CaseTabId, string>> = {
-  informal: GLOSSARY_MAP["Informal review"],
-  hearing: GLOSSARY_MAP["Formal hearing"],
-  decision:
-    "Your options after the hearing decision: accept it, binding arbitration or a court appeal.",
-  arbitration: GLOSSARY_MAP["Binding arbitration"],
-  court: GLOSSARY_MAP["Court appeal"],
-};
-
 // The number shown for a tab: its position, minus tabs that share a step number.
 function stepNumber(index: number): number {
   return index - CASE_TABS.slice(0, index + 1).filter((t) => t.joinsPrev).length;
 }
-
-// One plain sentence per phase — "what this step is for" — shown under the tab
-// bar for whichever tab is open, so landing on a tab always explains itself.
-const CASE_TAB_INTRO: Record<CaseTabId, string> = {
-  overview: "Where your case stands right now, and the one thing to do next.",
-  file: "Fill, sign, and file your Notice of Protest with the county — and gather your evidence.",
-  informal: "Work the county's proposed value informally, before a formal hearing.",
-  hearing:
-    "Your case has moved to the county's formal ARB review — log the hearing notice, then prepare your evidence and talking points.",
-  decision: "Record the ARB's decision.",
-  arbitration: "Weigh binding arbitration or a district-court appeal.",
-  court: "Weigh binding arbitration or a district-court appeal.",
-  outcome: "How your case ended — the final value, what you saved, and the route it took.",
-};
 
 // The anchor ids the deterministic guidance (case-guidance.ts) links to, and
 // which tab each one lives in now — so a "Go to Documents" link can switch
@@ -750,7 +692,20 @@ export function CaseDetailView({
               onGo={navigateTo}
             />
             <div className="card-elev min-w-0 p-4">
-              <PipelineStepper pipeline={pipeline} />
+              <PipelineStepper
+                pipeline={pipeline}
+                openStage={TAB_STAGE[activeTab]}
+                openAppeal={activeTab === "arbitration" || activeTab === "court" ? activeTab : null}
+                onSelect={(stage, appeal) => {
+                  if (stage === "cad_evidence") {
+                    if (caseTabUnlocked("hearing", current, needsGuidanceAck, noticeSigned))
+                      navigateTo("case-cad-evidence");
+                    else handleTabClick("hearing");
+                    return;
+                  }
+                  handleTabClick(stage === "appeal" ? (appeal ?? escalationTab) : STAGE_TAB[stage]);
+                }}
+              />
             </div>
           </div>
           {(() => {
@@ -790,35 +745,6 @@ export function CaseDetailView({
               </div>
             );
           })()}
-          <CaseTabBar
-            activeTab={activeTab}
-            protest={current}
-            needsGuidanceAck={needsGuidanceAck}
-            noticeSigned={noticeSigned}
-            onSelect={handleTabClick}
-          />
-          {activeTab === "arbitration" || activeTab === "court" ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("decision");
-                  // Let the Post-hearing Options tab mount, then scroll to the options and compare.
-                  setTimeout(() => {
-                    document
-                      .getElementById("case-escalation")
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    window.dispatchEvent(new Event(COMPARE_ESCALATION_EVENT));
-                  }, 350);
-                }}
-                className="text-left text-accent hover:underline"
-              >
-                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on Post-hearing Options) →
-              </button>
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-muted-foreground">{CASE_TAB_INTRO[activeTab]}</p>
-          )}
           <CasePhaseGuide tab={activeTab} informalStatus={current.informalStatus} />
 
           {activeTab === "overview" && (
@@ -1187,172 +1113,6 @@ function EscalationStart({
     </div>
   );
 }
-
-// The phase-tab bar, drawn as a numbered progress path: Overview is an
-// unnumbered "hub", the four real phases are steps 1–4. Each step shows one of
-// four states derived purely from where the case is now (defaultCaseTab) and
-// what's unlocked (caseTabUnlocked): done (✓), current (accent, "you are
-// here"), available (outlined number), or locked (🔒, dimmed — clicking still
-// toasts the hint via onSelect). Connector arrows make it read left-to-right.
-function CaseTabBar({
-  activeTab,
-  protest,
-  needsGuidanceAck,
-  noticeSigned,
-  onSelect,
-}: {
-  activeTab: CaseTabId;
-  protest: ProtestRecord;
-  needsGuidanceAck: boolean;
-  noticeSigned: boolean;
-  onSelect: (id: CaseTabId) => void;
-}) {
-  const currentPhase = defaultCaseTab(protest, needsGuidanceAck);
-  // Arbitration and Court Appeal share one step, so a court-appeal case sits on that step.
-  const currentIdx = CASE_TABS.findIndex(
-    (t) => t.id === (currentPhase === "court" ? "arbitration" : currentPhase),
-  );
-  // A closed case didn't pass through every phase: one closed at the informal
-  // review never had a hearing or decision, and arbitration / court only
-  // happened if they were actually started. Those read "not needed", not ✓.
-  const resolvedCase = protest.status === "resolved";
-  const closedAtInformal =
-    resolvedCase &&
-    (protest.informalStatus === "accepted" ||
-      (!protest.hearingCompletedAt &&
-        !protest.arbDecision &&
-        !protest.arbitrationFiledAt &&
-        !protest.courtAppeal?.petitionFiledAt));
-  const tabSkipped = (id: CaseTabId) =>
-    resolvedCase &&
-    (((id === "hearing" || id === "decision") && closedAtInformal) ||
-      ((id === "arbitration" || id === "court") &&
-        !escalationDone("arbitration", protest) &&
-        !escalationDone("court", protest)));
-  const barRef = useRef<HTMLDivElement>(null);
-  // On a narrow screen the strip scrolls sideways — keep the open tab in view.
-  useEffect(() => {
-    centerInStrip(
-      barRef.current,
-      barRef.current?.querySelector<HTMLElement>("[aria-selected=true]") ?? null,
-    );
-  }, [activeTab]);
-  return (
-    <div
-      ref={barRef}
-      role="tablist"
-      aria-label="Case phases"
-      className="mt-4 flex items-center gap-1 overflow-x-auto border-b border-border pb-2"
-    >
-      {CASE_TABS.map((t, i) => {
-        const isOpen = t.id === activeTab;
-        const isHub = t.id === "overview";
-        const locked = !caseTabUnlocked(t.id, protest, needsGuidanceAck, noticeSigned);
-        const pathDone = escalationDone(t.id, protest);
-        // The shared step 5 badge ticks once either path has been carried out.
-        const groupDone = (t.id === "arbitration" && escalationDone("court", protest)) || pathDone;
-        // Every other step only reads "done" once you've moved PAST it
-        // (i < currentIdx) — right, mid-case, since "current" means "still in
-        // progress". But Final Outcome IS the current step once the case is
-        // closed (there's nothing after it to move on to), so that same rule
-        // left it permanently stuck on its plain step number instead of a
-        // checkmark even with the case fully resolved.
-        const skippedTab = !isHub && tabSkipped(t.id);
-        const done =
-          !isHub &&
-          !locked &&
-          !skippedTab &&
-          (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
-        const isCurrent =
-          !isHub &&
-          (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
-        const marker = isHub
-          ? "⌂"
-          : skippedTab
-            ? "–"
-            : locked
-              ? "🔒"
-              : done
-                ? "✓"
-                : String(stepNumber(i));
-        const style = PHASE_STYLE[t.id];
-        return (
-          <div key={t.id} className="flex shrink-0 items-center gap-1">
-            {i > 0 &&
-              (t.joinsPrev ? (
-                <span aria-hidden className="px-0.5 text-muted-foreground/40">
-                  /
-                </span>
-              ) : (
-                // The road between steps: filled once you've passed it.
-                <span
-                  aria-hidden
-                  className={`h-1 w-6 rounded-full transition-colors ${
-                    i <= currentIdx ? "bg-emerald-400" : "bg-border"
-                  }`}
-                />
-              ))}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={isOpen}
-              aria-current={isCurrent ? "step" : undefined}
-              title={
-                skippedTab
-                  ? "Not needed — the case closed before this step"
-                  : locked
-                    ? t.lockedHint
-                    : TAB_MEANING[t.id]
-              }
-              onClick={() => onSelect(t.id)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
-                isOpen
-                  ? `${style.tint} font-semibold text-foreground`
-                  : locked
-                    ? "font-medium text-muted-foreground/50"
-                    : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              {!t.joinsPrev && (
-                <span className="relative grid shrink-0 place-items-center">
-                  {isCurrent && !locked && !done && (
-                    <span
-                      aria-hidden
-                      className={`absolute inset-0 animate-ping rounded-full opacity-40 motion-reduce:animate-none ${style.ping}`}
-                    />
-                  )}
-                  <span
-                    aria-hidden
-                    className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                      skippedTab
-                        ? "bg-muted text-muted-foreground/70"
-                        : done
-                          ? "bg-emerald-500 text-white shadow-sm"
-                          : isCurrent && !locked
-                            ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
-                            : locked
-                              ? "bg-muted text-muted-foreground/60"
-                              : `border-2 bg-background text-muted-foreground ${style.border}`
-                    }`}
-                  >
-                    {marker}
-                  </span>
-                </span>
-              )}
-              {t.label}
-              {(t.joinsPrev || t.id === "arbitration") && pathDone && (
-                <span aria-label="done" className="text-success">
-                  ✓
-                </span>
-              )}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // The Overview tab's centerpiece: the same 5 phases as the tab bar drawn as a
 // numbered path, with the current stage's plain-language summary and the single
 // most important next action called out right below it. This is the one

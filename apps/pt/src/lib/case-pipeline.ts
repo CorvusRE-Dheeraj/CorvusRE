@@ -9,7 +9,7 @@ import { filingSubmissionStatus } from "./filing-submission-status";
 // never a separately tracked "done" flag that could drift.
 //
 //   Case Readiness → File Protest → Confirm Filing → Request CAD Evidence →
-//   Informal → ARB → Decision → Appeal Decision → Close Case
+//   Informal → ARB → Post ARB → Appeal Decision → Close Case
 
 export const PIPELINE_STAGES = [
   { id: "readiness", label: "Case Readiness" },
@@ -18,7 +18,7 @@ export const PIPELINE_STAGES = [
   { id: "cad_evidence", label: "Request CAD Evidence" },
   { id: "informal", label: "Informal" },
   { id: "arb", label: "ARB" },
-  { id: "decision", label: "Decision" },
+  { id: "decision", label: "Post ARB" },
   { id: "appeal", label: "Appeal Decision" },
   { id: "close", label: "Close Case" },
 ] as const;

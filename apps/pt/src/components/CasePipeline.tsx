@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AlertTriangle, ArrowRight, Check, Clock, Users } from "lucide-react";
-import type { NextAction, Pipeline, Urgency } from "@/lib/case-pipeline";
+import type { NextAction, Pipeline, StageId, Urgency } from "@/lib/case-pipeline";
 import { daysBetween } from "@/lib/case-pipeline";
 
 const URGENCY_STYLE: Record<Urgency, { box: string; chip: string }> = {
@@ -137,8 +137,22 @@ export function NextRequiredAction({
   );
 }
 
-// The nine-stage case road: Case Readiness → … → Close Case.
-export function PipelineStepper({ pipeline }: { pipeline: Pipeline }) {
+// The nine-stage case road: Case Readiness → … → Close Case. In View Case it's
+// also the navigation: click a step to open it (onSelect), the open step is
+// outlined (openStage), and Appeal Decision carries its two paths underneath.
+export type AppealPath = "arbitration" | "court";
+
+export function PipelineStepper({
+  pipeline,
+  onSelect,
+  openStage = null,
+  openAppeal = null,
+}: {
+  pipeline: Pipeline;
+  onSelect?: (stage: StageId, appeal?: AppealPath) => void;
+  openStage?: StageId | null;
+  openAppeal?: AppealPath | null;
+}) {
   return (
     <ol
       aria-label="Case pipeline"
@@ -146,32 +160,75 @@ export function PipelineStepper({ pipeline }: { pipeline: Pipeline }) {
     >
       {pipeline.stages.flatMap((s, i) => {
         const last = i === pipeline.stages.length - 1;
+        const isOpen = onSelect != null && openStage === s.id;
         const circle =
           s.state === "done"
             ? "bg-success text-success-foreground"
             : s.state === "current"
               ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
               : "bg-secondary text-muted-foreground";
-        const item = (
-          <li
-            key={s.id}
-            className="flex shrink-0 flex-col items-center gap-1 w-[78px]"
-            aria-current={s.state === "current" ? "step" : undefined}
-          >
+        const body = (
+          <>
             <span
-              className={`grid h-8 w-8 place-items-center rounded-full text-xs font-semibold ${circle}`}
+              className={`grid h-8 w-8 place-items-center rounded-full text-xs font-semibold ${circle} ${
+                isOpen ? "outline outline-2 outline-offset-2 outline-accent" : ""
+              }`}
             >
               {s.state === "done" ? <Check className="h-4 w-4" aria-hidden="true" /> : i + 1}
             </span>
             <span
               className={`text-center text-[11px] leading-tight ${
-                s.state === "current" ? "font-semibold text-foreground" : "text-muted-foreground"
+                s.state === "current" || isOpen
+                  ? "font-semibold text-foreground"
+                  : "text-muted-foreground"
               } ${s.state === "skipped" ? "line-through" : ""}`}
             >
               {s.label}
             </span>
             {s.state === "skipped" && (
               <span className="text-[10px] text-muted-foreground">not needed</span>
+            )}
+          </>
+        );
+        const item = (
+          <li
+            key={s.id}
+            className="flex shrink-0 flex-col items-center gap-1 w-[78px]"
+            aria-current={s.state === "current" ? "step" : undefined}
+          >
+            {onSelect ? (
+              <button
+                type="button"
+                onClick={() => onSelect(s.id)}
+                className="flex w-full flex-col items-center gap-1 rounded-md py-0.5 hover:bg-secondary/60"
+              >
+                {body}
+              </button>
+            ) : (
+              body
+            )}
+            {onSelect && s.id === "appeal" && (
+              <span className="flex flex-col items-center gap-0.5">
+                {(
+                  [
+                    ["arbitration", "Arbitration"],
+                    ["court", "Court Appeal"],
+                  ] as const
+                ).map(([path, label]) => (
+                  <button
+                    key={path}
+                    type="button"
+                    onClick={() => onSelect("appeal", path)}
+                    className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] ${
+                      openAppeal === path
+                        ? "bg-accent font-semibold text-accent-foreground"
+                        : "text-accent hover:underline"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
             )}
           </li>
         );

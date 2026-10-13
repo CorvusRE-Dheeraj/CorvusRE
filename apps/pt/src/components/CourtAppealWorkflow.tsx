@@ -26,7 +26,6 @@ import {
   COURT_DISCLAIMER,
   UPDATE_TYPE_LABEL,
   courtNextAction,
-  courtStages,
   courtTimeline,
   newUpdateId,
   reviewCourtAppeal,
@@ -107,7 +106,6 @@ export function CourtAppealWorkflow({
     [property, protest, protest.courtAppeal],
   );
   const numbers = buildArbitrationNumbers(property, protest, requestedValue);
-  const stages = courtStages(protest, data);
   const next = courtNextAction(protest, data);
   const closed = protest.status === "resolved";
   const filed = !!data.petitionFiledAt;
@@ -445,32 +443,6 @@ export function CourtAppealWorkflow({
 
   return (
     <div className="grid gap-4">
-      {/* Case Progress */}
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
-        {stages.map((s, i) => (
-          <li key={s.id} className="flex items-center gap-1">
-            {i > 0 && (
-              <span aria-hidden className="text-muted-foreground/30">
-                →
-              </span>
-            )}
-            <span
-              aria-current={s.state === "current" ? "step" : undefined}
-              className={`rounded-full px-2.5 py-1 ${
-                s.state === "current"
-                  ? "bg-accent font-semibold text-accent-foreground"
-                  : s.state === "done"
-                    ? "text-success"
-                    : "text-muted-foreground/60"
-              }`}
-            >
-              {s.state === "done" ? "✓ " : ""}
-              {s.label}
-            </span>
-          </li>
-        ))}
-      </ol>
-
       <RelevantTaxUpdates
         property={property}
         protest={protest}
@@ -486,8 +458,8 @@ export function CourtAppealWorkflow({
         <h2 className={h}>Court appeal review</h2>
         {!review.ready ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            Record the ARB decision on the Formal Hearing tab (upload the ARB order) so Corvus AI can
-            count your deadline.
+            Record the ARB decision on the Formal Hearing tab (upload the ARB order) so Corvus AI
+            can count your deadline.
           </p>
         ) : (
           <>
