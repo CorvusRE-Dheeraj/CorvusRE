@@ -157,15 +157,15 @@ describe("computeCaseNextAction — Agent/Representative required", () => {
   });
 });
 
-describe("computeCaseNextAction — Evidence Affidavit required", () => {
-  it("highlights Evidence Affidavit while the owner won't appear in person", () => {
+describe("computeCaseNextAction — no separate Evidence Affidavit step", () => {
+  it("goes on to filing the signed notice, even when the owner won't appear in person", () => {
     const result = computeCaseNextAction(
       inputs({ noticeSignedAt: "2026-02-01T00:00:00Z", noticeHearingAppearance: "Phone" }),
     );
-    expect(result.action?.label).toBe("Evidence Affidavit");
+    expect(result.action?.label).toBe("Go to County CAD");
   });
 
-  it("moves to Evidence once the affidavit is signed", () => {
+  it("is the same once the affidavit is signed", () => {
     const result = computeCaseNextAction(
       inputs({
         noticeSignedAt: "2026-02-01T00:00:00Z",
@@ -173,7 +173,7 @@ describe("computeCaseNextAction — Evidence Affidavit required", () => {
         evidenceDeclarationSignedAt: "2026-02-03T00:00:00Z",
       }),
     );
-    expect(result.action?.label).toBe("Evidence");
+    expect(result.action?.label).toBe("Go to County CAD");
   });
 });
 

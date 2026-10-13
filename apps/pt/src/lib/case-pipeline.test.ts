@@ -248,3 +248,22 @@ describe("an informal offer waiting for a reply", () => {
     expect(r.stages.find((s) => s.id === "informal")?.state).toBe("current");
   });
 });
+
+describe("casePipeline — closed at the informal review", () => {
+  it("marks the hearing, decision and appeal stages not needed, not done", () => {
+    const s = stateOf({
+      ...base,
+      protest: protest({
+        status: "resolved",
+        informalStatus: "completed",
+        finalValue: 4_750_000,
+        closedAt: "2026-10-12T00:00:00Z",
+      }),
+    });
+    expect(s.arb).toBe("skipped");
+    expect(s.decision).toBe("skipped");
+    expect(s.appeal).toBe("skipped");
+    expect(s.informal).toBe("done");
+    expect(s.close).toBe("done");
+  });
+});

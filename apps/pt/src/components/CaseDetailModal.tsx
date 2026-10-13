@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
-import { CaseOutcomeSection } from "@/components/CaseOutcomeSection";
+import { CaseOutcomeSection, StageDecisionBanner } from "@/components/CaseOutcomeSection";
 import { EvidenceChecklistPanel } from "@/components/EvidenceChecklistPanel";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
@@ -48,6 +48,7 @@ import {
   undoInformalSettlement,
   undoInformalStep,
   scheduleInformalReview,
+  cancelInformalReviewMeeting,
   resolveInformalSettlement,
   saveInformalAppraiserCategory,
   saveAttendanceType,
@@ -130,6 +131,9 @@ import {
   getLatestDecisionNotice,
   type DecisionNoticeRecord,
   type DecisionExtraction,
+  documentMismatch,
+  SETTLEMENT_CATEGORIES,
+  ARB_DECISION_CATEGORIES,
 } from "@/lib/decision-notice";
 import {
   extractSettlementDocument,
@@ -212,6 +216,14 @@ import { PdfFormEditor } from "@/components/PdfFormEditor";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { Modal } from "@/components/Modal";
 import { UndoButton } from "@/components/UndoButton";
+import { UploadedDocBar } from "@/components/UploadedDocBar";
+import {
+  removeDecisionNotice,
+  removeHearingNotice,
+  removeLatestDocumentOfType,
+  removeSettlement,
+  softDeleteDocuments,
+} from "@/lib/upload-undo";
 import { FinalOutcomeSection } from "@/components/FinalOutcomeSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
@@ -260,7 +272,7 @@ const CASE_TABS: { id: CaseTabId; label: string; lockedHint: string; joinsPrev?:
   },
   {
     id: "decision",
-    label: "Decision",
+    label: "Post-hearing Options",
     lockedHint: "Unlocks after your hearing or a decision is recorded.",
   },
   {
@@ -353,7 +365,8 @@ const PHASE_STYLE: Record<CaseTabId, { grad: string; tint: string; border: strin
 const TAB_MEANING: Partial<Record<CaseTabId, string>> = {
   informal: GLOSSARY_MAP["Informal review"],
   hearing: GLOSSARY_MAP["Formal hearing"],
-  decision: GLOSSARY_MAP["ARB"],
+  decision:
+    "Your options after the hearing decision: accept it, binding arbitration or a court appeal.",
   arbitration: GLOSSARY_MAP["Binding arbitration"],
   court: GLOSSARY_MAP["Court appeal"],
 };
@@ -389,6 +402,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-upload-evidence": "file",
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
+  "case-informal-outcome": "informal",
   "case-hearing-notice": "hearing",
   "case-cad-evidence": "hearing",
   "case-hearing-prep": "hearing",
@@ -789,7 +803,7 @@ export function CaseDetailView({
                 type="button"
                 onClick={() => {
                   setActiveTab("decision");
-                  // Let the Decision tab mount, then scroll to the options and compare.
+                  // Let the Post-hearing Options tab mount, then scroll to the options and compare.
                   setTimeout(() => {
                     document
                       .getElementById("case-escalation")
@@ -799,7 +813,7 @@ export function CaseDetailView({
                 }}
                 className="text-left text-accent hover:underline"
               >
-                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on the Decision tab) →
+                {CASE_TAB_INTRO[activeTab]} Compare the options with AI (on Post-hearing Options) →
               </button>
             </p>
           ) : (
@@ -925,6 +939,11 @@ export function CaseDetailView({
                   setFilingOpen(false);
                   handleTabClick("informal");
                 }}
+                onGoTo={(anchor) => {
+                  setFilingOpen(false);
+                  navigateTo(anchor);
+                }}
+                userEmail={userEmail}
               />
             </Modal>
           )}
@@ -932,6 +951,17 @@ export function CaseDetailView({
           {/* --- Informal Review --- */}
           {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
             <div>
+              {/* Once settled, the result leads the tab. */}
+              <CaseOutcomeSection
+                userId={userId}
+                stage="informal"
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
               <InformalReviewSection
                 userId={userId}
                 protest={current}
@@ -942,20 +972,44 @@ export function CaseDetailView({
                 onAgreementChange={setSettlementAgreement}
                 onOpenHearing={() => setActiveTab("hearing")}
               />
-              <SettlementSignatureSection
-                userId={userId}
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
+              {/* The settlement upload lives in the Informal Review section above
+                  (Submit Settlement document). This fuller flow only stays for a
+                  case that already started a settlement here, so it isn't lost. */}
+              {settlementAgreement && (
+                <SettlementSignatureSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  agreement={settlementAgreement}
+                  onAgreementChange={setSettlementAgreement}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
             </div>
           )}
 
           {/* --- Formal Hearing --- */}
           {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
             <div className="space-y-5">
+              {/* Once decided, the ARB result leads the tab. */}
+              <CaseOutcomeSection
+                userId={userId}
+                stage="formal"
+                protest={current}
+                property={property}
+                agreement={settlementAgreement}
+                onAgreementChange={setSettlementAgreement}
+                onOpenAppeal={() => setActiveTab(escalationTab)}
+                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+              />
+              {current.arbDecision && (
+                <DecisionNoticeSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+              )}
               {/* Request CAD Evidence comes before the hearing itself. */}
               <CadEvidenceRequest
                 userId={userId}
@@ -994,31 +1048,15 @@ export function CaseDetailView({
             </div>
           )}
 
-          {/* --- Decision --- */}
+          {/* --- Post-hearing Options --- (the decision itself is on the
+              Informal / Formal tab it came from) */}
           {activeTab === "decision" && (
             <div>
-              {/* Once there's a final value: the outcome, bill check, appeal
-                  deadlines and economics, documents and prior year in one place. */}
               <PostHearingDecision
                 userId={userId}
                 property={property}
                 protest={current}
                 evidenceDocumentCount={evidenceDocuments.length}
-              />
-              <CaseOutcomeSection
-                userId={userId}
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onOpenAppeal={() => setActiveTab(escalationTab)}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <DecisionNoticeSection
-                userId={userId}
-                protest={current}
-                property={property}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
               />
               <EscalationEvaluationSection
                 protest={current}
@@ -1033,6 +1071,7 @@ export function CaseDetailView({
           {/* --- Arbitration --- */}
           {activeTab === "arbitration" && (
             <div>
+              <StageDecisionBanner kind="arbitration" property={property} protest={current} />
               {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
                 <ArbitrationWorkflow
                   userId={userId}
@@ -1056,6 +1095,7 @@ export function CaseDetailView({
           {/* --- Court Appeal --- */}
           {activeTab === "court" && (
             <div>
+              <StageDecisionBanner kind="appeal" property={property} protest={current} />
               {current.escalationPath === "appeal" || current.courtAppeal ? (
                 <CourtAppealWorkflow
                   userId={userId}
@@ -1172,6 +1212,23 @@ function CaseTabBar({
   const currentIdx = CASE_TABS.findIndex(
     (t) => t.id === (currentPhase === "court" ? "arbitration" : currentPhase),
   );
+  // A closed case didn't pass through every phase: one closed at the informal
+  // review never had a hearing or decision, and arbitration / court only
+  // happened if they were actually started. Those read "not needed", not ✓.
+  const resolvedCase = protest.status === "resolved";
+  const closedAtInformal =
+    resolvedCase &&
+    (protest.informalStatus === "accepted" ||
+      (!protest.hearingCompletedAt &&
+        !protest.arbDecision &&
+        !protest.arbitrationFiledAt &&
+        !protest.courtAppeal?.petitionFiledAt));
+  const tabSkipped = (id: CaseTabId) =>
+    resolvedCase &&
+    (((id === "hearing" || id === "decision") && closedAtInformal) ||
+      ((id === "arbitration" || id === "court") &&
+        !escalationDone("arbitration", protest) &&
+        !escalationDone("court", protest)));
   const barRef = useRef<HTMLDivElement>(null);
   // On a narrow screen the strip scrolls sideways — keep the open tab in view.
   useEffect(() => {
@@ -1200,14 +1257,24 @@ function CaseTabBar({
         // closed (there's nothing after it to move on to), so that same rule
         // left it permanently stuck on its plain step number instead of a
         // checkmark even with the case fully resolved.
+        const skippedTab = !isHub && tabSkipped(t.id);
         const done =
           !isHub &&
           !locked &&
+          !skippedTab &&
           (i < currentIdx || groupDone || (t.id === "outcome" && protest.status === "resolved"));
         const isCurrent =
           !isHub &&
           (t.id === "arbitration" || t.id === "court" ? t.id === currentPhase : i === currentIdx);
-        const marker = isHub ? "⌂" : locked ? "🔒" : done ? "✓" : String(stepNumber(i));
+        const marker = isHub
+          ? "⌂"
+          : skippedTab
+            ? "–"
+            : locked
+              ? "🔒"
+              : done
+                ? "✓"
+                : String(stepNumber(i));
         const style = PHASE_STYLE[t.id];
         return (
           <div key={t.id} className="flex shrink-0 items-center gap-1">
@@ -1230,7 +1297,13 @@ function CaseTabBar({
               role="tab"
               aria-selected={isOpen}
               aria-current={isCurrent ? "step" : undefined}
-              title={locked ? t.lockedHint : TAB_MEANING[t.id]}
+              title={
+                skippedTab
+                  ? "Not needed — the case closed before this step"
+                  : locked
+                    ? t.lockedHint
+                    : TAB_MEANING[t.id]
+              }
               onClick={() => onSelect(t.id)}
               className={`flex items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm transition-all ${
                 isOpen
@@ -1251,13 +1324,15 @@ function CaseTabBar({
                   <span
                     aria-hidden
                     className={`relative grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold leading-none ${
-                      done
-                        ? "bg-emerald-500 text-white shadow-sm"
-                        : isCurrent && !locked
-                          ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
-                          : locked
-                            ? "bg-muted text-muted-foreground/60"
-                            : `border-2 bg-background text-muted-foreground ${style.border}`
+                      skippedTab
+                        ? "bg-muted text-muted-foreground/70"
+                        : done
+                          ? "bg-emerald-500 text-white shadow-sm"
+                          : isCurrent && !locked
+                            ? `bg-gradient-to-br text-white shadow-md ${style.grad}`
+                            : locked
+                              ? "bg-muted text-muted-foreground/60"
+                              : `border-2 bg-background text-muted-foreground ${style.border}`
                     }`}
                   >
                     {marker}
@@ -2542,6 +2617,21 @@ function FilingSubmissionFlow({
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.confirm(`Remove ${doc.fileName} from this filing's proof?`)) return;
+                  void softDeleteDocuments([doc.id])
+                    .then(() => {
+                      setProofDocs((cur) => cur.filter((d) => d.id !== doc.id));
+                      toast.success("Proof removed — upload the right file.");
+                    })
+                    .catch((err) => toast.error(getErrorMessage(err, "Could not remove it.")));
+                }}
+                className="text-destructive hover:underline"
+              >
+                Remove
+              </button>
             </li>
           ))}
         </ul>
@@ -3497,6 +3587,10 @@ export function DocumentsSection({
   // Called from the last filing step's footer: close the popup and move on to the
   // next case phase. Omitted by the admin copy.
   onFinish,
+  // Close the popup and jump to a section of the case (hearing notice, county
+  // evidence) — the Evidence step's prerequisites live there.
+  onGoTo,
+  userEmail = null,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -3509,6 +3603,8 @@ export function DocumentsSection({
   onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
   allowSigning?: boolean;
   onFinish?: () => void;
+  onGoTo?: (anchor: string) => void;
+  userEmail?: string | null;
 }) {
   const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -4123,6 +4219,11 @@ export function DocumentsSection({
           protest={protest}
           countyInfo={countyInfo}
           onConfirmed={handleEvidenceFilingConfirmed}
+          affidavitSignedAt={evidenceDeclarationSignedAt}
+          onOpenAffidavit={openEvidenceDeclarationEditor}
+          onGoTo={onGoTo}
+          userEmail={userEmail}
+          onProtestChange={onUpdate}
         />
       )}
 
@@ -4151,7 +4252,7 @@ export function DocumentsSection({
                       ? "File your Notice of Protest above to continue."
                       : "Fix the flagged items above to continue."
                     : !next
-                      ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
+                      ? "Finish the checklist above, then submit your evidence before your hearing."
                       : "Not finished yet. Complete it above, or skip ahead."}
               </div>
             </div>
@@ -4310,6 +4411,11 @@ function FilingEvidenceStep({
   protest,
   countyInfo,
   onConfirmed,
+  affidavitSignedAt,
+  onOpenAffidavit,
+  onGoTo,
+  userEmail,
+  onProtestChange,
 }: {
   evidenceDocuments: DocumentRecord[];
   strategyRecommendation: string | null;
@@ -4318,7 +4424,79 @@ function FilingEvidenceStep({
   protest: ProtestRecord;
   countyInfo: CountyProtestInfo | null;
   onConfirmed: (at: string) => void;
+  affidavitSignedAt: string | null;
+  onOpenAffidavit: () => void;
+  onGoTo?: (anchor: string) => void;
+  userEmail?: string | null;
+  onProtestChange?: (patch: Partial<ProtestRecord>) => void;
 }) {
+  // The district's-evidence request lives in this step too (same section as
+  // the Formal Hearing tab) — request it and upload what comes back here.
+  const scrollToCad = () =>
+    document
+      .getElementById("evidence-step-cad")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // What has to be in place before evidence is submitted: the ARB's hearing
+  // notice, the district's own evidence (requested and received — Tax Code
+  // §41.461), and the signed Evidence Affidavit (Form 50-283) that goes in
+  // with the evidence.
+  const [noticeOnFile, setNoticeOnFile] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    const fromCase = !!(protest.hearingLocation || protest.hearingTime);
+    getLatestHearingNotice(protest.id)
+      .then((n) => {
+        if (live) setNoticeOnFile(!!n || fromCase);
+      })
+      .catch(() => {
+        if (live) setNoticeOnFile(fromCase);
+      });
+    return () => {
+      live = false;
+    };
+  }, [protest.id, protest.hearingLocation, protest.hearingTime]);
+  const prereqs: {
+    key: string;
+    label: string;
+    done: boolean;
+    action: { label: string; onClick: () => void } | null;
+  }[] = [
+    {
+      key: "notice",
+      label: "Hearing notice uploaded",
+      done: !!noticeOnFile,
+      action: onGoTo
+        ? { label: "Upload hearing notice", onClick: () => onGoTo("case-hearing-notice") }
+        : null,
+    },
+    {
+      key: "requested",
+      label: "County's evidence requested from the district",
+      done: !!protest.cadEvidenceRequestedAt,
+      action: onProtestChange
+        ? { label: "Request it", onClick: scrollToCad }
+        : onGoTo
+          ? { label: "Request it", onClick: () => onGoTo("case-cad-evidence") }
+          : null,
+    },
+    {
+      key: "received",
+      label: "County's evidence received and uploaded",
+      done: !!protest.cadEvidenceReceivedAt,
+      action: onProtestChange
+        ? { label: "Upload it", onClick: scrollToCad }
+        : onGoTo
+          ? { label: "Upload it", onClick: () => onGoTo("case-cad-evidence") }
+          : null,
+    },
+    {
+      key: "affidavit",
+      label: "Evidence Affidavit (Form 50-283) signed",
+      done: !!affidavitSignedAt,
+      action: { label: affidavitSignedAt ? "Review" : "Fill & sign", onClick: onOpenAffidavit },
+    },
+  ];
+  const ready = prereqs.every((p) => p.done);
   const withIssues = evidenceDocuments.filter(
     (d) => d.aiVerdict === "issues" || d.aiVerdict === "invalid",
   );
@@ -4329,6 +4507,46 @@ function FilingEvidenceStep({
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   return (
     <div className="mt-3 grid gap-3 text-sm">
+      <div
+        className={`rounded-lg border p-3 ${ready ? "border-success/30 bg-success/5" : "border-warning/40 bg-warning/5"}`}
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Before you submit your evidence
+        </div>
+        <ul className="mt-2 grid gap-1.5">
+          {prereqs.map((p) => (
+            <li key={p.key} className="flex flex-wrap items-center justify-between gap-2">
+              <span className={p.done ? "text-success" : ""}>
+                {p.done ? "✓" : "○"} {p.label}
+              </span>
+              {p.action && (!p.done || p.key === "affidavit") && (
+                <button
+                  type="button"
+                  onClick={p.action.onClick}
+                  className="btn-outline px-2.5 py-1 text-xs"
+                >
+                  {p.action.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          * The signed affidavit is added to your evidence package and submitted with it. It must be
+          notarized before delivery to the ARB.
+        </p>
+      </div>
+      {onProtestChange && (
+        <div id="evidence-step-cad" className="scroll-mt-4">
+          <CadEvidenceRequest
+            userId={userId}
+            property={property}
+            protest={protest}
+            userEmail={userEmail ?? null}
+            onChange={onProtestChange}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
           {evidenceDocuments.length} evidence document{evidenceDocuments.length === 1 ? "" : "s"} on
@@ -4396,16 +4614,22 @@ function FilingEvidenceStep({
         />
       )}
 
-      <FilingSubmissionFlow
-        userId={userId}
-        property={property}
-        protest={protest}
-        formType="evidence"
-        docLabel="Evidence Package"
-        countyInfo={countyInfo}
-        onConfirmed={onConfirmed}
-        refreshToken={refreshToken}
-      />
+      {ready ? (
+        <FilingSubmissionFlow
+          userId={userId}
+          property={property}
+          protest={protest}
+          formType="evidence"
+          docLabel="Evidence Package"
+          countyInfo={countyInfo}
+          onConfirmed={onConfirmed}
+          refreshToken={refreshToken}
+        />
+      ) : (
+        <div className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          Evidence submission unlocks once the steps above are complete.
+        </div>
+      )}
     </div>
   );
 }
@@ -4509,6 +4733,16 @@ function EvidencePackageBuilder({
     // silently reset an in-progress selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id, protest.id]);
+
+  // The signed Evidence Affidavit goes in with the evidence — select it once
+  // it exists (the user can still untick it).
+  const autoAffidavit = useRef<string | null>(null);
+  useEffect(() => {
+    const aff = otherDocs.find((d) => d.documentType === "Signed Evidence Declaration");
+    if (!aff || autoAffidavit.current === aff.id) return;
+    autoAffidavit.current = aff.id;
+    setSelectedIds((prev) => (prev.includes(aff.id) ? prev : [...prev, aff.id]));
+  }, [otherDocs]);
 
   const allDocs = [...evidenceDocuments, ...otherDocs];
   // The main list: the evidence documents, plus any extra the user has ticked.
@@ -4842,6 +5076,8 @@ function InformalReviewSection({
   onOpenHearing: () => void;
 }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  // Shown after marking the review completed cancelled a scheduled meeting.
+  const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const [dateInput, setDateInput] = useState(protest.informalReviewDate ?? "");
   const [timeInput, setTimeInput] = useState(parseTimeToInput(protest.informalReviewTime));
   const [modeInput, setModeInput] = useState<HearingMode>(
@@ -4892,6 +5128,28 @@ function InformalReviewSection({
     try {
       await updateInformalStatus(protest.id, status);
       onUpdate({ informalStatus: status });
+      // Completed means the meeting isn't happening any more — take a
+      // still-scheduled one off the case and the calendar, and say so.
+      if (status === "completed" && protest.informalReviewDate) {
+        const previous = {
+          date: protest.informalReviewDate,
+          time: protest.informalReviewTime ?? null,
+          mode: protest.informalReviewMode ?? null,
+        };
+        await cancelInformalReviewMeeting(protest.id, previous);
+        onUpdate({ informalReviewDate: null, informalReviewTime: null, informalReviewMode: null });
+        const when = new Date(`${previous.date.slice(0, 10)}T12:00:00`).toLocaleDateString(
+          "en-US",
+          {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          },
+        );
+        const msg = `Your informal review meeting on ${when}${previous.time ? ` at ${previous.time}` : ""} was cancelled and removed from your calendar.`;
+        setCancelledNotice(msg);
+        toast.info(msg);
+      }
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not update this status."));
     } finally {
@@ -4953,6 +5211,18 @@ function InformalReviewSection({
       // Unreadable by AI — fall through to asking for the settled value.
     }
     setSettling(false);
+    const wrong = extraction
+      ? documentMismatch(
+          extraction,
+          property,
+          SETTLEMENT_CATEGORIES,
+          "a signed settlement agreement",
+        )
+      : null;
+    if (wrong) {
+      toast.error(wrong);
+      return;
+    }
     const value = extraction?.finalValue ?? null;
     if (value != null && value > 0) {
       await closeWithSettlement(file, extraction, value);
@@ -5142,13 +5412,24 @@ function InformalReviewSection({
       {protest.status === "resolved" && protest.arbDecision == null && (
         <div className="mt-3 rounded-md border border-border p-3 text-sm">
           <p className="font-medium">This protest was closed by an informal settlement.</p>
-          <UndoButton
-            className="mt-2 block"
-            label="Undo this settlement"
-            confirm="This removes the settlement record and reopens the case at the informal review. You can then upload the correct document, or mark Unsatisfied to go to a formal hearing (and then arbitration or a court appeal). The uploaded file stays in your Documents tab."
-            successMessage="Undone — the informal review is open again."
-            onUndo={async () => {
-              const patch = await undoInformalSettlement(protest);
+          <UploadedDocBar
+            label="Settlement document"
+            busy={settling}
+            removeConfirm="This removes the settlement and reopens the case at the informal review."
+            onReplace={async (file) => {
+              const patch = await removeSettlement(protest, {
+                propertyId: property.id,
+                documentType: SETTLEMENT_DOCUMENT_TYPE,
+              });
+              onAgreementChange(null);
+              onUpdate(patch);
+              await handleSettlementFile(file);
+            }}
+            onRemove={async () => {
+              const patch = await removeSettlement(protest, {
+                propertyId: property.id,
+                documentType: SETTLEMENT_DOCUMENT_TYPE,
+              });
               onAgreementChange(null);
               onUpdate(patch);
             }}
@@ -5180,51 +5461,6 @@ function InformalReviewSection({
             onUndo={async () => onUpdate(await undoInformalStep(protest))}
           />
         )}
-      {protest.status !== "resolved" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
-            protest.informalStatus,
-          ) && (
-            <button
-              type="button"
-              onClick={() => void handleInformalCompleted()}
-              disabled={updatingStatus}
-              className="btn-outline text-xs py-1.5 disabled:opacity-60"
-            >
-              Informal review completed
-            </button>
-          )}
-          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
-            <button
-              type="button"
-              onClick={() => void handleUnsatisfied()}
-              disabled={updatingStatus}
-              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
-            >
-              Unsatisfied
-            </button>
-          )}
-          <label
-            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
-          >
-            {settling ? "Submitting…" : "Submit Settlement document"}
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              className="hidden"
-              disabled={settling}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void handleSettlementFile(file);
-              }}
-            />
-          </label>
-          <span className="text-[11px] text-muted-foreground">
-            Uploading the signed settlement closes this protest.
-          </span>
-        </div>
-      )}
       {protest.status !== "resolved" && protest.informalStatus === "rejected" && (
         <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
           <p className="font-medium">
@@ -5239,127 +5475,110 @@ function InformalReviewSection({
           </button>
         </div>
       )}
-      {settleNeedsValue && settleFile && (
-        <div className="mt-2 rounded-md border border-border p-3 text-xs">
-          <p className="text-muted-foreground">
-            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
-            close the protest.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              value={settleValueInput}
-              onChange={(e) => setSettleValueInput(e.target.value)}
-              inputMode="decimal"
-              placeholder="Settled value, e.g. 480000"
-              aria-label="Settled value"
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => void handleConfirmSettleValue()}
-              disabled={settling}
-              className="btn-accent text-xs py-1.5 disabled:opacity-60"
-            >
-              {settling ? "Closing…" : "Close protest"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSettleNeedsValue(false);
-                setSettleFile(null);
-              }}
-              className="text-muted-foreground hover:underline"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Schedule — always available, not gated behind the status dropdown.
-          Saving it sets the status to "scheduled" and feeds the in-platform
-          calendar + Google/ICS sync (see scheduleInformalReview). */}
-      <form onSubmit={handleSaveSchedule} className="mt-3 rounded-md border border-border p-3">
-        <div className="text-xs font-semibold text-foreground">Schedule the informal review</div>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Enter the date, time, and mode you arranged with the appraisal district — it goes straight
-          onto your calendar.
-        </p>
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <div className="grid gap-1 text-xs">
-            <span>Date</span>
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Date"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                >
-                  <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-                  {dateInput
-                    ? new Date(`${dateInput}T00:00:00`).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "Pick a date"}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-0">
-                <DatePickerCalendar
-                  mode="single"
-                  selected={dateInputToDate(dateInput)}
-                  onSelect={(d) => {
-                    if (d) setDateInput(dateToDateInput(d));
-                    setCalendarOpen(false);
-                  }}
-                  disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <label className="grid gap-1 text-xs">
-            Time
-            <input
-              type="time"
-              value={timeInput}
-              onChange={(e) => setTimeInput(e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="grid gap-1 text-xs">
-            Mode
-            <select
-              value={modeInput}
-              onChange={(e) => setModeInput(e.target.value as HearingMode)}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            >
-              {INFORMAL_REVIEW_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+      {cancelledNotice && (
+        <div
+          role="alert"
+          className="mt-3 flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+        >
+          <span>{cancelledNotice}</span>
           <button
-            type="submit"
-            disabled={savingSchedule || !dateInput}
-            className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            type="button"
+            onClick={() => setCancelledNotice(null)}
+            aria-label="Dismiss"
+            className="text-muted-foreground hover:text-foreground"
           >
-            {savingSchedule ? "Saving…" : "Save & add to calendar"}
+            ×
           </button>
         </div>
-        {scheduled && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            On file: {protest.informalReviewDate}
-            {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
-            {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
-            <Link to="/dashboard/calendar" className="text-accent hover:underline">
-              View on calendar
-            </Link>
+      )}
+      {/* Schedule — available until the informal review is completed (or skipped/rejected).
+          Saving it sets the status to "scheduled" and feeds the in-platform
+          calendar + Google/ICS sync (see scheduleInformalReview). */}
+      {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+        protest.informalStatus,
+      ) && (
+        <form onSubmit={handleSaveSchedule} className="mt-3 rounded-md border border-border p-3">
+          <div className="text-xs font-semibold text-foreground">Schedule the informal review</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Enter the date, time, and mode you arranged with the appraisal district — it goes
+            straight onto your calendar.
           </p>
-        )}
-      </form>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="grid gap-1 text-xs">
+              <span>Date</span>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Date"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                    {dateInput
+                      ? new Date(`${dateInput}T00:00:00`).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : "Pick a date"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-0">
+                  <DatePickerCalendar
+                    mode="single"
+                    selected={dateInputToDate(dateInput)}
+                    onSelect={(d) => {
+                      if (d) setDateInput(dateToDateInput(d));
+                      setCalendarOpen(false);
+                    }}
+                    disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <label className="grid gap-1 text-xs">
+              Time
+              <input
+                type="time"
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="grid gap-1 text-xs">
+              Mode
+              <select
+                value={modeInput}
+                onChange={(e) => setModeInput(e.target.value as HearingMode)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              >
+                {INFORMAL_REVIEW_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={savingSchedule || !dateInput}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {savingSchedule ? "Saving…" : "Save & add to calendar"}
+            </button>
+          </div>
+          {scheduled && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              On file: {protest.informalReviewDate}
+              {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
+              {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
+              <Link to="/dashboard/calendar" className="text-accent hover:underline">
+                View on calendar
+              </Link>
+            </p>
+          )}
+        </form>
+      )}
 
       <div className="mt-3">
         <button
@@ -5556,6 +5775,92 @@ function InformalReviewSection({
           </div>
         )}
       </form>
+
+      {/* How the informal review ended — at the end of the section. */}
+      {protest.status !== "resolved" && (
+        <div
+          id="case-informal-outcome"
+          className="mt-3 flex scroll-mt-24 flex-wrap items-center gap-2"
+        >
+          {!["completed", "accepted", "rejected", "no_informal_available"].includes(
+            protest.informalStatus,
+          ) && (
+            <button
+              type="button"
+              onClick={() => void handleInformalCompleted()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 disabled:opacity-60"
+            >
+              Informal review completed
+            </button>
+          )}
+          {!["accepted", "rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={() => void handleUnsatisfied()}
+              disabled={updatingStatus}
+              className="btn-outline text-xs py-1.5 text-destructive disabled:opacity-60"
+            >
+              Unsatisfied
+            </button>
+          )}
+          <label
+            className={`btn-accent inline-flex cursor-pointer text-xs py-1.5 ${settling ? "pointer-events-none opacity-60" : ""}`}
+          >
+            {settling ? "Submitting…" : "Submit Settlement document"}
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              disabled={settling}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleSettlementFile(file);
+              }}
+            />
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            Uploading the signed settlement closes this protest.
+          </span>
+        </div>
+      )}
+      {settleNeedsValue && settleFile && (
+        <div className="mt-2 rounded-md border border-border p-3 text-xs">
+          <p className="text-muted-foreground">
+            We couldn't read the settled value from {settleFile.name}. Enter the agreed value to
+            close the protest.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={settleValueInput}
+              onChange={(e) => setSettleValueInput(e.target.value)}
+              inputMode="decimal"
+              placeholder="Settled value, e.g. 480000"
+              aria-label="Settled value"
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => void handleConfirmSettleValue()}
+              disabled={settling}
+              className="btn-accent text-xs py-1.5 disabled:opacity-60"
+            >
+              {settling ? "Closing…" : "Close protest"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSettleNeedsValue(false);
+                setSettleFile(null);
+              }}
+              className="text-muted-foreground hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5720,8 +6025,18 @@ function HearingNoticeSection({
               <Field label="County Contact" value={notice.countyContact ?? "Not stated"} />
               <Field label="Appraiser/Contact" value={notice.appraiserContact ?? "Not stated"} />
             </div>
-            {uploadButton}
           </div>
+          <UploadedDocBar
+            label="Hearing notice"
+            busy={uploading}
+            onReplace={(file) => handleUpload(file)}
+            removeConfirm="This removes the notice and the hearing date it added to your case and calendar."
+            onRemove={async () => {
+              const { patch, previous } = await removeHearingNotice(protest, notice);
+              setNotice(previous);
+              if (Object.keys(patch).length > 0) onUpdate(patch);
+            }}
+          />
           {notice.discrepancies.length > 0 && (
             <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               <span className="font-semibold">Discrepancies flagged:</span>
@@ -6128,6 +6443,16 @@ function DecisionNoticeSection({
     setUploadError(null);
     try {
       const extraction = await extractDecisionDocument(property, protest, file);
+      const wrong = documentMismatch(
+        extraction,
+        property,
+        ARB_DECISION_CATEGORIES,
+        "an ARB order or hearing decision",
+      );
+      if (wrong) {
+        setUploadError(wrong);
+        return;
+      }
       setPending(extraction);
       setPendingFile(file);
     } catch (err) {
@@ -6250,8 +6575,18 @@ function DecisionNoticeSection({
               <Field label="Appeal Deadline" value={notice.appealDeadline ?? "Not stated"} />
               <Field label="Refund" value={notice.refundIndicator ?? "Not stated"} />
             </div>
-            {uploadButton}
           </div>
+          <UploadedDocBar
+            label="Decision document"
+            busy={uploading}
+            onReplace={(file) => handleUpload(file)}
+            removeConfirm="This removes the document and the decision it recorded — your case goes back to the formal hearing."
+            onRemove={async () => {
+              const patch = await removeDecisionNotice(protest, notice);
+              setNotice(null);
+              if (Object.keys(patch).length > 0) onUpdate(patch);
+            }}
+          />
           {notice.discrepancies.length > 0 && (
             <div className="mt-3 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
               <span className="font-semibold">Discrepancies flagged:</span>
@@ -6394,13 +6729,14 @@ function InformalOutcomeBanner({
       </p>
       <button
         type="button"
-        onClick={() =>
-          onNavigate
-            ? onNavigate("case-settlement-signature")
-            : document
-                .getElementById("case-settlement-signature")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
+        onClick={() => {
+          const anchor = document.getElementById("case-settlement-signature")
+            ? "case-settlement-signature"
+            : "case-informal-outcome";
+          if (onNavigate) onNavigate(anchor);
+          else
+            document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
         className="btn-outline mt-2 text-xs py-1"
       >
         Go to the settlement section
@@ -6460,6 +6796,16 @@ function SettlementSignatureSection({
     setUploadError(null);
     try {
       const extraction = await extractSettlementDocument(property, protest, file);
+      const wrong = documentMismatch(
+        extraction,
+        property,
+        SETTLEMENT_CATEGORIES,
+        "a settlement offer or agreement",
+      );
+      if (wrong) {
+        setUploadError(wrong);
+        return;
+      }
       setPending(extraction);
       setPendingFile(file);
     } catch (err) {
@@ -7255,6 +7601,52 @@ function CaseRecordSection({
                         />
                         {busy === it.id ? "Uploading…" : "Upload"}
                       </label>
+                    )}
+                    {it.status === "on_file" && it.fulfil === "document" && it.docType && (
+                      <span className="flex shrink-0 items-center gap-2">
+                        <label className="cursor-pointer text-accent hover:underline">
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            disabled={busy === it.id}
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              e.target.value = "";
+                              if (files.length === 0) return;
+                              void removeLatestDocumentOfType(property.id, it.docType as string)
+                                .then(() => uploadFor(it, files))
+                                .catch((err) =>
+                                  toast.error(getErrorMessage(err, "Could not replace it.")),
+                                );
+                            }}
+                          />
+                          Replace
+                        </label>
+                        <button
+                          type="button"
+                          disabled={busy === it.id}
+                          onClick={() => {
+                            if (
+                              !window.confirm(`Remove the latest ${it.label.toLowerCase()} upload?`)
+                            )
+                              return;
+                            void removeLatestDocumentOfType(property.id, it.docType as string)
+                              .then((id) => {
+                                if (id) toast.success("Removed — upload the right file.");
+                                else
+                                  toast.info("There's no uploaded file for this item to remove.");
+                                setReloadKey((k) => k + 1);
+                              })
+                              .catch((err) =>
+                                toast.error(getErrorMessage(err, "Could not remove it.")),
+                              );
+                          }}
+                          className="text-destructive hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </span>
                     )}
                   </li>
                 ))}

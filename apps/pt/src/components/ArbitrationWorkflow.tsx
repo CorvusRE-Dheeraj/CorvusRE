@@ -80,6 +80,7 @@ export function ArbitrationWorkflow({
   const [practice, setPractice] = useState<Practice[]>([]);
   const [generatingQ, setGeneratingQ] = useState(false);
   const [feedbackFor, setFeedbackFor] = useState<number | null>(null);
+  const [suggestingFor, setSuggestingFor] = useState<number | null>(null);
   const [checks, setChecks] = useState(() => readChecks(protest.id));
   const [busy, setBusy] = useState(false);
   const [resultValue, setResultValue] = useState("");
@@ -174,6 +175,36 @@ export function ArbitrationWorkflow({
       toast.error(getErrorMessage(err, "Could not generate questions."));
     } finally {
       setGeneratingQ(false);
+    }
+  }
+
+  // Plain text for the answer box: no list markers, bold or quotes.
+  const plainDraft = (t: string) =>
+    t
+      .replace(/\*\*|__/g, "")
+      .replace(/^\s*(?:[-*•]|\d+[.)])\s+/gm, "")
+      .replace(/^["“]|["”]$/g, "")
+      .trim();
+
+  // A draft answer from the case facts, put in the box for the owner to edit.
+  async function suggestAnswer(i: number) {
+    const p = practice[i];
+    setSuggestingFor(i);
+    try {
+      const { answer } = await askAboutDocument({
+        question:
+          `Arbitrator's question: "${p.question}"\n` +
+          "Draft the owner's answer in first person (under 80 words), using only the facts and evidence in this case. " +
+          "Where a figure isn't in the case, leave a [bracketed] blank for the owner to fill. Reply with the answer only.",
+        context: caseContext(),
+      });
+      setPractice((prev) =>
+        prev.map((x, k) => (k === i ? { ...x, answer: plainDraft(answer), feedback: null } : x)),
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not draft an answer."));
+    } finally {
+      setSuggestingFor(null);
     }
   }
 
@@ -587,14 +618,27 @@ export function ArbitrationWorkflow({
                       }
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void getFeedback(i)}
-                    disabled={feedbackFor === i || !p.answer.trim()}
-                    className="btn-outline mt-2 text-xs py-1 disabled:opacity-50"
-                  >
-                    {feedbackFor === i ? "Reviewing…" : "Get feedback"}
-                  </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void suggestAnswer(i)}
+                      disabled={suggestingFor === i}
+                      className="btn-outline text-xs py-1 disabled:opacity-50"
+                    >
+                      {suggestingFor === i ? "Drafting…" : "AI suggestion"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void getFeedback(i)}
+                      disabled={feedbackFor === i || !p.answer.trim()}
+                      className="btn-outline text-xs py-1 disabled:opacity-50"
+                    >
+                      {feedbackFor === i ? "Reviewing…" : "Get feedback"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    * Edit the suggestion in your own words, then get feedback.
+                  </p>
                   {p.feedback && (
                     <MarkdownLite
                       text={p.feedback}

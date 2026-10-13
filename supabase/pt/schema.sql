@@ -3442,3 +3442,20 @@ grant insert on public.client_errors to anon, authenticated;
 -- and by refresh-property-base-data; shown as "2025 value" + "2027 upcoming".
 alter table public.properties add column if not exists value_year integer;
 alter table public.properties add column if not exists upcoming_value_year integer;
+
+-- Replace / Remove on uploaded case documents (2026-10): the owner can take
+-- back a hearing notice, decision notice or settlement they uploaded by
+-- mistake. Without these, "Undo this settlement" deleted nothing (RLS) and
+-- the old settlement stayed attached to the case.
+drop policy if exists "Users can delete their own hearing notices" on public.hearing_notices;
+create policy "Users can delete their own hearing notices"
+  on public.hearing_notices for delete
+  using (auth.uid() = user_id);
+drop policy if exists "Users can delete their own decision notices" on public.decision_notices;
+create policy "Users can delete their own decision notices"
+  on public.decision_notices for delete
+  using (auth.uid() = user_id);
+drop policy if exists "Users can delete their own settlement agreements" on public.settlement_agreements;
+create policy "Users can delete their own settlement agreements"
+  on public.settlement_agreements for delete
+  using (auth.uid() = user_id);

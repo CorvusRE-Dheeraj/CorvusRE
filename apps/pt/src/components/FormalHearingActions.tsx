@@ -6,6 +6,8 @@ import {
   extractDecisionDocument,
   saveDecisionNotice,
   type DecisionExtraction,
+  documentMismatch,
+  ARB_DECISION_CATEGORIES,
 } from "@/lib/decision-notice";
 import { DECISION_DOCUMENT_TYPE, uploadDocument } from "@/lib/documents";
 import {
@@ -49,6 +51,8 @@ export function FormalHearingActions({
   const escalated = protest.escalationPath === "appeal" || protest.escalationPath === "arbitration";
   const resolved = protest.status === "resolved";
 
+  // A recorded decision is shown (with its Undo) by the outcome card at the top of the tab.
+  if (protest.arbDecision && (resolved || escalated)) return null;
   if (escalated && (protest.status === "appealing" || protest.status === "arbitrating")) {
     return (
       <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
@@ -73,22 +77,7 @@ export function FormalHearingActions({
       </div>
     );
   }
-  if (resolved) {
-    return protest.arbDecision ? (
-      <div className="mt-2 rounded-md border border-border p-3 text-sm">
-        <p className="font-medium">
-          The formal hearing decision is on file and the protest is closed.
-        </p>
-        <UndoButton
-          className="mt-2 block"
-          label="Undo this decision"
-          confirm="This removes the recorded decision and reopens the case at the formal hearing, so you can submit the right document or choose arbitration / a court appeal. The uploaded file stays in your Documents tab."
-          successMessage="Undone — the case is back at the formal hearing."
-          onUndo={async () => onUpdate(await undoFormalOutcome(protest))}
-        />
-      </div>
-    ) : null;
-  }
+  if (resolved) return null;
 
   async function handleCompleted() {
     setBusy(true);
@@ -143,6 +132,13 @@ export function FormalHearingActions({
       // Unreadable by AI — fall through to asking for the final value.
     }
     setBusy(false);
+    const wrong = ex
+      ? documentMismatch(ex, property, ARB_DECISION_CATEGORIES, "an ARB order or hearing decision")
+      : null;
+    if (wrong) {
+      toast.error(wrong);
+      return;
+    }
     const value = ex?.finalValue ?? null;
     if (value != null && value > 0) {
       await closeWithDecision(f, ex, value);

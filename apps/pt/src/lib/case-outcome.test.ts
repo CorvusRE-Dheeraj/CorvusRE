@@ -75,3 +75,22 @@ describe("buildCaseOutcome", () => {
     expect(o.taxSavings).toBe(0);
   });
 });
+
+describe("buildCaseOutcome — value went up", () => {
+  it("reports an increase, not a $0 reduction", () => {
+    const o = buildCaseOutcome(
+      { ...property, totalValue: 4_180_000 },
+      protest({
+        status: "resolved",
+        informalStatus: "accepted",
+        originalValue: 4_180_000,
+        finalValue: 4_750_000,
+      }),
+    )!;
+    expect(o.direction).toBe("increased");
+    expect(o.valueIncrease).toBe(570_000);
+    expect(o.valueIncreasePct).toBeCloseTo(13.64, 1);
+    expect(o.taxIncrease).toBeGreaterThan(0);
+    expect(o.taxSavings).toBe(0);
+  });
+});
