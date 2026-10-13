@@ -942,6 +942,7 @@ export function CaseDetailView({
                   setFilingOpen(false);
                   navigateTo(anchor);
                 }}
+                userEmail={userEmail}
               />
             </Modal>
           )}
@@ -3572,6 +3573,7 @@ export function DocumentsSection({
   // Close the popup and jump to a section of the case (hearing notice, county
   // evidence) — the Evidence step's prerequisites live there.
   onGoTo,
+  userEmail = null,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -3585,6 +3587,7 @@ export function DocumentsSection({
   allowSigning?: boolean;
   onFinish?: () => void;
   onGoTo?: (anchor: string) => void;
+  userEmail?: string | null;
 }) {
   const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -4202,6 +4205,8 @@ export function DocumentsSection({
           affidavitSignedAt={evidenceDeclarationSignedAt}
           onOpenAffidavit={openEvidenceDeclarationEditor}
           onGoTo={onGoTo}
+          userEmail={userEmail}
+          onProtestChange={onUpdate}
         />
       )}
 
@@ -4392,6 +4397,8 @@ function FilingEvidenceStep({
   affidavitSignedAt,
   onOpenAffidavit,
   onGoTo,
+  userEmail,
+  onProtestChange,
 }: {
   evidenceDocuments: DocumentRecord[];
   strategyRecommendation: string | null;
@@ -4403,7 +4410,15 @@ function FilingEvidenceStep({
   affidavitSignedAt: string | null;
   onOpenAffidavit: () => void;
   onGoTo?: (anchor: string) => void;
+  userEmail?: string | null;
+  onProtestChange?: (patch: Partial<ProtestRecord>) => void;
 }) {
+  // The district's-evidence request lives in this step too (same section as
+  // the Formal Hearing tab) — request it and upload what comes back here.
+  const scrollToCad = () =>
+    document
+      .getElementById("evidence-step-cad")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   // What has to be in place before evidence is submitted: the ARB's hearing
   // notice, the district's own evidence (requested and received — Tax Code
   // §41.461), and the signed Evidence Affidavit (Form 50-283) that goes in
@@ -4441,13 +4456,21 @@ function FilingEvidenceStep({
       key: "requested",
       label: "County's evidence requested from the district",
       done: !!protest.cadEvidenceRequestedAt,
-      action: onGoTo ? { label: "Request it", onClick: () => onGoTo("case-cad-evidence") } : null,
+      action: onProtestChange
+        ? { label: "Request it", onClick: scrollToCad }
+        : onGoTo
+          ? { label: "Request it", onClick: () => onGoTo("case-cad-evidence") }
+          : null,
     },
     {
       key: "received",
       label: "County's evidence received and uploaded",
       done: !!protest.cadEvidenceReceivedAt,
-      action: onGoTo ? { label: "Upload it", onClick: () => onGoTo("case-cad-evidence") } : null,
+      action: onProtestChange
+        ? { label: "Upload it", onClick: scrollToCad }
+        : onGoTo
+          ? { label: "Upload it", onClick: () => onGoTo("case-cad-evidence") }
+          : null,
     },
     {
       key: "affidavit",
@@ -4496,6 +4519,17 @@ function FilingEvidenceStep({
           notarized before delivery to the ARB.
         </p>
       </div>
+      {onProtestChange && (
+        <div id="evidence-step-cad" className="scroll-mt-4">
+          <CadEvidenceRequest
+            userId={userId}
+            property={property}
+            protest={protest}
+            userEmail={userEmail ?? null}
+            onChange={onProtestChange}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
           {evidenceDocuments.length} evidence document{evidenceDocuments.length === 1 ? "" : "s"} on
