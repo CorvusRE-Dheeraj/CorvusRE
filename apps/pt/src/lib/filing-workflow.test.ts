@@ -38,29 +38,20 @@ describe("requiredFilingSteps", () => {
     expect(requiredFilingSteps(input({ hasAgentAuthorization: true }))).toContain("agent");
   });
 
-  it("adds the Affidavit step only when the owner won't appear in person", () => {
-    expect(requiredFilingSteps(input({ hearingAppearance: "In person" }))).not.toContain(
-      "affidavit",
-    );
-    expect(requiredFilingSteps(input({ hearingAppearance: null }))).not.toContain("affidavit");
-    expect(
-      requiredFilingSteps(
-        input({ hearingAppearance: "On written affidavit submitted with evidence" }),
-      ),
-    ).toContain("affidavit");
-    expect(
-      requiredFilingSteps(
-        input({ hearingAppearance: " By telephone conference call and will submit evidence" }),
-      ),
-    ).toContain("affidavit");
-  });
-
-  it("can require all five steps", () => {
-    expect(
-      requiredFilingSteps(
-        input({ attendanceType: "Authorized Agent", hearingAppearance: "By videoconference" }),
-      ),
-    ).toEqual(["prefiling", "file", "agent", "affidavit", "evidence"]);
+  it("keeps the Evidence Affidavit inside the Evidence step for every case", () => {
+    for (const hearingAppearance of [
+      "In person",
+      null,
+      "On written affidavit submitted with evidence",
+      " By telephone conference call and will submit evidence",
+    ]) {
+      expect(requiredFilingSteps(input({ hearingAppearance }))).toEqual([
+        "prefiling",
+        "file",
+        "agent",
+        "evidence",
+      ]);
+    }
   });
 });
 

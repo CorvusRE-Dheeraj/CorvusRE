@@ -925,6 +925,10 @@ export function CaseDetailView({
                   setFilingOpen(false);
                   handleTabClick("informal");
                 }}
+                onGoTo={(anchor) => {
+                  setFilingOpen(false);
+                  navigateTo(anchor);
+                }}
               />
             </Modal>
           )}
@@ -3497,6 +3501,9 @@ export function DocumentsSection({
   // Called from the last filing step's footer: close the popup and move on to the
   // next case phase. Omitted by the admin copy.
   onFinish,
+  // Close the popup and jump to a section of the case (hearing notice, county
+  // evidence) — the Evidence step's prerequisites live there.
+  onGoTo,
 }: {
   userId: string;
   protest: ProtestRecord;
@@ -3509,6 +3516,7 @@ export function DocumentsSection({
   onPropertyUpdate?: (patch: Partial<PropertyRecord>) => void;
   allowSigning?: boolean;
   onFinish?: () => void;
+  onGoTo?: (anchor: string) => void;
 }) {
   const [authorization, setAuthorization] = useState<AuthorizationRecord | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -4123,6 +4131,9 @@ export function DocumentsSection({
           protest={protest}
           countyInfo={countyInfo}
           onConfirmed={handleEvidenceFilingConfirmed}
+          affidavitSignedAt={evidenceDeclarationSignedAt}
+          onOpenAffidavit={openEvidenceDeclarationEditor}
+          onGoTo={onGoTo}
         />
       )}
 
@@ -4151,7 +4162,7 @@ export function DocumentsSection({
                       ? "File your Notice of Protest above to continue."
                       : "Fix the flagged items above to continue."
                     : !next
-                      ? "Nothing more to add? That is fine. You can add evidence any time before your hearing."
+                      ? "Finish the checklist above, then submit your evidence before your hearing."
                       : "Not finished yet. Complete it above, or skip ahead."}
               </div>
             </div>
@@ -4310,6 +4321,9 @@ function FilingEvidenceStep({
   protest,
   countyInfo,
   onConfirmed,
+  affidavitSignedAt,
+  onOpenAffidavit,
+  onGoTo,
 }: {
   evidenceDocuments: DocumentRecord[];
   strategyRecommendation: string | null;
@@ -4318,7 +4332,63 @@ function FilingEvidenceStep({
   protest: ProtestRecord;
   countyInfo: CountyProtestInfo | null;
   onConfirmed: (at: string) => void;
+  affidavitSignedAt: string | null;
+  onOpenAffidavit: () => void;
+  onGoTo?: (anchor: string) => void;
 }) {
+  // What has to be in place before evidence is submitted: the ARB's hearing
+  // notice, the district's own evidence (requested and received — Tax Code
+  // §41.461), and the signed Evidence Affidavit (Form 50-283) that goes in
+  // with the evidence.
+  const [noticeOnFile, setNoticeOnFile] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    const fromCase = !!(protest.hearingLocation || protest.hearingTime);
+    getLatestHearingNotice(protest.id)
+      .then((n) => {
+        if (live) setNoticeOnFile(!!n || fromCase);
+      })
+      .catch(() => {
+        if (live) setNoticeOnFile(fromCase);
+      });
+    return () => {
+      live = false;
+    };
+  }, [protest.id, protest.hearingLocation, protest.hearingTime]);
+  const prereqs: {
+    key: string;
+    label: string;
+    done: boolean;
+    action: { label: string; onClick: () => void } | null;
+  }[] = [
+    {
+      key: "notice",
+      label: "Hearing notice uploaded",
+      done: !!noticeOnFile,
+      action: onGoTo
+        ? { label: "Upload hearing notice", onClick: () => onGoTo("case-hearing-notice") }
+        : null,
+    },
+    {
+      key: "requested",
+      label: "County's evidence requested from the district",
+      done: !!protest.cadEvidenceRequestedAt,
+      action: onGoTo ? { label: "Request it", onClick: () => onGoTo("case-cad-evidence") } : null,
+    },
+    {
+      key: "received",
+      label: "County's evidence received and uploaded",
+      done: !!protest.cadEvidenceReceivedAt,
+      action: onGoTo ? { label: "Upload it", onClick: () => onGoTo("case-cad-evidence") } : null,
+    },
+    {
+      key: "affidavit",
+      label: "Evidence Affidavit (Form 50-283) signed",
+      done: !!affidavitSignedAt,
+      action: { label: affidavitSignedAt ? "Review" : "Fill & sign", onClick: onOpenAffidavit },
+    },
+  ];
+  const ready = prereqs.every((p) => p.done);
   const withIssues = evidenceDocuments.filter(
     (d) => d.aiVerdict === "issues" || d.aiVerdict === "invalid",
   );
@@ -4329,6 +4399,35 @@ function FilingEvidenceStep({
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   return (
     <div className="mt-3 grid gap-3 text-sm">
+      <div
+        className={`rounded-lg border p-3 ${ready ? "border-success/30 bg-success/5" : "border-warning/40 bg-warning/5"}`}
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Before you submit your evidence
+        </div>
+        <ul className="mt-2 grid gap-1.5">
+          {prereqs.map((p) => (
+            <li key={p.key} className="flex flex-wrap items-center justify-between gap-2">
+              <span className={p.done ? "text-success" : ""}>
+                {p.done ? "✓" : "○"} {p.label}
+              </span>
+              {p.action && (!p.done || p.key === "affidavit") && (
+                <button
+                  type="button"
+                  onClick={p.action.onClick}
+                  className="btn-outline px-2.5 py-1 text-xs"
+                >
+                  {p.action.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          * The signed affidavit is added to your evidence package and submitted with it. It must be
+          notarized before delivery to the ARB.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
           {evidenceDocuments.length} evidence document{evidenceDocuments.length === 1 ? "" : "s"} on
@@ -4396,16 +4495,22 @@ function FilingEvidenceStep({
         />
       )}
 
-      <FilingSubmissionFlow
-        userId={userId}
-        property={property}
-        protest={protest}
-        formType="evidence"
-        docLabel="Evidence Package"
-        countyInfo={countyInfo}
-        onConfirmed={onConfirmed}
-        refreshToken={refreshToken}
-      />
+      {ready ? (
+        <FilingSubmissionFlow
+          userId={userId}
+          property={property}
+          protest={protest}
+          formType="evidence"
+          docLabel="Evidence Package"
+          countyInfo={countyInfo}
+          onConfirmed={onConfirmed}
+          refreshToken={refreshToken}
+        />
+      ) : (
+        <div className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          Evidence submission unlocks once the steps above are complete.
+        </div>
+      )}
     </div>
   );
 }
@@ -4509,6 +4614,16 @@ function EvidencePackageBuilder({
     // silently reset an in-progress selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [property.id, protest.id]);
+
+  // The signed Evidence Affidavit goes in with the evidence — select it once
+  // it exists (the user can still untick it).
+  const autoAffidavit = useRef<string | null>(null);
+  useEffect(() => {
+    const aff = otherDocs.find((d) => d.documentType === "Signed Evidence Declaration");
+    if (!aff || autoAffidavit.current === aff.id) return;
+    autoAffidavit.current = aff.id;
+    setSelectedIds((prev) => (prev.includes(aff.id) ? prev : [...prev, aff.id]));
+  }, [otherDocs]);
 
   const allDocs = [...evidenceDocuments, ...otherDocs];
   // The main list: the evidence documents, plus any extra the user has ticked.
