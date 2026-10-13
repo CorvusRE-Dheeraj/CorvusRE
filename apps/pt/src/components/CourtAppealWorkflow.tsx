@@ -51,6 +51,39 @@ const SECTION_ID: Record<string, string> = {
   monitoring: "court-monitoring",
 };
 
+// Money, dates, percentages, day counts, measurements and results in a summary
+// line, so the figures stand out from the wording around them.
+const FIGURE_RE =
+  /(\$[\d,]+(?:\.\d+)?|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d+(?:\.\d+)?%|\b\d[\d,]*\s(?:days?(?:\sremaining|\sleft)?|feet|sq\.?\s?ft)\b|\b(?:partial|denied|approved|rejected|accepted|not stated|not recorded)\b)/gi;
+const RESULT_TONE: Record<string, string> = {
+  approved: "text-success",
+  accepted: "text-success",
+  partial: "text-warning-foreground",
+  denied: "text-destructive",
+  rejected: "text-destructive",
+  "not stated": "text-muted-foreground",
+  "not recorded": "text-muted-foreground",
+};
+
+function HighlightFigures({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(FIGURE_RE).map((part, i) =>
+        i % 2 === 1 ? (
+          <strong
+            key={i}
+            className={`font-semibold ${RESULT_TONE[part.toLowerCase()] ?? "text-foreground"}`}
+          >
+            {part}
+          </strong>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 // The court-appeal leg of a case. It continues the SAME protest — the property,
 // evidence, arguments and hearing history already on file are reused, never
 // asked for again. Corvus organizes (deadline, summary, attorney package,
@@ -595,7 +628,9 @@ export function CourtAppealWorkflow({
                     </div>
                     <ul className="mt-1 grid gap-0.5">
                       {s.lines.map((l, i) => (
-                        <li key={i}>{l}</li>
+                        <li key={i} className="text-muted-foreground">
+                          <HighlightFigures text={l} />
+                        </li>
                       ))}
                     </ul>
                   </div>
