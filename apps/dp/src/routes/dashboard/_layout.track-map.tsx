@@ -13,6 +13,7 @@ import {
   useTrainTrack,
 } from "@/components/train-track";
 import { MiniTrain, TrainJourney } from "@/components/train-journey";
+import { RouteTrack } from "@/components/route-track";
 import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
@@ -167,6 +168,8 @@ function TrackMap() {
           <Fragment key={route.name}>
             {i > 0 && <RouteConnector color={route.color} />}
             <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
+              {/* The line itself, curving into the right edge and on to the next route. */}
+              {showStations && <RouteTrack entry={i > 0} exit={!last} />}
               <h2
                 className={cn(
                   "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
@@ -177,21 +180,13 @@ function TrackMap() {
               </h2>
 
               {showStations && (
-                // The line itself: one unbroken rail across the route, joined
-                // down the right edge to the routes before and after it.
-                <>
-                  <span className="track-rail track-rail-route" aria-hidden />
-                  {i > 0 && <span className="track-link track-join-in" aria-hidden />}
-                  {!last && <span className="track-link track-join-out" aria-hidden />}
-                </>
-              )}
-              {showStations && (
                 // One row per route on wide screens (like a single line of
                 // track); narrower screens wrap, and the rail through each slot
-                // keeps every row reading as track. Min 4 columns so the
+                // keeps every row reading as track (RouteTrack). Min 4 columns so the
                 // one-station Submission route doesn't stretch into a banner.
                 <ol
-                  className="track-rows grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+                  data-track-rows
+                  className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
                   style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
                 >
                   {shownStations.map((s) => (
@@ -340,7 +335,6 @@ function StationSlot({
   const style = ROUTE_STYLE[station.color];
   return (
     <li className="relative pt-11">
-      <span className="track-rail xl:hidden" aria-hidden />
       <span
         className={cn(
           "absolute left-2 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full border-[3px] border-white text-xs font-bold text-white shadow",

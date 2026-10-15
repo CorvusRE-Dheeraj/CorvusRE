@@ -1056,49 +1056,10 @@ header .container-page {
   color: var(--muted-foreground);
 }
 
-/* Permitting Train-Track Map (/dashboard/track-map). A rail runs through each
-   station slot and bleeds into the grid gap, so every row of stations reads
-   as one continuous line even after the grid wraps. */
-/* Opaque colours (not opacity), so where two pieces of rail overlap there's
-   no darker seam. Each slot's rail reaches exactly half the 1rem grid gap. */
-.track-rail {
-  position: absolute;
-  left: -0.5rem;
-  right: -0.5rem;
-  top: 1.1rem;
-  height: 14px;
-  pointer-events: none;
-  background:
-    linear-gradient(#6a7987, #6a7987) top / 100% 3px no-repeat,
-    linear-gradient(#6a7987, #6a7987) bottom / 100% 3px no-repeat,
-    repeating-linear-gradient(90deg, #c4cdd5 0 3px, transparent 3px 14px);
-}
-/* One unbroken rail across a whole route section (its first row: the
-   section's 2rem top padding + the slot's 1.1rem), running out to the card's
-   right border where the joins to the next route come down. On a wide screen
-   it's the only rail; narrower, wrapped rows keep their slot rails. */
-.track-rail-route {
-  top: 3.1rem;
-  left: 0.5rem;
-  right: -7px;
-}
-/* The joins: down the card's right border from the rail to the bottom edge,
-   and from the top edge down to the rail — meeting .track-link in the gap. */
-.track-link.track-join-in,
-.track-link.track-join-out {
-  position: absolute;
-  right: -7px;
-}
-.track-link.track-join-in {
-  top: 0;
-  height: calc(3.1rem + 14px);
-}
-.track-link.track-join-out {
-  top: 3.1rem;
-  bottom: 0;
-}
-/* The vertical bridge between two route sections — same rail/sleeper
-   language as .track-rail, rotated, so the line reads as continuing from
+/* Permitting Train-Track Map (/dashboard/track-map). The track inside each
+   route card is drawn by RouteTrack (components/route-track.tsx), curves and all. */
+/* The vertical bridge between two route sections — same rails and
+   sleepers as RouteTrack, so the line reads as continuing from
    one route's box down into the next rather than stopping at the border. */
 .track-link {
   position: relative;
@@ -1291,23 +1252,3 @@ header .container-page {
   }
 }
 
-/* Below xl the station grid wraps, and each row needs its own rail out to
-   the right-hand line. The grid reaches to the card's border line (its
-   padding + the 7px half-rail), so a slot's rail can run right and be
-   clipped exactly there. */
-.track-rows {
-  --track-pad: 1rem;
-  margin-right: calc(-1 * var(--track-pad) - 7px);
-  padding-right: calc(var(--track-pad) + 7px);
-  overflow-x: clip;
-}
-@media (min-width: 640px) {
-  .track-rows {
-    --track-pad: 1.25rem;
-  }
-}
-@media (max-width: 1279.98px) {
-  .track-rows .track-rail {
-    right: -100vw;
-  }
-}
