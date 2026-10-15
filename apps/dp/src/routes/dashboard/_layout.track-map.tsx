@@ -9,11 +9,11 @@ import {
   ROUTE_STYLE,
   StationDetail,
   TrainIcon,
-  TrainWithCars,
   openStationWindow,
   useTrainTrack,
 } from "@/components/train-track";
-import { TrainJourney } from "@/components/train-journey";
+import { MiniTrain, TrainJourney } from "@/components/train-journey";
+import { RouteTrack, type TrackSide } from "@/components/route-track";
 import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
@@ -25,6 +25,7 @@ import {
   type RouteColor,
   type Station,
   type TrainLocation,
+  type Wagon,
 } from "@/lib/train-track";
 import type { PermitRow } from "@/lib/projects";
 
@@ -159,13 +160,20 @@ function TrackMap() {
         return { route, shownStations, shownModules, showStations, showModules };
       })
         .filter((r) => r.showStations || r.showModules)
-        .map(({ route, shownStations, shownModules, showStations, showModules }, i) => {
+        .map(({ route, shownStations, shownModules, showStations, showModules }, i, all) => {
         const style = ROUTE_STYLE[route.color];
+        const last = i === all.length - 1;
+        // The line snakes down the page: out on the right, in on the right,
+        // out on the left, in on the left, …
+        const sideOf = (k: number): TrackSide => (k % 2 === 0 ? "right" : "left");
+        const entrySide = i > 0 ? sideOf(i - 1) : null;
 
         return (
           <Fragment key={route.name}>
-            {i > 0 && <RouteConnector color={route.color} />}
+            {entrySide && <RouteConnector color={route.color} side={entrySide} />}
             <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
+              {/* The line itself, curving into the right edge and on to the next route. */}
+              {showStations && <RouteTrack entry={entrySide} exit={last ? null : sideOf(i)} />}
               <h2
                 className={cn(
                   "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
@@ -178,9 +186,10 @@ function TrackMap() {
               {showStations && (
                 // One row per route on wide screens (like a single line of
                 // track); narrower screens wrap, and the rail through each slot
-                // keeps every row reading as track. Min 4 columns so the
+                // keeps every row reading as track (RouteTrack). Min 4 columns so the
                 // one-station Submission route doesn't stretch into a banner.
                 <ol
+                  data-track-rows
                   className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
                   style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
                 >
@@ -198,6 +207,7 @@ function TrackMap() {
                               : "ahead"
                       }
                       onOpen={open}
+                      wagons={wagons}
                     />
                   ))}
                 </ol>
@@ -299,10 +309,14 @@ function CurrentLocation({
 // Bridges the gap between one route section and the next so the whole page
 // reads as one continuous line, not a separate disconnected track per route
 // card. Coloured to the route it leads into.
-function RouteConnector({ color }: { color: RouteColor }) {
+function RouteConnector({ color, side }: { color: RouteColor; side: TrackSide }) {
   return (
-    <div className="relative -my-5 flex h-10 justify-start pl-9 sm:pl-11" aria-hidden>
-      <span className="track-link relative h-full">
+    <div
+      className={cn("relative -my-5 flex h-10", side === "right" ? "justify-end" : "justify-start")}
+      aria-hidden
+    >
+      {/* Centred on the cards' border line on that side, like the bends inside them. */}
+      <span className={cn("track-link relative h-full", side === "right" ? "-mr-[7px]" : "-ml-[7px]")}>
         <ChevronDown
           className={cn(
             "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
@@ -318,15 +332,16 @@ function StationSlot({
   station,
   state,
   onOpen,
+  wagons,
 }: {
   station: Station;
   state: "passed" | "current" | "ahead";
   onOpen: (n: number) => void;
+  wagons: Wagon[];
 }) {
   const style = ROUTE_STYLE[station.color];
   return (
     <li className="relative pt-11">
-      <span className="track-rail" aria-hidden />
       <span
         className={cn(
           "absolute left-2 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full border-[3px] border-white text-xs font-bold text-white shadow",
@@ -337,8 +352,10 @@ function StationSlot({
         {state === "passed" ? <Check className="h-4 w-4" /> : station.n}
       </span>
       {state === "current" && (
-        <span id="track-train" className="track-train absolute left-1/2 top-[-0.35rem] z-20 -translate-x-1/2">
-          <TrainWithCars color={station.color} />
+        // Front of the train at the card's right edge (clear of the bend), wagons trailing
+        // back along the rail; wheels on the rail (whose top is 1.1rem down the slot).
+        <span id="track-train" className="absolute bottom-[calc(100%-1.45rem)] right-0 z-20">
+          <MiniTrain wagons={wagons} />
         </span>
       )}
       <button
