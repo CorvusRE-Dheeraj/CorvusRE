@@ -352,8 +352,9 @@ function StationSlot({
         {state === "passed" ? <Check className="h-4 w-4" /> : station.n}
       </span>
       {state === "current" && (
-        // Centred on the station, wheels on the rail (whose top is 1.1rem down the slot).
-        <span id="track-train" className="absolute bottom-[calc(100%-1.45rem)] left-1/2 z-20 -translate-x-1/2">
+        // Front of the train at the card's right edge (clear of the bend), wagons trailing
+        // back along the rail; wheels on the rail (whose top is 1.1rem down the slot).
+        <span id="track-train" className="absolute bottom-[calc(100%-1.45rem)] right-0 z-20">
           <MiniTrain wagons={wagons} />
         </span>
       )}

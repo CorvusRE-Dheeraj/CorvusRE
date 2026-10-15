@@ -323,7 +323,7 @@ function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arri
 
 /** The hero's train in miniature — the same locomotive and route wagons (the
  *  latest two), empty — for parking on the track map's rail. */
-export function MiniTrain({ wagons, scale = 0.38 }: { wagons: Wagon[]; scale?: number }) {
+export function MiniTrain({ wagons, scale = 0.5 }: { wagons: Wagon[]; scale?: number }) {
   return (
     <div className="flex items-end" style={{ zoom: scale }} aria-hidden>
       {wagons.slice(-2).map((w, i) => (
