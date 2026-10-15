@@ -38,8 +38,9 @@ export function ScheduleAppointment({
   buttonLabel = "Schedule",
 }: {
   // "card": the Contact page's full card. "button": just a button, for use inside
-  // another section (e.g. the Texas Tax Updates call to action).
-  trigger?: "card" | "button";
+  // another section (e.g. the Texas Tax Updates call to action). "header": the
+  // site header's bold BOOK A DEMO button.
+  trigger?: "card" | "button" | "header";
   buttonLabel?: string;
 }) {
   const { user } = useAuth();
@@ -144,9 +145,32 @@ export function ScheduleAppointment({
 
   const input = "rounded-md border border-input bg-background px-3 py-2 text-sm";
 
+  const headerBtn =
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-md transition-transform hover:scale-[1.04] sm:px-5 sm:py-2 sm:text-base";
+
   return (
     <>
-      {mine ? (
+      {trigger === "header" ? (
+        // Already booked: the same button opens that booking instead of a second one.
+        mine ? (
+          <Link to="/appointment" search={{ token: mine.manageToken }} className={headerBtn}>
+            <Video className="h-4 w-4 sm:h-5 sm:w-5" />
+            {buttonLabel}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              reset();
+              setOpen(true);
+            }}
+            className={headerBtn}
+          >
+            <Video className="h-4 w-4 sm:h-5 sm:w-5" />
+            {buttonLabel}
+          </button>
+        )
+      ) : mine ? (
         trigger === "button" ? (
           <div className="flex flex-wrap items-center gap-3 text-sm text-white">
             <span>
