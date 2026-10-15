@@ -13,7 +13,7 @@ import {
   useTrainTrack,
 } from "@/components/train-track";
 import { MiniTrain, TrainJourney } from "@/components/train-journey";
-import { RouteTrack } from "@/components/route-track";
+import { RouteTrack, type TrackSide } from "@/components/route-track";
 import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
@@ -163,13 +163,17 @@ function TrackMap() {
         .map(({ route, shownStations, shownModules, showStations, showModules }, i, all) => {
         const style = ROUTE_STYLE[route.color];
         const last = i === all.length - 1;
+        // The line snakes down the page: out on the right, in on the right,
+        // out on the left, in on the left, …
+        const sideOf = (k: number): TrackSide => (k % 2 === 0 ? "right" : "left");
+        const entrySide = i > 0 ? sideOf(i - 1) : null;
 
         return (
           <Fragment key={route.name}>
-            {i > 0 && <RouteConnector color={route.color} />}
+            {entrySide && <RouteConnector color={route.color} side={entrySide} />}
             <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
               {/* The line itself, curving into the right edge and on to the next route. */}
-              {showStations && <RouteTrack entry={i > 0} exit={!last} />}
+              {showStations && <RouteTrack entry={entrySide} exit={last ? null : sideOf(i)} />}
               <h2
                 className={cn(
                   "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
@@ -305,11 +309,14 @@ function CurrentLocation({
 // Bridges the gap between one route section and the next so the whole page
 // reads as one continuous line, not a separate disconnected track per route
 // card. Coloured to the route it leads into.
-function RouteConnector({ color }: { color: RouteColor }) {
+function RouteConnector({ color, side }: { color: RouteColor; side: TrackSide }) {
   return (
-    <div className="relative -my-5 flex h-10 justify-end" aria-hidden>
-      {/* Centred on the cards' right border, like the joins inside them. */}
-      <span className="track-link relative -mr-[7px] h-full">
+    <div
+      className={cn("relative -my-5 flex h-10", side === "right" ? "justify-end" : "justify-start")}
+      aria-hidden
+    >
+      {/* Centred on the cards' border line on that side, like the bends inside them. */}
+      <span className={cn("track-link relative h-full", side === "right" ? "-mr-[7px]" : "-ml-[7px]")}>
         <ChevronDown
           className={cn(
             "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
