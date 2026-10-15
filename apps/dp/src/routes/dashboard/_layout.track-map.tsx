@@ -9,11 +9,10 @@ import {
   ROUTE_STYLE,
   StationDetail,
   TrainIcon,
-  TrainWithCars,
   openStationWindow,
   useTrainTrack,
 } from "@/components/train-track";
-import { TrainJourney } from "@/components/train-journey";
+import { MiniTrain, TrainJourney } from "@/components/train-journey";
 import {
   AVAILABILITY_LABEL,
   PARALLEL_STOPS,
@@ -25,6 +24,7 @@ import {
   type RouteColor,
   type Station,
   type TrainLocation,
+  type Wagon,
 } from "@/lib/train-track";
 import type { PermitRow } from "@/lib/projects";
 
@@ -159,8 +159,9 @@ function TrackMap() {
         return { route, shownStations, shownModules, showStations, showModules };
       })
         .filter((r) => r.showStations || r.showModules)
-        .map(({ route, shownStations, shownModules, showStations, showModules }, i) => {
+        .map(({ route, shownStations, shownModules, showStations, showModules }, i, all) => {
         const style = ROUTE_STYLE[route.color];
+        const last = i === all.length - 1;
 
         return (
           <Fragment key={route.name}>
@@ -176,12 +177,21 @@ function TrackMap() {
               </h2>
 
               {showStations && (
+                // The line itself: one unbroken rail across the route, joined
+                // down the right edge to the routes before and after it.
+                <>
+                  <span className="track-rail track-rail-route" aria-hidden />
+                  {i > 0 && <span className="track-link track-join-in" aria-hidden />}
+                  {!last && <span className="track-link track-join-out" aria-hidden />}
+                </>
+              )}
+              {showStations && (
                 // One row per route on wide screens (like a single line of
                 // track); narrower screens wrap, and the rail through each slot
                 // keeps every row reading as track. Min 4 columns so the
                 // one-station Submission route doesn't stretch into a banner.
                 <ol
-                  className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+                  className="track-rows grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
                   style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
                 >
                   {shownStations.map((s) => (
@@ -198,6 +208,7 @@ function TrackMap() {
                               : "ahead"
                       }
                       onOpen={open}
+                      wagons={wagons}
                     />
                   ))}
                 </ol>
@@ -301,8 +312,9 @@ function CurrentLocation({
 // card. Coloured to the route it leads into.
 function RouteConnector({ color }: { color: RouteColor }) {
   return (
-    <div className="relative -my-5 flex h-10 justify-start pl-9 sm:pl-11" aria-hidden>
-      <span className="track-link relative h-full">
+    <div className="relative -my-5 flex h-10 justify-end" aria-hidden>
+      {/* Centred on the cards' right border, like the joins inside them. */}
+      <span className="track-link relative -mr-[7px] h-full">
         <ChevronDown
           className={cn(
             "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
@@ -318,15 +330,17 @@ function StationSlot({
   station,
   state,
   onOpen,
+  wagons,
 }: {
   station: Station;
   state: "passed" | "current" | "ahead";
   onOpen: (n: number) => void;
+  wagons: Wagon[];
 }) {
   const style = ROUTE_STYLE[station.color];
   return (
     <li className="relative pt-11">
-      <span className="track-rail" aria-hidden />
+      <span className="track-rail xl:hidden" aria-hidden />
       <span
         className={cn(
           "absolute left-2 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full border-[3px] border-white text-xs font-bold text-white shadow",
@@ -337,8 +351,9 @@ function StationSlot({
         {state === "passed" ? <Check className="h-4 w-4" /> : station.n}
       </span>
       {state === "current" && (
-        <span id="track-train" className="track-train absolute left-1/2 top-[-0.35rem] z-20 -translate-x-1/2">
-          <TrainWithCars color={station.color} />
+        // Centred on the station, wheels on the rail (whose top is 1.1rem down the slot).
+        <span id="track-train" className="absolute bottom-[calc(100%-1.45rem)] left-1/2 z-20 -translate-x-1/2">
+          <MiniTrain wagons={wagons} />
         </span>
       )}
       <button
