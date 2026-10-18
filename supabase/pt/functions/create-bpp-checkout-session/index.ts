@@ -6,6 +6,7 @@
 // ACCOUNT (see stripe-webhook's checkout.session.completed handler, which
 // branches on metadata.subjectType to write to bpp_accounts here instead of
 // properties).
+import { existingSubscriptionMessage, hasLiveSubscription } from "../_shared/subscription-status.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
@@ -83,9 +84,13 @@ Deno.serve(async (req: Request) => {
         headers: corsHeaders,
       });
     }
-    if (account.subscription_status === "active") {
+    // Any live subscription (incl. past_due / incomplete) — a second checkout
+    // would bill the customer twice.
+    if (hasLiveSubscription(account.subscription_status as string | null)) {
       return new Response(
-        JSON.stringify({ error: "This BPP account already has an active subscription." }),
+        JSON.stringify({
+          error: existingSubscriptionMessage(account.subscription_status as string, "BPP account"),
+        }),
         { status: 400, headers: corsHeaders },
       );
     }

@@ -11,6 +11,7 @@
 // columns this writes via stripe-webhook's checkout.session.completed
 // handler (stripe_subscription_id, subscription_status, plan_tier,
 // value_bracket on the properties row itself).
+import { existingSubscriptionMessage, hasLiveSubscription } from "../_shared/subscription-status.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
@@ -99,9 +100,13 @@ Deno.serve(async (req: Request) => {
         headers: corsHeaders,
       });
     }
-    if (property.subscription_status === "active") {
+    // Any live subscription (incl. past_due / incomplete) — a second checkout
+    // would bill the customer twice.
+    if (hasLiveSubscription(property.subscription_status as string | null)) {
       return new Response(
-        JSON.stringify({ error: "This property already has an active subscription." }),
+        JSON.stringify({
+          error: existingSubscriptionMessage(property.subscription_status as string, "property"),
+        }),
         { status: 400, headers: corsHeaders },
       );
     }

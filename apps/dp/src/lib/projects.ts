@@ -164,15 +164,20 @@ export async function saveProjectFromIntake(
     });
   }
   if (checklistRows.length) {
-    await supabase.from("project_checklist_items").insert(checklistRows);
+    // Used to be fire-and-forget: a failure left the project with an empty
+    // checklist and no sign anything went wrong.
+    const { error: ce } = await supabase.from("project_checklist_items").insert(checklistRows);
+    if (ce) throw ce;
   }
 
-  await supabase.from("project_notifications").insert({
+  const { error: ne } = await supabase.from("project_notifications").insert({
     project_id: projectId,
     kind: "welcome",
     title: "Project saved",
     body: `Your permitting analysis for ${property.address ?? property.city ?? "your site"} is ready. ${analysis.permits.length} permits identified.`,
   });
+  // The welcome note is nice-to-have; never fail the save over it.
+  if (ne) console.error("Could not add the welcome notification:", ne);
 
   return projectId;
 }

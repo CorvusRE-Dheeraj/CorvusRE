@@ -88,6 +88,7 @@ import { MyAppointments } from "@/components/MyAppointments";
 import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
+import { isPaidStatus } from "@/lib/subscription-status";
 
 const URGENCY_RANK: Record<Urgency, number> = { overdue: 0, urgent: 1, soon: 2, normal: 3 };
 
@@ -267,7 +268,7 @@ function Overview() {
     const annualCost =
       plan === "beta"
         ? 0
-        : property.subscriptionStatus === "active" && property.planTier
+        : isPaidStatus(property.subscriptionStatus) && property.planTier
           ? propertyMonthlyPrice(property.planTier, "upTo5m", false) * 12
           : null;
     const review = pr ? (cadReviews.get(pr.id) ?? null) : null;
