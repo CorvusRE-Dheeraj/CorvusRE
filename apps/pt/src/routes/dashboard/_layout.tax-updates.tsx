@@ -330,7 +330,7 @@ function TaxUpdates() {
           <button
             type="button"
             onClick={() => setShowSources((v) => !v)}
-            className="mt-1 text-xs text-accent hover:underline"
+            className="mt-1 min-h-6 text-xs text-accent hover:underline"
           >
             {showSources ? "Hide" : "Show"} sources checked (
             {report.sources.filter((s) => s.ok).length} of {report.sources.length} read)
@@ -521,7 +521,7 @@ function TaxUpdates() {
                         href={STANDING_SOURCE.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-block text-accent hover:underline"
+                        className="mt-2 inline-flex min-h-6 items-center text-accent hover:underline"
                       >
                         {STANDING_SOURCE.name} →
                       </a>

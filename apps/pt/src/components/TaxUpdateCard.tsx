@@ -243,7 +243,7 @@ export function TaxUpdateCard({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-accent hover:underline"
         >
           {open ? "Show less" : "Read more — why it matters, what to do, source"}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -276,7 +276,7 @@ export function TaxUpdateCard({
                 href={update.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-accent hover:underline"
+                className="inline-flex min-h-6 items-center gap-1 text-accent hover:underline"
               >
                 {update.sourceName}
                 <ExternalLink className="h-3 w-3" />
