@@ -3,7 +3,15 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveProjectBundle } from "@/hooks/use-project";
 import { listRfis, addRfi, respondToRfi, setRfiStatus } from "@/lib/project-activity";
-import { Section, Pill, EmptyProject, Loading, Field, inputCls, humanize } from "@/components/dp-ui";
+import {
+  Section,
+  Pill,
+  EmptyProject,
+  Loading,
+  Field,
+  inputCls,
+  humanize,
+} from "@/components/dp-ui";
 import { dateShort } from "@/lib/format";
 
 export const Route = createFileRoute("/dashboard/_layout/rfis")({

@@ -16,12 +16,10 @@ export async function isPwnedPassword(password: string): Promise<boolean> {
     });
     if (!res.ok) return false;
     const suffix = hex.slice(5);
-    return (await res.text())
-      .split("\n")
-      .some((line) => {
-        const [h, count] = line.trim().split(":");
-        return h === suffix && Number(count) > 0;
-      });
+    return (await res.text()).split("\n").some((line) => {
+      const [h, count] = line.trim().split(":");
+      return h === suffix && Number(count) > 0;
+    });
   } catch {
     return false;
   }

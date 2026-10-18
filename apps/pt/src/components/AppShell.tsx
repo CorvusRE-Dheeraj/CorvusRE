@@ -171,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       description: "This section is still under development — check back soon.",
                     })
                   }
-                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground/50 cursor-not-allowed lg:w-full lg:px-3.5"
+                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed lg:w-full lg:px-3.5"
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}

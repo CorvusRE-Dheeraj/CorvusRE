@@ -173,7 +173,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <SidebarLink item={TRACK_MAP} onNavigate={onNavigate} />
       {PERMITTING_SUBGROUPS.map((group) => (
         <div key={group.heading} className="flex flex-col gap-1">
-          <div className="px-3 pt-1.5 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          <div className="px-3 pt-1.5 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {group.heading}
           </div>
           {group.items.map((item) => (
@@ -332,6 +332,19 @@ function ProjectSwitcher() {
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Each dashboard page names itself in its head() title ("Permits — CorvusDP");
+  // that becomes the page's H1 for screen readers. Pages only render H2 section
+  // cards, so without this there was no page-level heading at all.
+  const pageTitle = useRouterState({
+    select: (s) => {
+      for (const m of [...s.matches].reverse()) {
+        const meta = (m as { meta?: Array<{ title?: string } | undefined> }).meta;
+        const t = meta?.find((x) => x?.title)?.title;
+        if (t) return t.replace(/\s+[—-]\s+CorvusDP$/, "");
+      }
+      return "Dashboard";
+    },
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const onDashboard = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
@@ -382,6 +395,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             (only <Outlet/>'s children swap inside it), so the CSS animation
             only ever played once, on the very first dashboard load. */}
         <div key={pathname} className="min-w-0 page-enter">
+          {/* Track Map shows its own visible H1. */}
+          {!pathname.endsWith("/track-map") && <h1 className="sr-only">{pageTitle}</h1>}
           {children}
         </div>
       </div>

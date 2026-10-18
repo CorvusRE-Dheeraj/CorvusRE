@@ -234,7 +234,7 @@ export async function updateUserAdminStatus(
   isAdmin: boolean,
   context?: { targetEmail?: string },
 ): Promise<void> {
-  await invokeEdgeFunction("admin-update-admin-status", {
+  await invokeEdgeFunction("admin-update-plan?action=admin-update-admin-status", {
     userId,
     isAdmin,
     targetEmail: context?.targetEmail,
@@ -249,7 +249,7 @@ export async function updateUserFranchiseStatus(
   isFranchiseOwner: boolean,
   context?: { targetEmail?: string },
 ): Promise<void> {
-  await invokeEdgeFunction("admin-update-franchise-status", {
+  await invokeEdgeFunction("admin-update-plan?action=admin-update-franchise-status", {
     userId,
     isFranchiseOwner,
     targetEmail: context?.targetEmail,

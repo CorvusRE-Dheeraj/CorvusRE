@@ -8,7 +8,15 @@ import {
   setInspectionStatus,
   deleteInspection,
 } from "@/lib/project-activity";
-import { Section, Pill, EmptyProject, Loading, Field, inputCls, humanize } from "@/components/dp-ui";
+import {
+  Section,
+  Pill,
+  EmptyProject,
+  Loading,
+  Field,
+  inputCls,
+  humanize,
+} from "@/components/dp-ui";
 import { dateShort } from "@/lib/format";
 
 export const Route = createFileRoute("/dashboard/_layout/inspections")({
@@ -93,9 +101,7 @@ function Inspections() {
                     <div>
                       <span className="font-medium">{i.name}</span>
                       {permit && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          · {permit.name}
-                        </span>
+                        <span className="ml-2 text-xs text-muted-foreground">· {permit.name}</span>
                       )}
                     </div>
                     <Pill tone={STATUS_TONE[i.status] ?? "gray"}>{humanize(i.status)}</Pill>

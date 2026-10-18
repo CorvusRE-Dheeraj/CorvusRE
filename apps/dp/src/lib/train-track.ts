@@ -59,7 +59,12 @@ export const STATIONS: Station[] = [
     module: "AI Intake Validator",
     purpose:
       "Creates the core project record and validates the first property/project inputs before any permit recommendations are made.",
-    inputs: ["Property address or manual site details", "City / lot size", "User session ID", "Project scope"],
+    inputs: [
+      "Property address or manual site details",
+      "City / lot size",
+      "User session ID",
+      "Project scope",
+    ],
     actions: [
       "Creates unique Project ID",
       "Fetches parcel data when address is available",
@@ -89,8 +94,18 @@ export const STATIONS: Station[] = [
     module: "AI Client Profile + Request Monitor",
     purpose:
       "Tracks new searches, partial sessions, signups, and user engagement so high-intent permitting requests are not missed.",
-    inputs: ["Property searches", "Partial forms", "Signup events", "Abandonment events", "Last activity"],
-    actions: ["Calculates intent score", "Prioritizes users by activity level", "Classifies engagement stage"],
+    inputs: [
+      "Property searches",
+      "Partial forms",
+      "Signup events",
+      "Abandonment events",
+      "Last activity",
+    ],
+    actions: [
+      "Calculates intent score",
+      "Prioritizes users by activity level",
+      "Classifies engagement stage",
+    ],
     outputs: [
       "User/session record",
       "Property address",
@@ -126,7 +141,12 @@ export const STATIONS: Station[] = [
       "Fetches zoning classification where available",
       "Flags preliminary assumptions",
     ],
-    outputs: ["Jurisdiction map", "Governing agencies", "Parcel information", "Zoning classification"],
+    outputs: [
+      "Jurisdiction map",
+      "Governing agencies",
+      "Parcel information",
+      "Zoning classification",
+    ],
     next: "Permit Identification",
     page: "/dashboard",
     availability: "live",
@@ -137,7 +157,8 @@ export const STATIONS: Station[] = [
     color: "blue",
     title: "Permit Identification",
     module: "AI Permit Finder",
-    purpose: "Generates and verifies the list of permits likely required for the project scope and jurisdiction.",
+    purpose:
+      "Generates and verifies the list of permits likely required for the project scope and jurisdiction.",
     inputs: ["Project scope", "Jurisdiction", "Zoning result", "Project type", "Site constraints"],
     actions: [
       "Generates required permit list",
@@ -157,7 +178,12 @@ export const STATIONS: Station[] = [
     title: "Permit Sequence + Dependencies",
     module: "AI Dependency Mapper",
     purpose: "Maps which permits can proceed in parallel and which depend on earlier approvals.",
-    inputs: ["Permit list", "Jurisdiction rules", "Agency dependencies", "Submission prerequisites"],
+    inputs: [
+      "Permit list",
+      "Jurisdiction rules",
+      "Agency dependencies",
+      "Submission prerequisites",
+    ],
     actions: [
       "Identifies prerequisite permits",
       "Creates dependency map",
@@ -210,7 +236,8 @@ export const STATIONS: Station[] = [
     color: "purple",
     title: "City Contacts Auto-Fetch",
     module: "AI City Contact Auto-Fetch",
-    purpose: "Builds the city contact directory for reviewers, departments, and agency coordination.",
+    purpose:
+      "Builds the city contact directory for reviewers, departments, and agency coordination.",
     inputs: ["Jurisdiction", "Agency list", "City department information"],
     actions: [
       "Auto-fetches city contacts where available",
@@ -221,7 +248,8 @@ export const STATIONS: Station[] = [
     next: "City Requirement Extraction",
     page: "/dashboard/city",
     availability: "partial",
-    availabilityNote: "City contacts are logged by hand on the City page; auto-fetching them isn't built yet.",
+    availabilityNote:
+      "City contacts are logged by hand on the City page; auto-fetching them isn't built yet.",
   },
   {
     n: 8,
@@ -259,7 +287,13 @@ export const STATIONS: Station[] = [
     module: "AI Checklist Generator per Permit",
     purpose:
       "Creates a city-specific checklist for each permit so the team knows what must be prepared before submission.",
-    inputs: ["Permit type", "Jurisdiction", "Extracted requirements", "Forms", "Drawing requirements"],
+    inputs: [
+      "Permit type",
+      "Jurisdiction",
+      "Extracted requirements",
+      "Forms",
+      "Drawing requirements",
+    ],
     actions: [
       "Creates checklist per permit and jurisdiction",
       "Includes forms, drawings, fees, and studies",
@@ -310,9 +344,14 @@ export const STATIONS: Station[] = [
     color: "purple",
     title: "Overall Site Data for Design",
     module: "AI Site Constraint Summary",
-    purpose: "Compiles the permitting/site constraints that must feed into design and application preparation.",
+    purpose:
+      "Compiles the permitting/site constraints that must feed into design and application preparation.",
     inputs: ["Zoning", "Utilities", "Easements", "Floodplain", "Setbacks", "Access constraints"],
-    actions: ["Compiles all constraints", "Generates design-ready report", "Flags permitting/design risks"],
+    actions: [
+      "Compiles all constraints",
+      "Generates design-ready report",
+      "Flags permitting/design risks",
+    ],
     outputs: ["Site constraints summary", "Risk flags", "Design recommendations"],
     next: "Pre-Application Checklist + Meeting",
     page: "/dashboard/constraints",
@@ -362,7 +401,12 @@ export const STATIONS: Station[] = [
     title: "Meeting Capture + Data Sync",
     module: "AI Meeting Capture + System Sync",
     purpose: "Turns meetings, calls, and voice notes into structured project data.",
-    inputs: ["Zoom/Google Meet/Teams", "Manual voice upload", "Mobile voice notes", "Meeting notes"],
+    inputs: [
+      "Zoom/Google Meet/Teams",
+      "Manual voice upload",
+      "Mobile voice notes",
+      "Meeting notes",
+    ],
     actions: [
       "Creates full transcript",
       "Identifies speakers",
@@ -370,11 +414,17 @@ export const STATIONS: Station[] = [
       "Updates project fields, permitting stage, and constraints",
       "Flags uncertain data for manual review",
     ],
-    outputs: ["Transcript", "Speaker identification", "Updated project fields", "Flagged uncertain items"],
+    outputs: [
+      "Transcript",
+      "Speaker identification",
+      "Updated project fields",
+      "Flagged uncertain items",
+    ],
     next: "Communication Control Tower",
     page: "/dashboard/city",
     availability: "planned",
-    availabilityNote: "Meeting transcription isn't built yet — log meetings by hand on the City page for now.",
+    availabilityNote:
+      "Meeting transcription isn't built yet — log meetings by hand on the City page for now.",
   },
   {
     n: 14,
@@ -486,7 +536,8 @@ export const STATIONS: Station[] = [
     color: "orange",
     title: "City Relationship + Submission Ready",
     module: "AI City Relationship + Submission Assistant",
-    purpose: "Maintains city communication history and ensures the package is ready for actual filing.",
+    purpose:
+      "Maintains city communication history and ensures the package is ready for actual filing.",
     inputs: [
       "City interactions",
       "Contact directory",
@@ -500,7 +551,12 @@ export const STATIONS: Station[] = [
       "Tracks communication history",
       "Checks readiness for submission",
     ],
-    outputs: ["Communication timeline", "Contact directory", "Pending follow-ups", "Ready for submission status"],
+    outputs: [
+      "Communication timeline",
+      "Contact directory",
+      "Pending follow-ups",
+      "Ready for submission status",
+    ],
     next: "Submission Management",
     page: "/dashboard/city",
     availability: "live",
@@ -512,7 +568,13 @@ export const STATIONS: Station[] = [
     title: "Submission Management",
     module: "AI Submission Management Assistant",
     purpose: "Files applications through the required method and records submission evidence.",
-    inputs: ["Final package", "Portal/forms", "Required documents", "Submission method", "Payment details"],
+    inputs: [
+      "Final package",
+      "Portal/forms",
+      "Required documents",
+      "Submission method",
+      "Payment details",
+    ],
     actions: [
       "Identifies submission method, online portal, forms, supporting documents, and submission sequence",
       "Stores portal links and instructions",
@@ -578,7 +640,8 @@ export const STATIONS: Station[] = [
     next: "Responsibility Assignment",
     page: "/dashboard/reviews",
     availability: "live",
-    availabilityNote: "Uses a real AI call to turn each reviewer comment into plain English and a required action.",
+    availabilityNote:
+      "Uses a real AI call to turn each reviewer comment into plain English and a required action.",
   },
   {
     n: 21,
@@ -588,12 +651,18 @@ export const STATIONS: Station[] = [
     module: "AI Comment Responsibility Assignment",
     purpose: "Assigns each review comment to the correct owner and tracks accountability.",
     inputs: ["Categorized comments", "Discipline owner", "Consultant list", "Internal team roles"],
-    actions: ["Assigns owner", "Assigns due date", "Notifies responsible party", "Tracks completion"],
+    actions: [
+      "Assigns owner",
+      "Assigns due date",
+      "Notifies responsible party",
+      "Tracks completion",
+    ],
     outputs: ["Assigned person", "Due date", "Status"],
     next: "Comment Tracker + Timeline",
     page: "/dashboard/reviews",
     availability: "partial",
-    availabilityNote: "Each comment gets an owner and status; due dates and notifying the owner aren't built yet.",
+    availabilityNote:
+      "Each comment gets an owner and status; due dates and notifying the owner aren't built yet.",
   },
   {
     n: 22,
@@ -603,12 +672,18 @@ export const STATIONS: Station[] = [
     module: "AI Comment Timeline Tracker",
     purpose: "Tracks comment resolution timing so deadlines are not missed.",
     inputs: ["Open comments", "Due dates", "Owner status", "Revision progress"],
-    actions: ["Monitors progress", "Monitors due dates", "Generates reminders", "Calculates resolution time"],
+    actions: [
+      "Monitors progress",
+      "Monitors due dates",
+      "Generates reminders",
+      "Calculates resolution time",
+    ],
     outputs: ["Open comments", "Closed comments", "Timeline", "Average resolution time"],
     next: "Compliance Check from Design Team",
     page: "/dashboard/reviews",
     availability: "partial",
-    availabilityNote: "Open vs. closed comments are tracked; reminders and resolution-time stats aren't built yet.",
+    availabilityNote:
+      "Open vs. closed comments are tracked; reminders and resolution-time stats aren't built yet.",
   },
   {
     n: 23,
@@ -616,7 +691,8 @@ export const STATIONS: Station[] = [
     color: "red",
     title: "Compliance Check from Design Team",
     module: "AI Compliance Checker",
-    purpose: "Verifies that revised documents actually address every review comment before resubmission.",
+    purpose:
+      "Verifies that revised documents actually address every review comment before resubmission.",
     inputs: ["Revised drawings", "Original comments", "Design team responses"],
     actions: [
       "Compares revisions against review comments",
@@ -648,7 +724,8 @@ export const STATIONS: Station[] = [
     next: "Submission Count + Aging Risk",
     page: "/dashboard/permits",
     availability: "partial",
-    availabilityNote: "Resubmitted status and review round are tracked; building the resubmission package isn't.",
+    availabilityNote:
+      "Resubmitted status and review round are tracked; building the resubmission package isn't.",
   },
   {
     n: 25,
@@ -657,7 +734,12 @@ export const STATIONS: Station[] = [
     title: "Submission Count + Aging Risk",
     module: "AI Submission Counter + Risk Monitor",
     purpose: "Tracks submission cycles and aging risk to identify delayed or problematic permits.",
-    inputs: ["Submission history", "Review cycles", "Days since submission", "Average city review times"],
+    inputs: [
+      "Submission history",
+      "Review cycles",
+      "Days since submission",
+      "Average city review times",
+    ],
     actions: [
       "Counts submissions",
       "Counts review cycles",
@@ -687,13 +769,25 @@ export const STATIONS: Station[] = [
     title: "City Permit Expeditor",
     module: "AI Permit Expeditor",
     purpose: "Helps speed up approvals by coordinating follow-ups and escalation.",
-    inputs: ["Aging permits", "Review status", "City contacts", "Commitments", "Escalation history"],
-    actions: ["Schedules follow-ups", "Tracks escalations", "Logs responses", "Records commitments from city"],
+    inputs: [
+      "Aging permits",
+      "Review status",
+      "City contacts",
+      "Commitments",
+      "Escalation history",
+    ],
+    actions: [
+      "Schedules follow-ups",
+      "Tracks escalations",
+      "Logs responses",
+      "Records commitments from city",
+    ],
     outputs: ["Follow-up timeline", "Escalation history", "Next action"],
     next: "Approval + Clearance Tracker",
     page: "/dashboard/city",
     availability: "partial",
-    availabilityNote: "Follow-ups with the city are logged by hand; scheduling and escalation aren't automated yet.",
+    availabilityNote:
+      "Follow-ups with the city are logged by hand; scheduling and escalation aren't automated yet.",
   },
   {
     n: 27,
@@ -735,7 +829,12 @@ export const STATIONS: Station[] = [
     title: "Permit Expiry Tracker",
     module: "AI Expiry Monitor",
     purpose: "Tracks permit validity and renewal needs after approval.",
-    inputs: ["Permit approval date", "Expiration date", "Validity period", "Assigned project manager"],
+    inputs: [
+      "Permit approval date",
+      "Expiration date",
+      "Validity period",
+      "Assigned project manager",
+    ],
     actions: [
       "Tracks expiration dates",
       "Generates renewal reminders",
@@ -783,7 +882,11 @@ export const ROUTES: TrackRoute[] = [
   { name: "Requirements + Agency Data", color: "purple", stations: [7, 8, 9, 10, 11] },
   { name: "Pre-App + Package Preparation", color: "orange", stations: [12, 13, 14, 15, 16, 17] },
   { name: "Submission + Parallel Permit Tracks", color: "teal", stations: [18] },
-  { name: "Review + Comment / Resubmission Loop", color: "green", stations: [19, 20, 21, 22, 23, 24] },
+  {
+    name: "Review + Comment / Resubmission Loop",
+    color: "green",
+    stations: [19, 20, 21, 22, 23, 24],
+  },
   { name: "Approval / Clearance / Expiry", color: "gray", stations: [25, 26, 27, 28, 29] },
 ];
 
@@ -873,7 +976,10 @@ export function locateTrain(input: {
 
   switch (behind.status) {
     case "submitted":
-      return { station: 18, reason: `${who} has been submitted and is waiting to enter city review.` };
+      return {
+        station: 18,
+        reason: `${who} has been submitted and is waiting to enter city review.`,
+      };
     case "under_review":
       return { station: 19, reason: `${who} is under city review.` };
     case "resubmitted":

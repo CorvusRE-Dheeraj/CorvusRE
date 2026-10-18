@@ -24,12 +24,18 @@ export async function getGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
 // sends the user back to wherever this app is actually deployed under.
 export async function startGoogleCalendarConnect(): Promise<void> {
   const redirectPath = `${import.meta.env.BASE_URL}dashboard/calendar`;
-  const { authUrl } = await invokeEdgeFunction<{ authUrl: string }>("google-calendar-start", {
-    redirectPath,
-  });
+  const { authUrl } = await invokeEdgeFunction<{ authUrl: string }>(
+    "google-calendar-status?action=google-calendar-start",
+    {
+      redirectPath,
+    },
+  );
   window.location.href = authUrl;
 }
 
 export async function disconnectGoogleCalendar(): Promise<void> {
-  await invokeEdgeFunction<{ ok: true }>("google-calendar-disconnect", {});
+  await invokeEdgeFunction<{ ok: true }>(
+    "google-calendar-status?action=google-calendar-disconnect",
+    {},
+  );
 }

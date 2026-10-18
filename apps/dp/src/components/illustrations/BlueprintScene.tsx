@@ -59,10 +59,7 @@ export function BlueprintScene({ className }: { className?: string }) {
 
       {/* building envelope */}
       <g stroke="currentColor" strokeOpacity="0.75" strokeWidth="2">
-        <path
-          d="M96 356V150l164-58 164 58v206"
-          style={{ ["--d" as string]: "200ms" }}
-        />
+        <path d="M96 356V150l164-58 164 58v206" style={{ ["--d" as string]: "200ms" }} />
         {/* parapet cap */}
         <path d="M88 150h344" style={{ ["--d" as string]: "420ms" }} />
       </g>
@@ -192,12 +189,7 @@ export function BlueprintScene({ className }: { className?: string }) {
           strokeOpacity="0.5"
           strokeWidth="1.5"
         />
-        <path
-          d="M452 44l6 16-6-4-6 4z"
-          fill="currentColor"
-          fillOpacity="0.9"
-          data-fill=""
-        />
+        <path d="M452 44l6 16-6-4-6 4z" fill="currentColor" fillOpacity="0.9" data-fill="" />
         <text
           x="452"
           y="94"

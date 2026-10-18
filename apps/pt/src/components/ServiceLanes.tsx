@@ -83,7 +83,15 @@ export function ServiceLanes({ showCta = true }: { showCta?: boolean }) {
 // page's at-a-glance comparison.
 export function LaneComparisonTable() {
   return (
-    <div className="card-elev overflow-x-auto">
+    <div
+      className="card-elev overflow-x-auto"
+      // Scrolls sideways on phones; focusable so keyboard users can scroll it too
+      // (WCAG scrollable-region pattern, which this lint rule does not know about).
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={0}
+      role="region"
+      aria-label="Compare service lanes"
+    >
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
           <tr className="border-b border-border">

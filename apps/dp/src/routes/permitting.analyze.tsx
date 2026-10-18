@@ -266,8 +266,7 @@ function PropertyStep({
     if (now.zoning && !now.zoningStatus) return;
     patch({ property: zoningFields(result) });
   }
-  const typedZoning = (v: string) =>
-    patch({ property: { zoning: v, ...CLEAR_AUTO_ZONING } });
+  const typedZoning = (v: string) => patch({ property: { zoning: v, ...CLEAR_AUTO_ZONING } });
 
   return (
     <Section
@@ -457,7 +456,8 @@ function ProjectStep({
                 onChange={(e) =>
                   patch({
                     project: {
-                      subcategory: (e.target.value || undefined) as CommercialSubcategory | undefined,
+                      subcategory: (e.target.value || undefined) as
+                        CommercialSubcategory | undefined,
                     },
                   })
                 }
@@ -714,7 +714,9 @@ function AiFeasibilitySummary({
       });
       setSummary(result);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Couldn't generate the AI summary. Please try again.");
+      setErr(
+        e instanceof Error ? e.message : "Couldn't generate the AI summary. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -753,11 +755,7 @@ function AiFeasibilitySummary({
             <span className="font-semibold">Next step: </span>
             {summary.recommendedNextStep}
           </p>
-          <button
-            className="btn-outline w-fit text-xs"
-            onClick={generate}
-            disabled={loading}
-          >
+          <button className="btn-outline w-fit text-xs" onClick={generate} disabled={loading}>
             <RotateCcw className="h-3.5 w-3.5" /> Regenerate
           </button>
         </div>

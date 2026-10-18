@@ -40,17 +40,57 @@ const DEBOUNCE_MS = 450;
 const MIN_QUERY_LENGTH = 4;
 
 const STATE_ABBR: Record<string, string> = {
-  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
-  colorado: "CO", connecticut: "CT", delaware: "DE", "district of columbia": "DC",
-  florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL",
-  indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA",
-  maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN",
-  mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV",
-  "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
-  "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK",
-  oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
-  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
-  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+  alabama: "AL",
+  alaska: "AK",
+  arizona: "AZ",
+  arkansas: "AR",
+  california: "CA",
+  colorado: "CO",
+  connecticut: "CT",
+  delaware: "DE",
+  "district of columbia": "DC",
+  florida: "FL",
+  georgia: "GA",
+  hawaii: "HI",
+  idaho: "ID",
+  illinois: "IL",
+  indiana: "IN",
+  iowa: "IA",
+  kansas: "KS",
+  kentucky: "KY",
+  louisiana: "LA",
+  maine: "ME",
+  maryland: "MD",
+  massachusetts: "MA",
+  michigan: "MI",
+  minnesota: "MN",
+  mississippi: "MS",
+  missouri: "MO",
+  montana: "MT",
+  nebraska: "NE",
+  nevada: "NV",
+  "new hampshire": "NH",
+  "new jersey": "NJ",
+  "new mexico": "NM",
+  "new york": "NY",
+  "north carolina": "NC",
+  "north dakota": "ND",
+  ohio: "OH",
+  oklahoma: "OK",
+  oregon: "OR",
+  pennsylvania: "PA",
+  "rhode island": "RI",
+  "south carolina": "SC",
+  "south dakota": "SD",
+  tennessee: "TN",
+  texas: "TX",
+  utah: "UT",
+  vermont: "VT",
+  virginia: "VA",
+  washington: "WA",
+  "west virginia": "WV",
+  wisconsin: "WI",
+  wyoming: "WY",
 };
 
 function abbrState(s?: string): string | undefined {
@@ -79,7 +119,8 @@ type NominatimResult = {
 
 function formatNominatim(r: NominatimResult): Suggestion | null {
   const a = r.address;
-  if (!a) return { id: String(r.place_id), label: r.display_name, pick: { formatted: r.display_name } };
+  if (!a)
+    return { id: String(r.place_id), label: r.display_name, pick: { formatted: r.display_name } };
   const line1 = [a.house_number, a.road].filter(Boolean).join(" ");
   const city = a.city || a.town || a.village || a.hamlet || a.municipality || "";
   const state = abbrState(a.state);
@@ -145,7 +186,7 @@ async function fetchGoogle(query: string, signal: AbortSignal): Promise<Suggesti
 
 // Last-resort county lookup — geocode the chosen address on Nominatim and read
 // its `county`. Used when the primary provider (Google) didn't return one.
-async function nominatimCounty(address: string): Promise<PlacePick> {
+async function nominatimCounty(address: string): Promise<Partial<PlacePick>> {
   const params = new URLSearchParams({
     format: "jsonv2",
     addressdetails: "1",
@@ -191,7 +232,8 @@ async function fetchGooglePlaceDetails(placeId: string): Promise<PlacePick | nul
   };
   const comps = data.addressComponents ?? [];
   const get = (type: string) => comps.find((c) => c.types?.includes(type));
-  const city = get("locality")?.longText || get("postal_town")?.longText || get("sublocality")?.longText;
+  const city =
+    get("locality")?.longText || get("postal_town")?.longText || get("sublocality")?.longText;
   const county = get("administrative_area_level_2")?.longText?.replace(/ County$/i, "");
   const state = get("administrative_area_level_1")?.shortText;
   const postalCode = get("postal_code")?.longText;
@@ -206,7 +248,10 @@ async function fetchGooglePlaceDetails(placeId: string): Promise<PlacePick | nul
 
 function parseFromLabel(label: string): PlacePick {
   // "123 Main St, Austin, TX 78701, USA"
-  const parts = label.replace(/, USA$/, "").split(",").map((p) => p.trim());
+  const parts = label
+    .replace(/, USA$/, "")
+    .split(",")
+    .map((p) => p.trim());
   const pick: PlacePick = { formatted: label.replace(/, USA$/, "") };
   const last = parts[parts.length - 1] ?? "";
   const m = last.match(/^([A-Z]{2})\s*(\d{5})?/);
@@ -388,7 +433,9 @@ export function AddressAutocomplete({
               }}
               className={cn(
                 "cursor-pointer rounded-md px-3 py-2",
-                i === active ? "bg-nav-highlight text-nav-highlight-foreground" : "hover:bg-secondary",
+                i === active
+                  ? "bg-nav-highlight text-nav-highlight-foreground"
+                  : "hover:bg-secondary",
               )}
             >
               {s.label}

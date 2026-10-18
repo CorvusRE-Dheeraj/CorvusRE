@@ -80,7 +80,12 @@ function Referrals() {
         subtitle="Share it — when someone signs up through it, it shows up below."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <input readOnly value={link} className={`${inputCls} flex-1`} onFocus={(e) => e.target.select()} />
+          <input
+            readOnly
+            value={link}
+            className={`${inputCls} flex-1`}
+            onFocus={(e) => e.target.select()}
+          />
           <button className="btn-accent" onClick={copyLink}>
             {copied ? "Copied!" : "Copy link"}
           </button>
