@@ -3442,6 +3442,9 @@ grant insert on public.client_errors to anon, authenticated;
 -- and by refresh-property-base-data; shown as "2025 value" + "2027 upcoming".
 alter table public.properties add column if not exists value_year integer;
 alter table public.properties add column if not exists upcoming_value_year integer;
+-- properties uses per-column INSERT grants (billing columns stay server-only);
+-- without this, every "Confirm property" save failed with "permission denied".
+grant insert (value_year, upcoming_value_year) on public.properties to authenticated;
 
 -- Replace / Remove on uploaded case documents (2026-10): the owner can take
 -- back a hearing notice, decision notice or settlement they uploaded by
