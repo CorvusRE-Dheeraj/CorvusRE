@@ -14,6 +14,7 @@ import { askAboutDocument } from "@/lib/document-ai";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { JourneyTracker } from "@/components/JourneyTracker";
 import { CaseOutcomeSection, StageDecisionBanner } from "@/components/CaseOutcomeSection";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { EvidenceChecklistPanel } from "@/components/EvidenceChecklistPanel";
 import { FormalHearingActions } from "@/components/FormalHearingActions";
 import { ArbitrationWorkflow } from "@/components/ArbitrationWorkflow";
@@ -747,308 +748,311 @@ export function CaseDetailView({
           })()}
           <CasePhaseGuide tab={activeTab} informalStatus={current.informalStatus} />
 
-          {activeTab === "overview" && (
-            <div className="mt-3">
-              <RelevantTaxUpdates
-                property={property}
-                protest={current}
-                topics={["protest", "arb", "deadlines", "valuation", "tax_rate"]}
-              />
-            </div>
-          )}
-
-          {/* --- Overview --- */}
-          {activeTab === "overview" &&
-            (needsGuidanceAck ? (
-              <CorvusGuidanceGate
-                property={property}
-                protest={current}
-                evidenceCount={evidenceDocuments.length}
-                onAcknowledge={handleAcknowledgeGuidance}
-                acknowledging={acknowledging}
-              />
-            ) : (
-              <div className="grid gap-1">
-                <CaseRoadmap
+          {/* A crash inside one phase shows a notice there, not a blank case page. */}
+          <SectionErrorBoundary key={activeTab} label="This part of your case">
+            {activeTab === "overview" && (
+              <div className="mt-3">
+                <RelevantTaxUpdates
                   property={property}
                   protest={current}
-                  evidenceDocumentCount={evidenceDocuments.length}
-                  noticeSignedAt={noticeSignedAt}
-                  needsGuidanceAck={needsGuidanceAck}
-                  noticeSigned={noticeSigned}
-                  onSelect={handleTabClick}
-                  onNavigate={navigateTo}
-                />
-                <CorvusGuidancePanel
-                  property={property}
-                  protest={current}
-                  evidenceDocumentCount={evidenceDocuments.length}
-                  noticeSignedAt={noticeSignedAt}
-                  onNavigate={navigateTo}
-                />
-                <InformalOutcomeBanner
-                  protest={current}
-                  agreement={settlementAgreement}
-                  onNavigate={navigateTo}
-                />
-                <CaseProgress
-                  protest={current}
-                  property={property}
-                  caseData={caseData}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                  onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
-                />
-                <CaseRecordSection
-                  userId={userId}
-                  protest={current}
-                  property={property}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                />
-                <CaseAuditTrailSection protestId={protest.id} />
-                <NextStepFooter
-                  property={property}
-                  protest={current}
-                  evidenceDocumentCount={evidenceDocuments.length}
-                  noticeSignedAt={noticeSignedAt}
-                  onNavigate={navigateTo}
+                  topics={["protest", "arb", "deadlines", "valuation", "tax_rate"]}
                 />
               </div>
-            ))}
+            )}
 
-          {/* --- Prepare & File --- */}
-          {activeTab === "file" && (
-            <div>
-              <FiledProtestStatusCard
-                userId={userId}
-                property={property}
-                protest={current}
-                evidenceCount={evidenceDocuments.length}
-                onOpen={() => setFilingOpen(true)}
-              />
-              <EvidenceStatusCard
-                userId={userId}
-                property={property}
-                protest={current}
-                evidenceDocuments={evidenceDocuments}
-                onOpen={() => setFilingOpen(true)}
-              />
-              <CasePlanSection
-                userId={userId}
-                property={property}
-                protestId={protest.id}
-                caseData={caseData}
-                onReload={load}
-              />
-              {/* Journey tracker is otherwise root-level, Properties-page-only
+            {/* --- Overview --- */}
+            {activeTab === "overview" &&
+              (needsGuidanceAck ? (
+                <CorvusGuidanceGate
+                  property={property}
+                  protest={current}
+                  evidenceCount={evidenceDocuments.length}
+                  onAcknowledge={handleAcknowledgeGuidance}
+                  acknowledging={acknowledging}
+                />
+              ) : (
+                <div className="grid gap-1">
+                  <CaseRoadmap
+                    property={property}
+                    protest={current}
+                    evidenceDocumentCount={evidenceDocuments.length}
+                    noticeSignedAt={noticeSignedAt}
+                    needsGuidanceAck={needsGuidanceAck}
+                    noticeSigned={noticeSigned}
+                    onSelect={handleTabClick}
+                    onNavigate={navigateTo}
+                  />
+                  <CorvusGuidancePanel
+                    property={property}
+                    protest={current}
+                    evidenceDocumentCount={evidenceDocuments.length}
+                    noticeSignedAt={noticeSignedAt}
+                    onNavigate={navigateTo}
+                  />
+                  <InformalOutcomeBanner
+                    protest={current}
+                    agreement={settlementAgreement}
+                    onNavigate={navigateTo}
+                  />
+                  <CaseProgress
+                    protest={current}
+                    property={property}
+                    caseData={caseData}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
+                  />
+                  <CaseRecordSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                  <CaseAuditTrailSection protestId={protest.id} />
+                  <NextStepFooter
+                    property={property}
+                    protest={current}
+                    evidenceDocumentCount={evidenceDocuments.length}
+                    noticeSignedAt={noticeSignedAt}
+                    onNavigate={navigateTo}
+                  />
+                </div>
+              ))}
+
+            {/* --- Prepare & File --- */}
+            {activeTab === "file" && (
+              <div>
+                <FiledProtestStatusCard
+                  userId={userId}
+                  property={property}
+                  protest={current}
+                  evidenceCount={evidenceDocuments.length}
+                  onOpen={() => setFilingOpen(true)}
+                />
+                <EvidenceStatusCard
+                  userId={userId}
+                  property={property}
+                  protest={current}
+                  evidenceDocuments={evidenceDocuments}
+                  onOpen={() => setFilingOpen(true)}
+                />
+                <CasePlanSection
+                  userId={userId}
+                  property={property}
+                  protestId={protest.id}
+                  caseData={caseData}
+                  onReload={load}
+                />
+                {/* Journey tracker is otherwise root-level, Properties-page-only
                   (see SignedInJourney in routes/__root.tsx) — kept here too
                   since Prepare & File is where the filing steps it tracks
                   (Submit/Track/Decision/Savings) actually get worked. */}
-              <div className="mt-6">
-                <JourneyTracker propertyId={property.id} />
+                <div className="mt-6">
+                  <JourneyTracker propertyId={property.id} />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {filingOpen && (
-            <Modal onClose={() => setFilingOpen(false)} xl>
-              <DocumentsSection
-                userId={userId}
-                protest={current}
-                property={property}
-                strategyRecommendation={caseData?.strategyRecommendation ?? null}
-                noticeSignedAt={noticeSignedAt}
-                evidenceDocuments={evidenceDocuments}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
-                onNoticeSigned={setNoticeSignedAt}
-                onFinish={() => {
-                  setFilingOpen(false);
-                  handleTabClick("informal");
-                }}
-                onGoTo={(anchor) => {
-                  setFilingOpen(false);
-                  navigateTo(anchor);
-                }}
-                userEmail={userEmail}
-              />
-            </Modal>
-          )}
-
-          {/* --- Informal Review --- */}
-          {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
-            <div>
-              {/* Once settled, the result leads the tab. */}
-              <CaseOutcomeSection
-                userId={userId}
-                stage="informal"
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onOpenAppeal={() => setActiveTab(escalationTab)}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <InformalReviewSection
-                userId={userId}
-                protest={current}
-                property={property}
-                strategyRecommendation={caseData?.strategyRecommendation ?? null}
-                evidenceDocuments={evidenceDocuments}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onAgreementChange={setSettlementAgreement}
-                onOpenHearing={() => setActiveTab("hearing")}
-              />
-              {/* The settlement upload lives in the Informal Review section above
-                  (Submit Settlement document). This fuller flow only stays for a
-                  case that already started a settlement here, so it isn't lost. */}
-              {settlementAgreement && (
-                <SettlementSignatureSection
+            {filingOpen && (
+              <Modal onClose={() => setFilingOpen(false)} xl>
+                <DocumentsSection
                   userId={userId}
+                  protest={current}
+                  property={property}
+                  strategyRecommendation={caseData?.strategyRecommendation ?? null}
+                  noticeSignedAt={noticeSignedAt}
+                  evidenceDocuments={evidenceDocuments}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onPropertyUpdate={(patch) => setProperty((prev) => ({ ...prev, ...patch }))}
+                  onNoticeSigned={setNoticeSignedAt}
+                  onFinish={() => {
+                    setFilingOpen(false);
+                    handleTabClick("informal");
+                  }}
+                  onGoTo={(anchor) => {
+                    setFilingOpen(false);
+                    navigateTo(anchor);
+                  }}
+                  userEmail={userEmail}
+                />
+              </Modal>
+            )}
+
+            {/* --- Informal Review --- */}
+            {activeTab === "informal" && (current.status !== "requested" || noticeSigned) && (
+              <div>
+                {/* Once settled, the result leads the tab. */}
+                <CaseOutcomeSection
+                  userId={userId}
+                  stage="informal"
                   protest={current}
                   property={property}
                   agreement={settlementAgreement}
                   onAgreementChange={setSettlementAgreement}
+                  onOpenAppeal={() => setActiveTab(escalationTab)}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 />
-              )}
-            </div>
-          )}
+                <InformalReviewSection
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  strategyRecommendation={caseData?.strategyRecommendation ?? null}
+                  evidenceDocuments={evidenceDocuments}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onAgreementChange={setSettlementAgreement}
+                  onOpenHearing={() => setActiveTab("hearing")}
+                />
+                {/* The settlement upload lives in the Informal Review section above
+                  (Submit Settlement document). This fuller flow only stays for a
+                  case that already started a settlement here, so it isn't lost. */}
+                {settlementAgreement && (
+                  <SettlementSignatureSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    agreement={settlementAgreement}
+                    onAgreementChange={setSettlementAgreement}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                )}
+              </div>
+            )}
 
-          {/* --- Formal Hearing --- */}
-          {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
-            <div className="space-y-5">
-              {/* Once decided, the ARB result leads the tab. */}
-              <CaseOutcomeSection
-                userId={userId}
-                stage="formal"
-                protest={current}
-                property={property}
-                agreement={settlementAgreement}
-                onAgreementChange={setSettlementAgreement}
-                onOpenAppeal={() => setActiveTab(escalationTab)}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              {current.arbDecision && (
-                <DecisionNoticeSection
+            {/* --- Formal Hearing --- */}
+            {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
+              <div className="space-y-5">
+                {/* Once decided, the ARB result leads the tab. */}
+                <CaseOutcomeSection
+                  userId={userId}
+                  stage="formal"
+                  protest={current}
+                  property={property}
+                  agreement={settlementAgreement}
+                  onAgreementChange={setSettlementAgreement}
+                  onOpenAppeal={() => setActiveTab(escalationTab)}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+                {current.arbDecision && (
+                  <DecisionNoticeSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                )}
+                {/* Request CAD Evidence comes before the hearing itself. */}
+                <CadEvidenceRequest
+                  userId={userId}
+                  property={property}
+                  protest={current}
+                  userEmail={userEmail}
+                  onChange={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+                <FormalHearingActions
+                  userId={userId}
+                  protest={current}
+                  property={property}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onOpenAppeal={() => setActiveTab(escalationTab)}
+                />
+                <HearingNoticeSection
                   userId={userId}
                   protest={current}
                   property={property}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                 />
-              )}
-              {/* Request CAD Evidence comes before the hearing itself. */}
-              <CadEvidenceRequest
-                userId={userId}
-                property={property}
-                protest={current}
-                userEmail={userEmail}
-                onChange={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <FormalHearingActions
-                userId={userId}
-                protest={current}
-                property={property}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onOpenAppeal={() => setActiveTab(escalationTab)}
-              />
-              <HearingNoticeSection
-                userId={userId}
-                protest={current}
-                property={property}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <HearingPrepSection
-                protest={current}
-                property={property}
-                caseData={caseData}
-                evidenceDocuments={evidenceDocuments}
-                settlementAgreement={settlementAgreement}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-              />
-              <MockHearing
-                userId={userId}
-                property={property}
-                protest={current}
-                evidenceFiles={evidenceDocuments.map((d) => d.fileName)}
-              />
-            </div>
-          )}
+                <HearingPrepSection
+                  protest={current}
+                  property={property}
+                  caseData={caseData}
+                  evidenceDocuments={evidenceDocuments}
+                  settlementAgreement={settlementAgreement}
+                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                />
+                <MockHearing
+                  userId={userId}
+                  property={property}
+                  protest={current}
+                  evidenceFiles={evidenceDocuments.map((d) => d.fileName)}
+                />
+              </div>
+            )}
 
-          {/* --- Post-hearing Options --- (the decision itself is on the
+            {/* --- Post-hearing Options --- (the decision itself is on the
               Informal / Formal tab it came from) */}
-          {activeTab === "decision" && (
-            <div>
-              <PostHearingDecision
-                userId={userId}
-                property={property}
-                protest={current}
-                evidenceDocumentCount={evidenceDocuments.length}
-              />
-              <EscalationEvaluationSection
-                protest={current}
-                property={property}
-                evidenceDocumentCount={evidenceDocuments.length}
-                onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
-              />
-            </div>
-          )}
-
-          {/* --- Arbitration --- */}
-          {activeTab === "arbitration" && (
-            <div>
-              <StageDecisionBanner kind="arbitration" property={property} protest={current} />
-              {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
-                <ArbitrationWorkflow
+            {activeTab === "decision" && (
+              <div>
+                <PostHearingDecision
                   userId={userId}
+                  property={property}
+                  protest={current}
+                  evidenceDocumentCount={evidenceDocuments.length}
+                />
+                <EscalationEvaluationSection
                   protest={current}
                   property={property}
-                  evidenceDocuments={evidenceDocuments}
-                  caseData={caseData}
+                  evidenceDocumentCount={evidenceDocuments.length}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
                 />
-              ) : (
-                <EscalationStart
-                  kind="arbitration"
-                  protest={current}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                  onOtherTab={() => setActiveTab("court")}
-                />
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* --- Court Appeal --- */}
-          {activeTab === "court" && (
-            <div>
-              <StageDecisionBanner kind="appeal" property={property} protest={current} />
-              {current.escalationPath === "appeal" || current.courtAppeal ? (
-                <CourtAppealWorkflow
-                  userId={userId}
-                  protest={current}
-                  property={property}
-                  evidenceDocuments={evidenceDocuments}
-                  caseData={caseData}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                />
-              ) : (
-                <EscalationStart
-                  kind="appeal"
-                  protest={current}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                  onOtherTab={() => setActiveTab("arbitration")}
-                />
-              )}
-            </div>
-          )}
-          {/* --- Final Outcome --- */}
-          {activeTab === "outcome" && (
-            <FinalOutcomeSection
-              protest={current}
-              property={property}
-              onOpenTab={(tab) => setActiveTab(tab)}
-            />
-          )}
+            {/* --- Arbitration --- */}
+            {activeTab === "arbitration" && (
+              <div>
+                <StageDecisionBanner kind="arbitration" property={property} protest={current} />
+                {current.escalationPath === "arbitration" || current.arbitrationFiledAt ? (
+                  <ArbitrationWorkflow
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    evidenceDocuments={evidenceDocuments}
+                    caseData={caseData}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                ) : (
+                  <EscalationStart
+                    kind="arbitration"
+                    protest={current}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    onOtherTab={() => setActiveTab("court")}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* --- Court Appeal --- */}
+            {activeTab === "court" && (
+              <div>
+                <StageDecisionBanner kind="appeal" property={property} protest={current} />
+                {current.escalationPath === "appeal" || current.courtAppeal ? (
+                  <CourtAppealWorkflow
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    evidenceDocuments={evidenceDocuments}
+                    caseData={caseData}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                ) : (
+                  <EscalationStart
+                    kind="appeal"
+                    protest={current}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    onOtherTab={() => setActiveTab("arbitration")}
+                  />
+                )}
+              </div>
+            )}
+            {/* --- Final Outcome --- */}
+            {activeTab === "outcome" && (
+              <FinalOutcomeSection
+                protest={current}
+                property={property}
+                onOpenTab={(tab) => setActiveTab(tab)}
+              />
+            )}
+          </SectionErrorBoundary>
         </>
       )}
     </div>

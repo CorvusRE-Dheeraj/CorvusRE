@@ -10,6 +10,7 @@
 import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, arr, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's design assistant, writing a short scope narrative from a real, already-computed design brief. You will be given the real project scope/sector/size, the real disciplines included, the real timeline, and the real budget range — all already determined by CorvusDP's own brief generator, never by you.
@@ -29,6 +30,9 @@ ${STRUCTURED_BULLET_STYLE}`;
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "ai-design-narrative", 30, corsHeaders);
+  if (limited) return limited;
 
   try {
     const input = await req.json();

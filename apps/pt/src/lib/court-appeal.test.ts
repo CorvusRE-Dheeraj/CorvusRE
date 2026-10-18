@@ -140,3 +140,34 @@ describe("courtTimeline", () => {
     ]);
   });
 });
+
+describe("reviewCourtAppeal with malformed dates", () => {
+  // Production crash E-SK9HQQ: a timestamp in arbDecisionDate made an Invalid
+  // Date and toISOString() threw, blanking the case page.
+  it("reads a full timestamp as its day", () => {
+    const r = reviewCourtAppeal(
+      property(),
+      protest({ arbDecisionDate: "2026-09-10T00:00:00+00:00" }),
+      null,
+      NOW,
+    );
+    expect(r.deadline).toBe("2026-11-09");
+  });
+  it("returns no deadline instead of throwing for garbage", () => {
+    expect(() =>
+      reviewCourtAppeal(property(), protest({ arbDecisionDate: "not a date" }), null, NOW),
+    ).not.toThrow();
+    const r = reviewCourtAppeal(property(), protest({ arbDecisionDate: "not a date" }), null, NOW);
+    expect(r.deadline).toBeNull();
+    expect(r.daysRemaining).toBeNull();
+  });
+  it("ignores an empty received date", () => {
+    const r = reviewCourtAppeal(
+      property(),
+      protest(),
+      { orderReceivedDate: "" } as CourtAppealData,
+      NOW,
+    );
+    expect(r.deadline).toBe("2026-11-09");
+  });
+});

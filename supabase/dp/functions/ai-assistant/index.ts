@@ -10,6 +10,7 @@
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
 const MAX_TURNS = 12;
@@ -33,6 +34,9 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "ai-assistant", 60, corsHeaders);
+  if (limited) return limited;
 
   try {
     const { messages, context } = (await req.json()) as {

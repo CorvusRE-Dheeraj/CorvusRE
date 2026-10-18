@@ -16,6 +16,7 @@
 // metres at a time until it finds the parcel's district.
 
 import { corsHeaders, jsonError, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 
 type CitySource = {
   /** Census place base name, e.g. "Frisco" */
@@ -257,6 +258,9 @@ async function lookup(address: string): Promise<Result> {
 Deno.serve(async (req: Request) => {
   const pre = preflight(req);
   if (pre) return pre;
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "zoning-lookup", 60, corsHeaders);
+  if (limited) return limited;
   if (req.method !== "POST") return jsonError("POST only", 405);
   let address = "";
   try {

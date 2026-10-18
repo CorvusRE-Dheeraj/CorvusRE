@@ -13,6 +13,7 @@ import { isBlockingUnresolved, type PreFilingCheckItem } from "./pre-filing-chec
 import type { DocumentRecord } from "./documents";
 import type { HearingPrepGuide } from "./hearing-prep";
 import { INFORMAL_STATUS_LABEL } from "./protests";
+import { localDay } from "./local-day";
 import {
   FILING_PROOF_DOCUMENT_TYPE,
   CONFIRMATION_DOCUMENT_TYPE,
@@ -409,8 +410,9 @@ export function buildCaseReport(i: CaseReportInputs): ProtestCaseReport {
       category: "upcoming_deadline",
       label: `Protest filing deadline — ${fmtDate(prop.protestDeadline)}`,
     });
-  if (p?.hearingDate && !p.arbDecision) {
-    const evDeadline = new Date(new Date(`${p.hearingDate}T00:00:00`).getTime() - 14 * 86400000);
+  const hearingDay = localDay(p?.hearingDate);
+  if (p?.hearingDate && hearingDay && !p.arbDecision) {
+    const evDeadline = new Date(hearingDay.getTime() - 14 * 86400000);
     nextActions.push({
       category: "upcoming_deadline",
       label: `Evidence to the ARB by ${evDeadline.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,

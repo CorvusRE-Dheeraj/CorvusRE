@@ -1,3 +1,4 @@
+import { rateLimit } from "../_shared/rate-limit.ts";
 // Deploy via CLI: `supabase functions deploy cad-owner-search`.
 // No secrets required — same public ArcGIS FeatureServer endpoints as cad-lookup,
 // just queried by owner name instead of address, across all eleven counties at once.
@@ -501,6 +502,9 @@ function rankSuggestions(typedName: string, broaderMatches: CadRecord[]): string
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "cad-owner-search", 40, corsHeaders);
+  if (limited) return limited;
 
   try {
     const { ownerName } = await req.json();

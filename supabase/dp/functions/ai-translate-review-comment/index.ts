@@ -10,6 +10,7 @@
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, aiErrorResponse } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's permitting assistant. A user pasted one real plan-review comment exactly as their city or county building/planning department wrote it, for one real permit on their project. Draft a plain-language translation of that one comment.
@@ -27,6 +28,9 @@ ${PROSE_STYLE}`;
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "ai-translate-review-comment", 60, corsHeaders);
+  if (limited) return limited;
 
   try {
     const input = await req.json();

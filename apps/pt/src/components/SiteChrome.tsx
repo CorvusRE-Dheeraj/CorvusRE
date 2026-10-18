@@ -260,7 +260,7 @@ export function SiteNav() {
     >
       <div className="container-page flex h-16 items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3 sm:gap-5">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" aria-label="CorvusPT home" className="flex items-center gap-2">
             <LogoMark />
             <span className="hidden font-serif text-lg font-semibold tracking-tight min-[400px]:inline">
               Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
