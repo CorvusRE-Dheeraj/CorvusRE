@@ -20,6 +20,7 @@ import {
   aiErrorResponse,
 } from "../_shared/gemini.ts";
 import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
 const SYSTEM = `You are CorvusDP's permitting assistant, explaining a real, already-computed feasibility analysis to the person planning this project. You will be given the real property location, project intent, zoning classification, feasibility status and risks, the identified permits, and site constraints — all already determined by CorvusDP's own analysis engine, never by you.
@@ -40,6 +41,9 @@ ${STRUCTURED_BULLET_STYLE}`;
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "ai-feasibility-summary", 30, corsHeaders);
+  if (limited) return limited;
 
   try {
     const input = await req.json();
@@ -60,6 +64,13 @@ Deno.serve(async (req: Request) => {
       complexity,
       constraints,
     } = input ?? {};
+    // Nothing to narrate without a computed analysis — don't spend an AI call.
+    if (!feasibility || !zoning) {
+      return new Response(JSON.stringify({ error: "feasibility and zoning are required" }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
 
     const lines: string[] = [];
     lines.push(

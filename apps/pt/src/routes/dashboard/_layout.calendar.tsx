@@ -66,6 +66,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { CalendarDays as HeroCalendarIcon } from "lucide-react";
+import { formatDay } from "@/lib/local-day";
 
 // google_connected/google_error round-trip from google-calendar-oauth-
 // callback's redirect back here after the user finishes (or abandons) the
@@ -283,7 +284,7 @@ function HearingConflictBanner({ group }: { group: HearingConflictGroup }) {
     <div className="card-elev border-amber-500/30 bg-amber-500/5 p-4">
       <h2 className="font-semibold text-amber-800">
         {group.hearings.length} hearings on{" "}
-        {format(new Date(`${group.date}T00:00:00`), "MMMM d, yyyy")}
+        {formatDay(group.date, { month: "long", day: "numeric", year: "numeric" })}
       </h2>
       <ul className="mt-2 grid gap-1 text-sm">
         {group.hearings.map((h) => (

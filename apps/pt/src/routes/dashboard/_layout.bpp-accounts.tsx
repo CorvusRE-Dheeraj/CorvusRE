@@ -30,6 +30,7 @@ import { BppProtestFlow } from "@/components/BppProtestFlow";
 import { ComingSoonLock } from "@/components/ComingSoonLock";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Briefcase as HeroBppIcon } from "lucide-react";
+import { isPaidStatus } from "@/lib/subscription-status";
 
 export const Route = createFileRoute("/dashboard/_layout/bpp-accounts")({
   component: BppAccounts,
@@ -104,7 +105,7 @@ function BppAccountsPage() {
   const isBeta = billing?.plan === "beta";
 
   function isPaid(a: BppAccountRecord): boolean {
-    return isBeta || a.subscriptionStatus === "active";
+    return isBeta || isPaidStatus(a.subscriptionStatus);
   }
 
   function updateAccount(updated: BppAccountRecord) {
@@ -300,9 +301,9 @@ function BppAccountsPage() {
                     </div>
                     {!isBeta && (
                       <span
-                        className={`badge-soft ${a.subscriptionStatus === "active" ? "" : "bg-secondary text-muted-foreground"}`}
+                        className={`badge-soft ${isPaidStatus(a.subscriptionStatus) ? "" : "bg-secondary text-muted-foreground"}`}
                       >
-                        {a.subscriptionStatus === "active"
+                        {isPaidStatus(a.subscriptionStatus)
                           ? a.cancelAtPeriodEnd
                             ? "Canceling"
                             : "Active"
@@ -341,7 +342,7 @@ function BppAccountsPage() {
                       {a.renditionSignedAt ? "View Rendition" : "File Rendition (Form 50-144)"}
                     </button>
 
-                    {!isBeta && a.subscriptionStatus !== "active" && stripeConfigured && (
+                    {!isBeta && !isPaidStatus(a.subscriptionStatus) && stripeConfigured && (
                       <>
                         <button
                           disabled={busyId === a.id}
@@ -362,7 +363,7 @@ function BppAccountsPage() {
                       </>
                     )}
 
-                    {!isBeta && a.subscriptionStatus === "active" && (
+                    {!isBeta && isPaidStatus(a.subscriptionStatus) && (
                       <>
                         {a.cancelAtPeriodEnd ? (
                           <button

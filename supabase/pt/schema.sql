@@ -219,7 +219,7 @@ create policy "Users can insert their own properties"
 drop policy if exists "Users can delete their own properties" on public.properties;
 create policy "Users can delete their own properties"
   on public.properties for delete
-  using (auth.uid() = user_id and subscription_status is distinct from 'active');
+  using (auth.uid() = user_id and coalesce(subscription_status, '') not in ('active', 'trialing', 'past_due', 'incomplete', 'unpaid'));
 
 -- Was missing entirely until this was added, which meant markPropertyPaid()'s
 -- update() call was silently rejected by RLS the whole time (no error surfaced —
@@ -526,7 +526,7 @@ as $$
     where p.id = p_property_id
       and p.user_id = auth.uid()
       and (
-        p.subscription_status = 'active'
+        p.subscription_status in ('active', 'trialing', 'past_due')
         or (select plan from public.profiles where id = auth.uid()) = 'beta'
       )
   );
@@ -2184,7 +2184,7 @@ grant update (
 drop policy if exists "Users can delete their own BPP accounts" on public.bpp_accounts;
 create policy "Users can delete their own BPP accounts"
   on public.bpp_accounts for delete
-  using (auth.uid() = user_id and subscription_status is distinct from 'active');
+  using (auth.uid() = user_id and coalesce(subscription_status, '') not in ('active', 'trialing', 'past_due', 'incomplete', 'unpaid'));
 
 -- public.protests now covers BOTH a real-estate protest (property_id) and a
 -- BPP protest (bpp_account_id) — a BPP protest IS a protest, same ARB
@@ -2215,7 +2215,7 @@ as $$
     where b.id = p_bpp_account_id
       and b.user_id = auth.uid()
       and (
-        b.subscription_status = 'active'
+        b.subscription_status in ('active', 'trialing', 'past_due')
         or (select plan from public.profiles where id = auth.uid()) = 'beta'
       )
   );
@@ -3442,6 +3442,9 @@ grant insert on public.client_errors to anon, authenticated;
 -- and by refresh-property-base-data; shown as "2025 value" + "2027 upcoming".
 alter table public.properties add column if not exists value_year integer;
 alter table public.properties add column if not exists upcoming_value_year integer;
+-- properties uses per-column INSERT grants (billing columns stay server-only);
+-- without this, every "Confirm property" save failed with "permission denied".
+grant insert (value_year, upcoming_value_year) on public.properties to authenticated;
 
 -- Replace / Remove on uploaded case documents (2026-10): the owner can take
 -- back a hearing notice, decision notice or settlement they uploaded by

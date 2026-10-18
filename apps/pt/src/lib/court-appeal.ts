@@ -6,6 +6,7 @@
 // questions, document summaries) live in the UI and are advisory only.
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
+import { addDaysIso, daysUntilIso, localDay } from "./local-day";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -65,16 +66,6 @@ export type CourtAppealReview = {
   overSoahFloor: boolean;
 };
 
-function addDays(iso: string, days: number): string {
-  return new Date(new Date(`${iso}T00:00:00`).getTime() + days * DAY).toISOString().slice(0, 10);
-}
-
-function daysUntil(iso: string, now: Date): number {
-  const target = new Date(`${iso}T00:00:00`).getTime();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return Math.round((target - today) / DAY);
-}
-
 // "Collin Central Appraisal District" → "Collin County".
 export function countyNameFromCad(cad: string | null | undefined): string | null {
   if (!cad) return null;
@@ -89,11 +80,14 @@ export function reviewCourtAppeal(
   data: CourtAppealData | null | undefined,
   now: Date = new Date(),
 ): CourtAppealReview {
-  const received = data?.orderReceivedDate ?? null;
-  const orderDate = protest.arbDecisionDate ?? null;
+  // Only a real day counts (an empty or malformed received date falls back to the order date).
+  const received = localDay(data?.orderReceivedDate) ? data!.orderReceivedDate! : null;
+  const orderDate = localDay(protest.arbDecisionDate) ? protest.arbDecisionDate : null;
   const from = received ?? orderDate;
-  const deadline = from ? addDays(from, 60) : null;
-  const daysRemaining = deadline ? daysUntil(deadline, now) : null;
+  // addDaysIso / daysUntilIso return null for a malformed date instead of
+  // throwing (a timestamp here once crashed the whole case page).
+  const deadline = addDaysIso(from, 60);
+  const daysRemaining = daysUntilIso(deadline, now);
   const county = countyNameFromCad(property.cad);
   const value = protest.finalValue ?? protest.originalValue ?? property.totalValue ?? 0;
 

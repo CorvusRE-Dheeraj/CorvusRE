@@ -10,6 +10,7 @@
 // nothing in the output is model-generated.
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
+import { addDaysIso } from "./local-day";
 import {
   classifyPropertyCategory,
   getAssessmentRatioInfo,
@@ -161,10 +162,7 @@ function homesteadLikely(property: PropertyRecord): boolean {
 }
 
 function addDays(iso: string | null, days: number): string | null {
-  if (!iso) return null;
-  const base = new Date(`${iso}T00:00:00`).getTime();
-  if (!Number.isFinite(base)) return null;
-  return new Date(base + days * DAY).toISOString().slice(0, 10);
+  return addDaysIso(iso, days);
 }
 
 function bandEvidence(evidenceDocumentCount: number | undefined): EvidenceStrength {

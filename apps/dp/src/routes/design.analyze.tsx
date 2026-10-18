@@ -38,7 +38,9 @@ const SITE_AREA_UNITS = [
 type SiteAreaUnit = (typeof SITE_AREA_UNITS)[number]["value"];
 
 function parseSiteArea(value: string | null | undefined): { amount: string; unit: SiteAreaUnit } {
-  const match = (value ?? "").trim().match(/^([\d,.]*)\s*(acres?|sf|sq\.?\s*ft\.?|square\s*feet)?/i);
+  const match = (value ?? "")
+    .trim()
+    .match(/^([\d,.]*)\s*(acres?|sf|sq\.?\s*ft\.?|square\s*feet)?/i);
   const amount = match?.[1] ?? "";
   const unitRaw = (match?.[2] ?? "").toLowerCase();
   const unit: SiteAreaUnit = unitRaw.startsWith("a") ? "acres" : unitRaw ? "sf" : "acres";
@@ -463,7 +465,9 @@ function AiDesignNarrative({ design, brief }: { design: DesignRequirements; brie
       });
       setNarrative(result);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Couldn't generate the AI narrative. Please try again.");
+      setErr(
+        e instanceof Error ? e.message : "Couldn't generate the AI narrative. Please try again.",
+      );
     } finally {
       setLoading(false);
     }

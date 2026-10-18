@@ -21,6 +21,7 @@
 import { PROSE_STYLE, BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_REASONING, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1739,6 +1740,9 @@ async function generateJson(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "ai-report-modules", 150, corsHeaders);
+  if (limited) return limited;
 
   try {
     const input = (await req.json()) as ModulesInput;

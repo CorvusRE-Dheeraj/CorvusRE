@@ -184,11 +184,35 @@ function WelcomeWalkthrough() {
 }
 
 const WALKTHROUGH_ITEMS: { to: string; label: string; desc: string }[] = [
-  { to: "/dashboard/permits", label: "Permits / Roadmap", desc: "every permit, its agency, and the order to submit" },
-  { to: "/dashboard/constraints", label: "Site Data", desc: "utility & constraint summary + pre-app meeting agenda" },
-  { to: "/dashboard/checklist", label: "Checklist / Prepare", desc: "what to submit and who owns it" },
-  { to: "/dashboard/reviews", label: "Reviews / City", desc: "reviewer comments vs. informal jurisdiction contact" },
-  { to: "/dashboard/approvals", label: "Approvals", desc: "approved permits, clearance, and expiry" },
-  { to: "/dashboard/design", label: "Design", desc: "your design brief, cost breakdown, and stage progress" },
+  {
+    to: "/dashboard/permits",
+    label: "Permits / Roadmap",
+    desc: "every permit, its agency, and the order to submit",
+  },
+  {
+    to: "/dashboard/constraints",
+    label: "Site Data",
+    desc: "utility & constraint summary + pre-app meeting agenda",
+  },
+  {
+    to: "/dashboard/checklist",
+    label: "Checklist / Prepare",
+    desc: "what to submit and who owns it",
+  },
+  {
+    to: "/dashboard/reviews",
+    label: "Reviews / City",
+    desc: "reviewer comments vs. informal jurisdiction contact",
+  },
+  {
+    to: "/dashboard/approvals",
+    label: "Approvals",
+    desc: "approved permits, clearance, and expiry",
+  },
+  {
+    to: "/dashboard/design",
+    label: "Design",
+    desc: "your design brief, cost breakdown, and stage progress",
+  },
   { to: "/dashboard/notifications", label: "Alerts", desc: "a log of every status change" },
 ];

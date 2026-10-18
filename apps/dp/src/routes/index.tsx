@@ -52,10 +52,26 @@ const DOORS = [
 ] as const;
 
 const STEPS = [
-  { icon: MapPinned, label: "Input", text: "An address (or manual site details) and what you intend to build." },
-  { icon: ScanSearch, label: "Analysis", text: "Zoning, jurisdiction, feasibility, and site constraints — in plain language." },
-  { icon: ListChecks, label: "Plan", text: "Permits, agencies, checklists, a dependency-ordered roadmap, fees, and a timeline." },
-  { icon: BadgeCheck, label: "Approval", text: "Track submissions, review cycles, comments, approvals, clearance, and expiry." },
+  {
+    icon: MapPinned,
+    label: "Input",
+    text: "An address (or manual site details) and what you intend to build.",
+  },
+  {
+    icon: ScanSearch,
+    label: "Analysis",
+    text: "Zoning, jurisdiction, feasibility, and site constraints — in plain language.",
+  },
+  {
+    icon: ListChecks,
+    label: "Plan",
+    text: "Permits, agencies, checklists, a dependency-ordered roadmap, fees, and a timeline.",
+  },
+  {
+    icon: BadgeCheck,
+    label: "Approval",
+    text: "Track submissions, review cycles, comments, approvals, clearance, and expiry.",
+  },
 ];
 
 function Landing() {
@@ -65,7 +81,10 @@ function Landing() {
       <section className="gradient-mesh relative isolate">
         <div className="blueprint-grid pointer-events-none absolute inset-0" aria-hidden />
         <span className="grain absolute inset-0" aria-hidden />
-        <span className="hero-blob left-[-6rem] top-[-4rem] h-72 w-72 bg-[oklch(0.7_0.16_58)]" aria-hidden />
+        <span
+          className="hero-blob left-[-6rem] top-[-4rem] h-72 w-72 bg-[oklch(0.7_0.16_58)]"
+          aria-hidden
+        />
         <span
           className="hero-blob right-[-8rem] top-24 h-96 w-96 bg-[oklch(0.55_0.16_255)]"
           style={{ animationDelay: "-6s" }}
@@ -81,9 +100,10 @@ function Landing() {
               <span className="text-gradient"> Mapped from Address to Approval</span>
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">
-              Every jurisdiction has its own requirements, timelines, and reviewers. CorvusDP turns an
-              address and project scope into two connected tracks: a design brief and a permitting
-              map built around local codes, reviewers, timelines, and submission requirements.
+              Every jurisdiction has its own requirements, timelines, and reviewers. CorvusDP turns
+              an address and project scope into two connected tracks: a design brief and a
+              permitting map built around local codes, reviewers, timelines, and submission
+              requirements.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link to="/permitting" className="btn-accent text-base">
@@ -141,10 +161,7 @@ function Landing() {
           {DOORS.map((d, i) => {
             const Icon = d.icon;
             const card = (
-              <Link
-                to={d.to}
-                className="glass hover-lift group flex h-full flex-col gap-3 p-6"
-              >
+              <Link to={d.to} className="glass hover-lift group flex h-full flex-col gap-3 p-6">
                 <div className="flex items-center gap-3">
                   <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent/12 text-accent">
                     <Icon className="h-5 w-5" />
@@ -177,16 +194,26 @@ function Landing() {
               One project, drawn end to end
             </h2>
             <p className="mt-2 max-w-xl text-muted-foreground">
-              The same site moves from a permitting layout to an elevation —
-              CorvusDP carries the context across each door.
+              The same site moves from a permitting layout to an elevation — CorvusDP carries the
+              context across each door.
             </p>
           </ScrollReveal>
           <div className="mt-10 grid gap-6 sm:grid-cols-2">
             {(
               [
-                { to: "/permitting", Scene: SitePlanScene, label: "Site plan", tag: "C-2 · setbacks" },
+                {
+                  to: "/permitting",
+                  Scene: SitePlanScene,
+                  label: "Site plan",
+                  tag: "C-2 · setbacks",
+                },
                 { to: "/design", Scene: BlueprintScene, label: "Elevation", tag: "Permit set" },
-              ] as { to: string; Scene: ComponentType<{ className?: string }>; label: string; tag: string }[]
+              ] as {
+                to: string;
+                Scene: ComponentType<{ className?: string }>;
+                label: string;
+                tag: string;
+              }[]
             ).map(({ to, Scene, label, tag }, i) => (
               <ScrollReveal key={to} delay={i * 90}>
                 <Link to={to} className="glass hover-lift group block p-5">
@@ -212,7 +239,10 @@ function Landing() {
             </h2>
           </ScrollReveal>
           <div className="relative mt-10 grid gap-8 sm:grid-cols-4">
-            <div className="rule-gradient absolute left-0 right-0 top-6 hidden h-px sm:block" aria-hidden />
+            <div
+              className="rule-gradient absolute left-0 right-0 top-6 hidden h-px sm:block"
+              aria-hidden
+            />
             {STEPS.map((s, i) => {
               const Icon = s.icon;
               return (
@@ -266,7 +296,10 @@ function Landing() {
       <section className="container-page pb-20">
         <ScrollReveal>
           <div className="brand-gradient relative overflow-hidden rounded-2xl p-8 text-accent-foreground sm:p-12">
-            <span className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]" aria-hidden />
+            <span
+              className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]"
+              aria-hidden
+            />
             <h2 className="relative font-serif text-2xl font-semibold sm:text-3xl">
               Start with one address.
             </h2>

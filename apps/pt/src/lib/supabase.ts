@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { withSilentWriteGuard } from "./silent-write-guard";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -35,4 +36,6 @@ export const supabase =
   (globalThis.__corvusptSupabase__ = createClient(
     url || "https://placeholder.supabase.co",
     anonKey || "placeholder-anon-key",
+    // Blocked single-row updates/deletes surface as errors instead of fake success.
+    { global: { fetch: withSilentWriteGuard() } },
   ));

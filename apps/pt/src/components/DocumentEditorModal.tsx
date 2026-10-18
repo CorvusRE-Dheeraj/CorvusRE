@@ -16,7 +16,9 @@ import {
   type PdfFieldSpec,
   type PdfFieldValues,
 } from "@/lib/pdf-forms";
-import { docxToText, textToPdf, textToDocx } from "@/lib/docx-edit";
+// mammoth + docx + pdf-lib are ~800 KB together; load them only when the
+// editor is actually used, not with every page that can open it.
+const loadDocxEdit = () => import("@/lib/docx-edit");
 import type { PropertyRecord } from "@/lib/properties";
 import { LoadingLine } from "@/components/LoadingLine";
 
@@ -63,7 +65,7 @@ export function DocumentEditorModal({
         if (cancelled) return;
         setBytes(buf);
         if (/\.docx$/i.test(doc.fileName)) {
-          setText(await docxToText(buf));
+          setText(await (await loadDocxEdit()).docxToText(buf));
           if (!cancelled) setKind("docx");
           return;
         }
@@ -148,11 +150,11 @@ export function DocumentEditorModal({
         fileName = `${baseName(doc.fileName)} (edited).pdf`;
         mime = "application/pdf";
       } else if (format === "docx") {
-        out = await textToDocx(text);
+        out = await (await loadDocxEdit()).textToDocx(text);
         fileName = `${baseName(doc.fileName)} (edited).docx`;
         mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       } else {
-        out = await textToPdf(text);
+        out = await (await loadDocxEdit()).textToPdf(text);
         fileName = `${baseName(doc.fileName)} (edited).pdf`;
         mime = "application/pdf";
       }

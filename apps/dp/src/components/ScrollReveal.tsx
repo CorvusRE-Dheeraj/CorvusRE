@@ -40,9 +40,12 @@ export function ScrollReveal({
     return () => io.disconnect();
   }, []);
 
+  // One of four tags, so its ref type is the intersection of all four; render
+  // through ElementType so the single HTMLElement ref fits.
+  const Comp = Tag as React.ElementType;
   return (
-    <Tag
-      ref={ref as React.Ref<HTMLDivElement>}
+    <Comp
+      ref={ref}
       className={cn(
         "transition-all duration-[750ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
         visible ? "translate-y-0 opacity-100 blur-0" : "translate-y-8 opacity-0 blur-[2px]",
@@ -51,6 +54,6 @@ export function ScrollReveal({
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
-    </Tag>
+    </Comp>
   );
 }

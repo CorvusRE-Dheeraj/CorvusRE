@@ -9,6 +9,7 @@
 // Runtime for every function — no manual secret configuration needed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,9 @@ function isNonEmptyString(v: unknown): v is string {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "submit-beta-lead", 10, corsHeaders);
+  if (limited) return limited;
 
   try {
     const body = await req.json();

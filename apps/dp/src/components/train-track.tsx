@@ -35,28 +35,28 @@ export const ROUTE_STYLE: Record<
     chip: "border-violet-200 bg-violet-50 text-violet-800",
   },
   orange: {
-    solid: "bg-orange-500",
+    solid: "bg-orange-700",
     text: "text-orange-700",
     soft: "bg-orange-50",
     border: "border-orange-500",
     chip: "border-orange-200 bg-orange-50 text-orange-800",
   },
   teal: {
-    solid: "bg-teal-600",
+    solid: "bg-teal-700",
     text: "text-teal-700",
     soft: "bg-teal-50",
     border: "border-teal-600",
     chip: "border-teal-200 bg-teal-50 text-teal-800",
   },
   green: {
-    solid: "bg-green-600",
+    solid: "bg-green-700",
     text: "text-green-700",
     soft: "bg-green-50",
     border: "border-green-600",
     chip: "border-green-200 bg-green-50 text-green-800",
   },
   red: {
-    solid: "bg-red-500",
+    solid: "bg-red-700",
     text: "text-red-700",
     soft: "bg-red-50",
     border: "border-red-500",
@@ -96,7 +96,11 @@ export function AvailabilityPill({ availability }: { availability: Availability 
 export function AvailabilityDot({ availability }: { availability: Availability }) {
   return (
     <span
-      className={cn("inline-block h-2 w-2 shrink-0 rounded-full", AVAILABILITY_STYLE[availability].dot)}
+      className={cn(
+        "inline-block h-2 w-2 shrink-0 rounded-full",
+        AVAILABILITY_STYLE[availability].dot,
+      )}
+      role="img"
       title={AVAILABILITY_LABEL[availability]}
       aria-label={AVAILABILITY_LABEL[availability]}
     />
@@ -352,18 +356,30 @@ export function StationDetail({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         <div className="flex gap-2">
           {view === "module" ? (
-            <button type="button" className="btn-outline" onClick={() => onOpenStation(station.n, "station")}>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => onOpenStation(station.n, "station")}
+            >
               <ArrowLeft className="h-4 w-4" aria-hidden /> Process station
             </button>
           ) : (
             <>
               {prev && (
-                <button type="button" className="btn-outline" onClick={() => onOpenStation(prev.n, "station")}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => onOpenStation(prev.n, "station")}
+                >
                   <ArrowLeft className="h-4 w-4" aria-hidden /> Station {prev.n}
                 </button>
               )}
               {next && (
-                <button type="button" className="btn-outline" onClick={() => onOpenStation(next.n, "station")}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => onOpenStation(next.n, "station")}
+                >
                   Station {next.n} <ArrowRight className="h-4 w-4" aria-hidden />
                 </button>
               )}

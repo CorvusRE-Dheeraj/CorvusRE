@@ -87,7 +87,9 @@
   /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
      feedback — same hue (163) and lightness, just richer, so every existing
      accent/badge/ring usage sitewide reads more vivid without a redesign. */
-  --accent: oklch(0.62 0.155 58); /* amber, matching the CorvusDP door (#d97706) */
+  /* Amber, a shade deeper than the CorvusDP door (#d97706) so it passes WCAG AA
+     (4.5:1) both as text on the cream background and behind white button text. */
+  --accent: oklch(0.55 0.155 58);
   --accent-foreground: oklch(0.99 0.01 90);
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
@@ -367,6 +369,10 @@ header .container-page {
   border: 1px solid var(--color-border);
   border-radius: 1rem;
   box-shadow: var(--shadow-card);
+  /* Cards are often grid/flex children; without this they grow to fit a wide
+     table inside them and push the page sideways on phones, instead of the
+     table scrolling in its own overflow-x-auto box. */
+  min-width: 0;
   /* No forced hover effect here — plenty of card-elev usages are static info
      cards, and a lift/tint would falsely imply they're clickable. This just
      makes whichever hover:* Tailwind classes a call site already applies
@@ -1115,7 +1121,16 @@ header .container-page {
     repeating-linear-gradient(90deg, #78716c 0 5px, transparent 5px 18px);
 }
 .journey-wheel {
-  background: conic-gradient(#334155 0 12.5%, #e2e8f0 0 25%, #334155 0 37.5%, #e2e8f0 0 50%, #334155 0 62.5%, #e2e8f0 0 75%, #334155 0 87.5%, #e2e8f0 0);
+  background: conic-gradient(
+    #334155 0 12.5%,
+    #e2e8f0 0 25%,
+    #334155 0 37.5%,
+    #e2e8f0 0 50%,
+    #334155 0 62.5%,
+    #e2e8f0 0 75%,
+    #334155 0 87.5%,
+    #e2e8f0 0
+  );
 }
 .journey-puff {
   opacity: 0;
@@ -1251,4 +1266,3 @@ header .container-page {
     opacity: 1;
   }
 }
-

@@ -26,6 +26,7 @@ import {
   geoIdFromTaxAccount,
   isBusinessPersonalProperty,
 } from "../_shared/bexar-tax-office.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -4428,6 +4429,9 @@ async function bexarTaxOfficeRecords(
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "cad-lookup", 60, corsHeaders);
+  if (limited) return limited;
 
   try {
     const body = await req.json();

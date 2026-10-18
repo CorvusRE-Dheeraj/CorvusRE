@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { isPwnedPassword, PWNED_MESSAGE } from "@/lib/pwned";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Field, inputCls } from "@/components/dp-ui";
@@ -22,6 +23,7 @@ function ResetPassword() {
     if (password !== confirm) return setError("Passwords don't match.");
     setLoading(true);
     try {
+      if (await isPwnedPassword(password)) throw new Error(PWNED_MESSAGE);
       const { error: e1 } = await supabase.auth.updateUser({ password });
       if (e1) throw e1;
       nav({ to: "/dashboard" });

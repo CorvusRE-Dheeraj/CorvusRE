@@ -97,6 +97,7 @@ import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Building2 as HeroPropertiesIcon } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { hasLiveSubscription, isPaidStatus } from "@/lib/subscription-status";
 
 export const Route = createFileRoute("/dashboard/_layout/properties")({
   // Set by startPropertyCheckout's successPath (see billing.ts) — lets this
@@ -245,6 +246,13 @@ function Properties() {
       toast.info(
         `Activating a case starts ${workspace!.ownerName}'s subscription for it, so the owner does that from their own login.`,
       );
+      return;
+    }
+    // Already paid (or beta): don't show plans and checkout again — go straight
+    // to opening the case, same as the menu's "Request Protest Filing". Every
+    // entry point (next-action Start, portfolio screening, menu) comes through here.
+    if (isBeta || isPaidStatus(p.subscriptionStatus)) {
+      setAuthorizingProperty(p);
       return;
     }
     setProtestingProperty(p);
@@ -414,7 +422,7 @@ function Properties() {
 
   // Free portfolio screening: every property not yet activated.
   const screening = useMemo(() => {
-    const unactivated = properties.filter((p) => !isBeta && p.subscriptionStatus !== "active");
+    const unactivated = properties.filter((p) => !isBeta && !isPaidStatus(p.subscriptionStatus));
     return unactivated.length >= 2 ? screenPortfolio(unactivated, healthScores) : null;
   }, [properties, healthScores, isBeta]);
 
@@ -535,8 +543,10 @@ function Properties() {
   // to cancelPropertySubscription/the Stripe subscription id. Checked here
   // too (not just via the button's own disabled state below) so this can
   // never fire for a paid property regardless of how it's triggered.
-  async function handleDelete(p: PropertyRecord, isPaid: boolean) {
-    if (isPaid) {
+  async function handleDelete(p: PropertyRecord) {
+    // Same rule as the database delete policy: any live subscription (even on a
+    // beta account) blocks removal, or Stripe would keep billing for it.
+    if (hasLiveSubscription(p.subscriptionStatus)) {
       toast.error("Cancel this property's subscription before deleting it.");
       return;
     }
@@ -556,12 +566,12 @@ function Properties() {
 
   // Bulk delete for the current selection. Same guard as the single delete —
   // a property with a live Stripe subscription can't go (it'd keep billing
-  // with no way left to cancel it); those are skipped and reported. Beta
-  // accounts have no real subscription so nothing blocks there.
+  // with no way left to cancel it); those are skipped and reported — on a
+  // beta account too, matching the database delete policy.
   async function handleDeleteSelected() {
     const chosen = properties.filter((p) => selectedIds.has(p.id));
-    const blocked = chosen.filter((p) => !isBeta && p.subscriptionStatus === "active");
-    const deletable = chosen.filter((p) => isBeta || p.subscriptionStatus !== "active");
+    const blocked = chosen.filter((p) => hasLiveSubscription(p.subscriptionStatus));
+    const deletable = chosen.filter((p) => !hasLiveSubscription(p.subscriptionStatus));
     if (deletable.length === 0) {
       toast.error("Every selected property has an active subscription — cancel those first.");
       return;
@@ -614,7 +624,7 @@ function Properties() {
     const q = search.trim().toLowerCase();
     const scoreOf = (id: string) => healthScores[id]?.score ?? -1;
     const isProtested = (p: PropertyRecord) => protests.some((pr) => pr.propertyId === p.id);
-    const isPaidP = (p: PropertyRecord) => isBeta || p.subscriptionStatus === "active";
+    const isPaidP = (p: PropertyRecord) => isBeta || isPaidStatus(p.subscriptionStatus);
 
     let out = sortedProperties.filter((p) => {
       if (q) {
@@ -701,7 +711,7 @@ function Properties() {
       existingProtest.taxYear < CURRENT_YEAR;
     const cad = p.cad;
     const recordUrl = cad ? getCadRecordUrl({ cad, accountNumber: p.accountNumber }) : null;
-    const isPaid = isBeta || p.subscriptionStatus === "active";
+    const isPaid = isBeta || isPaidStatus(p.subscriptionStatus);
     return { existingProtest, canReFile, cad, recordUrl, isPaid };
   }
 
@@ -768,7 +778,7 @@ function Properties() {
   // A property gets a selection checkbox unless it's fully subscribed — an
   // "active" property can be neither bulk-subscribed (already is) nor
   // bulk-deleted (would strand a billing subscription).
-  const bulkEligible = (p: PropertyRecord) => p.subscriptionStatus !== "active";
+  const bulkEligible = (p: PropertyRecord) => !isPaidStatus(p.subscriptionStatus);
   // The user's chosen List-view columns, minus Payment for a beta account
   // (nothing to report — no per-property subscription exists to show).
   const visibleColumnOptions = COLUMN_OPTIONS.filter(
@@ -1213,7 +1223,7 @@ function Properties() {
                             onResume={() => handleResumeSubscription(p)}
                             onCancel={() => handleCancelSubscription(p)}
                             onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
-                            onDelete={() => handleDelete(p, isPaid)}
+                            onDelete={() => handleDelete(p)}
                           />
                         </div>
                       </td>
@@ -1325,7 +1335,7 @@ function Properties() {
                       onResume={() => handleResumeSubscription(p)}
                       onCancel={() => handleCancelSubscription(p)}
                       onSwitchPlan={(tier) => handleSwitchPlan(p, tier)}
-                      onDelete={() => handleDelete(p, isPaid)}
+                      onDelete={() => handleDelete(p)}
                     />
                   </div>
                 </div>
@@ -1451,7 +1461,7 @@ function Properties() {
           userId={user.id}
           property={authorizingProperty}
           userEmail={user.email}
-          isPaid={isBeta || authorizingProperty.subscriptionStatus === "active"}
+          isPaid={isBeta || isPaidStatus(authorizingProperty.subscriptionStatus)}
           open={!!authorizingProperty}
           onOpenChange={(open) => {
             if (!open) setAuthorizingProperty(null);

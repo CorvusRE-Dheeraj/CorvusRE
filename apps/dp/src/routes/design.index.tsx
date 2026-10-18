@@ -90,10 +90,26 @@ const PHASES = [
 ];
 
 const BRIEF_OUTPUTS = [
-  { icon: ClipboardList, t: "What's included", d: "Every deliverable across survey, site, civil, architectural, structural, and MEP." },
-  { icon: Layers3, t: "Space plan", d: "A room-level breakdown and functional zoning derived from your program." },
-  { icon: CalendarClock, t: "Phased timeline", d: "Concept → development → permit set, with durations and who's involved in each." },
-  { icon: Wallet, t: "Fee basis", d: "Design fee split by discipline, a separate rough build cost, and the cost drivers explained." },
+  {
+    icon: ClipboardList,
+    t: "What's included",
+    d: "Every deliverable across survey, site, civil, architectural, structural, and MEP.",
+  },
+  {
+    icon: Layers3,
+    t: "Space plan",
+    d: "A room-level breakdown and functional zoning derived from your program.",
+  },
+  {
+    icon: CalendarClock,
+    t: "Phased timeline",
+    d: "Concept → development → permit set, with durations and who's involved in each.",
+  },
+  {
+    icon: Wallet,
+    t: "Fee basis",
+    d: "Design fee split by discipline, a separate rough build cost, and the cost drivers explained.",
+  },
 ];
 
 const FAQ = [
@@ -122,7 +138,10 @@ function DesignOverview() {
       <section className="gradient-mesh relative isolate">
         <div className="blueprint-grid pointer-events-none absolute inset-0" aria-hidden />
         <span className="grain absolute inset-0" aria-hidden />
-        <span className="hero-blob right-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]" aria-hidden />
+        <span
+          className="hero-blob right-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]"
+          aria-hidden
+        />
         <span
           className="hero-blob left-[-8rem] top-28 h-96 w-96 bg-[oklch(0.55_0.16_255)]"
           style={{ animationDelay: "-7s" }}
@@ -136,8 +155,8 @@ function DesignOverview() {
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
               Give CorvusDP the property and your program. Get back what the design covers, a
-              room-level space plan, a phased timeline from concept to permit set, and a fee basis by
-              discipline — with the cost drivers explained. It's the decision document that comes
+              room-level space plan, a phased timeline from concept to permit set, and a fee basis
+              by discipline — with the cost drivers explained. It's the decision document that comes
               before a design contract.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -268,7 +287,10 @@ function DesignOverview() {
       <section className="container-page pb-20">
         <ScrollReveal>
           <div className="brand-gradient relative overflow-hidden rounded-2xl p-8 text-accent-foreground sm:p-12">
-            <span className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]" aria-hidden />
+            <span
+              className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]"
+              aria-hidden
+            />
             <h2 className="relative font-serif text-2xl font-semibold sm:text-3xl">
               A brief in minutes, not weeks.
             </h2>

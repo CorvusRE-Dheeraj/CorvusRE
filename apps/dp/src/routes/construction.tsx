@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   ArrowRight,
@@ -19,6 +19,11 @@ import { readDpIntake } from "@/lib/dp-intake";
 import { notifyInquiry } from "@/lib/inquiries";
 
 export const Route = createFileRoute("/construction")({
+  // Construction was taken out of CorvusDP; the page is kept for later but no
+  // longer reachable — old links land on the home page.
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
   head: () => ({
     meta: [
       { title: "Construction — CorvusDP" },
@@ -165,7 +170,10 @@ function Construction() {
       <section className="gradient-mesh relative isolate">
         <div className="blueprint-grid pointer-events-none absolute inset-0" aria-hidden />
         <span className="grain absolute inset-0" aria-hidden />
-        <span className="hero-blob left-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]" aria-hidden />
+        <span
+          className="hero-blob left-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]"
+          aria-hidden
+        />
         <span
           className="hero-blob right-[-8rem] top-24 h-96 w-96 bg-[oklch(0.55_0.16_255)]"
           style={{ animationDelay: "-5s" }}
@@ -263,7 +271,8 @@ function Construction() {
             Tell us about the build.
           </h2>
           <p className="mt-2 text-muted-foreground">
-            Share the basics — we'll follow up with next steps and a readiness plan for your project.
+            Share the basics — we'll follow up with next steps and a readiness plan for your
+            project.
           </p>
         </ScrollReveal>
         <form onSubmit={submit} className="mt-6">
