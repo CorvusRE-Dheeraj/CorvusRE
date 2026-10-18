@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { storageSafeName } from "@/lib/storage-key";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveProjectBundle } from "@/hooks/use-project";
@@ -52,7 +53,7 @@ function Documents() {
     try {
       let storagePath: string | undefined;
       if (file) {
-        storagePath = `${user!.id}/${projectId}/${Date.now()}-${file.name}`;
+        storagePath = `${user!.id}/${projectId}/${Date.now()}-${storageSafeName(file.name)}`;
         const { error: upErr } = await supabase.storage
           .from("project-docs")
           .upload(storagePath, file);

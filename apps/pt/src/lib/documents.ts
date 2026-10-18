@@ -1,4 +1,5 @@
 import type { ValueSignal } from "./evidence-value";
+import { storageSafeName } from "./storage-key";
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { FormType } from "./protest-form-submissions";
@@ -196,7 +197,7 @@ export async function uploadDocument(
   // new row back to its source (documents.edited_from).
   editedFrom?: string | null,
 ): Promise<DocumentRecord> {
-  const storagePath = `${userId}/${propertyId}/${Date.now()}-${file.name}`;
+  const storagePath = `${userId}/${propertyId}/${Date.now()}-${storageSafeName(file.name)}`;
   const { error: uploadError } = await supabase.storage
     .from("documents")
     .upload(storagePath, file, { contentType: file.type });
