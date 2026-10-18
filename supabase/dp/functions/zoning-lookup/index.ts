@@ -90,6 +90,72 @@ const CITIES: CitySource[] = [
     code: ["zoning"],
     mapUrl: "https://www.celina-tx.gov/1291/Planned-Developments",
   },
+  {
+    name: "Allen",
+    layer: "https://gismaps.cityofallen.org/arcgis/rest/services/Current_Zoning/MapServer/0",
+    code: ["Zoning"],
+    mapUrl: "https://gismaps.cityofallen.org/",
+  },
+  {
+    name: "Little Elm",
+    layer:
+      "https://utility.arcgis.com/usrsvcs/servers/02a5058072224440ad63102df41947ea/rest/services/LittleElmGISLayers/ZoningDistrict/FeatureServer/0",
+    code: ["Type"],
+    extras: [{ field: "PD_ID", label: "PD" }],
+    mapUrl: "https://www.littleelm.org/",
+  },
+  {
+    name: "Irving",
+    layer:
+      "https://services3.arcgis.com/OfsJXUlu8pSkbl7B/arcgis/rest/services/Zoning_Landuse/FeatureServer/5",
+    code: ["BaseDistrict", "District"],
+    description: "Use_",
+    mapUrl: "https://www.cityofirving.org/",
+  },
+  {
+    name: "Garland",
+    layer: "https://maps2.garlandtx.gov/server1/rest/services/PLANNING/ZONING/MapServer/0",
+    code: ["BASEZONING", "GDC_ZONING", "BASE_ZONE"],
+    mapUrl: "https://www.garlandtx.gov/",
+  },
+  {
+    name: "Georgetown",
+    layer:
+      "https://gis.georgetowntexas.gov/arcgis/rest/services/OpenData/OpenData_FeatureService/FeatureServer/5",
+    code: ["ZONE"],
+    description: "FULLZONE",
+    mapUrl: "https://gis.georgetowntexas.gov/",
+  },
+  {
+    name: "Pflugerville",
+    layer: "https://maps.pflugervilletx.gov/arcgis/rest/services/Planning/Zoning_Districts/FeatureServer/0",
+    code: ["ZOINING_TY"],
+    description: "ZONING_DES",
+    mapUrl: "https://maps.pflugervilletx.gov/",
+  },
+  {
+    name: "Richardson",
+    layer: "https://maps.cor.gov/arcgis/rest/services/DevelopmentServices/Zoning/MapServer/1",
+    code: ["ZONECLASS"],
+    description: "ZONEDESC",
+    mapUrl: "https://maps.cor.gov/",
+  },
+  {
+    name: "Lewisville",
+    layer:
+      "https://services2.arcgis.com/kXGqZY4GIOcEYxoF/arcgis/rest/services/Zoning_Feature_view/FeatureServer/0",
+    code: ["ZONING_CLASS"],
+    description: "Zoning_Desc",
+    mapUrl: "https://www.cityoflewisville.com/",
+  },
+  {
+    name: "Round Rock",
+    layer: "https://maps.roundrocktexas.gov/arcgis/rest/services/Planning/Planning_Multi/MapServer/12",
+    code: ["BASE_ZONIN"],
+    description: "NAME",
+    extras: [{ field: "PUD_LABEL", label: "PUD" }],
+    mapUrl: "https://maps.roundrocktexas.gov/",
+  },
 ];
 
 /** Cities with no zoning ordinance at all. */
@@ -182,7 +248,8 @@ async function queryCity(src: CitySource, g: Geo): Promise<Result | null> {
     const extras = (src.extras ?? [])
       .map(({ field, label }) => {
         const v = clean(row[field]);
-        if (!v || /^(no|none|n\/a|0|sup000)$/i.test(v)) return "";
+        // Blank-ish placeholders some cities store ("SUP000", "PD-") mean none.
+        if (!v || /^(no|none|n\/a|0|sup000)$/i.test(v) || /^[a-z]+-$/i.test(v)) return "";
         return v.toUpperCase().startsWith(label.toUpperCase())
           ? v
           : `${label} ${v}`;

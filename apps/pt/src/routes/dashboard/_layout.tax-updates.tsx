@@ -86,6 +86,8 @@ const chip = (active: boolean) =>
 
 const currentTaxYear = new Date().getFullYear();
 
+const CHAPTER_PREVIEW = 2;
+
 function TaxUpdates() {
   const { user } = useAuth();
   const [reports, setReports] = useState<TaxReport[]>([]);
@@ -99,6 +101,9 @@ function TaxUpdates() {
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
+  // Keeps the page short: each chapter shows its first CHAPTER_PREVIEW cards
+  // until opened (filtering shows everything that matches).
+  const [openChapters, setOpenChapters] = useState<Set<number>>(new Set());
   // The whole tax year's critical items (enacted law / adopted rule /
   // deadlines) — separate from `reports`, which is only the newest 5 WEEKS.
   // See tax_update_critical_items: this never gets pruned within the year.
@@ -472,7 +477,10 @@ function TaxUpdates() {
                     </span>
                   </h2>
                   <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                    {items.map((u, i) => (
+                    {(filtering || openChapters.has(ch.n)
+                      ? items
+                      : items.slice(0, CHAPTER_PREVIEW)
+                    ).map((u, i) => (
                       <TaxUpdateCard
                         key={u.id}
                         index={i}
@@ -482,6 +490,15 @@ function TaxUpdates() {
                       />
                     ))}
                   </div>
+                  {!filtering && !openChapters.has(ch.n) && items.length > CHAPTER_PREVIEW && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenChapters((prev) => new Set(prev).add(ch.n))}
+                      className="mt-3 text-sm font-medium text-accent hover:underline"
+                    >
+                      Show {items.length - CHAPTER_PREVIEW} more
+                    </button>
+                  )}
                   {items.length === 0 && !showStanding && (
                     <p className="mt-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
                       Nothing verified here this tax year.
@@ -527,17 +544,28 @@ function TaxUpdates() {
               any weekly check so far.
             </p>
             {sortedCriticalItems.length > 0 ? (
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                {sortedCriticalItems.map((u, i) => (
-                  <TaxUpdateCard
-                    key={u.id}
-                    index={i}
-                    update={u}
-                    affected={propertiesAffected(u, contexts)}
-                    myContext={myContext}
-                  />
-                ))}
-              </div>
+              // Most of these also appear in their chapter above, so the full
+              // list stays folded until asked for.
+              <details className="group mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-accent hover:underline">
+                  <span className="group-open:hidden">
+                    Show all {sortedCriticalItems.length} critical update
+                    {sortedCriticalItems.length === 1 ? "" : "s"}
+                  </span>
+                  <span className="hidden group-open:inline">Hide the list</span>
+                </summary>
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  {sortedCriticalItems.map((u, i) => (
+                    <TaxUpdateCard
+                      key={u.id}
+                      index={i}
+                      update={u}
+                      affected={propertiesAffected(u, contexts)}
+                      myContext={myContext}
+                    />
+                  ))}
+                </div>
+              </details>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
                 No enacted laws or adopted rules found yet this tax year.
@@ -569,16 +597,9 @@ function TaxUpdates() {
             // single narrow stack left most of it empty next to the CTA below.
             <ul className="grid gap-3 lg:grid-cols-2">
               {sortedCriticalItems.slice(0, 6).map((u) => (
+                // Titles only — the full "why / what to do" is on each card above.
                 <li key={u.id} className="rounded-xl bg-white/10 p-3 ring-1 ring-white/15">
                   <div className="font-semibold text-white">{u.title}</div>
-                  <p className="mt-1">
-                    <strong className="text-white">How it affects you: </strong>
-                    {u.whyItMatters}
-                  </p>
-                  <p className="mt-1">
-                    <strong className="text-white">What to do: </strong>
-                    {u.actionNeeded}
-                  </p>
                   <a
                     href={u.sourceUrl}
                     target="_blank"

@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -26,10 +26,23 @@ import { AuthProvider, useAuth } from "../lib/auth";
 import { Toaster } from "../components/ui/sonner";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { JourneyTracker } from "../components/JourneyTracker";
-import { AskAiWidget } from "../components/AskAiWidget";
-import { FeedbackWidget } from "../components/FeedbackWidget";
-import { HourBeforeAlert } from "../components/HourBeforeAlert";
-import { EngagementPacketHost } from "../components/EngagementPacketHost";
+// Floating widgets shown on every page load on their own, after the page —
+// keeping them (and what they import) out of the main bundle every visitor
+// downloads first.
+const AskAiWidget = lazy(() =>
+  import("../components/AskAiWidget").then((m) => ({ default: m.AskAiWidget })),
+);
+const FeedbackWidget = lazy(() =>
+  import("../components/FeedbackWidget").then((m) => ({ default: m.FeedbackWidget })),
+);
+const HourBeforeAlert = lazy(() =>
+  import("../components/HourBeforeAlert").then((m) => ({ default: m.HourBeforeAlert })),
+);
+const EngagementPacketHost = lazy(() =>
+  import("../components/EngagementPacketHost").then((m) => ({
+    default: m.EngagementPacketHost,
+  })),
+);
 import { AppShell, shouldShowShell } from "../components/AppShell";
 
 function NotFoundComponent() {
@@ -218,10 +231,12 @@ function RootComponent() {
             <SignedInJourney />
             <SiteFooter />
           </div>
-          <AskAiWidget />
-          <FeedbackWidget />
-          <HourBeforeAlert />
-          <EngagementPacketHost />
+          <Suspense fallback={null}>
+            <AskAiWidget />
+            <FeedbackWidget />
+            <HourBeforeAlert />
+            <EngagementPacketHost />
+          </Suspense>
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveProjectBundle } from "@/hooks/use-project";
@@ -7,6 +7,11 @@ import { Section, EmptyProject, Loading, Field, inputCls } from "@/components/dp
 import { dateShort } from "@/lib/format";
 
 export const Route = createFileRoute("/dashboard/_layout/daily-log")({
+  // Construction was taken out of CorvusDP; the page is kept for later but no
+  // longer reachable — old links land on the dashboard.
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard" });
+  },
   head: () => ({ meta: [{ title: "Daily Construction Log — CorvusDP" }] }),
   component: DailyLog,
 });

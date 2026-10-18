@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveProjectBundle } from "@/hooks/use-project";
@@ -20,6 +20,11 @@ import {
 import { dateShort } from "@/lib/format";
 
 export const Route = createFileRoute("/dashboard/_layout/inspections")({
+  // Construction was taken out of CorvusDP; the page is kept for later but no
+  // longer reachable — old links land on the dashboard.
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard" });
+  },
   head: () => ({ meta: [{ title: "Inspections — CorvusDP" }] }),
   component: Inspections,
 });

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
   ArrowRight,
@@ -19,6 +19,11 @@ import { readDpIntake } from "@/lib/dp-intake";
 import { notifyInquiry } from "@/lib/inquiries";
 
 export const Route = createFileRoute("/construction")({
+  // Construction was taken out of CorvusDP; the page is kept for later but no
+  // longer reachable — old links land on the home page.
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
   head: () => ({
     meta: [
       { title: "Construction — CorvusDP" },
