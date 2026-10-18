@@ -247,6 +247,13 @@ function Properties() {
       );
       return;
     }
+    // Already paid (or beta): don't show plans and checkout again — go straight
+    // to opening the case, same as the menu's "Request Protest Filing". Every
+    // entry point (next-action Start, portfolio screening, menu) comes through here.
+    if (isBeta || p.subscriptionStatus === "active") {
+      setAuthorizingProperty(p);
+      return;
+    }
     setProtestingProperty(p);
   }
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
