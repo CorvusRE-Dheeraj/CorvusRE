@@ -1,4 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { getStaffRole } from "@/lib/marketing";
+import { AdminMarketingAccess } from "@/components/marketing/AdminMarketingAccess";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -75,6 +77,7 @@ type AdminTab =
   | "owner_managed"
   | "corvus_managed"
   | "admins"
+  | "marketing_access"
   | "invited"
   | "beta"
   | "beta_feedback"
@@ -130,9 +133,12 @@ function AdminPanel() {
       return;
     }
     checkIsAdmin(user.id)
-      .then((ok) => {
+      .then(async (ok) => {
         if (!ok) {
-          nav({ to: "/admin-login" });
+          // Marketing Admins don't get the full Admin (cases, filings, users) —
+          // send them to their own workspace.
+          const role = await getStaffRole(user.id).catch(() => null);
+          nav({ to: role?.isMarketingAdmin ? "/marketing" : "/admin-login" });
           return;
         }
         setIsAdmin(true);
@@ -583,6 +589,11 @@ function AdminPanel() {
     },
     { key: "admins", label: "Admins", count: usersLoading ? null : adminUsers.length },
     {
+      key: "marketing_access",
+      label: "Marketing Access",
+      count: usersLoading ? null : users.filter((u) => u.isMarketingAdmin).length,
+    },
+    {
       key: "invited",
       label: "Invited Users",
       count: invitedUsersLoading ? null : invitedUsers.length,
@@ -609,9 +620,14 @@ function AdminPanel() {
         {/* Nothing on this page updates live — this is the only way to see
             anything submitted/changed after the page first loaded without a
             full reload. */}
-        <button type="button" onClick={refreshAll} className="btn-outline shrink-0 text-xs">
-          Refresh
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <Link to="/marketing" className="btn-outline text-xs">
+            Marketing
+          </Link>
+          <button type="button" onClick={refreshAll} className="btn-outline text-xs">
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Tabs wrap on a narrow viewport instead of scrolling — no stray
@@ -827,6 +843,10 @@ function AdminPanel() {
             )}
           </div>
         </section>
+      )}
+
+      {activeTab === "marketing_access" && (
+        <AdminMarketingAccess users={users} onChanged={refreshAll} />
       )}
 
       {activeTab === "beta_feedback" && <AdminBetaFeedback />}

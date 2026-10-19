@@ -5,10 +5,13 @@
 import { handle as adminUpdatePlan } from "../_shared/handlers/admin-update-plan.ts";
 import { handle as adminUpdateAdminStatus } from "../_shared/handlers/admin-update-admin-status.ts";
 import { handle as adminUpdateFranchiseStatus } from "../_shared/handlers/admin-update-franchise-status.ts";
+import { handle as marketingSend } from "../_shared/handlers/marketing-send.ts";
 
 const ACTIONS: Record<string, (req: Request) => Promise<Response>> = {
   "admin-update-admin-status": adminUpdateAdminStatus,
   "admin-update-franchise-status": adminUpdateFranchiseStatus,
+  // Marketing Admin email sending (campaigns, follow-ups, scheduled sends).
+  "marketing-send": marketingSend,
 };
 
 Deno.serve((req: Request) => {

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { getStaffRole } from "@/lib/marketing";
 import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { checkIsAdmin } from "@/lib/admin";
 
 // Deliberately not linked from SiteChrome's nav — a separate login surface from the
 // regular customer /sign-in flow. Admin accounts are provisioned manually (see the
@@ -37,13 +37,14 @@ function AdminLogin() {
       });
       if (signInError) throw signInError;
 
-      const admin = await checkIsAdmin(data.user.id);
-      if (!admin) {
+      const role = await getStaffRole(data.user.id);
+      if (!role.isSuperAdmin && !role.isMarketingAdmin) {
         await supabase.auth.signOut();
         setError("Not authorized.");
         return;
       }
-      nav({ to: "/admin" });
+      // Marketing Admins have their own workspace; the full Admin is Super Admin only.
+      nav({ to: role.isSuperAdmin ? "/admin" : "/marketing" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {

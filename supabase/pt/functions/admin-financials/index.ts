@@ -53,10 +53,12 @@ Deno.serve(async (req: Request) => {
     );
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, marketing_admin")
       .eq("id", user.id)
       .maybeSingle();
-    if (!profile?.is_admin) {
+    // Marketing Admins see revenue too (Marketing > Analytics: subscription
+    // revenue). This is aggregate Stripe data only — no case or filing data.
+    if (!profile?.is_admin && !profile?.marketing_admin) {
       return new Response(JSON.stringify({ error: "forbidden" }), {
         status: 403,
         headers: corsHeaders,
