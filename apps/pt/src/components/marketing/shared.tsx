@@ -1,13 +1,20 @@
 import { useState, type ReactNode } from "react";
-import { Sparkles, RefreshCw } from "lucide-react";
+import { Ban, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { getErrorMessage } from "@/lib/error-message";
-import type { Alert, CampaignStatus, Stage } from "@/lib/marketing";
+import type { Alert, CampaignStatus, FieldSource, Stage } from "@/lib/marketing";
 import { STAGE_LABEL } from "@/lib/marketing";
 
 export type MarketingTab = "dashboard" | "leads" | "campaigns" | "ai" | "followups" | "analytics";
-export type Focus = { leadId?: string; campaignId?: string; stages?: Stage[] };
+export type Focus = {
+  leadId?: string;
+  campaignId?: string;
+  stages?: Stage[];
+  filters?: import("@/lib/marketing-crm").LeadFilters;
+  /** start a new campaign for these leads */
+  newCampaign?: { leadIds: string[]; name: string; segmentId?: string };
+};
 export type Go = (tab: MarketingTab, focus?: Focus) => void;
 
 export function StatTile({
@@ -85,16 +92,65 @@ export function Bars({
 
 const STAGE_TONE: Record<Stage, string> = {
   new: "bg-sky-100 text-sky-900",
+  researching: "bg-slate-100 text-slate-800",
+  ready: "bg-cyan-100 text-cyan-900",
   contacted: "bg-indigo-100 text-indigo-900",
   interested: "bg-amber-100 text-amber-900",
   registered: "bg-teal-100 text-teal-900",
-  customer: "bg-emerald-100 text-emerald-900",
-  lost: "bg-secondary text-muted-foreground",
+  subscribed: "bg-emerald-100 text-emerald-900",
+  no_response: "bg-orange-50 text-orange-900",
+  not_interested: "bg-secondary text-muted-foreground",
+  do_not_contact: "bg-rose-100 text-rose-900",
 };
 export function StageBadge({ stage }: { stage: Stage }) {
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STAGE_TONE[stage]}`}>
+    <span
+      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${STAGE_TONE[stage]}`}
+    >
+      {stage === "do_not_contact" && <Ban className="-mt-0.5 mr-1 inline h-3 w-3" aria-hidden />}
       {STAGE_LABEL[stage]}
+    </span>
+  );
+}
+
+const PRIORITY_TONE = {
+  high: "bg-rose-600 text-white",
+  medium: "bg-amber-100 text-amber-900",
+  low: "bg-secondary text-muted-foreground",
+} as const;
+export function PriorityBadge({ priority }: { priority: "high" | "medium" | "low" | null }) {
+  if (!priority) return null;
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${PRIORITY_TONE[priority]}`}
+    >
+      {priority}
+    </span>
+  );
+}
+
+/** Where a detail came from; amber when it still needs a person to verify it. */
+export function SourceChip({ src, onVerify }: { src?: FieldSource; onVerify?: () => void }) {
+  if (!src) return null;
+  const unsure = !src.verified && (src.confidence ?? 1) < 0.9;
+  return (
+    <span
+      className={`ml-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${unsure ? "bg-amber-50 text-amber-900" : "bg-secondary text-muted-foreground"}`}
+      title={[
+        src.source,
+        src.detail,
+        src.confidence != null && `confidence ${Math.round(src.confidence * 100)}%`,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+    >
+      {src.verified ? "✓ " : ""}
+      {src.source}
+      {unsure && onVerify && (
+        <button type="button" onClick={onVerify} className="font-semibold underline">
+          verify
+        </button>
+      )}
     </span>
   );
 }

@@ -23,6 +23,7 @@ import {
   type MarketingData,
   type Stage,
 } from "@/lib/marketing";
+import { applyFilters } from "@/lib/marketing-crm";
 import { CampaignBadge, Field, inputCls, type Focus } from "./shared";
 
 // Create → approve → send now / schedule → (pause/resume) → sent, with
@@ -38,12 +39,25 @@ export function Campaigns({
   reload: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Campaign | "new" | null>(null);
+  const [preset, setPreset] = useState<{ name: string; audience: Audience } | null>(null);
   useEffect(() => {
     if (focus.campaignId) {
       const c = data.campaigns.find((x) => x.id === focus.campaignId);
       if (c) setEditing(c);
     }
-  }, [focus, data.campaigns]);
+    if (focus.newCampaign) {
+      const seg = data.segments.find((x) => x.id === focus.newCampaign!.segmentId);
+      setPreset({
+        name: focus.newCampaign.name,
+        audience: {
+          leadIds: focus.newCampaign.leadIds,
+          ...(seg ? { segmentId: seg.id, segmentName: seg.name } : {}),
+        },
+      });
+      setEditing("new");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
 
   const groups: { title: string; items: Campaign[] }[] = [
     {
@@ -65,7 +79,10 @@ export function Campaigns({
         </p>
         <button
           type="button"
-          onClick={() => setEditing("new")}
+          onClick={() => {
+            setPreset(null);
+            setEditing("new");
+          }}
           className="btn-primary btn-primary-hover inline-flex items-center gap-1.5 text-sm"
         >
           <Plus className="h-4 w-4" aria-hidden /> New campaign
@@ -113,6 +130,7 @@ export function Campaigns({
       {editing && (
         <CampaignEditor
           campaign={editing === "new" ? null : editing}
+          preset={editing === "new" ? preset : null}
           data={data}
           reload={reload}
           onClose={() => setEditing(null)}
@@ -124,19 +142,21 @@ export function Campaigns({
 
 function CampaignEditor({
   campaign,
+  preset,
   data,
   reload,
   onClose,
 }: {
   campaign: Campaign | null;
+  preset: { name: string; audience: Audience } | null;
   data: MarketingData;
   reload: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(campaign?.name ?? "");
+  const [name, setName] = useState(campaign?.name ?? preset?.name ?? "");
   const [channel, setChannel] = useState<"email" | "sms">(campaign?.channel ?? "email");
   const [audience, setAudience] = useState<Audience>(
-    campaign?.audience ?? { stages: ["new", "contacted", "interested"] },
+    campaign?.audience ?? preset?.audience ?? { stages: ["ready", "contacted", "interested"] },
   );
   const [subject, setSubject] = useState(campaign?.subject ?? "");
   const [body, setBody] = useState(campaign?.body ?? "");
@@ -148,13 +168,24 @@ function CampaignEditor({
   const locked = status === "sent" || status === "sending";
   const recipients = useMemo(() => audienceLeads(audience, data.leads), [audience, data.leads]);
   const counties = useMemo(
-    () => [...new Set(data.leads.map((l) => l.county).filter(Boolean) as string[])].sort(),
+    () => [...new Set(data.leads.flatMap((l) => l.counties))].sort(),
     [data.leads],
   );
   const types = useMemo(
-    () => [...new Set(data.leads.map((l) => l.propertyType).filter(Boolean) as string[])].sort(),
+    () => [...new Set(data.leads.flatMap((l) => l.propertyTypes))].sort(),
     [data.leads],
   );
+  // A saved segment is re-applied at approval, so the approved list is what's sent.
+  const segmentAudience = (id: string): Audience => {
+    const seg = data.segments.find((x) => x.id === id);
+    if (!seg) return audience;
+    const ids = applyFilters(data.leads, seg.filters, {
+      activities: data.activities,
+      campaigns: data.campaigns,
+      me: data.me,
+    }).map((l) => l.id);
+    return { segmentId: seg.id, segmentName: seg.name, leadIds: ids };
+  };
 
   const toggle = <K extends "stages" | "counties" | "propertyTypes">(k: K, v: string) =>
     setAudience((a) => {
@@ -162,6 +193,8 @@ function CampaignEditor({
       return {
         ...a,
         leadIds: undefined,
+        segmentId: undefined,
+        segmentName: undefined,
         [k]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v],
       };
     });
@@ -234,11 +267,11 @@ function CampaignEditor({
             )}
             <p className="text-xs text-muted-foreground sm:col-span-3">
               Conversions from this audience so far:{" "}
-              {recipients.filter((l) => l.stage === "customer").length} paying of{" "}
+              {recipients.filter((l) => l.stage === "subscribed").length} subscribed of{" "}
               {recipients.length} (
               {pct(
                 recipients.length
-                  ? recipients.filter((l) => l.stage === "customer").length / recipients.length
+                  ? recipients.filter((l) => l.stage === "subscribed").length / recipients.length
                   : 0,
               )}
               ).
@@ -274,8 +307,48 @@ function CampaignEditor({
               <div className="text-xs font-medium text-muted-foreground">
                 Audience — {recipients.length} recipient{recipients.length === 1 ? "" : "s"}
               </div>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {STAGES.map((s) => (
+              {data.segments.length > 0 && (
+                <select
+                  className={`${inputCls} mt-1.5`}
+                  value={audience.segmentId ?? ""}
+                  disabled={locked}
+                  aria-label="Saved segment"
+                  onChange={(e) =>
+                    setAudience(
+                      e.target.value
+                        ? segmentAudience(e.target.value)
+                        : { stages: ["ready", "contacted", "interested"] },
+                    )
+                  }
+                >
+                  <option value="">Choose by status, county and type below</option>
+                  {data.segments.map((sg) => (
+                    <option key={sg.id} value={sg.id}>
+                      Saved segment: {sg.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {audience.leadIds?.length ? (
+                <p className="mt-2 rounded-md bg-secondary/60 px-3 py-2 text-xs">
+                  {audience.segmentName
+                    ? `Segment "${audience.segmentName}" — ${audience.leadIds.length} leads`
+                    : `${audience.leadIds.length} selected leads`}
+                  {!locked && (
+                    <button
+                      type="button"
+                      onClick={() => setAudience({ stages: ["ready", "contacted", "interested"] })}
+                      className="ml-2 text-accent hover:underline"
+                    >
+                      Use filters instead
+                    </button>
+                  )}
+                </p>
+              ) : null}
+              <div
+                className={`mt-1.5 flex flex-wrap gap-1.5 ${audience.leadIds?.length ? "hidden" : ""}`}
+              >
+                {STAGES.filter((s) => s !== "do_not_contact").map((s) => (
                   <Chip
                     key={s}
                     on={!!audience.stages?.includes(s as Stage)}
@@ -286,7 +359,7 @@ function CampaignEditor({
                   </Chip>
                 ))}
               </div>
-              {counties.length > 0 && (
+              {counties.length > 0 && !audience.leadIds?.length && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {counties.map((c) => (
                     <Chip
@@ -300,7 +373,7 @@ function CampaignEditor({
                   ))}
                 </div>
               )}
-              {types.length > 0 && (
+              {types.length > 0 && !audience.leadIds?.length && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {types.map((t) => (
                     <Chip
@@ -315,8 +388,8 @@ function CampaignEditor({
                 </div>
               )}
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                * No stage selected = everyone except lost leads. Unsubscribed leads and leads
-                without email are always left out.
+                * No status selected = everyone except Not Interested. Do Not Contact, unsubscribed
+                and no-email leads are always left out.
               </p>
             </div>
           </div>
@@ -482,8 +555,22 @@ function CampaignEditor({
                       throw new Error("Add a subject and message before approving.");
                     if (recipients.length === 0)
                       throw new Error("This audience has no one to send to.");
-                    const c = await save();
-                    await setCampaignStatus(c, "approved");
+                    if (audience.segmentId) {
+                      // freeze the segment's current members as the approved list
+                      const frozen = segmentAudience(audience.segmentId);
+                      setAudience(frozen);
+                      const c = await saveCampaign(campaign?.id ?? null, {
+                        name: name.trim() || "Untitled campaign",
+                        channel,
+                        audience: frozen,
+                        subject,
+                        body,
+                      });
+                      await setCampaignStatus(c, "approved");
+                    } else {
+                      const c = await save();
+                      await setCampaignStatus(c, "approved");
+                    }
                     onClose();
                   },
                   "Approved — send it now or schedule it.",

@@ -6,17 +6,56 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import { askAboutDocument } from "./document-ai";
 import { daysUntilIso } from "./local-day";
+import type { LeadFilters } from "./marketing-crm";
 
-export const STAGES = ["new", "contacted", "interested", "registered", "customer", "lost"] as const;
+// The pipeline (in order), then the three side statuses. Labels match
+// marketing_stage_label() in supabase/pt/marketing-crm.sql.
+export const STAGES = [
+  "new",
+  "researching",
+  "ready",
+  "contacted",
+  "interested",
+  "registered",
+  "subscribed",
+  "no_response",
+  "not_interested",
+  "do_not_contact",
+] as const;
 export type Stage = (typeof STAGES)[number];
+export const PIPELINE: Stage[] = [
+  "new",
+  "researching",
+  "ready",
+  "contacted",
+  "interested",
+  "registered",
+  "subscribed",
+];
+export const SIDE_STAGES: Stage[] = ["no_response", "not_interested", "do_not_contact"];
+/** Still being worked — not converted, not closed. */
+export const OPEN_STAGES: Stage[] = [
+  "new",
+  "researching",
+  "ready",
+  "contacted",
+  "interested",
+  "no_response",
+];
 export const STAGE_LABEL: Record<Stage, string> = {
-  new: "New",
+  new: "New Lead",
+  researching: "Researching",
+  ready: "Ready for Outreach",
   contacted: "Contacted",
   interested: "Interested",
   registered: "Registered",
-  customer: "Paying customer",
-  lost: "Lost",
+  subscribed: "Subscribed",
+  no_response: "No Response",
+  not_interested: "Not Interested",
+  do_not_contact: "Do Not Contact",
 };
+/** No marketing outreach of any kind (also enforced in the database and the sender). */
+export const isDnc = (l: { stage: Stage }) => l.stage === "do_not_contact";
 export const SOURCES = [
   "manual",
   "beta_signup",
@@ -25,6 +64,8 @@ export const SOURCES = [
   "website",
   "import",
   "event",
+  "podio",
+  "research",
 ] as const;
 export type Source = (typeof SOURCES)[number];
 export const SOURCE_LABEL: Record<Source, string> = {
@@ -35,6 +76,8 @@ export const SOURCE_LABEL: Record<Source, string> = {
   website: "Website",
   import: "Import",
   event: "Event",
+  podio: "Podio",
+  research: "AI research",
 };
 
 export type Lead = {
@@ -60,6 +103,91 @@ export type Lead = {
   aiSummaryAt: string | null;
   lastContactedAt: string | null;
   unsubscribedAt: string | null;
+  city: string | null;
+  zip: string | null;
+  mailingAddress: string | null;
+  podioItemId: number | null;
+  podioAppId: number | null;
+  assignedTo: string | null;
+  priority: "high" | "medium" | "low" | null;
+  priorityReason: string | null;
+  nextAction: string | null;
+  nextActionAt: string | null;
+  suggestedStage: Stage | null;
+  suggestedStageReason: string | null;
+  suggestionDismissed: Stage | null;
+  dncReason: string | null;
+  fieldSources: Record<string, FieldSource>;
+  researchFlags: ResearchFlag[];
+  researchedAt: string | null;
+  portfolioCount: number;
+  portfolioValue: number | null;
+  counties: string[];
+  cities: string[];
+  zips: string[];
+  propertyTypes: string[];
+};
+
+/** Where a lead detail came from, so staff can see it and verify uncertain ones. */
+export type FieldSource = {
+  source: string;
+  detail?: string | null;
+  confidence?: number;
+  verified?: boolean;
+  at?: string;
+};
+export type ResearchFlag = {
+  id?: string;
+  field: string;
+  message: string;
+  severity: "info" | "warning";
+  /** A possible property found by research, waiting for staff to confirm it's theirs. */
+  candidate?: {
+    address: string | null;
+    county: string | null;
+    cad: string | null;
+    accountNumber: string | null;
+    propertyType: string | null;
+    assessedValue: number | null;
+    ownerName: string | null;
+    confidence: number;
+  };
+};
+
+export type LeadProperty = {
+  id: string;
+  leadId: string;
+  createdAt: string;
+  address: string | null;
+  city: string | null;
+  zip: string | null;
+  county: string | null;
+  cad: string | null;
+  accountNumber: string | null;
+  propertyType: string | null;
+  assessedValue: number | null;
+  landValue: number | null;
+  improvementValue: number | null;
+  priorValue: number | null;
+  taxYear: number | null;
+  ownerName: string | null;
+  mailingAddress: string | null;
+  protestDeadline: string | null;
+  source: "manual" | "import" | "podio" | "cad" | "account" | "research";
+  sourceDetail: string | null;
+  verified: boolean;
+  confidence: number | null;
+  notes: string | null;
+  dedupeKey: string;
+};
+
+export type Outcome = "interested" | "not_interested" | "no_answer" | "replied" | "do_not_contact";
+export const OUTCOME_LABEL: Record<Outcome, string> = {
+  interested: "Interested",
+  replied: "Replied",
+  no_answer: "No answer",
+  not_interested: "Not interested",
+  do_not_contact: "Asked not to be contacted",
 };
 
 export type Activity = {
@@ -67,9 +195,23 @@ export type Activity = {
   createdAt: string;
   leadId: string | null;
   campaignId: string | null;
-  kind: "note" | "email" | "sms" | "call" | "stage" | "ai" | "follow_up" | "campaign";
+  kind:
+    | "note"
+    | "email"
+    | "sms"
+    | "call"
+    | "stage"
+    | "ai"
+    | "follow_up"
+    | "campaign"
+    | "import"
+    | "sync"
+    | "research"
+    | "assign";
   summary: string;
   body: string | null;
+  outcome: Outcome | null;
+  createdBy: string | null;
 };
 
 export type CampaignStatus = "draft" | "approved" | "scheduled" | "sending" | "sent" | "paused";
@@ -78,6 +220,9 @@ export type Audience = {
   counties?: string[];
   propertyTypes?: string[];
   leadIds?: string[];
+  /** The saved segment the lead list was taken from (leadIds is that list, frozen at approval). */
+  segmentId?: string;
+  segmentName?: string;
 };
 export type Campaign = {
   id: string;
@@ -121,7 +266,7 @@ export type AiRun = {
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const toLead = (r: any): Lead => ({
+export const toLead = (r: any): Lead => ({
   id: r.id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -144,6 +289,56 @@ const toLead = (r: any): Lead => ({
   aiSummaryAt: r.ai_summary_at,
   lastContactedAt: r.last_contacted_at,
   unsubscribedAt: r.unsubscribed_at,
+  city: r.city ?? null,
+  zip: r.zip ?? null,
+  mailingAddress: r.mailing_address ?? null,
+  podioItemId: r.podio_item_id == null ? null : Number(r.podio_item_id),
+  podioAppId: r.podio_app_id == null ? null : Number(r.podio_app_id),
+  assignedTo: r.assigned_to ?? null,
+  priority: r.priority ?? null,
+  priorityReason: r.priority_reason ?? null,
+  nextAction: r.next_action ?? null,
+  nextActionAt: r.next_action_at ?? null,
+  suggestedStage: r.suggested_stage ?? null,
+  suggestedStageReason: r.suggested_stage_reason ?? null,
+  suggestionDismissed: r.suggestion_dismissed ?? null,
+  dncReason: r.dnc_reason ?? null,
+  fieldSources: r.field_sources ?? {},
+  researchFlags: r.research_flags ?? [],
+  researchedAt: r.researched_at ?? null,
+  portfolioCount: r.portfolio_count ?? 0,
+  portfolioValue: r.portfolio_value == null ? null : Number(r.portfolio_value),
+  counties: r.counties ?? [],
+  cities: r.cities ?? [],
+  zips: r.zips ?? [],
+  propertyTypes: r.property_types ?? [],
+});
+const num = (v: unknown) => (v == null ? null : Number(v));
+export const toProperty = (r: any): LeadProperty => ({
+  id: r.id,
+  leadId: r.lead_id,
+  createdAt: r.created_at,
+  address: r.address,
+  city: r.city,
+  zip: r.zip,
+  county: r.county,
+  cad: r.cad,
+  accountNumber: r.account_number,
+  propertyType: r.property_type,
+  assessedValue: num(r.assessed_value),
+  landValue: num(r.land_value),
+  improvementValue: num(r.improvement_value),
+  priorValue: num(r.prior_value),
+  taxYear: r.tax_year,
+  ownerName: r.owner_name,
+  mailingAddress: r.mailing_address,
+  protestDeadline: r.protest_deadline,
+  source: r.source,
+  sourceDetail: r.source_detail,
+  verified: !!r.verified,
+  confidence: num(r.confidence),
+  notes: r.notes,
+  dedupeKey: r.dedupe_key,
 });
 const toActivity = (r: any): Activity => ({
   id: r.id,
@@ -153,6 +348,8 @@ const toActivity = (r: any): Activity => ({
   kind: r.kind,
   summary: r.summary,
   body: r.body,
+  outcome: r.outcome ?? null,
+  createdBy: r.created_by ?? null,
 });
 const toCampaign = (r: any): Campaign => ({
   id: r.id,
@@ -204,12 +401,69 @@ export async function setMarketingAdmin(userId: string, enabled: boolean): Promi
 }
 
 // ── Load everything (small tables; one load keeps every tab in sync) ────────
+export type Segment = {
+  id: string;
+  name: string;
+  description: string | null;
+  filters: LeadFilters;
+  aiSuggested: boolean;
+  updatedAt: string;
+};
+export type SyncChange = {
+  id: string;
+  createdAt: string;
+  direction: "podio_to_crm" | "crm_to_podio";
+  kind: "create" | "update" | "link";
+  leadId: string | null;
+  podioAppId: number | null;
+  podioItemId: number | null;
+  title: string;
+  changes: SyncFieldChange[];
+  payload: Record<string, unknown> | null;
+  matchConfidence: number | null;
+  matchReason: string | null;
+  status: "pending" | "approved" | "rejected" | "applied" | "failed";
+  error: string | null;
+};
+export type SyncFieldChange = {
+  field: string;
+  label: string;
+  from: string | null;
+  to: string;
+  podioExternalId?: string;
+  podioType?: string;
+};
+export type StaffNotification = {
+  id: string;
+  createdAt: string;
+  leadId: string | null;
+  kind: string;
+  title: string;
+  detail: string | null;
+  readAt: string | null;
+};
+export type RuleMode = "auto" | "suggest" | "off";
+export type MarketingSettings = {
+  rules: Record<string, RuleMode>;
+  inactiveDays: number;
+  notifyEmail: boolean;
+  podio: { appId?: number; appName?: string; mapping?: Record<string, string> };
+};
+export type Staff = { id: string; name: string; email: string; isSuperAdmin: boolean };
+
 export type MarketingData = {
   leads: Lead[];
+  properties: LeadProperty[];
   activities: Activity[];
   campaigns: Campaign[];
   followups: Followup[];
   aiRuns: AiRun[];
+  segments: Segment[];
+  syncChanges: SyncChange[];
+  notifications: StaffNotification[];
+  settings: MarketingSettings;
+  staff: Staff[];
+  me: string | null;
 };
 
 export async function syncLeads(): Promise<{ betaSignups: number; registeredUsers: number }> {
@@ -219,32 +473,51 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 }
 
 export async function loadMarketing(): Promise<MarketingData> {
-  const [l, a, c, f, r] = await Promise.all([
+  const { data: u } = await supabase.auth.getUser();
+  const me = u.user?.id ?? null;
+  const [l, p, a, c, f, r, sg, sc, n, st, staff] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(2000),
+      .limit(5000),
+    supabase.from("marketing_lead_properties").select("*").limit(20000),
     supabase
       .from("marketing_activities")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(1000),
+      .limit(3000),
     supabase.from("marketing_campaigns").select("*").order("created_at", { ascending: false }),
     supabase
       .from("marketing_followups")
       .select("*")
       .order("due_at", { ascending: true })
-      .limit(2000),
+      .limit(3000),
     supabase
       .from("marketing_ai_runs")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase.from("marketing_segments").select("*").order("name"),
+    supabase
+      .from("marketing_sync_changes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500),
+    supabase
+      .from("marketing_notifications")
+      .select("*")
+      .eq("staff_id", me ?? "")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase.from("marketing_settings").select("*").eq("id", 1).maybeSingle(),
+    supabase.rpc("marketing_staff"),
   ]);
-  for (const res of [l, a, c, f, r]) if (res.error) throw res.error;
+  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff]) if (res.error) throw res.error;
+  const s = st.data;
   return {
     leads: (l.data ?? []).map(toLead),
+    properties: (p.data ?? []).map(toProperty),
     activities: (a.data ?? []).map(toActivity),
     campaigns: (c.data ?? []).map(toCampaign),
     followups: (f.data ?? []).map(toFollowup),
@@ -256,12 +529,188 @@ export async function loadMarketing(): Promise<MarketingData> {
       result: x.result,
       leadId: x.lead_id,
     })),
+    segments: (sg.data ?? []).map((x) => ({
+      id: x.id,
+      name: x.name,
+      description: x.description,
+      filters: x.filters ?? {},
+      aiSuggested: x.ai_suggested,
+      updatedAt: x.updated_at,
+    })),
+    syncChanges: (sc.data ?? []).map((x) => ({
+      id: x.id,
+      createdAt: x.created_at,
+      direction: x.direction,
+      kind: x.kind,
+      leadId: x.lead_id,
+      podioAppId: x.podio_app_id == null ? null : Number(x.podio_app_id),
+      podioItemId: x.podio_item_id == null ? null : Number(x.podio_item_id),
+      title: x.title,
+      changes: x.changes ?? [],
+      payload: x.payload,
+      matchConfidence: x.match_confidence == null ? null : Number(x.match_confidence),
+      matchReason: x.match_reason,
+      status: x.status,
+      error: x.error,
+    })),
+    notifications: (n.data ?? []).map((x) => ({
+      id: x.id,
+      createdAt: x.created_at,
+      leadId: x.lead_id,
+      kind: x.kind,
+      title: x.title,
+      detail: x.detail,
+      readAt: x.read_at,
+    })),
+    settings: {
+      rules: s?.rules ?? {},
+      inactiveDays: s?.inactive_days ?? 14,
+      notifyEmail: s?.notify_email ?? true,
+      podio: s?.podio ?? {},
+    },
+    staff: (
+      (staff.data ?? []) as { id: string; name: string; email: string; is_super_admin: boolean }[]
+    ).map((x) => ({
+      id: x.id,
+      name: x.name,
+      email: x.email,
+      isSuperAdmin: x.is_super_admin,
+    })),
+    me,
   };
+}
+
+// ── Settings, rules, notifications, segments ────────────────────────────────
+export async function saveSettings(patch: Partial<MarketingSettings>): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const row: Record<string, unknown> = {
+    updated_by: u.user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (patch.rules) row.rules = patch.rules;
+  if (patch.inactiveDays != null) row.inactive_days = patch.inactiveDays;
+  if (patch.notifyEmail != null) row.notify_email = patch.notifyEmail;
+  if (patch.podio) row.podio = patch.podio;
+  const { error } = await supabase.from("marketing_settings").update(row).eq("id", 1);
+  if (error) throw error;
+}
+
+/** Runs the approved status rules now (they also run hourly and on every Sync). */
+export async function runRules(leadId?: string): Promise<number> {
+  const { data, error } = await supabase.rpc("marketing_run_rules", { p_lead: leadId ?? null });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await supabase
+    .from("marketing_notifications")
+    .update({ read_at: new Date().toISOString() })
+    .in("id", ids);
+  if (error) throw error;
+}
+
+export async function saveSegment(
+  id: string | null,
+  s: { name: string; description?: string | null; filters: LeadFilters; aiSuggested?: boolean },
+): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const row = {
+    name: s.name,
+    description: s.description ?? null,
+    filters: s.filters,
+    ai_suggested: !!s.aiSuggested,
+  };
+  const { error } = id
+    ? await supabase.from("marketing_segments").update(row).eq("id", id)
+    : await supabase.from("marketing_segments").insert({ ...row, created_by: u.user?.id ?? null });
+  if (error) throw error;
+}
+
+export async function deleteSegment(id: string): Promise<void> {
+  const { error } = await supabase.from("marketing_segments").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Portfolio properties ────────────────────────────────────────────────────
+export type PropertyInput = Partial<Omit<LeadProperty, "id" | "createdAt" | "dedupeKey">> & {
+  leadId: string;
+};
+const propertyRow = (p: Partial<PropertyInput>) => {
+  const map: [keyof PropertyInput, string][] = [
+    ["leadId", "lead_id"],
+    ["address", "address"],
+    ["city", "city"],
+    ["zip", "zip"],
+    ["county", "county"],
+    ["cad", "cad"],
+    ["accountNumber", "account_number"],
+    ["propertyType", "property_type"],
+    ["assessedValue", "assessed_value"],
+    ["landValue", "land_value"],
+    ["improvementValue", "improvement_value"],
+    ["priorValue", "prior_value"],
+    ["taxYear", "tax_year"],
+    ["ownerName", "owner_name"],
+    ["mailingAddress", "mailing_address"],
+    ["protestDeadline", "protest_deadline"],
+    ["source", "source"],
+    ["sourceDetail", "source_detail"],
+    ["verified", "verified"],
+    ["confidence", "confidence"],
+    ["notes", "notes"],
+  ];
+  const row: Record<string, unknown> = {};
+  for (const [k, col] of map) if (p[k] !== undefined) row[col] = p[k] === "" ? null : p[k];
+  return row;
+};
+
+/** Adds properties to portfolios; a parcel already linked to that lead is skipped, never duplicated. */
+export async function addProperties(rows: PropertyInput[]): Promise<number> {
+  if (!rows.length) return 0;
+  const { data, error } = await supabase
+    .from("marketing_lead_properties")
+    .upsert(rows.map(propertyRow), {
+      onConflict: "lead_id,dedupe_key",
+      ignoreDuplicates: true,
+      // rows may differ in which fields they set; missing ones take the column default
+      defaultToNull: false,
+    })
+    .select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+export async function updateProperty(id: string, patch: Partial<PropertyInput>): Promise<void> {
+  const { error } = await supabase
+    .from("marketing_lead_properties")
+    .update(propertyRow(patch))
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteProperty(id: string): Promise<void> {
+  const { error } = await supabase.from("marketing_lead_properties").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // ── Leads ───────────────────────────────────────────────────────────────────
 export type LeadInput = Partial<
-  Omit<Lead, "id" | "createdAt" | "updatedAt" | "profileId" | "unsubscribedAt">
+  Omit<
+    Lead,
+    | "id"
+    | "createdAt"
+    | "updatedAt"
+    | "profileId"
+    | "unsubscribedAt"
+    | "portfolioCount"
+    | "portfolioValue"
+    | "counties"
+    | "cities"
+    | "zips"
+    | "propertyTypes"
+  >
 >;
 const leadRow = (p: LeadInput) => {
   const row: Record<string, unknown> = {};
@@ -283,6 +732,23 @@ const leadRow = (p: LeadInput) => {
     ["aiSummary", "ai_summary"],
     ["aiSummaryAt", "ai_summary_at"],
     ["lastContactedAt", "last_contacted_at"],
+    ["city", "city"],
+    ["zip", "zip"],
+    ["mailingAddress", "mailing_address"],
+    ["podioItemId", "podio_item_id"],
+    ["podioAppId", "podio_app_id"],
+    ["assignedTo", "assigned_to"],
+    ["priority", "priority"],
+    ["priorityReason", "priority_reason"],
+    ["nextAction", "next_action"],
+    ["nextActionAt", "next_action_at"],
+    ["suggestedStage", "suggested_stage"],
+    ["suggestedStageReason", "suggested_stage_reason"],
+    ["suggestionDismissed", "suggestion_dismissed"],
+    ["dncReason", "dnc_reason"],
+    ["fieldSources", "field_sources"],
+    ["researchFlags", "research_flags"],
+    ["researchedAt", "researched_at"],
   ];
   for (const [k, col] of map) if (p[k] !== undefined) row[col] = p[k] === "" ? null : p[k];
   return row;
@@ -324,6 +790,7 @@ export async function logActivity(a: {
   kind: Activity["kind"];
   summary: string;
   body?: string | null;
+  outcome?: Outcome | null;
 }): Promise<Activity> {
   const { data: u } = await supabase.auth.getUser();
   const { data, error } = await supabase
@@ -334,6 +801,7 @@ export async function logActivity(a: {
       kind: a.kind,
       summary: a.summary,
       body: a.body ?? null,
+      outcome: a.outcome ?? null,
       created_by: u.user?.id ?? null,
     })
     .select("*")
@@ -342,15 +810,34 @@ export async function logActivity(a: {
   return toActivity(data);
 }
 
-/** Change stage and record it in the lead's history in one step. */
-export async function setLeadStage(lead: Lead, stage: Stage): Promise<Lead> {
-  const next = await updateLead(lead.id, { stage });
-  await logActivity({
-    leadId: lead.id,
-    kind: "stage",
-    summary: `Stage: ${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[stage]}`,
+/**
+ * Manual status change. The database writes it to the lead's history (one
+ * trigger for staff, rules and the account sync alike) and, for Do Not
+ * Contact, cancels anything queued to go out.
+ */
+export async function setLeadStage(lead: Lead, stage: Stage, reason?: string): Promise<Lead> {
+  return updateLead(lead.id, {
+    stage,
+    ...(stage === "do_not_contact"
+      ? { dncReason: reason ?? lead.dncReason ?? "Set by staff" }
+      : {}),
+    // a suggestion staff turned down isn't offered again
+    ...(lead.suggestedStage && lead.suggestedStage !== stage
+      ? {
+          suggestionDismissed: lead.suggestedStage,
+          suggestedStage: null,
+          suggestedStageReason: null,
+        }
+      : {}),
   });
-  return next;
+}
+
+export async function dismissSuggestion(lead: Lead): Promise<Lead> {
+  return updateLead(lead.id, {
+    suggestionDismissed: lead.suggestedStage,
+    suggestedStage: null,
+    suggestedStageReason: null,
+  });
 }
 
 // ── Campaigns ───────────────────────────────────────────────────────────────
@@ -403,14 +890,22 @@ export async function deleteCampaign(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Same rule as audienceFor() in marketing-send.ts — Do Not Contact and unsubscribed never included. */
 export function audienceLeads(audience: Audience, leads: Lead[]): Lead[] {
   return leads.filter((l) => {
-    if (!l.email || l.unsubscribedAt) return false;
+    if (!l.email || l.unsubscribedAt || isDnc(l)) return false;
     if (audience.leadIds?.length) return audience.leadIds.includes(l.id);
-    if (audience.stages?.length ? !audience.stages.includes(l.stage) : l.stage === "lost")
+    if (audience.stages?.length ? !audience.stages.includes(l.stage) : l.stage === "not_interested")
       return false;
-    if (audience.counties?.length && !audience.counties.includes(l.county ?? "")) return false;
-    if (audience.propertyTypes?.length && !audience.propertyTypes.includes(l.propertyType ?? ""))
+    if (
+      audience.counties?.length &&
+      !audience.counties.some((c) => c === l.county || l.counties.includes(c))
+    )
+      return false;
+    if (
+      audience.propertyTypes?.length &&
+      !audience.propertyTypes.some((t) => t === l.propertyType || l.propertyTypes.includes(t))
+    )
       return false;
     return true;
   });
@@ -470,16 +965,22 @@ export async function sendFollowupEmail(followupId: string) {
 // ── Scoring (one rule, used everywhere) ─────────────────────────────────────
 export type Score = { score: number; reasons: string[] };
 export function scoreLead(lead: Lead, activities: Activity[], now = new Date()): Score {
-  if (lead.stage === "customer") return { score: 0, reasons: ["Already a paying customer"] };
-  if (lead.stage === "lost") return { score: 0, reasons: ["Marked lost"] };
+  if (lead.stage === "subscribed") return { score: 0, reasons: ["Already subscribed"] };
+  if (lead.stage === "not_interested") return { score: 0, reasons: ["Not interested"] };
+  if (lead.stage === "do_not_contact") return { score: 0, reasons: ["Do Not Contact"] };
   let s = 0;
   const reasons: string[] = [];
-  const v = lead.appraisedValue ?? 0;
+  const v = lead.portfolioValue ?? lead.appraisedValue ?? 0;
   const valuePts = v >= 5e6 ? 30 : v >= 2e6 ? 25 : v >= 1e6 ? 20 : v >= 5e5 ? 12 : v > 0 ? 5 : 0;
   if (valuePts) {
     s += valuePts;
-    reasons.push(`Property value $${Math.round(v).toLocaleString("en-US")}`);
+    reasons.push(
+      lead.portfolioCount > 1
+        ? `Portfolio of ${lead.portfolioCount} properties worth $${Math.round(v).toLocaleString("en-US")}`
+        : `Property value $${Math.round(v).toLocaleString("en-US")}`,
+    );
   }
+  if (lead.portfolioCount >= 3) s += 10;
   const days = daysUntilIso(lead.protestDeadline, now);
   if (days != null && days >= 0 && days <= 60) {
     s += days <= 30 ? 20 : 12;
@@ -487,11 +988,15 @@ export function scoreLead(lead: Lead, activities: Activity[], now = new Date()):
   }
   const stagePts: Record<Stage, number> = {
     new: 5,
+    researching: 5,
+    ready: 10,
     contacted: 10,
     interested: 20,
     registered: 15,
-    customer: 0,
-    lost: 0,
+    subscribed: 0,
+    no_response: 2,
+    not_interested: 0,
+    do_not_contact: 0,
   };
   s += stagePts[lead.stage];
   if (lead.stage === "interested") reasons.push("Said they're interested");
@@ -518,17 +1023,23 @@ export function funnel(leads: Lead[], now = new Date()) {
   const newLeads = leads.filter(
     (l) => now.getTime() - new Date(l.createdAt).getTime() < 7 * 864e5,
   ).length;
-  const registered = count(["registered", "customer"]);
-  const paying = count(["customer"]);
+  const registered = count(["registered", "subscribed"]);
+  const paying = count(["subscribed"]);
   return {
     total,
     newLeads,
-    activeProspects: count(["new", "contacted", "interested"]),
-    // Someone actually reached out — a contacted/interested stage or a logged
-    // contact. (Users who signed up on their own were never "contacted".)
+    activeProspects: count(["new", "researching", "ready", "contacted", "interested"]),
+    researching: count(["new", "researching"]),
+    ready: count(["ready"]),
+    // Someone actually reached out — a contacted-or-later outreach status or a
+    // logged contact. (Users who signed up on their own were never "contacted".)
     contacted: leads.filter(
-      (l) => l.stage === "contacted" || l.stage === "interested" || !!l.lastContactedAt,
+      (l) =>
+        ["contacted", "interested", "no_response", "not_interested"].includes(l.stage) ||
+        !!l.lastContactedAt,
     ).length,
+    noResponse: count(["no_response"]),
+    doNotContact: count(["do_not_contact"]),
     interested: count(["interested"]),
     registered,
     paying,
@@ -542,7 +1053,7 @@ export function funnel(leads: Lead[], now = new Date()) {
 export type Alert = {
   id: string;
   severity: "critical" | "warning" | "info";
-  kind: "priority" | "overdue" | "deadline" | "campaign" | "opportunity";
+  kind: "priority" | "overdue" | "deadline" | "campaign" | "opportunity" | "status" | "inactive";
   title: string;
   detail: string;
   tab: "leads" | "campaigns" | "followups";
@@ -569,7 +1080,27 @@ export function monitor(d: MarketingData, now = new Date()): Alert[] {
     });
   }
   for (const l of d.leads) {
-    if (l.stage === "customer" || l.stage === "lost") continue;
+    if (!OPEN_STAGES.includes(l.stage) && l.stage !== "registered") continue;
+    if (l.suggestedStage)
+      out.push({
+        id: `suggest-${l.id}`,
+        severity: "info",
+        kind: "status",
+        title: `Status suggestion: ${name(l)} → ${STAGE_LABEL[l.suggestedStage]}`,
+        detail: l.suggestedStageReason ?? "Review and accept or dismiss",
+        tab: "leads",
+        leadId: l.id,
+      });
+    if (l.nextAction && l.nextActionAt && new Date(l.nextActionAt) < now)
+      out.push({
+        id: `next-${l.id}`,
+        severity: "warning",
+        kind: "overdue",
+        title: `Next action due: ${name(l)}`,
+        detail: l.nextAction,
+        tab: "leads",
+        leadId: l.id,
+      });
     const days = daysUntilIso(l.protestDeadline, now);
     if (days != null && days >= 0 && days <= 21)
       out.push({
@@ -598,13 +1129,30 @@ export function monitor(d: MarketingData, now = new Date()): Alert[] {
         tab: "leads",
         leadId: l.id,
       });
-    if (l.stage === "registered" && (l.appraisedValue ?? 0) >= 5e5 && !hasPending)
+    const worth = l.portfolioValue ?? l.appraisedValue ?? 0;
+    if (l.stage === "registered" && worth >= 5e5 && !hasPending)
       out.push({
         id: `opp-${l.id}`,
         severity: "info",
         kind: "opportunity",
         title: `Conversion opportunity: ${name(l)}`,
-        detail: `Signed up, not paying — $${Math.round(l.appraisedValue ?? 0).toLocaleString("en-US")} property`,
+        detail: `Signed up, not subscribed — ${l.portfolioCount > 1 ? `${l.portfolioCount} properties, ` : ""}$${Math.round(worth).toLocaleString("en-US")}`,
+        tab: "leads",
+        leadId: l.id,
+      });
+    const lastTouch = d.activities.find((a) => a.leadId === l.id)?.createdAt ?? l.createdAt;
+    const quiet = (now.getTime() - new Date(lastTouch).getTime()) / 864e5;
+    if (
+      ["ready", "contacted", "interested"].includes(l.stage) &&
+      quiet > d.settings.inactiveDays &&
+      !hasPending
+    )
+      out.push({
+        id: `inactive-${l.id}`,
+        severity: l.stage === "interested" ? "warning" : "info",
+        kind: "inactive",
+        title: `Going quiet: ${name(l)}`,
+        detail: `${STAGE_LABEL[l.stage]} · no activity for ${Math.round(quiet)} days`,
         tab: "leads",
         leadId: l.id,
       });
@@ -685,9 +1233,10 @@ export function leadFacts(l: Lead, acts: Activity[], fups: Followup[]): string {
     .map((f) => `- due ${f.dueAt.slice(0, 10)} ${f.channel}: ${f.subject ?? ""}`)
     .join("\n");
   return [
-    `Name: ${l.fullName ?? "unknown"}; company: ${l.company ?? "-"}; email: ${l.email ? "yes" : "no"}; phone: ${l.phone ? "yes" : "no"}`,
-    `Source: ${SOURCE_LABEL[l.source]}; stage: ${STAGE_LABEL[l.stage]}; created ${l.createdAt.slice(0, 10)}`,
-    `Property: ${l.propertyAddress ?? "-"}; county: ${l.county ?? "-"}; type: ${l.propertyType ?? "-"}; appraised value: ${l.appraisedValue ?? "-"}; protest deadline: ${l.protestDeadline ?? "-"}`,
+    `Name: ${l.fullName ?? "unknown"}; company: ${l.company ?? "-"}; owner(s) on record: ${l.ownerNames ?? "-"}; email: ${l.email ? "yes" : "no"}; phone: ${l.phone ? "yes" : "no"}; mailing address: ${l.mailingAddress ? "yes" : "no"}`,
+    `Source: ${SOURCE_LABEL[l.source]}; status: ${STAGE_LABEL[l.stage]}; created ${l.createdAt.slice(0, 10)}`,
+    `Portfolio: ${l.portfolioCount} propert${l.portfolioCount === 1 ? "y" : "ies"}, total assessed ${l.portfolioValue ?? "-"}, counties ${l.counties.join(", ") || "-"}`,
+    `Primary property: ${l.propertyAddress ?? "-"}; county: ${l.county ?? "-"}; type: ${l.propertyType ?? "-"}; assessed value: ${l.appraisedValue ?? "-"}; protest deadline: ${l.protestDeadline ?? "-"}`,
     `Notes: ${l.notes ?? "-"}`,
     `History:\n${hist || "- none"}`,
     `Pending follow-ups:\n${pending || "- none"}`,

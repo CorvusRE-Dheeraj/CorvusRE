@@ -24,7 +24,7 @@ function groupBy(leads: Lead[], key: (l: Lead) => string | null): Row[] {
     const k = key(l) || "Unknown";
     const r = m.get(k) ?? { key: k, leads: 0, paying: 0 };
     r.leads++;
-    if (l.stage === "customer") r.paying++;
+    if (l.stage === "subscribed") r.paying++;
     m.set(k, r);
   }
   return [...m.values()].sort((a, b) => b.leads - a.leads);
@@ -66,11 +66,11 @@ export function Analytics({ data, onAiRun }: { data: MarketingData; onAiRun: (r:
   // when it was synced as one.
   const becameCustomer = (l: Lead) =>
     data.activities.find(
-      (a) => a.leadId === l.id && a.kind === "stage" && a.summary.endsWith(STAGE_LABEL.customer),
+      (a) => a.leadId === l.id && a.kind === "stage" && a.summary.endsWith(STAGE_LABEL.subscribed),
     )?.createdAt ?? l.updatedAt;
   const customersByMonth = months.map((m) => ({
     label: monthLabel(m),
-    value: data.leads.filter((l) => l.stage === "customer" && monthKey(becameCustomer(l)) === m)
+    value: data.leads.filter((l) => l.stage === "subscribed" && monthKey(becameCustomer(l)) === m)
       .length,
   }));
   const sent = data.campaigns.filter((c) => c.status === "sent");

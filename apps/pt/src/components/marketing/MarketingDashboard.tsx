@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  PIPELINE,
   STAGE_LABEL,
   funnel,
   monitor,
@@ -47,13 +48,16 @@ export function MarketingDashboard({
         <StatTile
           label="Active prospects"
           value={f.activeProspects}
-          hint="New, contacted or interested"
-          onClick={() => go("leads", { stages: ["new", "contacted", "interested"] })}
+          hint={`${f.researching} researching · ${f.ready} ready for outreach`}
+          onClick={() =>
+            go("leads", { stages: ["new", "researching", "ready", "contacted", "interested"] })
+          }
         />
         <StatTile
           label="Contacted"
           value={f.contacted}
-          onClick={() => go("leads", { stages: ["contacted"] })}
+          hint={f.noResponse ? `${f.noResponse} no response` : undefined}
+          onClick={() => go("leads", { stages: ["contacted", "no_response"] })}
         />
         <StatTile
           label="Interested"
@@ -66,9 +70,10 @@ export function MarketingDashboard({
           onClick={() => go("leads", { stages: ["registered"] })}
         />
         <StatTile
-          label="Paying customers"
+          label="Subscribed"
           value={f.paying}
-          onClick={() => go("leads", { stages: ["customer"] })}
+          hint="Paying customers"
+          onClick={() => go("leads", { stages: ["subscribed"] })}
         />
         <StatTile
           label="Lead → paying"
@@ -128,12 +133,10 @@ export function MarketingDashboard({
           <h2 className="text-sm font-semibold">Pipeline</h2>
           <div className="mt-3">
             <Bars
-              rows={(["new", "contacted", "interested", "registered", "customer"] as const).map(
-                (s) => ({
-                  label: STAGE_LABEL[s],
-                  value: data.leads.filter((l) => l.stage === s).length,
-                }),
-              )}
+              rows={PIPELINE.map((s) => ({
+                label: STAGE_LABEL[s],
+                value: data.leads.filter((l) => l.stage === s).length,
+              }))}
             />
           </div>
         </section>

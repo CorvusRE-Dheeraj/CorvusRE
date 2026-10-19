@@ -4,12 +4,14 @@
 // Body (one of):
 //   { campaignId }  send an approved/scheduled email campaign to its audience now
 //   { followupId }  send one email follow-up and mark it done
-//   { process: "due" }  send every scheduled campaign whose time has come
-//                       (the hourly marketing-due cron job)
+//   { process: "due" }  send every scheduled campaign whose time has come, run
+//                       the status rules + lead monitor, and email each staff
+//                       member a digest of what needs them (the hourly
+//                       marketing-due cron job)
 //
 // Callers: a Marketing Admin / Super Admin (their JWT), or the cron job (the
 // service-role key). Every email carries a one-click unsubscribe link; leads
-// who unsubscribed are never emailed. Each send is written to the lead's
+// who unsubscribed or are marked Do Not Contact are never emailed. Each send is written to the lead's
 // history (marketing_activities) so Leads, Follow-ups and Analytics agree.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { emailShell, escapeHtml } from "../email-shell.ts";
@@ -80,16 +82,20 @@ async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>
     .select("id, full_name, email, stage, county, property_type, property_address, unsubscribe_token")
     .is("unsubscribed_at", null)
     .not("email", "is", null)
+    .neq("stage", "do_not_contact")
     .limit(MAX_RECIPIENTS);
+  // Same rule as audienceLeads() in apps/pt/src/lib/marketing.ts.
   const ids = audience.leadIds as string[] | undefined;
   if (ids?.length) q = q.in("id", ids);
-  const stages = audience.stages as string[] | undefined;
-  if (stages?.length) q = q.in("stage", stages);
-  else q = q.neq("stage", "lost");
-  const counties = audience.counties as string[] | undefined;
-  if (counties?.length) q = q.in("county", counties);
-  const types = audience.propertyTypes as string[] | undefined;
-  if (types?.length) q = q.in("property_type", types);
+  else {
+    const stages = audience.stages as string[] | undefined;
+    if (stages?.length) q = q.in("stage", stages);
+    else q = q.neq("stage", "not_interested");
+    const counties = audience.counties as string[] | undefined;
+    if (counties?.length) q = q.overlaps("counties", counties);
+    const types = audience.propertyTypes as string[] | undefined;
+    if (types?.length) q = q.overlaps("property_types", types);
+  }
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as Lead[];
@@ -114,9 +120,7 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
         lead_id: lead.id, campaign_id: campaignId, kind: "email",
         summary: `Campaign email: ${c.name}`, body: personalize(c.subject, lead), created_by: actor,
       });
-      const patch: Record<string, unknown> = { last_contacted_at: new Date().toISOString() };
-      if (lead.stage === "new") patch.stage = "contacted";
-      await db.from("marketing_leads").update(patch).eq("id", lead.id);
+      await db.from("marketing_leads").update({ last_contacted_at: new Date().toISOString() }).eq("id", lead.id);
     } catch (e) {
       failed++;
       if (errors.length < 5) errors.push(e instanceof Error ? e.message : String(e));
@@ -131,13 +135,15 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
     summary: `Campaign "${c.name}" sent to ${sent} of ${leads.length}${failed ? ` (${failed} failed)` : ""}`,
     created_by: actor,
   });
+  // status follows the approved rules (e.g. Ready for Outreach → Contacted)
+  await db.rpc("marketing_apply_rules", { p_lead: null });
   return stats;
 }
 
 async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: string, actor: string | null) {
   const { data: f, error } = await db
     .from("marketing_followups")
-    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at)")
+    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to)")
     .eq("id", followupId)
     .single();
   if (error || !f) throw new Error("Follow-up not found");
@@ -146,6 +152,7 @@ async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: s
   const lead = f.lead as Lead & { unsubscribed_at: string | null };
   if (!lead?.email) throw new Error("This lead has no email address.");
   if (lead.unsubscribed_at) throw new Error("This lead unsubscribed from marketing email.");
+  if (lead.stage === "do_not_contact") throw new Error("This lead is marked Do Not Contact.");
   if (!f.message) throw new Error("Write or generate the message first.");
   const subject = f.subject || "Following up";
   await sendOne(resendKey, lead.email, personalize(subject, lead), renderEmail(subject, f.message, lead), `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`);
@@ -154,10 +161,64 @@ async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: s
   await db.from("marketing_activities").insert({
     lead_id: lead.id, kind: "email", summary: `Follow-up email: ${personalize(subject, lead)}`, body: personalize(f.message, lead), created_by: actor,
   });
-  const patch: Record<string, unknown> = { last_contacted_at: now };
-  if (lead.stage === "new") patch.stage = "contacted";
-  await db.from("marketing_leads").update(patch).eq("id", lead.id);
+  await db.from("marketing_leads").update({ last_contacted_at: now }).eq("id", lead.id);
+  await db.rpc("marketing_apply_rules", { p_lead: lead.id });
   return { sent: 1 };
+}
+
+// One email per staff member with what's new for them since the last digest
+// (at most one a day) — overdue follow-ups, actions due, quiet leads, status
+// suggestions and engagement changes on the leads assigned to them.
+async function sendDigests(db: SupabaseClient, resendKey: string) {
+  const { data: settings } = await db.from("marketing_settings").select("notify_email").eq("id", 1).maybeSingle();
+  if (settings && settings.notify_email === false) return { digests: 0 };
+  const { data: notes } = await db
+    .from("marketing_notifications")
+    .select("id, staff_id, title, detail, created_at")
+    .is("emailed_at", null)
+    .is("read_at", null)
+    .gte("created_at", new Date(Date.now() - 3 * 864e5).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  const byStaff = new Map<string, typeof notes>();
+  for (const n of notes ?? []) byStaff.set(n.staff_id, [...(byStaff.get(n.staff_id) ?? []), n]);
+  let digests = 0;
+  for (const [staffId, list] of byStaff) {
+    const { data: recent } = await db
+      .from("marketing_notifications")
+      .select("id")
+      .eq("staff_id", staffId)
+      .gte("emailed_at", new Date(Date.now() - 20 * 36e5).toISOString())
+      .limit(1);
+    if (recent?.length) continue;
+    const { data: staff } = await db.from("profiles").select("email, first_name, is_admin, marketing_admin").eq("id", staffId).maybeSingle();
+    if (!staff?.email || (!staff.is_admin && !staff.marketing_admin)) continue;
+    const items = list!.slice(0, 15);
+    const rows = items
+      .map(
+        (n) =>
+          `<tr><td style="padding:8px 0; border-bottom:1px solid #e5e7eb;"><div style="font-weight:600; color:#16233a;">${escapeHtml(n.title)}</div>${n.detail ? `<div style="color:#5b6472; font-size:13px;">${escapeHtml(n.detail)}</div>` : ""}</td></tr>`,
+      )
+      .join("");
+    const html = emailShell({
+      eyebrow: "Marketing",
+      heading: `${list!.length} lead${list!.length === 1 ? " needs" : "s need"} you`,
+      intro: `<p style="margin:0 0 14px;">Hi ${escapeHtml(staff.first_name ?? "there")}, here's what changed on the leads assigned to you.</p>`,
+      bodyRows: rows,
+      ctaLabel: "Open Marketing",
+      ctaHref: `${SITE}/marketing`,
+      footnote: list!.length > items.length ? `+${list!.length - items.length} more in the workspace.` : undefined,
+    });
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: FROM, to: [staff.email], subject: `CorvusPT Marketing: ${list!.length} item${list!.length === 1 ? "" : "s"} need you`, html }),
+    });
+    if (!res.ok) continue;
+    await db.from("marketing_notifications").update({ emailed_at: new Date().toISOString() }).in("id", list!.map((n) => n.id));
+    digests++;
+  }
+  return { digests };
 }
 
 function jwtRole(token: string): string | null {
@@ -215,7 +276,9 @@ export async function handle(req: Request): Promise<Response> {
           results.push({ id: c.id, error: e instanceof Error ? e.message : String(e) });
         }
       }
-      return json({ processed: results.length, results });
+      const monitor = await db.rpc("marketing_monitor");
+      const digest = await sendDigests(db, resendKey).catch((e) => ({ error: String(e) }));
+      return json({ processed: results.length, results, monitor: monitor.data ?? monitor.error?.message, digest });
     }
     return json({ error: "Nothing to send." }, 400);
   } catch (err) {

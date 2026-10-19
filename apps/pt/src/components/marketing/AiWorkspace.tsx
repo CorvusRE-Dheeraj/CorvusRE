@@ -79,7 +79,14 @@ export function AiWorkspace({
   onAiRun: (r: AiRun) => void;
 }) {
   const [scope, setScope] = useState<"all" | "segment" | "lead">("all");
-  const [stages, setStages] = useState<Stage[]>(["new", "contacted", "interested", "registered"]);
+  const [stages, setStages] = useState<Stage[]>([
+    "new",
+    "researching",
+    "ready",
+    "contacted",
+    "interested",
+    "registered",
+  ]);
   const [county, setCounty] = useState("");
   const [leadId, setLeadId] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -256,7 +263,7 @@ export function AiWorkspace({
                               ? { stages, counties: county ? [county] : undefined }
                               : scope === "lead" && target
                                 ? { leadIds: [target.id] }
-                                : { stages: ["new", "contacted", "interested"] },
+                                : { stages: ["ready", "contacted", "interested"] },
                         });
                         await reload();
                         toast.success("Saved as a campaign draft.");

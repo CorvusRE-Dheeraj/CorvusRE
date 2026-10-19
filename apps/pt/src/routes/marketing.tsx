@@ -1,12 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Bell, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
 import {
   getStaffRole,
   loadMarketing,
+  markNotificationsRead,
+  relDays,
   monitor,
   syncLeads,
   type AiRun,
@@ -34,7 +36,7 @@ const TABS: { key: MarketingTab; label: string; purpose: string }[] = [
   {
     key: "leads",
     label: "Leads & CRM",
-    purpose: "Prospect profiles, properties, scores and history",
+    purpose: "Every prospect: portfolios, status, research, segments, Podio and history",
   },
   {
     key: "campaigns",
@@ -55,6 +57,7 @@ function MarketingPage() {
   const [focus, setFocus] = useState<Focus>({});
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [bell, setBell] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -114,6 +117,7 @@ function MarketingPage() {
     } as Partial<Record<MarketingTab, number>>;
   }, [data]);
 
+  const unread = data?.notifications.filter((n) => !n.readAt) ?? [];
   if (!role) return null;
   const current = TABS.find((t) => t.key === tab)!;
 
@@ -128,6 +132,78 @@ function MarketingPage() {
           <p className="text-sm text-muted-foreground">{current.purpose}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {data && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setBell((b) => !b)}
+                aria-expanded={bell}
+                aria-label={`Lead notifications${unread.length ? ` (${unread.length} new)` : ""}`}
+                className="btn-outline relative px-2.5 text-sm"
+              >
+                <Bell className="h-4 w-4" aria-hidden />
+                {unread.length > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 rounded-full bg-rose-600 px-1.5 text-[10px] font-bold text-white">
+                    {unread.length}
+                  </span>
+                )}
+              </button>
+              {bell && (
+                <div className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-border bg-background p-2 shadow-lg">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="text-sm font-semibold">For you</span>
+                    {unread.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs text-accent hover:underline"
+                        onClick={async () => {
+                          await markNotificationsRead(unread.map((n) => n.id)).catch(
+                            () => undefined,
+                          );
+                          await reload();
+                        }}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  {data.notifications.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-muted-foreground">
+                      Nothing yet. Leads assigned to you show up here when they need action.
+                    </p>
+                  ) : (
+                    <ul className="max-h-80 overflow-y-auto">
+                      {data.notifications.slice(0, 30).map((n) => (
+                        <li key={n.id}>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setBell(false);
+                              if (!n.readAt)
+                                await markNotificationsRead([n.id]).catch(() => undefined);
+                              go("leads", n.leadId ? { leadId: n.leadId } : {});
+                              void reload();
+                            }}
+                            className={`w-full rounded-md px-2 py-1.5 text-left hover:bg-secondary/50 ${n.readAt ? "opacity-60" : ""}`}
+                          >
+                            <span className="block text-sm font-medium">{n.title}</span>
+                            {n.detail && (
+                              <span className="block text-xs text-muted-foreground">
+                                {n.detail}
+                              </span>
+                            )}
+                            <span className="block text-[10px] text-muted-foreground">
+                              {relDays(n.createdAt)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {role.isSuperAdmin && (
             <Link to="/admin" className="btn-outline text-sm">
               Admin
@@ -178,7 +254,7 @@ function MarketingPage() {
         ) : tab === "dashboard" ? (
           <MarketingDashboard data={data} go={go} onAiRun={onAiRun} />
         ) : tab === "leads" ? (
-          <LeadsCrm data={data} focus={focus} go={go} reload={reload} />
+          <LeadsCrm data={data} focus={focus} go={go} reload={reload} onAiRun={onAiRun} />
         ) : tab === "campaigns" ? (
           <Campaigns data={data} focus={focus} reload={reload} />
         ) : tab === "ai" ? (

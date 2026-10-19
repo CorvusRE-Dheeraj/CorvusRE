@@ -83,9 +83,10 @@ const TAB_COLOR: Record<string, { icon: string; active: string }> = {
 
 // Pages that keep their own full-width marketing/tooling layout instead of the
 // account sidebar: the home page (explicitly excluded), the admin workspace
-// (a different persona than "my properties"), and sign-in (nothing to show a
-// signed-out visitor a dashboard for).
-const NO_SHELL_PREFIXES = ["/admin", "/admin-login", "/sign-in"];
+// and the marketing workspace (a different persona than "my properties"),
+// sign-in (nothing to show a signed-out visitor a dashboard for), and the
+// public unsubscribe page.
+const NO_SHELL_PREFIXES = ["/admin", "/admin-login", "/sign-in", "/marketing", "/unsubscribe"];
 
 // Exported so SiteNav (SiteChrome.tsx) can tell whether this tab bar's own
 // "Dashboard" entry is about to render on the current page — its top nav

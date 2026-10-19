@@ -115,3 +115,20 @@ export async function podioPost<T>(
   if (!res.ok) throw new Error(`Podio ${path} ${res.status}`);
   return (await res.json()) as T;
 }
+
+export async function podioPut<T>(
+  token: string,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const res = await fetch(`${PODIO_API}${path}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `OAuth2 ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Podio ${path} ${res.status}`);
+  return (await res.json().catch(() => ({}))) as T;
+}

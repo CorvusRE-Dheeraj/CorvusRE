@@ -4,9 +4,11 @@ import { toast } from "sonner";
 import { Modal } from "@/components/Modal";
 import { getErrorMessage } from "@/lib/error-message";
 import {
+  isDnc,
   leadFacts,
   logActivity,
   runAi,
+  runRules,
   saveFollowup,
   sendFollowupEmail,
   splitDraft,
@@ -209,10 +211,8 @@ function FollowupRow({
             summary: `Follow-up done (${f.channel})${f.subject ? `: ${f.subject}` : ""}`,
             body: f.message,
           });
-          await updateLead(lead.id, {
-            lastContactedAt: new Date().toISOString(),
-            ...(lead.stage === "new" ? { stage: "contacted" } : {}),
-          });
+          await updateLead(lead.id, { lastContactedAt: new Date().toISOString() });
+          await runRules(lead.id);
         }
       },
       status === "done" ? "Marked done." : "Skipped.",
@@ -234,6 +234,9 @@ function FollowupRow({
             {new Date(f.dueAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
             {late && <span className="ml-1 font-semibold text-rose-700">overdue</span>}
             {f.sequenceName && ` · ${f.sequenceName} step ${f.sequenceStep}`}
+            {lead && isDnc(lead) && (
+              <span className="ml-1 font-semibold text-rose-700">· Do Not Contact</span>
+            )}
             {lead?.unsubscribedAt && f.channel === "email" && (
               <span className="ml-1 font-semibold text-rose-700">· unsubscribed</span>
             )}
@@ -289,7 +292,7 @@ function FollowupRow({
           {f.channel === "email" && (
             <button
               type="button"
-              disabled={!!busy || !f.message || !!lead?.unsubscribedAt}
+              disabled={!!busy || !f.message || !!lead?.unsubscribedAt || (!!lead && isDnc(lead))}
               onClick={() => void step("send", () => sendFollowupEmail(f.id), "Email sent.")}
               className="btn-primary btn-primary-hover text-xs disabled:opacity-60"
               title={!f.message ? "Write the message first" : undefined}
@@ -354,7 +357,7 @@ function FollowupEditor({
   const [message, setMessage] = useState(followup?.message ?? "");
   const [busy, setBusy] = useState(false);
   const leads = [...data.leads]
-    .filter((l) => l.stage !== "lost")
+    .filter((l) => !isDnc(l))
     .sort((a, b) => (a.fullName ?? a.email ?? "").localeCompare(b.fullName ?? b.email ?? ""));
   return (
     <Modal onClose={onClose} wide>
