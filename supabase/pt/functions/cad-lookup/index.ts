@@ -27,6 +27,7 @@ import {
   isBusinessPersonalProperty,
 } from "../_shared/bexar-tax-office.ts";
 import { rateLimit } from "../_shared/rate-limit.ts";
+import { statewideLookup } from "../_shared/statewide-parcels.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -100,6 +101,9 @@ type CadRecord = {
   buildingClass?: string | null;
   lotSizeSqft?: number | null;
   lotSizeAcres?: number | null;
+  // "statewide" = found through the State's parcel layer for a county
+  // without its own integration (see _shared/statewide-parcels.ts)
+  dataSource?: "statewide";
 };
 
 // Per-county parcel-layer field names for structure / lot detail. Only the
@@ -4520,8 +4524,28 @@ Deno.serve(async (req: Request) => {
     // branch — computed here too so isConfidentMatch knows which shape of
     // "confident" applies to this particular query.
     const isNameQuery = !parseAddressForQuery(address, "nearby");
-    let result: LookupResult;
-    if (hintedQuery) {
+    // Every other Texas county (see _shared/statewide-parcels.ts): the
+    // State's statewide parcel layer. Addresses only, never names.
+    const tryStatewide = async (): Promise<LookupResult | null> => {
+      if (isNameQuery) return null;
+      try {
+        return await statewideLookup(address);
+      } catch {
+        return null; // state service down / slow
+      }
+    };
+    // Google already placed it in a county without its own integration —
+    // go to the state layer first instead of sweeping the 13 counties.
+    const otherCounty =
+      typeof body.countyHint === "string" &&
+      body.countyHint.trim() !== "" &&
+      !countyQueryForHint(body.countyHint);
+    let result: LookupResult | null = otherCounty ? await tryStatewide() : null;
+    if (result && result.matched === false && result.nearby.length === 0)
+      result = null;
+    if (result) {
+      // found statewide
+    } else if (hintedQuery) {
       const hinted = await runLookup(
         address,
         queryTimeoutMs,
@@ -4538,6 +4562,23 @@ Deno.serve(async (req: Request) => {
         ALL_COUNTY_QUERIES,
         preview,
       );
+    }
+    // Nothing in the 13 counties — or only "nearby" guesses in a different
+    // ZIP than the one typed (same street name in another county) → the
+    // state layer, kept only if it actually found something.
+    const zip = address.match(/\b(\d{5})(?:-\d{4})?\s*$/)?.[1];
+    if (
+      !otherCounty &&
+      result.matched === false &&
+      (result.nearby.length === 0 ||
+        (zip && result.nearby.every((r) => !r.propertyAddress.includes(zip))))
+    ) {
+      const statewide = await tryStatewide();
+      if (
+        statewide &&
+        (statewide.matched !== false || statewide.nearby.length > 0)
+      )
+        result = statewide;
     }
 
     return new Response(JSON.stringify(withValueYearsResult(result)), {

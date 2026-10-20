@@ -4,7 +4,7 @@ import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { addBppAccount, nextBppRenditionDeadline } from "@/lib/bpp-accounts";
-import { SUPPORTED_COUNTY_NAMES } from "@/lib/cad-record-url";
+import { isTexasCounty, TEXAS_COUNTY_NAMES } from "@/lib/county-coverage";
 import { classifyDocument, validateDocument, type Extraction } from "@/lib/document-ai";
 import { getFirstPage } from "@/lib/pdf-utils";
 import { fileToDataUrl, readIntake, UPLOAD_LIMITS } from "@/lib/intake-store";
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/dashboard/_layout/bpp-intake")({
   component: BppIntake,
 });
 
-const COUNTIES = Array.from(SUPPORTED_COUNTY_NAMES).sort();
+const COUNTIES = TEXAS_COUNTY_NAMES;
 
 type Step = "business" | "value" | "confirm";
 
@@ -59,7 +59,7 @@ function BppIntake() {
     setBusinessName((prev) => prev || e.propertyName || e.ownerName || "");
     if (e.cadName) {
       const short = e.cadName.replace(/\s*(Central\s+)?Appraisal District$/i, "").trim();
-      setCad((prev) => prev || (SUPPORTED_COUNTY_NAMES.has(short) ? short : e.county || ""));
+      setCad((prev) => prev || (isTexasCounty(short) ? short : e.county || ""));
     } else if (e.county) {
       setCad((prev) => prev || e.county!);
     }

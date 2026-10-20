@@ -55,6 +55,9 @@ export type CadRecord = {
   buildingClass?: string | null;
   lotSizeSqft?: number | null;
   lotSizeAcres?: number | null;
+  // "statewide" = a county without its own integration, found through the
+  // State's parcel layer (see county-coverage.ts)
+  dataSource?: "statewide";
 };
 
 // nearby: real parcels on the same street (any house number), from the same

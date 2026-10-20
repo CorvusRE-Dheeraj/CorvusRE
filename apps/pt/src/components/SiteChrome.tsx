@@ -13,6 +13,8 @@ import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HelpMenu } from "@/components/HelpMenu";
+import { SUPPORTED_COUNTY_NAMES } from "@/lib/cad-record-url";
+import { TEXAS_COUNTY_NAMES } from "@/lib/county-coverage";
 import {
   Dialog,
   DialogContent,
@@ -521,23 +523,9 @@ export function SiteNav() {
 // footer (logo blurb + Platform/Services/Company link columns) was removed
 // site-wide as redundant with the top nav, but this bottom line stays as the
 // one place stating real county coverage.
-// Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder — the
-// real counties with a live data source, not an aspirational "all 254" claim.
-// Update this list if that array ever changes (the count is derived from it).
-const SERVED_COUNTIES = [
-  "Collin",
-  "Montgomery",
-  "Denton",
-  "Harris",
-  "Tarrant",
-  "Fort Bend",
-  "Williamson",
-  "Grayson",
-  "Travis",
-  "Bexar",
-  "Dallas",
-  "Kaufman",
-];
+// Every Texas county is served (statewide parcel fallback in cad-lookup);
+// the chips are the counties with full, county-integrated detail.
+const SERVED_COUNTIES = [...SUPPORTED_COUNTY_NAMES].sort();
 
 export function SiteFooter() {
   return (
@@ -584,12 +572,13 @@ export function SiteFooter() {
         <div className="mt-3 border-t border-white/15 pt-3">
           <p className="flex items-center gap-2 text-xs font-semibold text-white">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
-            Serving {SERVED_COUNTIES.length} Texas counties
+            Serving all {TEXAS_COUNTY_NAMES.length} Texas counties
             <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
               Beta
             </span>
           </p>
-          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Counties served">
+          <p className="mt-1.5 text-[11px] text-white/75">Full detail in:</p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Counties with full detail">
             {SERVED_COUNTIES.map((county) => (
               <li
                 key={county}

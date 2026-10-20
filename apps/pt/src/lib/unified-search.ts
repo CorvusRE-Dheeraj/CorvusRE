@@ -90,7 +90,7 @@ import {
 } from "./cad-lookup";
 import { looksLikePropertyId } from "../../../../supabase/pt/functions/_shared/property-id";
 import { fetchGoogleTextSearch, GOOGLE_API_KEY } from "./google-places";
-import { SUPPORTED_COUNTY_NAMES } from "./cad-record-url";
+import { isTexasCounty } from "./county-coverage";
 
 // Google Text Search itself returns up to ~20 for a loosely-matched query —
 // bounded well below that (each candidate fires its own real CAD lookup),
@@ -114,9 +114,13 @@ export type CadStatus = "pending" | "found" | "none" | "unsupported";
 // or it's a form SUPPORTED_COUNTY_NAMES doesn't recognize) still gets the
 // benefit of the doubt and proceeds normally — this only ever skips a
 // lookup when we're confident it's out of coverage, never a maybe.
-function isSupportedCounty(county: string | undefined): boolean {
+// Since the statewide fallback, every Texas county is covered — so this
+// only skips addresses Google places outside Texas (or in a county name
+// Texas doesn't have).
+function isSupportedCounty(county: string | undefined, address?: string): boolean {
   if (!county) return true;
-  return SUPPORTED_COUNTY_NAMES.has(county.replace(/\s*County$/i, "").trim());
+  if (address && !/,\s*TX\b|\bTexas\b/i.test(address)) return false;
+  return isTexasCounty(county);
 }
 
 // Every other US state's 2-letter code — found live chasing a second,
@@ -561,7 +565,7 @@ export async function unifiedPropertySearch(
             candidates.map(async (candidate) => {
               const googleRowId = `google:${candidate.placeId ?? candidate.address}`;
 
-              if (!isSupportedCounty(candidate.county)) {
+              if (!isSupportedCounty(candidate.county, candidate.address)) {
                 // Known to be out of coverage (a real Colorado Walmart, not
                 // a Texas one) — shown, not hidden (same "show it, don't
                 // drop it" principle as every other row here), but never
