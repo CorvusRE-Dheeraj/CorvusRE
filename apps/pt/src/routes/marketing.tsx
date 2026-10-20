@@ -61,7 +61,13 @@ function MarketingPage() {
   const { user, loading } = useAuth();
   const [role, setRole] = useState<StaffRole | null>(null);
   const [data, setData] = useState<MarketingData | null>(null);
-  const [tab, setTab] = useState<MarketingTab>("dashboard");
+  // ?podio=… (the Podio sync link, and Podio's return after connecting) opens
+  // Leads & CRM, where the Podio sync window lives.
+  const [tab, setTab] = useState<MarketingTab>(() =>
+    typeof window !== "undefined" && /[?&]podio=/.test(window.location.search)
+      ? "leads"
+      : "dashboard",
+  );
   const [focus, setFocus] = useState<Focus>({});
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
