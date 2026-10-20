@@ -185,9 +185,7 @@ function SuperAdmin() {
         <div>
           <span className="badge-soft">Super Admin</span>
           <h1 className="mt-2 font-serif text-3xl font-semibold">Super Admin</h1>
-          <p className="text-muted-foreground">
-            The business at a glance.
-          </p>
+          <p className="text-muted-foreground">The business at a glance.</p>
         </div>
         <div className="flex flex-wrap gap-2 lg:justify-end">
           {DASHBOARDS.map((d) => (
