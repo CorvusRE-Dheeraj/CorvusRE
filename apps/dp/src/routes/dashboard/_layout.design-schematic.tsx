@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { AlertTriangle, Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { AlertTriangle, Download, Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { siteFit } from "@/lib/site-fit";
 import type { SurveyReading } from "@/lib/survey-reading";
 import {
@@ -14,6 +14,9 @@ import {
 } from "@/lib/schematic";
 import { Section, Loading } from "@/components/dp-ui";
 import { PlanLegend, SitePlanSvg } from "@/components/SitePlan";
+import { SurveyOverlay } from "@/components/SurveyOverlay";
+import { downloadConceptSheet, downloadPlanSvg } from "@/lib/plan-export";
+import { fileSlug } from "@/components/design-workspace";
 import { useActiveDesignRequest, EmptyDesign, designSubtitle } from "@/components/design-workspace";
 
 export const Route = createFileRoute("/dashboard/_layout/design-schematic")({
@@ -32,6 +35,8 @@ function DesignSchematic() {
   const [busy, setBusy] = useState<"new" | "different" | "refine" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refine, setRefine] = useState("");
+  const [view, setView] = useState<"plan" | "overlay" | "survey">("plan");
+  const planRef = useRef<SVGSVGElement>(null);
   const reading = (dr?.survey_reading ?? null) as SurveyReading | null;
   const fit = useMemo(
     () =>
@@ -183,9 +188,75 @@ function DesignSchematic() {
                 current setbacks.
               </p>
             )}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex rounded-md border border-border p-0.5 text-sm"
+                role="tablist"
+                aria-label="View"
+              >
+                {(
+                  [
+                    ["plan", "Plan"],
+                    ["overlay", "On the survey"],
+                    ["survey", "Survey only"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === k}
+                    onClick={() => setView(k)}
+                    className={`rounded px-3 py-1 ${view === k ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    planRef.current &&
+                    void downloadConceptSheet(
+                      planRef.current,
+                      current,
+                      {
+                        project: designSubtitle(dr),
+                        address: [dr.address, dr.city].filter(Boolean).join(", "),
+                      },
+                      `schematic-concept-${fileSlug(dr)}.png`,
+                    ).catch((e) => setError(e instanceof Error ? e.message : "Couldn't download."))
+                  }
+                  className="btn-outline inline-flex items-center gap-1.5 text-sm"
+                >
+                  <Download className="h-4 w-4" aria-hidden /> Concept sheet (PNG)
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    planRef.current &&
+                    downloadPlanSvg(planRef.current, `schematic-plan-${fileSlug(dr)}.svg`)
+                  }
+                  className="btn-outline inline-flex items-center gap-1.5 text-sm"
+                >
+                  <Download className="h-4 w-4" aria-hidden /> Plan (SVG)
+                </button>
+              </div>
+            </div>
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-              <figure className="min-w-0">
+              {view !== "plan" && (
+                <SurveyOverlay
+                  dr={dr}
+                  fit={fit}
+                  reading={reading}
+                  option={current}
+                  overlay={view === "overlay"}
+                />
+              )}
+              <figure className={view === "plan" ? "min-w-0" : "hidden"}>
                 <SitePlanSvg
+                  ref={planRef}
                   fit={fit}
                   reading={reading}
                   schematic

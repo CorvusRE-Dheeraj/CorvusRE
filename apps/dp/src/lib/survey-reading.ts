@@ -71,6 +71,8 @@ export type SurveyReading = {
   };
   confidence: { lot: Conf; setbacks: Conf; easements: Conf; orientation: Conf };
   flags: { field: string; issue: string }[];
+  /** where the lot is drawn on the survey, for the plan overlay (absent on older readings) */
+  placement?: import("./survey-image").Placement | null;
 };
 
 /** Values the user confirmed or typed in, in feet. */

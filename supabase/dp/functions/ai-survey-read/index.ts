@@ -48,8 +48,10 @@ Return ONLY JSON with exactly this shape:
  "existing": [string],
  "labels": { "legalDescription": string|null, "address": string|null, "surveyor": string|null, "date": string|null, "notes": [string] },
  "confidence": { "lot": "high"|"medium"|"low", "setbacks": "high"|"medium"|"low", "easements": "high"|"medium"|"low", "orientation": "high"|"medium"|"low" },
- "flags": [{ "field": string, "issue": string }]
+ "flags": [{ "field": string, "issue": string }],
+ "placement": { "page": number, "box": [ymin, xmin, ymax, xmax] | null, "streetEdge": "top" | "bottom" | "left" | "right" | null }
 }
+"placement" locates the property boundary on the drawing so a plan can be overlaid on it: "page" = the 1-based page of the plan view; "box" = the tight bounding box of the lot's boundary lines on that page/image, as integers 0–1000 normalised to the image height (y) and width (x); "streetEdge" = which edge of that box is the front property line (the street side). Use null if you cannot locate it.
 "existing" = buildings, pools, fences, driveways etc. already drawn on the lot. "noBuildAreas" = restricted areas that are NOT easements (e.g. flood zone, tree-preservation area, sight triangle) — never repeat an easement there. "flags" lists every item you could not read clearly or that looks inconsistent (e.g. lot area doesn't match the dimensions, side lines differ, scale unreadable).`;
 
 const json = (body: unknown, status = 200) =>
@@ -128,6 +130,18 @@ export function cleanReading(raw: Record<string, unknown>) {
       notes: (Array.isArray(lab.notes) ? lab.notes : []).map((x) => txt(x, 300)).filter(Boolean).slice(0, 15),
     },
     confidence: { lot: conf(c.lot), setbacks: conf(c.setbacks), easements: conf(c.easements), orientation: conf(c.orientation) },
+    placement: (() => {
+      const pl = obj(raw.placement);
+      const box = Array.isArray(pl.box) ? pl.box.map((v) => Math.round(Number(v))) : null;
+      const ok =
+        box?.length === 4 && box.every((v) => Number.isFinite(v) && v >= 0 && v <= 1000) && box[0] < box[2] && box[1] < box[3] &&
+        box[2] - box[0] >= 20 && box[3] - box[1] >= 20;
+      return {
+        page: Math.max(1, Math.min(50, Math.round(Number(pl.page)) || 1)),
+        box: ok ? (box as [number, number, number, number]) : null,
+        streetEdge: pick(pl.streetEdge, ["top", "bottom", "left", "right"] as const),
+      };
+    })(),
     flags: list(raw.flags, 20)
       .map((x) => ({ field: txt(x.field, 60) ?? "survey", issue: txt(x.issue, 300) ?? "" }))
       .filter((x) => x.issue),

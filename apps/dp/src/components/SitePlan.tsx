@@ -146,7 +146,7 @@ export const SitePlanSvg = forwardRef<
         <g key={`o${i}`}>
           <rect {...R(o)} fill="#22c55e" fillOpacity="0.18" stroke="#16a34a" strokeOpacity="0.6" />
           {/* label only where it fits — thin strips stay unlabelled (the legend covers them) */}
-          {s(o.d) >= 18 && s(o.w) >= o.label.length * 5.5 && (
+          {s(o.d) >= 30 && s(o.w) >= o.label.length * 5.5 && (
             <text
               x={X(o.x + o.w / 2)}
               y={Y(o.y + o.d / 2)}
@@ -241,8 +241,8 @@ export const SitePlanSvg = forwardRef<
         })()}
       {/* limit dimensions */}
       {[
-        [X(lot.widthFt / 2), Y(L.front.ft / 2), L.front.ft],
-        [X(lot.widthFt / 2), Y(lot.depthFt - L.rear.ft / 2), L.rear.ft],
+        [x0 + 16, Y(L.front.ft / 2), L.front.ft],
+        [x0 + 16, Y(lot.depthFt - L.rear.ft / 2), L.rear.ft],
         [X(L.left.ft / 2), Y(lot.depthFt / 2), L.left.ft],
         [X(lot.widthFt - L.right.ft / 2), Y(lot.depthFt / 2), L.right.ft],
       ].map(([x, y, v], i) =>
