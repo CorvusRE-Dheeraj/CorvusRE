@@ -51,6 +51,7 @@ export function SiteNav() {
   const [isAdmin, setIsAdmin] = useState(false);
   // Marketing Admins (and Super Admins) get a Marketing link.
   const [isMarketing, setIsMarketing] = useState(false);
+  const [isSupport, setIsSupport] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
   // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
@@ -102,11 +103,13 @@ export function SiteNav() {
       .then((r) => {
         setIsAdmin(r.isSuperAdmin);
         setIsMarketing(r.isSuperAdmin || r.isMarketingAdmin);
+        setIsSupport(r.isSuperAdmin || r.isSupportAdmin);
       })
       .catch((err) => {
         console.error("Could not check admin status:", err);
         setIsAdmin(false);
         setIsMarketing(false);
+        setIsSupport(false);
       });
   }, [user]);
 
@@ -377,6 +380,15 @@ export function SiteNav() {
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
                       Beta Feedback
+                    </Link>
+                  )}
+                  {isSupport && (
+                    <Link
+                      to="/support"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Customer Support
                     </Link>
                   )}
                   {isMarketing && (

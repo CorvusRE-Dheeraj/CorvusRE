@@ -15,6 +15,7 @@
 // history (marketing_activities) so Leads, Follow-ups and Analytics agree.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { emailShell, escapeHtml } from "../email-shell.ts";
+import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,9 +43,24 @@ type Lead = {
   portfolio_value: number | null;
   max_change_pct: number | null;
   protest_deadline: string | null;
+  invite_token: string | null;
 };
 const LEAD_COLS =
-  "id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline";
+  "id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline, invite_token";
+
+// Links back to the step a prospect hasn't finished (same as journeyLinks() in marketing-crm.ts).
+function links(lead: Lead) {
+  const q = new URLSearchParams({ mode: "signup" });
+  if (lead.email) q.set("email", lead.email);
+  const first = (lead.full_name ?? "").trim().split(/\s+/)[0];
+  if (first) q.set("firstName", first);
+  if (lead.invite_token) q.set("lead", lead.invite_token);
+  return {
+    registration: `${SITE}/sign-in?${q}`,
+    addProperty: `${SITE}/dashboard/properties`,
+    checkout: `${SITE}/dashboard/properties`,
+  };
+}
 
 // Same tokens and fallbacks as personalize() in apps/pt/src/lib/marketing-crm.ts.
 function personalize(text: string, lead: Lead): string {
@@ -64,7 +80,10 @@ function personalize(text: string, lead: Lead): string {
     .replaceAll("{{portfolio_value}}", money(lead.portfolio_value))
     .replaceAll("{{value_change}}", lead.max_change_pct != null && lead.max_change_pct > 0 ? `${lead.max_change_pct}%` : "noticeably")
     .replaceAll("{{protest_deadline}}", deadline)
-    .replaceAll("{{portfolio_note}}", n > 1 ? ` and your other ${n - 1} propert${n === 2 ? "y" : "ies"}` : "");
+    .replaceAll("{{portfolio_note}}", n > 1 ? ` and your other ${n - 1} propert${n === 2 ? "y" : "ies"}` : "")
+    .replaceAll("{{registration_link}}", links(lead).registration)
+    .replaceAll("{{add_property_link}}", links(lead).addProperty)
+    .replaceAll("{{checkout_link}}", links(lead).checkout);
 }
 
 function renderEmail(subject: string, body: string, lead: Lead): string {
@@ -162,10 +181,11 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
 async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: string, actor: string | null) {
   const { data: f, error } = await db
     .from("marketing_followups")
-    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline)")
+    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline, invite_token)")
     .eq("id", followupId)
     .single();
   if (error || !f) throw new Error("Follow-up not found");
+  if (f.status === "draft") throw new Error("Approve this message before it's sent.");
   if (f.status !== "pending") throw new Error("This follow-up is already done.");
   if (f.channel !== "email") throw new Error("Only email follow-ups can be sent from here — mark calls and tasks done instead.");
   const lead = f.lead as Lead & { unsubscribed_at: string | null };
@@ -176,7 +196,7 @@ async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: s
   const subject = f.subject || "Following up";
   await sendOne(resendKey, lead.email, personalize(subject, lead), renderEmail(subject, f.message, lead), `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`);
   const now = new Date().toISOString();
-  await db.from("marketing_followups").update({ status: "done", completed_at: now }).eq("id", followupId);
+  await db.from("marketing_followups").update({ status: "done", completed_at: now, outcome: "sent" }).eq("id", followupId);
   await db.from("marketing_activities").insert({
     lead_id: lead.id, kind: "email", template_id: f.template_id ?? null, summary: `Follow-up email: ${personalize(subject, lead)}`, body: personalize(f.message, lead), created_by: actor,
   });
@@ -296,11 +316,72 @@ export async function handle(req: Request): Promise<Response> {
         }
       }
       const monitor = await db.rpc("marketing_monitor");
+      // approved emails that are due go out by themselves
+      const { data: dueF } = await db
+        .from("marketing_followups")
+        .select("id")
+        .eq("status", "pending")
+        .eq("channel", "email")
+        .eq("auto_send", true)
+        .lte("due_at", new Date().toISOString())
+        .limit(100);
+      const autoSent: { id: string; error?: string }[] = [];
+      for (const f of dueF ?? []) {
+        try {
+          await sendFollowup(db, resendKey, f.id, null);
+          autoSent.push({ id: f.id });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          autoSent.push({ id: f.id, error: msg });
+          // unsendable (opted out, no email…) — stop retrying it every hour
+          await db.from("marketing_followups").update({ status: "skipped", completed_at: new Date().toISOString(), stop_reason: msg }).eq("id", f.id);
+        }
+      }
+      const handoffs = await summarizeHandoffs(db).catch((e) => ({ error: String(e) }));
       const digest = await sendDigests(db, resendKey).catch((e) => ({ error: String(e) }));
-      return json({ processed: results.length, results, monitor: monitor.data ?? monitor.error?.message, digest });
+      return json({ processed: results.length, results, monitor: monitor.data ?? monitor.error?.message, autoSent, handoffs, digest });
     }
     return json({ error: "Nothing to send." }, 400);
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "unknown error" }, 400);
   }
+}
+
+// AI summary for each new Customer Support handoff: properties, subscription,
+// past communication and onboarding needs — so Support starts informed.
+async function summarizeHandoffs(db: SupabaseClient) {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) return { summarized: 0, note: "GEMINI_API_KEY not set" };
+  const { data: hs } = await db
+    .from("support_handoffs")
+    .select("id, lead_id, snapshot, lead:marketing_leads(company, full_name, email, phone, source, created_at, subscribed_at, registered_at, notes, ai_summary)")
+    .is("summary", null)
+    .limit(10);
+  let summarized = 0;
+  for (const h of hs ?? []) {
+    const { data: acts } = await db
+      .from("marketing_activities")
+      .select("created_at, kind, summary, body")
+      .eq("lead_id", h.lead_id)
+      .order("created_at", { ascending: false })
+      .limit(25);
+    const lead = h.lead as Record<string, unknown> | null;
+    const prompt =
+      "You are handing a new paying CorvusPT customer (Texas property tax software; owners run their own protests with our tools) from Marketing to Customer Support. " +
+      "Write a short handoff note in markdown with these sections: **Customer** (1-2 lines), **Properties & subscription**, **What happened before they subscribed** (key conversations, promises or concerns from the history), **Onboarding to do** (bullets from the needs list). " +
+      "Use ONLY the facts below. Don't invent anything, and don't promise savings.\n\n" +
+      `Lead: ${JSON.stringify(lead)}\nAccount snapshot: ${JSON.stringify(h.snapshot)}\nHistory (newest first):\n${(acts ?? []).map((a) => `- ${String(a.created_at).slice(0, 10)} ${a.kind}: ${a.summary}${a.body ? ` — ${String(a.body).slice(0, 200)}` : ""}`).join("\n")}`;
+    const res = await fetch(geminiUrl(GEMINI_MODEL_FAST, key), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+    });
+    if (!res.ok) continue;
+    const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = j.candidates?.[0]?.content?.parts?.map((x) => x.text ?? "").join("").trim();
+    if (!text) continue;
+    await db.from("support_handoffs").update({ summary: text, summary_at: new Date().toISOString() }).eq("id", h.id);
+    summarized++;
+  }
+  return { summarized };
 }

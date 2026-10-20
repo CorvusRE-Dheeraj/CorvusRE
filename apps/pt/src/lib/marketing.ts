@@ -16,7 +16,10 @@ export const STAGES = [
   "ready",
   "contacted",
   "interested",
+  "registration_started",
   "registered",
+  "property_added",
+  "subscription_started",
   "subscribed",
   "no_response",
   "not_interested",
@@ -29,8 +32,18 @@ export const PIPELINE: Stage[] = [
   "ready",
   "contacted",
   "interested",
+  "registration_started",
   "registered",
+  "property_added",
+  "subscription_started",
   "subscribed",
+];
+/** Account steps — set from the real CorvusPT account, never by outreach rules. */
+export const ACCOUNT_STAGES: Stage[] = [
+  "registration_started",
+  "registered",
+  "property_added",
+  "subscription_started",
 ];
 export const SIDE_STAGES: Stage[] = ["no_response", "not_interested", "do_not_contact"];
 /** Still being worked — not converted, not closed. */
@@ -48,7 +61,10 @@ export const STAGE_LABEL: Record<Stage, string> = {
   ready: "Ready for Outreach",
   contacted: "Contacted",
   interested: "Interested",
+  registration_started: "Registration Started",
   registered: "Registered",
+  property_added: "Property Added",
+  subscription_started: "Subscription Started",
   subscribed: "Subscribed",
   no_response: "No Response",
   not_interested: "Not Interested",
@@ -129,6 +145,12 @@ export type Lead = {
   maxChangePct: number | null;
   flaggedCount: number;
   lastRefreshedAt: string | null;
+  inviteToken: string | null;
+  registrationStartedAt: string | null;
+  registeredAt: string | null;
+  propertyAddedAt: string | null;
+  subscriptionStartedAt: string | null;
+  subscribedAt: string | null;
 };
 
 /** Where a lead detail came from, so staff can see it and verify uncertain ones. */
@@ -230,6 +252,8 @@ export type Activity = {
     | "email"
     | "sms"
     | "call"
+    | "meeting"
+    | "journey"
     | "stage"
     | "ai"
     | "follow_up"
@@ -278,14 +302,26 @@ export type Followup = {
   createdAt: string;
   leadId: string;
   dueAt: string;
-  channel: "email" | "sms" | "call" | "task";
+  channel: "email" | "sms" | "call" | "meeting" | "task";
   subject: string | null;
   message: string | null;
-  status: "pending" | "done" | "skipped";
+  /** draft = written (often by AI), waiting for a person to approve */
+  status: "draft" | "pending" | "done" | "skipped";
   sequenceName: string | null;
   sequenceStep: number | null;
   aiGenerated: boolean;
   completedAt: string | null;
+  assignedTo: string | null;
+  priority: "high" | "medium" | "low";
+  outcome: string | null;
+  notes: string | null;
+  callScript: string | null;
+  autoSend: boolean;
+  autoReschedule: boolean;
+  rescheduledCount: number;
+  stopReason: string | null;
+  approvedAt: string | null;
+  templateId: string | null;
 };
 
 export type AiRun = {
@@ -347,6 +383,12 @@ export const toLead = (r: any): Lead => ({
   maxChangePct: r.max_change_pct == null ? null : Number(r.max_change_pct),
   flaggedCount: r.flagged_count ?? 0,
   lastRefreshedAt: r.last_refreshed_at ?? null,
+  inviteToken: r.invite_token ?? null,
+  registrationStartedAt: r.registration_started_at ?? null,
+  registeredAt: r.registered_at ?? null,
+  propertyAddedAt: r.property_added_at ?? null,
+  subscriptionStartedAt: r.subscription_started_at ?? null,
+  subscribedAt: r.subscribed_at ?? null,
 });
 const num = (v: unknown) => (v == null ? null : Number(v));
 export const toProperty = (r: any): LeadProperty => ({
@@ -424,19 +466,92 @@ const toFollowup = (r: any): Followup => ({
   sequenceStep: r.sequence_step,
   aiGenerated: r.ai_generated,
   completedAt: r.completed_at,
+  assignedTo: r.assigned_to ?? null,
+  priority: r.priority ?? "medium",
+  outcome: r.outcome ?? null,
+  notes: r.notes ?? null,
+  callScript: r.call_script ?? null,
+  autoSend: !!r.auto_send,
+  autoReschedule: r.auto_reschedule ?? true,
+  rescheduledCount: r.rescheduled_count ?? 0,
+  stopReason: r.stop_reason ?? null,
+  approvedAt: r.approved_at ?? null,
+  templateId: r.template_id ?? null,
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ── Role ────────────────────────────────────────────────────────────────────
-export type StaffRole = { isSuperAdmin: boolean; isMarketingAdmin: boolean };
+export type StaffRole = {
+  isSuperAdmin: boolean;
+  isMarketingAdmin: boolean;
+  isSupportAdmin: boolean;
+};
 export async function getStaffRole(userId: string): Promise<StaffRole> {
   const { data } = await supabase
     .from("profiles")
-    .select("is_admin, marketing_admin")
+    .select("is_admin, marketing_admin, support_admin")
     .eq("id", userId)
     .maybeSingle();
-  return { isSuperAdmin: !!data?.is_admin, isMarketingAdmin: !!data?.marketing_admin };
+  return {
+    isSuperAdmin: !!data?.is_admin,
+    isMarketingAdmin: !!data?.marketing_admin,
+    isSupportAdmin: !!data?.support_admin,
+  };
 }
+
+/** Super Admin only (enforced in the database). */
+export async function setSupportAdmin(userId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_support_admin", { target: userId, enabled });
+  if (error) throw error;
+}
+
+// ── Customer Support handoff ────────────────────────────────────────────────
+export type HandoffSnapshot = {
+  properties?: {
+    address: string | null;
+    cad: string | null;
+    account: string | null;
+    value: number | null;
+    status: string | null;
+    plan: string | null;
+    deadline: string | null;
+  }[];
+  bpp?: { accounts: number; paid: number };
+  packetSigned?: boolean;
+  termsAccepted?: boolean;
+  openEscalations?: number;
+  needs?: string[];
+  refreshedAt?: string;
+};
+export type Handoff = {
+  id: string;
+  createdAt: string;
+  leadId: string;
+  profileId: string | null;
+  status: "open" | "accepted" | "done";
+  assignedTo: string | null;
+  snapshot: HandoffSnapshot;
+  summary: string | null;
+  summaryAt: string | null;
+  notes: string | null;
+  acceptedAt: string | null;
+  doneAt: string | null;
+};
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+export const toHandoff = (x: any): Handoff => ({
+  id: x.id,
+  createdAt: x.created_at,
+  leadId: x.lead_id,
+  profileId: x.profile_id,
+  status: x.status,
+  assignedTo: x.assigned_to,
+  snapshot: x.snapshot ?? {},
+  summary: x.summary,
+  summaryAt: x.summary_at,
+  notes: x.notes,
+  acceptedAt: x.accepted_at,
+  doneAt: x.done_at,
+});
 
 /** Super Admin only (enforced in the database). */
 export async function setMarketingAdmin(userId: string, enabled: boolean): Promise<void> {
@@ -466,6 +581,8 @@ export const TEMPLATE_OBJECTIVES = [
   "registration_reminder",
   "subscription_promo",
   "follow_up",
+  "add_property",
+  "finish_checkout",
 ] as const;
 export type TemplateObjective = (typeof TEMPLATE_OBJECTIVES)[number];
 export const OBJECTIVE_LABEL: Record<TemplateObjective, string> = {
@@ -475,6 +592,8 @@ export const OBJECTIVE_LABEL: Record<TemplateObjective, string> = {
   registration_reminder: "Registration reminder",
   subscription_promo: "Subscription offer",
   follow_up: "Follow-up",
+  add_property: "Add properties reminder",
+  finish_checkout: "Finish checkout reminder",
 };
 export type Template = {
   id: string;
@@ -541,6 +660,7 @@ export type MarketingData = {
   aiRuns: AiRun[];
   segments: Segment[];
   templates: Template[];
+  handoffs: Handoff[];
   syncChanges: SyncChange[];
   notifications: StaffNotification[];
   settings: MarketingSettings;
@@ -557,7 +677,7 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 export async function loadMarketing(): Promise<MarketingData> {
   const { data: u } = await supabase.auth.getUser();
   const me = u.user?.id ?? null;
-  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp] = await Promise.all([
+  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
@@ -595,8 +715,10 @@ export async function loadMarketing(): Promise<MarketingData> {
     supabase.from("marketing_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.rpc("marketing_staff"),
     supabase.from("marketing_templates").select("*").order("objective").order("channel"),
+    supabase.from("support_handoffs").select("*").order("created_at", { ascending: false }),
   ]);
-  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp]) if (res.error) throw res.error;
+  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho])
+    if (res.error) throw res.error;
   const s = st.data;
   return {
     leads: (l.data ?? []).map(toLead),
@@ -626,6 +748,7 @@ export async function loadMarketing(): Promise<MarketingData> {
       approvedAt: x.approved_at ?? null,
     })),
     templates: (tp.data ?? []).map(toTemplate),
+    handoffs: (ho.data ?? []).map(toHandoff),
     syncChanges: (sc.data ?? []).map((x) => ({
       id: x.id,
       createdAt: x.created_at,
@@ -964,6 +1087,7 @@ export async function logActivity(a: {
   summary: string;
   body?: string | null;
   outcome?: Outcome | null;
+  templateId?: string | null;
 }): Promise<Activity> {
   const { data: u } = await supabase.auth.getUser();
   const { data, error } = await supabase
@@ -975,6 +1099,7 @@ export async function logActivity(a: {
       summary: a.summary,
       body: a.body ?? null,
       outcome: a.outcome ?? null,
+      template_id: a.templateId ?? null,
       created_by: u.user?.id ?? null,
     })
     .select("*")
@@ -1105,6 +1230,13 @@ export type FollowupInput = Partial<
     | "sequenceName"
     | "sequenceStep"
     | "aiGenerated"
+    | "assignedTo"
+    | "priority"
+    | "outcome"
+    | "notes"
+    | "callScript"
+    | "autoSend"
+    | "autoReschedule"
   >
 > & { templateId?: string | null };
 export async function saveFollowup(id: string | null, f: FollowupInput): Promise<Followup> {
@@ -1116,8 +1248,22 @@ export async function saveFollowup(id: string | null, f: FollowupInput): Promise
   if (f.message !== undefined) row.message = f.message;
   if (f.status !== undefined) {
     row.status = f.status;
-    row.completed_at = f.status === "pending" ? null : new Date().toISOString();
+    row.completed_at =
+      f.status === "pending" || f.status === "draft" ? null : new Date().toISOString();
+    if (f.status === "pending") {
+      const { data: me } = await supabase.auth.getUser();
+      row.approved_by = me.user?.id ?? null;
+      row.approved_at = new Date().toISOString();
+    }
   }
+  if (f.assignedTo !== undefined) row.assigned_to = f.assignedTo;
+  if (f.priority !== undefined) row.priority = f.priority;
+  if (f.outcome !== undefined) row.outcome = f.outcome;
+  if (f.notes !== undefined) row.notes = f.notes;
+  if (f.callScript !== undefined) row.call_script = f.callScript;
+  if (f.autoSend !== undefined) row.auto_send = f.autoSend;
+  if (f.autoReschedule !== undefined) row.auto_reschedule = f.autoReschedule;
+  if (f.dueAt !== undefined && id) row.rescheduled_count = 0;
   if (f.sequenceName !== undefined) row.sequence_name = f.sequenceName;
   if (f.sequenceStep !== undefined) row.sequence_step = f.sequenceStep;
   if (f.aiGenerated !== undefined) row.ai_generated = f.aiGenerated;
@@ -1167,7 +1313,10 @@ export function scoreLead(lead: Lead, activities: Activity[], now = new Date()):
     ready: 10,
     contacted: 10,
     interested: 20,
+    registration_started: 14,
     registered: 15,
+    property_added: 18,
+    subscription_started: 22,
     subscribed: 0,
     no_response: 2,
     not_interested: 0,
@@ -1198,7 +1347,7 @@ export function funnel(leads: Lead[], now = new Date()) {
   const newLeads = leads.filter(
     (l) => now.getTime() - new Date(l.createdAt).getTime() < 7 * 864e5,
   ).length;
-  const registered = count(["registered", "subscribed"]);
+  const registered = count(["registered", "property_added", "subscription_started", "subscribed"]);
   const paying = count(["subscribed"]);
   return {
     total,

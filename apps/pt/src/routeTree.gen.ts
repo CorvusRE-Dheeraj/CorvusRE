@@ -29,6 +29,7 @@ import { Route as PropertyProtestRouteImport } from './routes/property-protest'
 import { Route as PropertyTaxManagementRouteImport } from './routes/property-tax-management'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
@@ -150,6 +151,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TaxPaymentRoute = TaxPaymentRouteImport.update({
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -337,6 +344,7 @@ export interface FileRoutesByTo {
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -381,6 +389,7 @@ export interface FileRoutesById {
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -427,6 +436,7 @@ export interface FileRouteTypes {
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
     | '/unsubscribe'
@@ -471,6 +481,7 @@ export interface FileRouteTypes {
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
     | '/unsubscribe'
@@ -514,6 +525,7 @@ export interface FileRouteTypes {
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
     | '/unsubscribe'
@@ -559,6 +571,7 @@ export interface RootRouteChildren {
   PropertyTaxManagementRoute: typeof PropertyTaxManagementRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
+  SupportRoute: typeof SupportRoute
   TaxPaymentRoute: typeof TaxPaymentRoute
   TermsRoute: typeof TermsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -705,6 +718,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tax-payment': {
@@ -931,6 +951,7 @@ const rootRouteChildren: RootRouteChildren = {
   PropertyTaxManagementRoute: PropertyTaxManagementRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
+  SupportRoute: SupportRoute,
   TaxPaymentRoute: TaxPaymentRoute,
   TermsRoute: TermsRoute,
   UnsubscribeRoute: UnsubscribeRoute,

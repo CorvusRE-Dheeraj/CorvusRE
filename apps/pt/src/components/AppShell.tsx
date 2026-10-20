@@ -86,7 +86,14 @@ const TAB_COLOR: Record<string, { icon: string; active: string }> = {
 // and the marketing workspace (a different persona than "my properties"),
 // sign-in (nothing to show a signed-out visitor a dashboard for), and the
 // public unsubscribe page.
-const NO_SHELL_PREFIXES = ["/admin", "/admin-login", "/sign-in", "/marketing", "/unsubscribe"];
+const NO_SHELL_PREFIXES = [
+  "/admin",
+  "/admin-login",
+  "/sign-in",
+  "/marketing",
+  "/support",
+  "/unsubscribe",
+];
 
 // Exported so SiteNav (SiteChrome.tsx) can tell whether this tab bar's own
 // "Dashboard" entry is about to render on the current page — its top nav

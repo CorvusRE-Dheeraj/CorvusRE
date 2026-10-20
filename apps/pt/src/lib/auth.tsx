@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { claimLeadLink } from "./lead-link";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
 import { resetIntake } from "@/lib/intake-store";
@@ -137,6 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // just won't propagate to other tabs.
         }
       }
+      // A prospect who registered from their CRM link: attach the account to that lead.
+      if (event === "SIGNED_IN" && session?.user) void claimLeadLink();
       // Fire-and-forget on every real sign-in (password, Google, sign-up) —
       // deliberately not on mere session restoration on page load, which
       // fires INITIAL_SESSION instead, not SIGNED_IN. Safe to call more

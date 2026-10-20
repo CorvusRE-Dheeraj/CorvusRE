@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Lead, LeadProperty, Template } from "./marketing";
+import type { Activity, Lead, LeadProperty, MarketingData, Template } from "./marketing";
 import {
   applyFilters,
+  bestTiming,
+  effectiveness,
+  followupQueue,
+  journeyFunnel,
+  journeyLinks,
+  journeySteps,
   assessmentFlags,
   deadlineInfo,
   groupProspects,
@@ -83,6 +89,12 @@ const lead = (p: Partial<Lead>): Lead => ({
   maxChangePct: null,
   flaggedCount: 0,
   lastRefreshedAt: null,
+  inviteToken: null,
+  registrationStartedAt: null,
+  registeredAt: null,
+  propertyAddedAt: null,
+  subscriptionStartedAt: null,
+  subscribedAt: null,
   ...p,
 });
 
@@ -534,7 +546,7 @@ describe("AI-powered leads", () => {
       stage: "ready",
     });
     expect(pickObjective(l, [], now).objective).toBe("assessment_increase");
-    expect(pickObjective({ ...l, stage: "registered" }, [], now).objective).toBe(
+    expect(pickObjective({ ...l, stage: "property_added" }, [], now).objective).toBe(
       "subscription_promo",
     );
     expect(pickObjective({ ...l, maxChangePct: null }, [], now).objective).toBe("initial_outreach");
@@ -582,5 +594,157 @@ describe("AI-powered leads", () => {
     expect(csv.split("\n")[0]).toContain("Deadline basis");
     expect(csv).toContain('"Quote ""Co"""');
     expect(csv).not.toContain("x@y.com");
+  });
+});
+
+describe("follow-ups + journey", () => {
+  const now = new Date("2026-10-21T15:00:00"); // a Wednesday
+  const act = (p: Partial<Activity>): Activity => ({
+    id: Math.random().toString(36),
+    createdAt: "2026-10-10T15:00:00Z",
+    leadId: "a",
+    campaignId: null,
+    kind: "email",
+    summary: "x",
+    body: null,
+    outcome: null,
+    createdBy: "staff",
+    templateId: null,
+    ...p,
+  });
+  const md = (p: Partial<MarketingData>): MarketingData => ({
+    leads: [],
+    properties: [],
+    activities: [],
+    campaigns: [],
+    followups: [],
+    aiRuns: [],
+    segments: [],
+    templates: [],
+    handoffs: [],
+    syncChanges: [],
+    notifications: [],
+    staff: [],
+    me: null,
+    settings: { rules: {}, inactiveDays: 14, notifyEmail: true, podio: {} },
+    ...p,
+  });
+  it("tracks journey steps — self sign-ups pass the marketing steps", () => {
+    const l = lead({
+      id: "a",
+      stage: "property_added",
+      registrationStartedAt: "2026-10-01",
+      registeredAt: "2026-10-02",
+      propertyAddedAt: "2026-10-03",
+    });
+    const s = journeySteps(l, []);
+    expect(s.map((x) => x.done)).toEqual([true, true, true, true, true, false, false]);
+    expect(s.find((x) => x.current)?.key).toBe("property_added");
+  });
+  it("shows where prospects drop off", () => {
+    const f = journeyFunnel(
+      [
+        lead({ id: "1", stage: "contacted" }),
+        lead({ id: "2", stage: "interested" }),
+        lead({ id: "3", stage: "registered" }),
+      ],
+      [],
+    );
+    expect(f.map((x) => x.count)).toEqual([3, 2, 1, 1, 0, 0, 0]);
+    expect(f[1].conversion).toBeCloseTo(2 / 3);
+    expect(f.find((x) => x.key === "registered")?.stuck).toBe(1);
+  });
+  it("links back to the unfinished step with the lead token", () => {
+    const k = journeyLinks(
+      {
+        email: "pat@x.com",
+        fullName: "Pat Lee",
+        inviteToken: "11111111-2222-3333-4444-555555555555",
+      },
+      "https://corvusre.com/corvuspt",
+    );
+    expect(k.registration).toBe(
+      "https://corvusre.com/corvuspt/sign-in?mode=signup&email=pat%40x.com&firstName=Pat&lead=11111111-2222-3333-4444-555555555555",
+    );
+    expect(k.addProperty).toContain("/dashboard/properties");
+  });
+  it("suggests a call after an unanswered email, at their usual reply hour", () => {
+    const l = lead({ id: "a", stage: "contacted", email: "a@b.com", phone: "(214) 555-0100" });
+    expect(bestTiming(l, [act({ kind: "email" })], "medium", now).channel).toBe("call");
+    const t = bestTiming(
+      l,
+      [act({ kind: "call", outcome: "replied", createdAt: "2026-10-05T14:00:00" })],
+      "high",
+      now,
+    );
+    expect(t.channel).toBe("call");
+    expect(t.at.getHours()).toBe(14);
+    expect(t.at.getTime()).toBeGreaterThan(now.getTime());
+    expect([1, 2, 3, 4, 5]).toContain(t.at.getDay());
+  });
+  it("recommends the next step for each journey stage", () => {
+    const d = { activities: [], followups: [], campaigns: [] };
+    expect(recommend(lead({ stage: "interested", email: "a@b.com" }), d, 50).action).toMatch(
+      /registration link/,
+    );
+    expect(recommend(lead({ stage: "registered", portfolioCount: 4 }), d, 50).action).toMatch(
+      /own 4/,
+    );
+    expect(recommend(lead({ stage: "subscription_started", phone: "1" }), d, 50)).toMatchObject({
+      channel: "call",
+    });
+    expect(pickObjective(lead({ stage: "subscription_started" }), [], now).objective).toBe(
+      "finish_checkout",
+    );
+    expect(pickObjective(lead({ stage: "registered" }), [], now).objective).toBe("add_property");
+  });
+  it("queues who needs a follow-up, hottest first, skipping planned and opted-out", () => {
+    const leads = [
+      lead({
+        id: "chk",
+        stage: "subscription_started",
+        subscriptionStartedAt: "2026-10-21T10:00:00",
+        email: "c@x.com",
+      }),
+      lead({ id: "nr", stage: "contacted", email: "n@x.com" }),
+      lead({ id: "dnc", stage: "do_not_contact" }),
+      lead({ id: "planned", stage: "registered", registeredAt: "2026-10-01" }),
+    ];
+    const d = md({
+      leads,
+      activities: [act({ leadId: "nr", kind: "email", createdAt: "2026-10-10T10:00:00" })],
+      followups: [{ id: "f", leadId: "planned", status: "pending" } as never],
+    });
+    const q = followupQueue(d, new Map(), now);
+    expect(q.map((x) => x.lead.id)).toEqual(["chk", "nr"]);
+    expect(q[0]).toMatchObject({ kind: "checkout", objective: "finish_checkout" });
+    expect(q[1].kind).toBe("no_response");
+  });
+  it("measures response rate and abandoned onboarding", () => {
+    const d = md({
+      leads: [
+        lead({
+          id: "a",
+          stage: "subscription_started",
+          subscriptionStartedAt: "2026-10-20T10:00:00",
+          registeredAt: "2026-10-15",
+        }),
+      ],
+      activities: [
+        act({
+          kind: "stage",
+          summary: "Status: Contacted → Interested",
+          createdAt: "2026-10-12T10:00:00",
+        }),
+        act({ kind: "email", createdAt: "2026-10-11T10:00:00" }),
+        act({ kind: "call", createdAt: "2026-10-01T10:00:00", leadId: "a" }),
+      ],
+    });
+    const e = effectiveness(d, 30, now);
+    expect(e.outreach).toBe(2);
+    expect(e.responses).toBe(1);
+    expect(e.byChannel.find((c) => c.key === "email")?.rate).toBe(1);
+    expect(e.abandoned.checkout).toBe(1);
+    expect(e.registrations).toBe(1);
   });
 });

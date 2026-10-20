@@ -71,6 +71,7 @@ export function EngagementPacketHost() {
     pathname === "/accept-invite" ||
     // The staff marketing workspace and the public unsubscribe page aren't customer flows.
     pathname === "/marketing" ||
+    pathname === "/support" ||
     pathname === "/unsubscribe";
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export function EngagementPacketHost() {
     ]).then(([latest, terms, profile, staff]) => {
       if (cancelled) return;
       // A Marketing Admin is staff, not a customer — no welcome, no agreements.
-      if (staff?.isMarketingAdmin && !staff.isSuperAdmin) {
+      if ((staff?.isMarketingAdmin || staff?.isSupportAdmin) && !staff.isSuperAdmin) {
         setWelcome(false);
         return;
       }

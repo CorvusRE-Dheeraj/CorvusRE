@@ -1064,7 +1064,9 @@ export function recommend(
   const lastOut = outreach[0]?.createdAt
     ? (now.getTime() - new Date(outreach[0].createdAt).getTime()) / 864e5
     : null;
-  const pending = d.followups.filter((f: Followup) => f.leadId === l.id && f.status === "pending");
+  const pending = d.followups.filter(
+    (f: Followup) => f.leadId === l.id && (f.status === "pending" || f.status === "draft"),
+  );
 
   if (l.stage === "do_not_contact")
     return {
@@ -1134,22 +1136,42 @@ export function recommend(
   } else if (l.stage === "contacted") {
     const gap = priority === "high" ? 3 : 5;
     const wait = lastOut == null ? 0 : Math.max(0, Math.ceil(gap - lastOut));
-    action =
-      outreach.length >= 2 && l.phone
-        ? "Call — they haven't answered emails."
-        : "Follow up on the last message.";
-    channel = outreach.length >= 2 && l.phone ? "call" : "email";
+    // an unanswered email → try the phone
+    const lastWasEmail = outreach[0]?.kind === "email";
+    if (lastWasEmail && l.phone) {
+      action = "Call — the last email got no reply.";
+      channel = "call";
+    } else {
+      action = "Follow up on the last message.";
+      channel = "email";
+    }
     due = urgent ?? wait;
   } else if (l.stage === "interested") {
-    action = l.phone
-      ? "Call to walk them through signing up."
-      : "Email the sign-up link and offer a call.";
-    channel = l.phone ? "call" : "email";
+    action = "Send their registration link (prefilled) and offer to walk them through it.";
+    channel = l.email ? "email" : "call";
+    due = 0;
+  } else if (l.stage === "registration_started") {
+    action = "They started registering but didn't finish — send the link back to sign-up.";
+    channel = l.email ? "email" : "call";
     due = 0;
   } else if (l.stage === "registered") {
-    action = "Help them subscribe — show the savings on their top property.";
+    action =
+      l.portfolioCount > 1
+        ? `Registered, no property yet — they own ${l.portfolioCount}: offer the spreadsheet upload to add them all.`
+        : "Registered, no property yet — send the link to add their property.";
     channel = l.phone && priority === "high" ? "call" : "email";
     due = urgent ?? 1;
+  } else if (l.stage === "property_added") {
+    action =
+      l.portfolioCount > 1
+        ? `Added a property — they own ${l.portfolioCount}: help them add the rest and start their protest.`
+        : "Added a property, not subscribed — show what the plan covers and help them start their protest.";
+    channel = l.phone && priority !== "low" ? "call" : "email";
+    due = urgent ?? 1;
+  } else if (l.stage === "subscription_started") {
+    action = "Checkout not finished — send the link back to finish, or call to help.";
+    channel = l.phone ? "call" : "email";
+    due = 0;
   } else {
     action =
       l.phone && !outreach.some((a) => a.kind === "call")
@@ -1165,11 +1187,12 @@ export function recommend(
       email: "Send the planned email",
       sms: "Send the planned text",
       call: "Make the planned call",
+      meeting: "Hold the planned meeting",
       task: "Do the planned task",
     }[next.channel];
     const late = new Date(next.dueAt) < now;
     action = `${verb}${next.subject ? ` — "${next.subject}"` : ""}${late ? " (overdue)" : ""}.`;
-    channel = next.channel === "sms" ? "email" : next.channel;
+    channel = next.channel === "sms" ? "email" : next.channel === "meeting" ? "call" : next.channel;
     planned = true;
     due = Math.max(0, Math.ceil((new Date(next.dueAt).getTime() - now.getTime()) / 864e5));
   }
@@ -1640,7 +1663,10 @@ export function rankLead(
   if (d != null && d >= 0 && d <= 45) add(`Protest deadline in ${d} days`, 10);
   // engagement + reachability
   if (l.stage === "interested") add("Said they're interested", 12);
-  if (l.stage === "registered") add("Has an account, not subscribed", 8);
+  if (l.stage === "registration_started") add("Started registering", 6);
+  if (l.stage === "registered") add("Has an account, no property yet", 8);
+  if (l.stage === "property_added") add("Added a property, not subscribed", 12);
+  if (l.stage === "subscription_started") add("Opened checkout", 16);
   if (l.stage === "no_response") add("No reply to outreach", -6);
   if (
     activities.some(
@@ -1961,8 +1987,16 @@ export function pickObjective(
     (a) => a.leadId === l.id && ["email", "sms", "call"].includes(a.kind),
   );
   const d = daysUntilIso(l.protestDeadline, now);
+  if (l.stage === "registration_started")
+    return { objective: "registration_reminder", why: "Started registering, didn't finish" };
   if (l.stage === "registered")
-    return { objective: "subscription_promo", why: "Has an account but no plan yet" };
+    return { objective: "add_property", why: "Registered, no property added yet" };
+  if (l.stage === "property_added")
+    return { objective: "subscription_promo", why: "Added a property, not subscribed yet" };
+  if (l.stage === "subscription_started")
+    return { objective: "finish_checkout", why: "Opened checkout but didn't finish" };
+  if (l.stage === "interested")
+    return { objective: "registration_reminder", why: "Interested — send the registration link" };
   if (l.source === "beta_signup" && !l.profileId)
     return { objective: "registration_reminder", why: "Signed up for the beta, no account yet" };
   if (d != null && d >= 0 && d <= 30)
@@ -2019,4 +2053,352 @@ export function rankAll(
   const out = new Map<string, Ranking>();
   for (const l of d.leads) out.set(l.id, rankLead(l, byLead.get(l.id) ?? [], d.activities, now));
   return out;
+}
+
+// ── Registration → subscription journey ─────────────────────────────────────
+export const JOURNEY = [
+  { key: "contacted", label: "Contacted" },
+  { key: "interested", label: "Interested" },
+  { key: "registration_started", label: "Registration Started" },
+  { key: "registered", label: "Registered" },
+  { key: "property_added", label: "Property Added" },
+  { key: "subscription_started", label: "Subscription Started" },
+  { key: "subscribed", label: "Subscribed" },
+] as const;
+export type JourneyKey = (typeof JOURNEY)[number]["key"];
+const ORDER: Record<string, number> = {
+  new: -1,
+  researching: -1,
+  ready: -1,
+  no_response: 0,
+  not_interested: 0,
+  do_not_contact: 0,
+  contacted: 0,
+  interested: 1,
+  registration_started: 2,
+  registered: 3,
+  property_added: 4,
+  subscription_started: 5,
+  subscribed: 6,
+};
+
+/** Which journey steps a lead has reached, with when (where the account tells us). */
+export function journeySteps(l: Lead, activities: Activity[]) {
+  const reached = ORDER[l.stage] ?? -1;
+  const mine = activities.filter((a) => a.leadId === l.id);
+  const contactedAt =
+    l.lastContactedAt ??
+    mine.filter((a) => ["email", "sms", "call", "meeting"].includes(a.kind)).at(-1)?.createdAt ??
+    null;
+  const interestedAt =
+    mine
+      .filter(
+        (a) =>
+          a.outcome === "interested" || (a.kind === "stage" && a.summary.endsWith("Interested")),
+      )
+      .at(-1)?.createdAt ?? null;
+  const at: Record<JourneyKey, string | null> = {
+    contacted: contactedAt,
+    interested: interestedAt,
+    registration_started: l.registrationStartedAt,
+    registered: l.registeredAt,
+    property_added: l.propertyAddedAt,
+    subscription_started: l.subscriptionStartedAt,
+    subscribed: l.subscribedAt,
+  };
+  return JOURNEY.map((s, i) => ({
+    ...s,
+    at: at[s.key],
+    // people who signed up on their own count the marketing steps as passed
+    done: !!at[s.key] || reached >= i || (i <= 1 && reached >= 2),
+    current: reached === i,
+  }));
+}
+
+/** How many leads reached each step, and where they drop off. */
+export function journeyFunnel(leads: Lead[], activities: Activity[]) {
+  const counts = JOURNEY.map(() => 0);
+  for (const l of leads) journeySteps(l, activities).forEach((s, i) => s.done && counts[i]++);
+  return JOURNEY.map((s, i) => ({
+    ...s,
+    count: counts[i],
+    /** share of the previous step that made it here */
+    conversion: i === 0 ? null : counts[i - 1] ? counts[i] / counts[i - 1] : null,
+    stuck: leads.filter((l) => l.stage === s.key).length,
+  }));
+}
+
+/** Links that take a prospect straight back to the step they haven't finished. */
+export function journeyLinks(l: Pick<Lead, "email" | "fullName" | "inviteToken">, site: string) {
+  const q = new URLSearchParams({ mode: "signup" });
+  if (l.email) q.set("email", l.email);
+  const first = (l.fullName ?? "").trim().split(/\s+/)[0];
+  if (first) q.set("firstName", first);
+  if (l.inviteToken) q.set("lead", l.inviteToken);
+  return {
+    registration: `${site}/sign-in?${q}`,
+    addProperty: `${site}/dashboard/properties`,
+    checkout: `${site}/dashboard/properties`,
+  };
+}
+
+// ── Best timing + channel ───────────────────────────────────────────────────
+export type Timing = { channel: "email" | "call" | "sms"; at: Date; why: string };
+const nextWeekday = (from: Date, hour: number) => {
+  const d = new Date(from);
+  d.setHours(hour, 0, 0, 0);
+  if (d.getTime() <= from.getTime()) d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+};
+/**
+ * When and how to reach this lead next: the channel they've answered on, at
+ * the hour they usually reply (else mid-morning), sooner for hot journey
+ * steps and high priority, Tue–Thu for routine touches.
+ */
+export function bestTiming(
+  l: Lead,
+  activities: Activity[],
+  priority: "high" | "medium" | "low",
+  now = new Date(),
+): Timing {
+  const mine = activities.filter((a) => a.leadId === l.id);
+  const replies = mine.filter((a) => a.outcome === "replied" || a.outcome === "interested");
+  const emailsOut = mine.filter((a) => a.kind === "email").length;
+  let channel: Timing["channel"];
+  let why: string;
+  const repliedOn = replies[0]?.kind;
+  if (repliedOn === "call" && l.phone) [channel, why] = ["call", "They've answered calls before"];
+  else if (repliedOn === "email" && l.email)
+    [channel, why] = ["email", "They've replied to email before"];
+  else if (emailsOut >= 1 && l.phone && !replies.length)
+    [channel, why] = ["call", "Emails went unanswered — try the phone"];
+  else if (
+    ["interested", "registration_started", "subscription_started"].includes(l.stage) &&
+    l.phone
+  )
+    [channel, why] = ["call", "Hot step — a quick call converts best"];
+  else if (l.email && !l.unsubscribedAt) [channel, why] = ["email", "Email first"];
+  else if (l.phone) [channel, why] = ["call", "No email on file"];
+  else [channel, why] = ["email", "No contact details yet"];
+  const hours = replies
+    .map((a) => new Date(a.createdAt).getHours())
+    .filter((h) => h >= 8 && h <= 18);
+  const hour = hours.length ? Math.round(hours.reduce((s, h) => s + h, 0) / hours.length) : 10;
+  if (hours.length)
+    why += ` · around ${hour % 12 || 12}${hour < 12 ? "am" : "pm"}, when they usually reply`;
+  const hot = ["interested", "registration_started", "subscription_started"].includes(l.stage);
+  let at = nextWeekday(now, hour);
+  if (!hot && priority !== "high") {
+    for (let i = 0; i < 7 && ![2, 3, 4].includes(at.getDay()); i++) at = nextWeekday(at, hour);
+    why += " · routine touch, Tue–Thu";
+  } else
+    why += hot ? " · hot step — next business morning" : " · high priority — next business morning";
+  return { channel, at, why };
+}
+
+// ── AI follow-up queue ──────────────────────────────────────────────────────
+export type QueueItem = {
+  lead: Lead;
+  reason: string;
+  kind:
+    | "no_response"
+    | "interested"
+    | "registration"
+    | "property"
+    | "subscribe"
+    | "checkout"
+    | "more_properties"
+    | "quiet";
+  objective: TemplateObjective;
+  timing: Timing;
+  priority: "high" | "medium" | "low";
+  potential: number;
+};
+const STEP_WEIGHT: Record<QueueItem["kind"], number> = {
+  checkout: 40,
+  subscribe: 30,
+  interested: 28,
+  registration: 25,
+  property: 22,
+  more_properties: 18,
+  no_response: 10,
+  quiet: 8,
+};
+/** Prospects who need a follow-up now, highest conversion potential first. */
+export function followupQueue(
+  d: MarketingData,
+  ranks: Map<string, Ranking>,
+  now = new Date(),
+): QueueItem[] {
+  const out: QueueItem[] = [];
+  const ago = (iso: string | null | undefined) =>
+    iso ? (now.getTime() - new Date(iso).getTime()) / 864e5 : Infinity;
+  const accountProps = new Map<string, number>();
+  for (const p of d.properties)
+    if (p.source === "account") accountProps.set(p.leadId, (accountProps.get(p.leadId) ?? 0) + 1);
+  for (const l of d.leads) {
+    if (["do_not_contact", "not_interested", "subscribed"].includes(l.stage)) continue;
+    if (
+      d.followups.some((f) => f.leadId === l.id && (f.status === "pending" || f.status === "draft"))
+    )
+      continue;
+    const mine = d.activities.filter((a) => a.leadId === l.id);
+    const lastOut = mine.find((a) => ["email", "sms", "call", "meeting"].includes(a.kind));
+    const replied = mine.some((a) => a.outcome === "replied" || a.outcome === "interested");
+    const added = accountProps.get(l.id) ?? 0;
+    let item: Pick<QueueItem, "reason" | "kind" | "objective"> | null = null;
+    if (l.stage === "subscription_started" && ago(l.subscriptionStartedAt) > 2 / 24)
+      item = {
+        kind: "checkout",
+        reason: "Opened checkout but didn't finish",
+        objective: "finish_checkout",
+      };
+    else if (l.stage === "property_added" && l.portfolioCount > added + 1)
+      item = {
+        kind: "more_properties",
+        reason: `Owns ${l.portfolioCount} properties, added ${added} — offer the spreadsheet upload`,
+        objective: "add_property",
+      };
+    else if (l.stage === "property_added" && ago(l.propertyAddedAt) > 2)
+      item = {
+        kind: "subscribe",
+        reason: "Added a property, hasn't subscribed",
+        objective: "subscription_promo",
+      };
+    else if (l.stage === "registered" && ago(l.registeredAt) > 1)
+      item = {
+        kind: "property",
+        reason: "Registered, hasn't added a property",
+        objective: "add_property",
+      };
+    else if (l.stage === "registration_started" && ago(l.registrationStartedAt) > 1)
+      item = {
+        kind: "registration",
+        reason: "Started registering, didn't finish",
+        objective: "registration_reminder",
+      };
+    else if (l.stage === "interested" && ago(lastOut?.createdAt) > 2)
+      item = {
+        kind: "interested",
+        reason: "Interested, hasn't registered",
+        objective: "registration_reminder",
+      };
+    else if (
+      ["contacted", "no_response"].includes(l.stage) &&
+      !replied &&
+      ago(lastOut?.createdAt) > 3
+    )
+      item = {
+        kind: "no_response",
+        reason: `No reply ${Math.round(ago(lastOut?.createdAt))} days after the last ${lastOut?.kind ?? "message"}`,
+        objective: "follow_up",
+      };
+    else if (l.stage === "ready" && !lastOut)
+      item = {
+        kind: "quiet",
+        reason: "Ready for outreach, never contacted",
+        objective: "initial_outreach",
+      };
+    if (!item) continue;
+    const r = ranks.get(l.id);
+    const priority = r ? shownPriority(l, r) : "medium";
+    out.push({
+      lead: l,
+      ...item,
+      timing: bestTiming(l, d.activities, priority, now),
+      priority,
+      potential: (r?.points ?? 0) + STEP_WEIGHT[item.kind],
+    });
+  }
+  return out.sort((a, b) => b.potential - a.potential);
+}
+
+// ── Follow-up effectiveness ─────────────────────────────────────────────────
+export type Effectiveness = {
+  outreach: number;
+  responses: number;
+  responseRate: number | null;
+  byChannel: { key: string; sent: number; responded: number; rate: number | null }[];
+  byTemplate: { key: string; sent: number; responded: number; rate: number | null }[];
+  overdue: number;
+  onTime: number | null;
+  registrations: number;
+  abandoned: { registration: number; property: number; checkout: number };
+  conversions: number;
+};
+/**
+ * A touch "worked" when, within 7 days, the lead replied / said interested or
+ * moved forward a journey step. Window: the last `days` days.
+ */
+export function effectiveness(d: MarketingData, days = 30, now = new Date()): Effectiveness {
+  const since = now.getTime() - days * 864e5;
+  const touches = d.activities.filter(
+    (a) =>
+      a.leadId &&
+      ["email", "sms", "call", "meeting"].includes(a.kind) &&
+      new Date(a.createdAt).getTime() >= since,
+  );
+  const byLead = new Map<string, Activity[]>();
+  for (const a of d.activities)
+    if (a.leadId) byLead.set(a.leadId, [...(byLead.get(a.leadId) ?? []), a]);
+  const forward =
+    /→ (Interested|Registration Started|Registered|Property Added|Subscription Started|Subscribed)$/;
+  const worked = (t: Activity) => {
+    const t0 = new Date(t.createdAt).getTime();
+    return (byLead.get(t.leadId!) ?? []).some((a) => {
+      const ts = new Date(a.createdAt).getTime();
+      if (ts <= t0 || ts > t0 + 7 * 864e5) return false;
+      return (
+        a.outcome === "replied" ||
+        a.outcome === "interested" ||
+        (a.kind === "stage" && forward.test(a.summary))
+      );
+    });
+  };
+  const rate = (n: number, of: number) => (of ? n / of : null);
+  const group = (key: (a: Activity) => string | null) => {
+    const m = new Map<string, { sent: number; responded: number }>();
+    for (const t of touches) {
+      const k = key(t);
+      if (!k) continue;
+      const g = m.get(k) ?? { sent: 0, responded: 0 };
+      g.sent++;
+      if (worked(t)) g.responded++;
+      m.set(k, g);
+    }
+    return [...m.entries()].map(([k, g]) => ({ key: k, ...g, rate: rate(g.responded, g.sent) }));
+  };
+  const responses = touches.filter(worked).length;
+  const doneFu = d.followups.filter(
+    (f) => f.status === "done" && f.completedAt && new Date(f.completedAt).getTime() >= since,
+  );
+  const recent = (iso: string | null) => !!iso && new Date(iso).getTime() >= since;
+  const old = (iso: string | null, hours: number) =>
+    !!iso && now.getTime() - new Date(iso).getTime() > hours * 36e5;
+  return {
+    outreach: touches.length,
+    responses,
+    responseRate: rate(responses, touches.length),
+    byChannel: group((a) => a.kind),
+    byTemplate: group((a) => a.templateId),
+    overdue: d.followups.filter((f) => f.status === "pending" && new Date(f.dueAt) < now).length,
+    onTime: rate(
+      doneFu.filter(
+        (f) => new Date(f.completedAt!).getTime() <= new Date(f.dueAt).getTime() + 864e5,
+      ).length,
+      doneFu.length,
+    ),
+    registrations: d.leads.filter((l) => recent(l.registeredAt)).length,
+    abandoned: {
+      registration: d.leads.filter(
+        (l) => l.stage === "registration_started" && old(l.registrationStartedAt, 24),
+      ).length,
+      property: d.leads.filter((l) => l.stage === "registered" && old(l.registeredAt, 72)).length,
+      checkout: d.leads.filter(
+        (l) => l.stage === "subscription_started" && old(l.subscriptionStartedAt, 2),
+      ).length,
+    },
+    conversions: d.leads.filter((l) => recent(l.subscribedAt)).length,
+  };
 }

@@ -44,7 +44,11 @@ const TABS: { key: MarketingTab; label: string; purpose: string }[] = [
     purpose: "Create, approve, schedule and track email campaigns",
   },
   { key: "ai", label: "AI Marketing", purpose: "Give Corvus AI instructions and review its work" },
-  { key: "followups", label: "Follow-ups", purpose: "Overdue, upcoming and AI-planned outreach" },
+  {
+    key: "followups",
+    label: "Follow-ups",
+    purpose: "AI queue, team tasks, the registration journey and what works",
+  },
   { key: "analytics", label: "Analytics", purpose: "Sources, conversion, campaigns and revenue" },
 ];
 
@@ -112,8 +116,9 @@ function MarketingPage() {
     const now = new Date();
     return {
       dashboard: monitor(data, now).filter((a) => a.severity !== "info").length,
-      followups: data.followups.filter((f) => f.status === "pending" && new Date(f.dueAt) < now)
-        .length,
+      followups: data.followups.filter(
+        (f) => (f.status === "pending" && new Date(f.dueAt) < now) || f.status === "draft",
+      ).length,
     } as Partial<Record<MarketingTab, number>>;
   }, [data]);
 
@@ -260,7 +265,7 @@ function MarketingPage() {
         ) : tab === "ai" ? (
           <AiWorkspace data={data} go={go} reload={reload} onAiRun={onAiRun} />
         ) : tab === "followups" ? (
-          <Followups data={data} focus={focus} go={go} reload={reload} />
+          <Followups data={data} focus={focus} go={go} reload={reload} onAiRun={onAiRun} />
         ) : (
           <Analytics data={data} onAiRun={onAiRun} />
         )}

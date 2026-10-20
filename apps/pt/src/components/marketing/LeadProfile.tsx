@@ -22,6 +22,8 @@ import {
   saveFollowup,
   scoreLead,
   setLeadStage,
+  leadFacts,
+  runAi,
   updateLead,
   type Activity,
   type Lead,
@@ -32,6 +34,8 @@ import {
   type Stage,
 } from "@/lib/marketing";
 import {
+  journeyLinks,
+  journeySteps,
   rankLead,
   shownPriority,
   cleanCounty,
@@ -75,6 +79,8 @@ const KIND_LABEL: Record<Activity["kind"], string> = {
   email: "Email",
   sms: "SMS",
   call: "Call",
+  meeting: "Meeting",
+  journey: "Journey",
   stage: "Status",
   ai: "AI",
   follow_up: "Follow-up",
@@ -336,6 +342,7 @@ export function LeadProfile({
           </div>
         </div>
 
+        <JourneyStrip lead={lead} data={data} />
         {dnc && (
           <p className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
             <Ban className="h-4 w-4 shrink-0" aria-hidden />
@@ -579,7 +586,7 @@ export function LeadProfile({
               )}
             </section>
 
-            <History lead={lead} history={history} staffName={staffName} act={act} />
+            <History lead={lead} data={data} history={history} staffName={staffName} act={act} />
           </div>
         </div>
       </div>
@@ -917,19 +924,31 @@ function NextAction({
 
 function History({
   lead,
+  data,
   history,
   staffName,
   act,
 }: {
   lead: Lead;
+  data: MarketingData;
   history: Activity[];
   staffName: (id: string | null) => string | null;
   act: Act;
 }) {
   const [note, setNote] = useState("");
-  const [kind, setKind] = useState<"note" | "call" | "email" | "sms">("note");
+  const [kind, setKind] = useState<"note" | "call" | "email" | "sms" | "meeting">("note");
   const [outcome, setOutcome] = useState<Outcome | "">("");
+  const [next, setNext] = useState<{
+    on: boolean;
+    days: number;
+    channel: "call" | "email" | "meeting" | "task";
+  }>({
+    on: false,
+    days: 3,
+    channel: lead.phone ? "call" : "email",
+  });
   const dnc = isDnc(lead);
+  const summary = data.aiRuns.find((r) => r.scope === "history" && r.leadId === lead.id) ?? null;
   return (
     <section className="rounded-lg border border-border p-4">
       <h3 className="text-sm font-semibold">Communication history</h3>
@@ -947,15 +966,33 @@ function History({
                 summary:
                   kind === "note"
                     ? "Note"
-                    : `${kind === "call" ? "Call" : kind === "sms" ? "Text" : "Email"} logged${outcome ? ` — ${OUTCOME_LABEL[outcome]}` : ""}`,
+                    : `${{ call: "Call", sms: "Text", email: "Email", meeting: "Meeting" }[kind]} logged${outcome ? ` — ${OUTCOME_LABEL[outcome]}` : ""}`,
                 body: note.trim() || null,
                 outcome: outcome || null,
               });
               if (kind !== "note")
                 await updateLead(lead.id, { lastContactedAt: new Date().toISOString() });
               await runRules(lead.id);
+              if (next.on && !dnc && outcome !== "do_not_contact" && outcome !== "not_interested") {
+                const due = new Date(Date.now() + next.days * 864e5);
+                due.setHours(10, 0, 0, 0);
+                await saveFollowup(null, {
+                  leadId: lead.id,
+                  channel:
+                    next.channel === "email" && (!lead.email || lead.unsubscribedAt)
+                      ? "task"
+                      : next.channel,
+                  dueAt: due.toISOString(),
+                  subject: outcome
+                    ? `Follow up: ${OUTCOME_LABEL[outcome].toLowerCase()}`
+                    : "Follow up",
+                  assignedTo: lead.assignedTo ?? data.me,
+                  status: next.channel === "email" ? "draft" : "pending",
+                });
+              }
               setNote("");
               setOutcome("");
+              setNext((x) => ({ ...x, on: false }));
             },
             "Saved to history.",
           );
@@ -986,6 +1023,9 @@ function History({
             <option value="sms" disabled={dnc}>
               Text
             </option>
+            <option value="meeting" disabled={dnc}>
+              Meeting
+            </option>
           </select>
           <select
             value={outcome}
@@ -1004,10 +1044,87 @@ function History({
             Save
           </button>
         </div>
+        {!dnc && (
+          <label className="flex flex-wrap items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={next.on}
+              onChange={(e) => setNext({ ...next, on: e.target.checked })}
+            />
+            Then schedule a
+            <select
+              className="rounded border border-input bg-background px-1 py-0.5"
+              value={next.channel}
+              onChange={(e) => setNext({ ...next, channel: e.target.value as typeof next.channel })}
+              aria-label="Next follow-up type"
+            >
+              <option value="call">call</option>
+              <option value="email">email (for approval)</option>
+              <option value="meeting">meeting</option>
+              <option value="task">task</option>
+            </select>
+            in
+            <select
+              className="rounded border border-input bg-background px-1 py-0.5"
+              value={next.days}
+              onChange={(e) => setNext({ ...next, days: Number(e.target.value) })}
+              aria-label="Days until the follow-up"
+            >
+              {[1, 2, 3, 5, 7, 14].map((d) => (
+                <option key={d} value={d}>
+                  {d} day{d === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <p className="text-[11px] text-muted-foreground">
           * The outcome updates the status by your approved rules.
         </p>
       </form>
+      <div className="mt-3 rounded-md bg-secondary/40 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold">
+            <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden /> Conversation summary
+          </span>
+          <button
+            type="button"
+            className="text-xs text-accent hover:underline"
+            disabled={!history.length}
+            onClick={() =>
+              void act("summ", async () => {
+                await runAi({
+                  scope: "history",
+                  leadId: lead.id,
+                  instruction:
+                    "Summarise this prospect's communication history for the team in markdown: **Where things stand** (1-2 lines), **Important discussions** (bullets: what they said, concerns, promises made), **Next steps** (1-3 bullets). Use only the history given.",
+                  context:
+                    leadFacts(lead, data.activities, data.followups) +
+                    `\nFull history (newest first):\n${history
+                      .slice(0, 60)
+                      .map(
+                        (a) =>
+                          `- ${a.createdAt.slice(0, 10)} ${a.kind}${a.outcome ? ` (${a.outcome})` : ""}: ${a.summary}${a.body ? ` — ${a.body.slice(0, 300)}` : ""}`,
+                      )
+                      .join("\n")}`,
+                });
+              })
+            }
+          >
+            {summary ? "Refresh" : "Summarise"}
+          </button>
+        </div>
+        {summary?.result ? (
+          <>
+            <MarkdownLite text={summary.result} className="mt-1 text-sm" />
+            <p className="text-[10px] text-muted-foreground">{relDays(summary.createdAt)}</p>
+          </>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Corvus AI summarises what's been discussed and what to do next.
+          </p>
+        )}
+      </div>
       <ul className="mt-3 grid max-h-96 gap-2 overflow-y-auto pr-1 text-sm">
         {history.length === 0 && <li className="text-muted-foreground">No history yet.</li>}
         {history.map((a) => (
@@ -1406,5 +1523,81 @@ function PropertyRow({
         </span>
       </div>
     </li>
+  );
+}
+
+/** Contacted → Subscribed for this lead: done steps with dates, the next step's link, and the Support handoff. */
+function JourneyStrip({ lead, data }: { lead: Lead; data: MarketingData }) {
+  const steps = journeySteps(lead, data.activities);
+  const handoff = data.handoffs.find((h) => h.leadId === lead.id);
+  const links = journeyLinks(
+    lead,
+    `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/$/, ""),
+  );
+  const nextLink =
+    lead.stage === "registered" ||
+    lead.stage === "property_added" ||
+    lead.stage === "subscription_started"
+      ? lead.stage === "registered"
+        ? { label: "add-property link", url: links.addProperty }
+        : { label: "checkout link", url: links.checkout }
+      : lead.stage !== "subscribed"
+        ? { label: "registration link", url: links.registration }
+        : null;
+  return (
+    <div className="grid gap-2 rounded-lg border border-border p-3">
+      <ol className="flex flex-wrap items-center gap-1 text-[11px]">
+        {steps.map((st, i) => (
+          <li key={st.key} className="flex items-center gap-1">
+            {i > 0 && <span className="text-muted-foreground">→</span>}
+            <span
+              className={`rounded-full px-2 py-0.5 ${st.current ? "bg-accent font-semibold text-accent-foreground" : st.done ? "bg-emerald-100 text-emerald-900" : "bg-secondary text-muted-foreground"}`}
+              title={st.at ? new Date(st.at).toLocaleString() : st.done ? "Done" : "Not yet"}
+            >
+              {st.done && !st.current ? "✓ " : ""}
+              {st.label}
+              {st.at && (
+                <span className="opacity-70">
+                  {" "}
+                  · {new Date(st.at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+        {nextLink && !isDnc(lead) && (
+          <li className="ml-auto">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-accent hover:underline"
+              title={nextLink.url}
+              onClick={() =>
+                navigator.clipboard
+                  .writeText(nextLink.url)
+                  .then(() => toast.success("Link copied."))
+                  .catch(() => toast.error("Couldn't copy."))
+              }
+            >
+              Copy {nextLink.label}
+            </button>
+          </li>
+        )}
+      </ol>
+      {handoff && (
+        <div className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+          <b>Customer Support</b> took over {relDays(handoff.createdAt)} —{" "}
+          {handoff.status === "open"
+            ? "waiting for Support to pick it up"
+            : handoff.status === "accepted"
+              ? "Support is onboarding them"
+              : "onboarding done"}
+          .
+          {!!handoff.snapshot.needs?.length && (
+            <> Onboarding: {handoff.snapshot.needs.join(" · ")}.</>
+          )}{" "}
+          Marketing history stays here.
+        </div>
+      )}
+    </div>
   );
 }

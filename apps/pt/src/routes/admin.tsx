@@ -138,7 +138,13 @@ function AdminPanel() {
           // Marketing Admins don't get the full Admin (cases, filings, users) —
           // send them to their own workspace.
           const role = await getStaffRole(user.id).catch(() => null);
-          nav({ to: role?.isMarketingAdmin ? "/marketing" : "/admin-login" });
+          nav({
+            to: role?.isMarketingAdmin
+              ? "/marketing"
+              : role?.isSupportAdmin
+                ? "/support"
+                : "/admin-login",
+          });
           return;
         }
         setIsAdmin(true);

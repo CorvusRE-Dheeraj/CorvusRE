@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/ConfirmHost";
 import { getErrorMessage } from "@/lib/error-message";
 import type { AdminUserRecord } from "@/lib/admin";
-import { setMarketingAdmin } from "@/lib/marketing";
+import { setMarketingAdmin, setSupportAdmin } from "@/lib/marketing";
 
 // Super Admin control over who is a Marketing Admin. The change is made by a
 // database function that only a Super Admin can run, and it's written to the
@@ -30,25 +30,25 @@ export function AdminMarketingAccess({
       )
       .sort(
         (a, b) =>
-          Number(b.isMarketingAdmin) - Number(a.isMarketingAdmin) ||
+          Number(b.isMarketingAdmin || b.isSupportAdmin) -
+            Number(a.isMarketingAdmin || a.isSupportAdmin) ||
           (a.email ?? "").localeCompare(b.email ?? ""),
       );
   }, [users, query]);
 
-  async function toggle(u: AdminUserRecord) {
-    const next = !u.isMarketingAdmin;
+  async function toggle(u: AdminUserRecord, role: "marketing" | "support" = "marketing") {
+    const label = role === "marketing" ? "Marketing Admin" : "Customer Support Admin";
+    const next = role === "marketing" ? !u.isMarketingAdmin : !u.isSupportAdmin;
     if (
       !(await confirmDialog(
-        next
-          ? `Give ${u.email} Marketing Admin access?`
-          : `Remove Marketing Admin access from ${u.email}?`,
+        next ? `Give ${u.email} ${label} access?` : `Remove ${label} access from ${u.email}?`,
       ))
     )
       return;
     setBusyId(u.id);
     try {
-      await setMarketingAdmin(u.id, next);
-      toast.success(next ? "Marketing Admin access granted." : "Marketing Admin access removed.");
+      await (role === "marketing" ? setMarketingAdmin(u.id, next) : setSupportAdmin(u.id, next));
+      toast.success(next ? `${label} access granted.` : `${label} access removed.`);
       onChanged();
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not change access."));
@@ -87,6 +87,12 @@ export function AdminMarketingAccess({
           * Enforced by the database, not just hidden in the app. Super Admins keep full access to
           everything, including Marketing.
         </p>
+        <h2 className="mt-4 font-semibold">What a Customer Support Admin can do</h2>
+        <p className="mt-1 text-muted-foreground">
+          Receives every new paying customer from Marketing with an AI summary of their properties,
+          subscription, past conversations and onboarding to-dos, and takes over subscription help,
+          property onboarding and protest-related support. Marketing keeps the marketing history.
+        </p>
       </div>
       <input
         value={query}
@@ -101,6 +107,7 @@ export function AdminMarketingAccess({
             <tr>
               <th className="px-3 py-2 font-medium">User</th>
               <th className="px-3 py-2 font-medium">Marketing Admin</th>
+              <th className="px-3 py-2 font-medium">Customer Support Admin</th>
             </tr>
           </thead>
           <tbody>
@@ -124,6 +131,21 @@ export function AdminMarketingAccess({
                   >
                     <span
                       className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${u.isMarketingAdmin ? "left-[22px]" : "left-0.5"}`}
+                    />
+                  </button>
+                </td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={u.isSupportAdmin}
+                    aria-label={`Customer Support Admin for ${u.email}`}
+                    disabled={busyId === u.id}
+                    onClick={() => void toggle(u, "support")}
+                    className={`relative h-6 w-11 rounded-full transition-colors disabled:opacity-60 ${u.isSupportAdmin ? "bg-accent" : "bg-secondary"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${u.isSupportAdmin ? "left-[22px]" : "left-0.5"}`}
                     />
                   </button>
                 </td>
