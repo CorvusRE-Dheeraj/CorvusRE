@@ -81,12 +81,24 @@ export async function accessToken(userId: string): Promise<string | null> {
   if (new Date(data.expires_at).getTime() > Date.now())
     return data.access_token;
   const cfg = podioConfig();
-  const t = await exchangeToken({
-    grant_type: "refresh_token",
-    client_id: cfg.clientId,
-    client_secret: cfg.clientSecret,
-    refresh_token: data.refresh_token,
-  });
+  let t: TokenResponse;
+  try {
+    t = await exchangeToken({
+      grant_type: "refresh_token",
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      refresh_token: data.refresh_token,
+    });
+  } catch (err) {
+    // The saved login is dead (refresh token expired or revoked): forget it so
+    // the app shows "Connect Podio" again instead of failing on every call.
+    // invalid_client means our own Podio keys are wrong — keep that loud.
+    if (err instanceof PodioTokenError && err.code !== "invalid_client") {
+      await admin().from("podio_connections").delete().eq("user_id", userId);
+      return null;
+    }
+    throw err;
+  }
   await saveTokens(userId, t);
   return t.access_token;
 }
