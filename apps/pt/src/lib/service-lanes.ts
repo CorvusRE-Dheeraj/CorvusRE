@@ -19,6 +19,8 @@ export type ServiceLane = {
   whoFiles: string;
   whoAppears: string;
   whoCommunicates: string;
+  /** the same three answers as a scannable headline ("You do" / "CorvusPT does") + detail */
+  answers: Record<"whoFiles" | "whoAppears" | "whoCommunicates", { lead: string; detail?: string }>;
   cta: { label: string; to: "/" | "/dashboard/properties" | "/contact" };
 };
 
@@ -38,6 +40,11 @@ export const SERVICE_LANES: ServiceLane[] = [
     whoFiles: "Nothing is filed — this is a review only.",
     whoAppears: "No hearing.",
     whoCommunicates: "No one contacts the county.",
+    answers: {
+      whoFiles: { lead: "Nothing is filed", detail: "This is a review only." },
+      whoAppears: { lead: "No hearing" },
+      whoCommunicates: { lead: "No one", detail: "The county isn't contacted." },
+    },
     cta: { label: "Start Free Review", to: "/" },
   },
   {
@@ -53,6 +60,17 @@ export const SERVICE_LANES: ServiceLane[] = [
     whoAppears: "You do, with Corvus AI's hearing-prep guide.",
     whoCommunicates:
       "You do. Your deadlines and the county's notices are tracked in your dashboard.",
+    answers: {
+      whoFiles: {
+        lead: "You do",
+        detail: "CorvusPT prepares the evidence and tells you what to file, where and by when.",
+      },
+      whoAppears: { lead: "You do", detail: "With Corvus AI's hearing-prep guide." },
+      whoCommunicates: {
+        lead: "You do",
+        detail: "Your deadlines and county notices are tracked in your dashboard.",
+      },
+    },
     cta: { label: "Add a Property to Subscribe", to: "/dashboard/properties" },
   },
   {
@@ -66,6 +84,17 @@ export const SERVICE_LANES: ServiceLane[] = [
     whoFiles: "CorvusPT files for you, once you sign the Appointment of Agent (Form 50-162).",
     whoAppears: "CorvusPT represents you at the hearing.",
     whoCommunicates: "CorvusPT does — and nothing is settled without your approval.",
+    answers: {
+      whoFiles: {
+        lead: "CorvusPT does",
+        detail: "Once you sign the Appointment of Agent (Form 50-162).",
+      },
+      whoAppears: { lead: "CorvusPT does", detail: "We represent you at the hearing." },
+      whoCommunicates: {
+        lead: "CorvusPT does",
+        detail: "Nothing is settled without your approval.",
+      },
+    },
     cta: { label: "Talk to Our Team", to: "/contact" },
   },
 ];

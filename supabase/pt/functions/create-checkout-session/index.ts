@@ -183,6 +183,12 @@ Deno.serve(async (req: Request) => {
 
     if (!session.url) throw new Error("Stripe did not return a Checkout URL");
 
+    // Marks "subscription started" for the Marketing CRM journey (abandoned-checkout follow-ups).
+    await adminClient
+      .from("properties")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("id", propertyId);
+
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,
       headers: corsHeaders,

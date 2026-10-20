@@ -181,3 +181,26 @@ async function hmac(payload: string, secret: string): Promise<string> {
   );
   return Array.from(sig, (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+// A CRM value in the shape Podio's item update expects for that field type;
+// undefined for types the CRM never writes (categories, relations, dates…).
+export function podioWriteValue(type: string, v: string): unknown {
+  switch (type) {
+    case "text":
+    case "location":
+      return v;
+    case "email":
+    case "phone":
+      return [{ type: "work", value: v }];
+    case "number": {
+      const n = Number(v.replace(/[$,\s]/g, ""));
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case "money": {
+      const n = Number(v.replace(/[$,\s]/g, ""));
+      return Number.isFinite(n) ? { value: String(n), currency: "USD" } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}

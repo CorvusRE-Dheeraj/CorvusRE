@@ -18,6 +18,7 @@ import {
   termsAcceptanceNeeded,
 } from "@/lib/legal-acceptance";
 import { getMyProfile, updateMyProfile } from "@/lib/profile";
+import { getStaffRole } from "@/lib/marketing";
 import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
 import type { CadRecord } from "@/lib/cad-lookup";
 import { getErrorMessage } from "@/lib/error-message";
@@ -67,7 +68,11 @@ export function EngagementPacketHost() {
     pathname.startsWith("/forgot-password") ||
     pathname === "/admin-login" ||
     // An invitee accepts before anything else; they never sign for the owner.
-    pathname === "/accept-invite";
+    pathname === "/accept-invite" ||
+    // The staff marketing workspace and the public unsubscribe page aren't customer flows.
+    pathname === "/marketing" ||
+    pathname === "/support" ||
+    pathname === "/unsubscribe";
 
   useEffect(() => {
     if (loading || !user || isMember) {
@@ -81,8 +86,14 @@ export function EngagementPacketHost() {
       getMyLatestPacket().catch(() => null),
       getLatestTermsAcceptance().catch(() => null),
       getMyProfile(user.id).catch(() => null),
-    ]).then(([latest, terms, profile]) => {
+      getStaffRole(user.id).catch(() => null),
+    ]).then(([latest, terms, profile, staff]) => {
       if (cancelled) return;
+      // A Marketing Admin is staff, not a customer — no welcome, no agreements.
+      if ((staff?.isMarketingAdmin || staff?.isSupportAdmin) && !staff.isSuperAdmin) {
+        setWelcome(false);
+        return;
+      }
       // A read failure must never lock anyone out — treat unknowns as satisfied.
       const needTerms = terms === null ? false : termsAcceptanceNeeded(terms);
       const named = profile ? !!profile.firstName : true;

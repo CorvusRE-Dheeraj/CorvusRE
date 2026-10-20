@@ -22,14 +22,17 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as IntakeRouteImport } from './routes/intake'
 import { Route as JoinRouteImport } from './routes/join'
+import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PropertyProtestRouteImport } from './routes/property-protest'
 import { Route as PropertyTaxManagementRouteImport } from './routes/property-tax-management'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
 import { Route as DashboardLayoutAcquisitionRouteImport } from './routes/dashboard/_layout.acquisition'
@@ -115,6 +118,11 @@ const JoinRoute = JoinRouteImport.update({
   path: '/join',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -145,6 +153,11 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TaxPaymentRoute = TaxPaymentRouteImport.update({
   id: '/tax-payment',
   path: '/tax-payment',
@@ -153,6 +166,11 @@ const TaxPaymentRoute = TaxPaymentRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardLayoutRoute = DashboardLayoutRouteImport.update({
@@ -274,14 +292,17 @@ export interface FileRoutesByFullPath {
   '/how-it-works': typeof HowItWorksRoute
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
+  '/marketing': typeof MarketingRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
@@ -316,14 +337,17 @@ export interface FileRoutesByTo {
   '/how-it-works': typeof HowItWorksRoute
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
+  '/marketing': typeof MarketingRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
@@ -358,14 +382,17 @@ export interface FileRoutesById {
   '/how-it-works': typeof HowItWorksRoute
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
+  '/marketing': typeof MarketingRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
   '/dashboard/_layout/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/_layout/agreements': typeof DashboardLayoutAgreementsRoute
@@ -402,14 +429,17 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/intake'
     | '/join'
+    | '/marketing'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/unsubscribe'
     | '/dashboard'
     | '/dashboard/acquisition'
     | '/dashboard/agreements'
@@ -444,14 +474,17 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/intake'
     | '/join'
+    | '/marketing'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/unsubscribe'
     | '/dashboard/acquisition'
     | '/dashboard/agreements'
     | '/dashboard/billing'
@@ -485,14 +518,17 @@ export interface FileRouteTypes {
     | '/how-it-works'
     | '/intake'
     | '/join'
+    | '/marketing'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
     | '/reset-password'
     | '/sign-in'
+    | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/unsubscribe'
     | '/dashboard/_layout'
     | '/dashboard/_layout/acquisition'
     | '/dashboard/_layout/agreements'
@@ -528,14 +564,17 @@ export interface RootRouteChildren {
   HowItWorksRoute: typeof HowItWorksRoute
   IntakeRoute: typeof IntakeRoute
   JoinRoute: typeof JoinRoute
+  MarketingRoute: typeof MarketingRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   PropertyProtestRoute: typeof PropertyProtestRoute
   PropertyTaxManagementRoute: typeof PropertyTaxManagementRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
+  SupportRoute: typeof SupportRoute
   TaxPaymentRoute: typeof TaxPaymentRoute
   TermsRoute: typeof TermsRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   DashboardLayoutRoute: typeof DashboardLayoutRouteWithChildren
 }
 
@@ -632,6 +671,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -674,6 +720,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tax-payment': {
       id: '/tax-payment'
       path: '/tax-payment'
@@ -686,6 +739,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/_layout': {
@@ -884,14 +944,17 @@ const rootRouteChildren: RootRouteChildren = {
   HowItWorksRoute: HowItWorksRoute,
   IntakeRoute: IntakeRoute,
   JoinRoute: JoinRoute,
+  MarketingRoute: MarketingRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   PropertyProtestRoute: PropertyProtestRoute,
   PropertyTaxManagementRoute: PropertyTaxManagementRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
+  SupportRoute: SupportRoute,
   TaxPaymentRoute: TaxPaymentRoute,
   TermsRoute: TermsRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   DashboardLayoutRoute: DashboardLayoutRouteWithChildren,
 }
 export const routeTree = rootRouteImport

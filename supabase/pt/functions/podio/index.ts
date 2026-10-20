@@ -9,6 +9,7 @@
 //   POST { action: "apps" }              → { workspaces }
 //   POST { action: "items", appId }      → { headers, rows, total, truncated }
 //   POST { action: "disconnect" }        → { ok }
+//   POST { action: "contacts" | "update-item" }  Marketing CRM sync (below)
 //
 // Tokens live in podio_connections (service role only) and never reach the
 // browser. Items become a spreadsheet grid (_shared/podio-grid.ts) that runs
@@ -21,11 +22,14 @@ import {
   podioConfig,
   podioGet,
   podioPost,
+  podioPut,
   PodioTokenError,
   saveTokens,
 } from "../_shared/podio.ts";
 import {
+  fieldText,
   itemsToGrid,
+  podioWriteValue,
   safeReturn,
   signState,
   verifyState,
@@ -157,6 +161,87 @@ Deno.serve(async (req: Request) => {
             });
         }
       return json({ workspaces });
+    }
+
+    // ── Marketing CRM sync (Marketing Admin / Super Admin only) ──────────────
+    //   contacts { appId }              → { fields, items, total, truncated }
+    //   update-item { itemId, values }  → { updated } — fills EMPTY fields only
+    if (body?.action === "contacts" || body?.action === "update-item") {
+      const { data: staff } = await admin()
+        .from("profiles")
+        .select("is_admin, marketing_admin")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!staff?.is_admin && !staff?.marketing_admin)
+        return json({ error: "Marketing access required." }, 403);
+    }
+
+    if (body?.action === "contacts") {
+      const appId = Number(body.appId);
+      if (!appId) return json({ error: "Choose a Podio app." }, 400);
+      const app = await podioGet<{
+        fields?: { external_id: string; label: string; type: string; status?: string }[];
+      }>(token, `/app/${appId}`);
+      const fields = (app.fields ?? [])
+        .filter((f) => f.status !== "deleted")
+        .map((f) => ({ externalId: f.external_id, label: f.label, type: f.type }));
+      const items: PodioItem[] = [];
+      let total = 0;
+      for (let offset = 0; offset < MAX_ITEMS; offset += PAGE) {
+        const page = await podioPost<{ total: number; filtered?: number; items: PodioItem[] }>(
+          token,
+          `/item/app/${appId}/filter/`,
+          { limit: PAGE, offset },
+        );
+        total = page.filtered ?? page.total;
+        items.push(...page.items);
+        if (page.items.length < PAGE) break;
+      }
+      return json({
+        fields,
+        items: items.map((it) => ({
+          itemId: it.item_id,
+          appId,
+          title: it.title ?? "",
+          fields: fields.map((f) => {
+            const pf = (it.fields ?? []).find((x) => x.external_id === f.externalId);
+            return { ...f, text: pf ? fieldText(pf) : "" };
+          }),
+        })),
+        total,
+        truncated: total > items.length,
+      });
+    }
+
+    if (body?.action === "update-item") {
+      const itemId = Number(body.itemId);
+      const values = (body.values ?? {}) as Record<string, string>;
+      if (!itemId || !Object.keys(values).length)
+        return json({ error: "Nothing to update." }, 400);
+      // Re-read the item: only fields that exist, are writable and are still
+      // empty in Podio are written — staff approved filling blanks, nothing else.
+      const item = await podioGet<PodioItem & { app?: { app_id: number } }>(token, `/item/${itemId}`);
+      const app = await podioGet<{ fields?: { external_id: string; type: string }[] }>(
+        token,
+        `/app/${item.app?.app_id}`,
+      );
+      const out: Record<string, unknown> = {};
+      const skipped: string[] = [];
+      for (const [ext, raw] of Object.entries(values)) {
+        const def = (app.fields ?? []).find((f) => f.external_id === ext);
+        const cur = (item.fields ?? []).find((f) => f.external_id === ext);
+        const v = String(raw ?? "").trim();
+        if (!def || !v || (cur && fieldText(cur))) {
+          skipped.push(ext);
+          continue;
+        }
+        const value = podioWriteValue(def.type, v);
+        if (value === undefined) skipped.push(ext);
+        else out[ext] = value;
+      }
+      if (Object.keys(out).length)
+        await podioPut(token, `/item/${itemId}?hook=false`, { fields: out });
+      return json({ updated: Object.keys(out), skipped });
     }
 
     if (body?.action === "items") {

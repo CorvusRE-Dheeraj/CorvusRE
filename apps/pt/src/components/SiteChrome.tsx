@@ -6,7 +6,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { checkIsAdmin } from "@/lib/admin";
+import { getStaffRole } from "@/lib/marketing";
 import { shouldShowShell } from "@/components/AppShell";
 import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
@@ -49,6 +49,9 @@ export function SiteNav() {
   const { user, session } = useAuth();
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
+  // Marketing Admins (and Super Admins) get a Marketing link.
+  const [isMarketing, setIsMarketing] = useState(false);
+  const [isSupport, setIsSupport] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
   // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
@@ -87,6 +90,7 @@ export function SiteNav() {
   useEffect(() => {
     if (!user) {
       setIsAdmin(false);
+      setIsMarketing(false);
       return;
     }
     // Swallow failures instead of leaving an unhandled rejection — this runs
@@ -95,11 +99,17 @@ export function SiteNav() {
     // request) would otherwise throw site-wide. Non-critical either way:
     // it only gates showing the Admin nav link, so falling back to "not
     // admin" is always the safe default.
-    checkIsAdmin(user.id)
-      .then(setIsAdmin)
+    getStaffRole(user.id)
+      .then((r) => {
+        setIsAdmin(r.isSuperAdmin);
+        setIsMarketing(r.isSuperAdmin || r.isMarketingAdmin);
+        setIsSupport(r.isSuperAdmin || r.isSupportAdmin);
+      })
       .catch((err) => {
         console.error("Could not check admin status:", err);
         setIsAdmin(false);
+        setIsMarketing(false);
+        setIsSupport(false);
       });
   }, [user]);
 
@@ -370,6 +380,24 @@ export function SiteNav() {
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
                       Beta Feedback
+                    </Link>
+                  )}
+                  {isSupport && (
+                    <Link
+                      to="/support"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Customer Support
+                    </Link>
+                  )}
+                  {isMarketing && (
+                    <Link
+                      to="/marketing"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Marketing
                     </Link>
                   )}
                   {isAdmin && (

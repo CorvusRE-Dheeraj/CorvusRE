@@ -18,6 +18,7 @@
 // (Svix) signature instead, checked before anything else.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifySvix } from "../_shared/svix-verify.ts";
+import { handleEmailEvent, handleSms, handleTrack } from "../_shared/handlers/marketing-events.ts";
 import {
   fileCountyEmail,
   loadMailboxProperties,
@@ -158,6 +159,11 @@ const htmlToText = (html: string) =>
     .trim();
 
 Deno.serve(async (req: Request) => {
+  // Marketing engagement endpoints share this public function (100-function limit):
+  // open/click tracking for marketing email, and Telnyx SMS webhooks.
+  const action = new URL(req.url).searchParams.get("action");
+  if (action === "track" && req.method === "GET") return handleTrack(req);
+  if (action === "sms" && req.method === "POST") return handleSms(req);
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   const body = await req.text();
   const ok = await verifySvix(
@@ -177,7 +183,14 @@ Deno.serve(async (req: Request) => {
   } catch {
     return json({ error: "bad json" }, 400);
   }
-  // Only received mail is handled; acknowledge anything else so Resend doesn't retry.
+  // Delivery / bounce / complaint / open / click events for marketing email.
+  if (event.type && event.type !== "email.received" && event.type.startsWith("email.")) {
+    const r = await handleEmailEvent(event as { type?: string; data?: Record<string, unknown> }).catch(() => ({
+      handled: false,
+    }));
+    return json(r);
+  }
+  // Otherwise only received mail is handled; acknowledge anything else so Resend doesn't retry.
   if (event.type !== "email.received" || !event.data?.email_id)
     return json({ ignored: true });
 

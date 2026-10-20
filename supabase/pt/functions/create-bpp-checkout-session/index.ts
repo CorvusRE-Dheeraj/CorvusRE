@@ -136,6 +136,12 @@ Deno.serve(async (req: Request) => {
 
     if (!session.url) throw new Error("Stripe did not return a Checkout URL");
 
+    // Marks "subscription started" for the Marketing CRM journey (abandoned-checkout follow-ups).
+    await adminClient
+      .from("bpp_accounts")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("id", bppAccountId);
+
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,
       headers: corsHeaders,
