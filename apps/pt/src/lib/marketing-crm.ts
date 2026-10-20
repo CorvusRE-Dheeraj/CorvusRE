@@ -21,6 +21,7 @@ import type {
   Template,
   TemplateObjective,
 } from "./marketing";
+import { accountGroupsOf } from "./marketing";
 import { daysUntilIso } from "./local-day";
 
 // ── Normalising contact + property details ─────────────────────────────────
@@ -666,6 +667,8 @@ export type LeadFilters = {
   /** only leads with a property the assessment review flagged */
   flaggedOnly?: boolean | null;
   engagement?: "never_contacted" | "engaged" | "unresponsive" | null;
+  /** Admin lists: Users, Owner Managed, CorvusPT Managed, Invited, Beta signups */
+  accounts?: import("./marketing").AccountGroup[];
 };
 
 export const isEmptyFilter = (f: LeadFilters) =>
@@ -712,6 +715,10 @@ export function applyFilters(
     if (!any(f.zips, [l.zip, ...l.zips])) return false;
     if (!any(f.propertyTypes, [l.propertyType, ...l.propertyTypes])) return false;
     if (f.sources?.length && !f.sources.includes(l.source)) return false;
+    if (f.accounts?.length) {
+      const g = accountGroupsOf(l);
+      if (!f.accounts.some((x) => g.includes(x))) return false;
+    }
     const v = l.portfolioValue ?? l.appraisedValue;
     if (f.minValue != null && (v ?? 0) < f.minValue) return false;
     if (f.maxValue != null && (v ?? 0) > f.maxValue) return false;

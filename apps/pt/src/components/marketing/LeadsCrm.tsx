@@ -17,6 +17,9 @@ import { Modal } from "@/components/Modal";
 import { confirmDialog } from "@/components/ConfirmHost";
 import { getErrorMessage } from "@/lib/error-message";
 import {
+  ACCOUNT_GROUPS,
+  ACCOUNT_GROUP_LABEL,
+  type AccountGroup,
   PIPELINE,
   SIDE_STAGES,
   SOURCES,
@@ -522,6 +525,13 @@ export function LeadsCrm({
                 unresponsive: "No reply to 2+ attempts",
               })[v as "engaged"]
             }
+          />
+          <FilterSelect
+            label="Account"
+            value={filters.accounts?.[0] ?? ""}
+            onChange={(v) => setF({ accounts: v ? [v as AccountGroup] : [] })}
+            options={[...ACCOUNT_GROUPS]}
+            display={(v) => ACCOUNT_GROUP_LABEL[v as AccountGroup]}
           />
           <FilterSelect
             label="Source"

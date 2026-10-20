@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Activity, Lead, LeadProperty, MarketingData, Template } from "./marketing";
+import { accountGroupsOf, type AccountGroup } from "./marketing";
 import {
   applyFilters,
   bestTiming,
@@ -101,6 +102,10 @@ const lead = (p: Partial<Lead>): Lead => ({
   consentUpdatedAt: null,
   lastEngagedAt: null,
   emailBouncedAt: null,
+  accountPlan: null,
+  invitedAt: null,
+  invitedUserId: null,
+  betaLeadId: null,
   ...p,
 });
 
@@ -635,6 +640,7 @@ describe("follow-ups + journey", () => {
     recommendations: [],
     reports: [],
     campaignMetrics: new Map(),
+    accounts: null,
     syncChanges: [],
     notifications: [],
     staff: [],
@@ -759,5 +765,28 @@ describe("follow-ups + journey", () => {
     expect(e.byChannel.find((c) => c.key === "email")?.rate).toBe(1);
     expect(e.abandoned.checkout).toBe(1);
     expect(e.registrations).toBe(1);
+  });
+});
+
+describe("Admin lists in the CRM", () => {
+  const ctx = { activities: [], campaigns: [], me: null };
+  const leads = [
+    lead({ id: "om", profileId: "p1", accountPlan: "owner_managed" }),
+    lead({ id: "cm", profileId: "p2", accountPlan: "corvusrf_managed" }),
+    lead({ id: "inv", invitedUserId: "i1", invitedAt: "2026-10-01T00:00:00Z", source: "invited" }),
+    lead({ id: "beta", betaLeadId: "b1", source: "beta_signup" }),
+    lead({ id: "prospect" }),
+  ];
+  it("puts each lead in the Admin lists it belongs to", () => {
+    expect(accountGroupsOf(leads[0])).toEqual(["user", "owner_managed"]);
+    expect(accountGroupsOf(leads[2])).toEqual(["invited"]);
+    expect(accountGroupsOf(leads[4])).toEqual([]);
+  });
+  it("filters the CRM by account type", () => {
+    const ids = (a: AccountGroup[]) => applyFilters(leads, { accounts: a }, ctx).map((l) => l.id);
+    expect(ids(["user"])).toEqual(["om", "cm"]);
+    expect(ids(["corvus_managed"])).toEqual(["cm"]);
+    expect(ids(["invited", "beta"])).toEqual(["inv", "beta"]);
+    expect(ids([])).toHaveLength(5);
   });
 });

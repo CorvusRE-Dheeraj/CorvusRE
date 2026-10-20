@@ -11,7 +11,12 @@ import {
   SOURCE_LABEL,
   decideRecommendation,
   deleteExpense,
+  ADMIN_ACTION_LABEL,
+  loadAdminActivity,
   loadAudit,
+  loadBetaFeedback,
+  type AdminActivity,
+  type BetaFeedback,
   money,
   pct,
   relDays,
@@ -48,9 +53,20 @@ import {
   type AFilters,
   type ReportSpec,
 } from "@/lib/marketing-analytics";
-import { AiBox, StatTile, inputCls, type Go } from "./shared";
+import { AiBox, Bars, StatTile, inputCls, type Go } from "./shared";
+import { getAdminFinancials, dollars, type AdminFinancials } from "@/lib/admin-financials";
 
-type View = "overview" | "spend" | "insights" | "recs" | "team" | "reports" | "audit";
+type View =
+  | "overview"
+  | "spend"
+  | "insights"
+  | "financials"
+  | "feedback"
+  | "activity"
+  | "recs"
+  | "team"
+  | "reports"
+  | "audit";
 const sel = "rounded-md border border-input bg-background px-2 py-1.5 text-sm";
 const isoDay = (d: Date) =>
   new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
@@ -90,6 +106,9 @@ export function Analytics({
     ["overview", "Overview"],
     ["spend", "Spend & ROI"],
     ["insights", "What works"],
+    ["financials", "Financials"],
+    ["feedback", "Beta feedback"],
+    ["activity", "Activity log"],
     ["recs", `Recommendations${pending ? ` (${pending})` : ""}`],
     ["team", "Team"],
     ["reports", "Reports"],
@@ -121,6 +140,9 @@ export function Analytics({
       {view === "overview" && <Overview data={data} f={f} acv={acv} onAiRun={onAiRun} />}
       {view === "spend" && <Spend data={data} f={f} acv={acv} reload={refresh} />}
       {view === "insights" && <Insights data={data} f={f} acv={acv} onAiRun={onAiRun} />}
+      {view === "financials" && <Financials />}
+      {view === "feedback" && <Feedback data={data} go={go} />}
+      {view === "activity" && <ActivityLog data={data} go={go} />}
       {view === "recs" && (
         <Recommendations data={data} supervisor={supervisor} reload={refresh} go={go} />
       )}
@@ -1523,6 +1545,293 @@ function Audit({ data }: { data: MarketingData }) {
           )}
         </ul>
       )}
+    </section>
+  );
+}
+
+// ── From Admin, read-only ───────────────────────────────────────────────────
+/** Revenue side of marketing: MRR, subscriptions, collections, plan mix (Stripe). */
+function Financials() {
+  const [f, setF] = useState<AdminFinancials | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    getAdminFinancials()
+      .then(setF)
+      .catch((e) => setErr(getErrorMessage(e, "Couldn't load financials.")));
+  }, []);
+  if (err) return <p className="text-sm text-rose-700">{err}</p>;
+  if (!f) return <p className="text-sm text-muted-foreground">Loading financials…</p>;
+  const plans: Table = {
+    headers: ["Plan", "Subscriptions", "Monthly revenue"],
+    rows: f.planMix.map((p) => [p.label, p.count, dollars(p.mrrCents)]),
+  };
+  return (
+    <div className="grid gap-4">
+      {f.mode === "test" && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Stripe is in test mode — these are test figures.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile
+          label="Monthly recurring revenue"
+          value={dollars(f.mrrCents)}
+          hint={`${dollars(f.mrrCents * 12)} a year`}
+        />
+        <StatTile
+          label="Active subscriptions"
+          value={f.activeSubscriptions}
+          hint={`${f.subscriptionCustomers} customers`}
+        />
+        <StatTile
+          label="Collected (last 12 months)"
+          value={dollars(f.collectedRecentCents)}
+          hint={f.refundedRecentCents ? `${dollars(f.refundedRecentCents)} refunded` : undefined}
+        />
+        <StatTile label="Sign-ups" value={f.signups} hint="All accounts" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="card-elev p-4">
+          <h2 className="text-sm font-semibold">Collected by month</h2>
+          <div className="mt-3">
+            <Bars
+              rows={f.collectedByMonth.map((m) => ({ label: m.month, value: m.amountCents / 100 }))}
+              format={(n) => money(n)}
+            />
+          </div>
+        </section>
+        <section className="card-elev p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Plan mix</h2>
+            <button
+              type="button"
+              className="text-xs text-accent hover:underline"
+              onClick={() => downloadCsv("plan-mix.csv", plans)}
+            >
+              CSV
+            </button>
+          </div>
+          {plans.rows.length === 0 && (
+            <p className="mt-2 text-sm text-muted-foreground">No active subscriptions.</p>
+          )}
+          <table className={`mt-2 w-full text-left text-sm ${plans.rows.length ? "" : "hidden"}`}>
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                {plans.headers.map((h) => (
+                  <th key={h} className="py-1 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {plans.rows.map((r) => (
+                <tr key={String(r[0])} className="border-t border-border/60">
+                  {r.map((c, i) => (
+                    <td key={i} className="py-1 tabular-nums">
+                      {String(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Real estate: {f.byProductLine.property.count} (
+            {dollars(f.byProductLine.property.mrrCents)}/mo) · Business personal property:{" "}
+            {f.byProductLine.bpp.count} ({dollars(f.byProductLine.bpp.mrrCents)}/mo)
+          </p>
+        </section>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        * Live from Stripe, same figures as Admin → Financials. Read-only here.
+      </p>
+    </div>
+  );
+}
+
+/** What beta users said — themes from the AI summary plus the responses, linked to leads. */
+function Feedback({ data, go }: { data: MarketingData; go?: Go }) {
+  const [fb, setFb] = useState<BetaFeedback | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    loadBetaFeedback()
+      .then(setFb)
+      .catch((e) => setErr(getErrorMessage(e, "Couldn't load beta feedback.")));
+  }, []);
+  if (err) return <p className="text-sm text-rose-700">{err}</p>;
+  if (!fb) return <p className="text-sm text-muted-foreground">Loading feedback…</p>;
+  const ins = fb.insights?.insights;
+  const themes = (
+    title: string,
+    list: { theme: string; count: number; examples: string[] }[] | undefined,
+  ) => (
+    <section className="card-elev p-4">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {list?.length ? (
+        <ul className="mt-2 grid gap-2 text-sm">
+          {list.slice(0, 8).map((t) => (
+            <li key={t.theme}>
+              <b>{t.theme}</b> <span className="text-xs text-muted-foreground">({t.count})</span>
+              {t.examples[0] && (
+                <span className="block text-xs text-muted-foreground">“{t.examples[0]}”</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">Nothing yet.</p>
+      )}
+    </section>
+  );
+  const leadIds = new Set(data.leads.map((l) => l.id));
+  return (
+    <div className="grid gap-4">
+      <p className="text-xs text-muted-foreground">
+        {fb.responses.length} completed response{fb.responses.length === 1 ? "" : "s"}
+        {fb.insights
+          ? ` · themes generated ${relDays(fb.insights.generated_at)} from ${fb.insights.response_count} responses`
+          : ""}{" "}
+        · use them for messaging and campaign angles.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {themes("Pain points", ins?.painPoints)}
+        {themes("Feature requests", ins?.featureRequests)}
+        {themes("What they'd miss", ins?.wouldMiss)}
+      </div>
+      <section className="card-elev p-4">
+        <h2 className="text-sm font-semibold">Responses</h2>
+        <ul className="mt-2 grid gap-1 text-sm">
+          {fb.responses.slice(0, 50).map((r, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-2 border-b border-border/60 py-1.5 last:border-0"
+            >
+              <span className="min-w-0 truncate">{r.email ?? "Unknown user"}</span>
+              <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                {relDays(r.completed_at)}
+                {r.lead_id && leadIds.has(r.lead_id) && go && (
+                  <button
+                    type="button"
+                    className="text-accent hover:underline"
+                    onClick={() => go("leads", { leadId: r.lead_id! })}
+                  >
+                    Open lead
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
+/** Admin Activity Log, marketing part only: invites, sign-ups, plan changes, removed accounts. */
+function ActivityLog({ data, go }: { data: MarketingData; go?: Go }) {
+  const [rows, setRows] = useState<AdminActivity[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [kind, setKind] = useState("");
+  useEffect(() => {
+    loadAdminActivity(500)
+      .then(setRows)
+      .catch((e) => setErr(getErrorMessage(e, "Couldn't load the activity log.")));
+  }, []);
+  if (err) return <p className="text-sm text-rose-700">{err}</p>;
+  if (!rows) return <p className="text-sm text-muted-foreground">Loading activity…</p>;
+  const leadByEmail = new Map(
+    data.leads.filter((l) => l.email).map((l) => [l.email!.toLowerCase(), l]),
+  );
+  const shown = rows.filter((r) => !kind || r.action === kind);
+  const table: Table = {
+    headers: ["When", "What", "Who", "Account", "Detail"],
+    rows: shown.map((r) => [
+      new Date(r.createdAt).toLocaleString(),
+      ADMIN_ACTION_LABEL[r.action] ?? r.action,
+      r.actorEmail ?? "",
+      r.targetEmail ?? "",
+      r.detail ?? "",
+    ]),
+  };
+  return (
+    <section className="card-elev p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Activity log</h2>
+        <select
+          className={`${sel} ml-auto`}
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          aria-label="Activity type"
+        >
+          <option value="">All marketing activity</option>
+          {Object.entries(ADMIN_ACTION_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn-outline py-1 text-xs"
+          onClick={() => downloadCsv("activity-log.csv", table)}
+        >
+          CSV
+        </button>
+        <button
+          type="button"
+          className="btn-outline py-1 text-xs"
+          onClick={() => void downloadXlsx("activity-log.xlsx", table)}
+        >
+          Excel
+        </button>
+      </div>
+      {shown.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">Nothing logged.</p>
+      ) : (
+        <ul className="mt-2 grid gap-1 text-sm">
+          {shown.slice(0, 200).map((r) => {
+            const l = r.targetEmail ? leadByEmail.get(r.targetEmail.toLowerCase()) : undefined;
+            return (
+              <li
+                key={r.id}
+                className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 last:border-0"
+              >
+                <span className="min-w-0">
+                  <b>{ADMIN_ACTION_LABEL[r.action] ?? r.action}</b>
+                  {r.targetEmail && (
+                    <>
+                      {" — "}
+                      {l && go ? (
+                        <button
+                          type="button"
+                          className="text-accent hover:underline"
+                          onClick={() => go("leads", { leadId: l.id })}
+                        >
+                          {r.targetEmail}
+                        </button>
+                      ) : (
+                        r.targetEmail
+                      )}
+                    </>
+                  )}
+                  {r.detail && (
+                    <span className="block truncate text-xs text-muted-foreground">{r.detail}</span>
+                  )}
+                </span>
+                <span className="shrink-0 text-right text-xs text-muted-foreground">
+                  {relDays(r.createdAt)}
+                  {r.actorEmail && <span className="block">{r.actorEmail}</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        * From Admin → Activity Log. Staff impersonation, Stripe settings and case changes
+        aren&apos;t shown here.
+      </p>
     </section>
   );
 }

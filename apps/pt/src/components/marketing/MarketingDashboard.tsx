@@ -185,6 +185,47 @@ export function MarketingDashboard({
         * Annual plan value of customers who subscribed in the period.
       </p>
 
+      {data.accounts && (
+        <section className="card-elev p-4" aria-label="CorvusPT accounts">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold">CorvusPT accounts</h2>
+            <span className="text-xs text-muted-foreground">
+              From Admin — Users, plans, invites and beta signups
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <StatTile
+              label="Users"
+              value={data.accounts.users}
+              hint={`${data.accounts.usersNew30} new in 30 days · ${data.accounts.paying} paying`}
+              onClick={() => go("leads", { filters: { accounts: ["user"] } })}
+            />
+            <StatTile
+              label="Owner Managed"
+              value={data.accounts.ownerManaged}
+              onClick={() => go("leads", { filters: { accounts: ["owner_managed"] } })}
+            />
+            <StatTile
+              label="CorvusPT Managed"
+              value={data.accounts.corvusManaged}
+              onClick={() => go("leads", { filters: { accounts: ["corvus_managed"] } })}
+            />
+            <StatTile
+              label="Invited users"
+              value={data.accounts.invited}
+              hint={`Not signed up yet · ${data.accounts.invitedTotal} invited in total`}
+              onClick={() => go("leads", { filters: { accounts: ["invited"] } })}
+            />
+            <StatTile
+              label="Beta signups"
+              value={data.accounts.beta}
+              hint={`${data.accounts.betaNotInvited} not invited · ${data.accounts.betaNotRegistered} not registered`}
+              onClick={() => go("leads", { filters: { accounts: ["beta"] } })}
+            />
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card-elev p-4">
           <div className="flex items-center justify-between">

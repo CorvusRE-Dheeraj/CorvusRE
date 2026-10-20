@@ -82,6 +82,7 @@ export const SOURCES = [
   "event",
   "podio",
   "research",
+  "invited",
 ] as const;
 export type Source = (typeof SOURCES)[number];
 export const SOURCE_LABEL: Record<Source, string> = {
@@ -94,6 +95,7 @@ export const SOURCE_LABEL: Record<Source, string> = {
   event: "Event",
   podio: "Podio",
   research: "AI research",
+  invited: "Invited user",
 };
 
 export type Lead = {
@@ -157,6 +159,11 @@ export type Lead = {
   consentUpdatedAt: string | null;
   lastEngagedAt: string | null;
   emailBouncedAt: string | null;
+  /** the CorvusPT account's plan (owner_managed, corvusrf_managed, …) */
+  accountPlan: string | null;
+  invitedAt: string | null;
+  invitedUserId: string | null;
+  betaLeadId: string | null;
 };
 export type Consent = "granted" | "unknown" | "withdrawn";
 
@@ -511,6 +518,10 @@ export const toLead = (r: any): Lead => ({
   consentUpdatedAt: r.consent_updated_at ?? null,
   lastEngagedAt: r.last_engaged_at ?? null,
   emailBouncedAt: r.email_bounced_at ?? null,
+  accountPlan: r.account_plan ?? null,
+  invitedAt: r.invited_at ?? null,
+  invitedUserId: r.invited_user_id ?? null,
+  betaLeadId: r.beta_lead_id ?? null,
 });
 const num = (v: unknown) => (v == null ? null : Number(v));
 export const toProperty = (r: any): LeadProperty => ({
@@ -951,6 +962,8 @@ export type MarketingData = {
   recommendations: Recommendation[];
   reports: Report[];
   campaignMetrics: Map<string, CampaignMetrics>;
+  /** counts from the Admin lists (Users, Owner/CorvusPT Managed, Invited, Beta) */
+  accounts: AccountSummary | null;
   syncChanges: SyncChange[];
   notifications: StaffNotification[];
   settings: MarketingSettings;
@@ -967,7 +980,7 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 export async function loadMarketing(): Promise<MarketingData> {
   const { data: u } = await supabase.auth.getUser();
   const me = u.user?.id ?? null;
-  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp, cm] = await Promise.all([
+  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp, cm, acc] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
@@ -1018,6 +1031,7 @@ export async function loadMarketing(): Promise<MarketingData> {
       .order("period_start", { ascending: false })
       .limit(120),
     supabase.from("marketing_campaign_metrics").select("*"),
+    supabase.rpc("marketing_account_summary"),
   ]);
   for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp, cm])
     if (res.error) throw res.error;
@@ -1075,6 +1089,7 @@ export async function loadMarketing(): Promise<MarketingData> {
       decidedAt: x.decided_at,
       note: x.note,
     })),
+    accounts: (acc.data as AccountSummary | null) ?? null,
     campaignMetrics: new Map(
       (cm.data ?? []).map((x) => [
         x.campaign_id as string,
@@ -1381,6 +1396,10 @@ export type LeadInput = Partial<
     | "consentUpdatedAt"
     | "lastEngagedAt"
     | "emailBouncedAt"
+    | "accountPlan"
+    | "invitedAt"
+    | "invitedUserId"
+    | "betaLeadId"
   >
 >;
 const leadRow = (p: LeadInput) => {
@@ -2039,6 +2058,11 @@ export function summaryForAi(d: MarketingData, now = new Date()): string {
   return [
     `Funnel: ${f.total} leads, ${f.newLeads} new this week, ${f.activeProspects} active prospects, ${f.interested} interested, ${f.registered} registered, ${f.paying} paying. Lead→paying ${(f.leadToPaying * 100).toFixed(1)}%.`,
     `Campaigns: ${d.campaigns.map((c) => `${c.name} (${c.channel}, ${c.status}${c.stats.sent != null ? `, sent ${c.stats.sent}/${c.stats.targeted}` : ""})`).join("; ") || "none"}`,
+    ...(d.accounts
+      ? [
+          `CorvusPT accounts: ${d.accounts.users} users (${d.accounts.usersNew30} new in 30 days, ${d.accounts.paying} paying), ${d.accounts.ownerManaged} Owner Managed, ${d.accounts.corvusManaged} CorvusPT Managed, ${d.accounts.invited} invited but not signed up, ${d.accounts.beta} beta signups (${d.accounts.betaNotInvited} not yet invited, ${d.accounts.betaNotRegistered} not registered).`,
+        ]
+      : []),
     `Pending follow-ups: ${d.followups.filter((x) => x.status === "pending").length} (${d.followups.filter((x) => x.status === "pending" && new Date(x.dueAt) < now).length} overdue)`,
     `Alerts:\n${alerts.map((a) => `- [${a.severity}] ${a.title} — ${a.detail}`).join("\n") || "- none"}`,
     `Top leads by score:\n${top.map(({ l, s }) => `- ${l.fullName ?? l.email} (score ${s}, ${STAGE_LABEL[l.stage]}, ${l.county ?? "?"} County, value ${l.appraisedValue ?? "?"})`).join("\n") || "- none"}`,
@@ -2053,3 +2077,124 @@ export const relDays = (iso: string | null, now = new Date()) => {
 export const money = (n: number | null | undefined) =>
   n == null ? "—" : `$${Math.round(n).toLocaleString("en-US")}`;
 export const pct = (x: number) => `${(x * 100).toFixed(x < 0.1 && x > 0 ? 1 : 0)}%`;
+
+// ── Existing Admin data, read-only for marketing (marketing-admin-data.sql) ──
+export type AccountSummary = {
+  users: number;
+  usersNew30: number;
+  paying: number;
+  ownerManaged: number;
+  corvusManaged: number;
+  plans: Record<string, number>;
+  invited: number;
+  invitedTotal: number;
+  beta: number;
+  betaNotInvited: number;
+  betaNotRegistered: number;
+  betaNew30: number;
+  appointmentsUpcoming: number;
+  feedbackResponses: number;
+};
+export const ACCOUNT_GROUPS = [
+  "user",
+  "owner_managed",
+  "corvus_managed",
+  "invited",
+  "beta",
+] as const;
+export type AccountGroup = (typeof ACCOUNT_GROUPS)[number];
+export const ACCOUNT_GROUP_LABEL: Record<AccountGroup, string> = {
+  user: "Users (has an account)",
+  owner_managed: "Owner Managed",
+  corvus_managed: "CorvusPT Managed",
+  invited: "Invited users",
+  beta: "Beta signups",
+};
+/** Which Admin lists a lead belongs to. */
+export function accountGroupsOf(l: Lead): AccountGroup[] {
+  const g: AccountGroup[] = [];
+  if (l.profileId) g.push("user");
+  if (l.accountPlan === "owner_managed") g.push("owner_managed");
+  if (l.accountPlan === "corvusrf_managed") g.push("corvus_managed");
+  if (l.invitedUserId || l.invitedAt) g.push("invited");
+  if (l.betaLeadId || l.source === "beta_signup") g.push("beta");
+  return g;
+}
+export type MarketingAppointment = {
+  id: string;
+  leadId: string | null;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  meetingType: string | null;
+  notes: string | null;
+  startAt: string;
+  endAt: string | null;
+  status: string | null;
+  meetLink: string | null;
+  createdAt: string;
+};
+export async function loadAppointments(days = 120): Promise<MarketingAppointment[]> {
+  const { data, error } = await supabase.rpc("marketing_appointments", { p_days: days });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, string | null>[]).map((x) => ({
+    id: x.id!,
+    leadId: x.lead_id,
+    name: x.name,
+    email: x.email,
+    phone: x.phone,
+    meetingType: x.meeting_type,
+    notes: x.notes,
+    startAt: x.start_at!,
+    endAt: x.end_at,
+    status: x.status,
+    meetLink: x.meet_link,
+    createdAt: x.created_at!,
+  }));
+}
+export type BetaFeedback = {
+  insights: {
+    insights: import("./beta-feedback").FeedbackInsights;
+    response_count: number;
+    generated_at: string;
+  } | null;
+  responses: {
+    completed_at: string;
+    answers: Record<string, unknown>;
+    email: string | null;
+    lead_id: string | null;
+  }[];
+};
+export async function loadBetaFeedback(): Promise<BetaFeedback> {
+  const { data, error } = await supabase.rpc("marketing_beta_feedback");
+  if (error) throw error;
+  return (data as BetaFeedback) ?? { insights: null, responses: [] };
+}
+export type AdminActivity = {
+  id: string;
+  actorEmail: string | null;
+  action: string;
+  targetEmail: string | null;
+  detail: string | null;
+  createdAt: string;
+};
+export const ADMIN_ACTION_LABEL: Record<string, string> = {
+  send_signup_invite: "Sign-up invite sent",
+  create_user: "Account created",
+  update_plan: "Plan changed",
+  delete_user: "Account removed",
+  grant_marketing_admin: "Marketing access granted",
+  revoke_marketing_admin: "Marketing access removed",
+};
+export async function loadAdminActivity(limit = 200): Promise<AdminActivity[]> {
+  const { data, error } = await supabase.rpc("marketing_activity_log", { p_limit: limit });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, string | null>[]).map((x) => ({
+    id: x.id!,
+    actorEmail: x.actor_email,
+    action: x.action!,
+    targetEmail: x.target_email,
+    detail: x.detail,
+    createdAt: x.created_at!,
+  }));
+}

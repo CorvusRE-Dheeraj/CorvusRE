@@ -7,8 +7,11 @@ import { getErrorMessage } from "@/lib/error-message";
 import {
   OBJECTIVE_LABEL,
   TEMPLATE_OBJECTIVES,
+  createLead,
   isDnc,
   leadFacts,
+  loadAppointments,
+  type MarketingAppointment,
   logActivity,
   markTemplateUsed,
   money,
@@ -52,7 +55,7 @@ import {
 } from "./shared";
 
 type Channel = Followup["channel"];
-type View = "queue" | "tasks" | "journey" | "performance";
+type View = "queue" | "tasks" | "journey" | "signups" | "performance";
 const CHANNEL_LABEL: Record<Channel, string> = {
   email: "Email",
   sms: "Text",
@@ -186,6 +189,7 @@ export function Followups({
               ["queue", `AI queue (${queue.length})`],
               ["tasks", `Tasks (${open.length})`],
               ["journey", "Journey"],
+              ["signups", "Sign-ups & meetings"],
               ["performance", "Performance"],
             ] as const
           ).map(([k, label]) => (
@@ -250,6 +254,9 @@ export function Followups({
           setDraft={setDraft}
           go={go}
         />
+      )}
+      {view === "signups" && (
+        <Signups data={data} prepare={prepare} setDraft={setDraft} reload={reload} go={go} />
       )}
       {view === "performance" && <Performance data={data} onAiRun={onAiRun} />}
 
@@ -1625,5 +1632,240 @@ function SequenceBuilder({
         )}
       </div>
     </Modal>
+  );
+}
+
+// From Admin: booked appointments (matched to leads by email), invited users
+// who haven't signed up, and beta signups who haven't registered — each with a
+// prepared follow-up. Read-only: invites and appointments are managed in Admin.
+function Signups({
+  data,
+  prepare,
+  setDraft,
+  reload,
+  go,
+}: {
+  data: MarketingData;
+  prepare: (l: Lead, o?: { channel?: Channel; objective?: TemplateObjective; at?: Date }) => Draft;
+  setDraft: (d: Draft) => void;
+  reload: () => Promise<void>;
+  go: Go;
+}) {
+  const [appts, setAppts] = useState<MarketingAppointment[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  useEffect(() => {
+    loadAppointments(120)
+      .then(setAppts)
+      .catch((e) => {
+        setAppts([]);
+        setErr(getErrorMessage(e, "Couldn't load appointments."));
+      });
+  }, []);
+  const now = Date.now();
+  const leadById = new Map(data.leads.map((l) => [l.id, l]));
+  const leadByEmail = new Map(
+    data.leads.filter((l) => l.email).map((l) => [l.email!.trim().toLowerCase(), l]),
+  );
+  const upcoming = (appts ?? [])
+    .filter((a) => new Date(a.startAt).getTime() > now && a.status !== "cancelled")
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const recent = (appts ?? []).filter(
+    (a) => new Date(a.startAt).getTime() <= now && now - new Date(a.startAt).getTime() < 30 * 864e5,
+  );
+  const pendingFor = (id: string) =>
+    data.followups.some((f) => f.leadId === id && (f.status === "pending" || f.status === "draft"));
+  const invited = data.leads
+    .filter((l) => l.invitedAt && !l.profileId && !isDnc(l) && l.stage !== "not_interested")
+    .sort((a, b) => (a.invitedAt ?? "").localeCompare(b.invitedAt ?? ""));
+  const beta = data.leads
+    .filter(
+      (l) =>
+        (l.betaLeadId || l.source === "beta_signup") &&
+        !l.profileId &&
+        !isDnc(l) &&
+        l.stage !== "not_interested",
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+  const apptRow = (a: MarketingAppointment, past: boolean) => {
+    const l =
+      (a.leadId ? leadById.get(a.leadId) : undefined) ??
+      (a.email ? leadByEmail.get(a.email.trim().toLowerCase()) : undefined);
+    return (
+      <li
+        key={a.id}
+        className="flex flex-wrap items-center gap-2 border-b border-border/60 py-2 text-sm last:border-0"
+      >
+        <span className="min-w-0 flex-1">
+          <b>{a.name || a.email}</b>
+          <span className="text-muted-foreground">
+            {" "}
+            · {when(a.startAt)}
+            {a.meetingType ? ` · ${a.meetingType.replace(/_/g, " ")}` : ""}
+            {a.status && a.status !== "booked" && a.status !== "confirmed" ? ` · ${a.status}` : ""}
+          </span>
+          {a.notes && (
+            <span className="block truncate text-xs text-muted-foreground">“{a.notes}”</span>
+          )}
+        </span>
+        {l ? (
+          <>
+            <button
+              type="button"
+              className="text-xs text-accent hover:underline"
+              onClick={() => go("leads", { leadId: l.id })}
+            >
+              Open lead
+            </button>
+            <button
+              type="button"
+              className="btn-outline py-1 text-xs"
+              onClick={() =>
+                setDraft(
+                  prepare(l, {
+                    channel: past ? "email" : "call",
+                    objective: "follow_up",
+                    at: past ? new Date() : new Date(new Date(a.startAt).getTime() - 864e5),
+                  }),
+                )
+              }
+            >
+              {past ? "Follow up after the meeting" : "Prepare (call the day before)"}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={adding === a.id || !a.email}
+            className="btn-outline py-1 text-xs"
+            onClick={async () => {
+              setAdding(a.id);
+              try {
+                await createLead({
+                  fullName: a.name,
+                  email: a.email,
+                  phone: a.phone,
+                  source: "website",
+                });
+                await reload();
+                toast.success("Added to Leads & CRM.");
+              } catch (e) {
+                toast.error(getErrorMessage(e, "Couldn't add the lead."));
+              } finally {
+                setAdding(null);
+              }
+            }}
+          >
+            {adding === a.id ? "Adding…" : "Add as a lead"}
+          </button>
+        )}
+      </li>
+    );
+  };
+  const leadRow = (l: Lead, since: string | null, label: string) => {
+    const d = since ? Math.floor((now - new Date(since).getTime()) / 864e5) : null;
+    return (
+      <li
+        key={l.id}
+        className="flex flex-wrap items-center gap-2 border-b border-border/60 py-2 text-sm last:border-0"
+      >
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left hover:underline"
+          onClick={() => go("leads", { leadId: l.id })}
+        >
+          <b>{leadName(l)}</b>
+          <span className="text-muted-foreground">
+            {" "}
+            · {label} {d == null ? "" : d <= 0 ? "today" : `${d} day${d === 1 ? "" : "s"} ago`}
+          </span>
+        </button>
+        {pendingFor(l.id) ? (
+          <span className="text-xs text-muted-foreground">Follow-up planned</span>
+        ) : (
+          <button
+            type="button"
+            className="btn-outline py-1 text-xs"
+            onClick={() => setDraft(prepare(l, { objective: "registration_reminder" }))}
+          >
+            Remind to sign up
+          </button>
+        )}
+      </li>
+    );
+  };
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="card-elev p-4 lg:col-span-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">Appointments</h2>
+          <span className="text-xs text-muted-foreground">
+            Booked through CorvusPT · managed in Admin → Appointments
+          </span>
+        </div>
+        {err && <p className="mt-2 text-sm text-rose-700">{err}</p>}
+        {appts === null ? (
+          <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="mt-2 grid gap-4 md:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground">
+                Upcoming ({upcoming.length})
+              </h3>
+              {upcoming.length ? (
+                <ul>{upcoming.map((a) => apptRow(a, false))}</ul>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">None booked.</p>
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground">
+                Last 30 days ({recent.length})
+              </h3>
+              {recent.length ? (
+                <ul>{recent.map((a) => apptRow(a, true))}</ul>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">None.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+      <section className="card-elev p-4">
+        <h2 className="text-sm font-semibold">Invited, not signed up ({invited.length})</h2>
+        <p className="text-xs text-muted-foreground">From Admin → Invited Users</p>
+        {invited.length ? (
+          <ul className="mt-2">
+            {invited.slice(0, 40).map((l) => leadRow(l, l.invitedAt, "invited"))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Everyone invited has signed up.</p>
+        )}
+      </section>
+      <section className="card-elev p-4">
+        <h2 className="text-sm font-semibold">Beta signups, not registered ({beta.length})</h2>
+        <p className="text-xs text-muted-foreground">From Admin → Beta Signups</p>
+        {beta.length ? (
+          <ul className="mt-2">
+            {beta.slice(0, 40).map((l) => leadRow(l, l.createdAt, "signed up for beta"))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Every beta signup has an account.</p>
+        )}
+      </section>
+      <p className="text-[11px] text-muted-foreground lg:col-span-2">
+        * Follow-ups can be assigned to any Admin or marketing staff member. Sending invites and
+        changing appointments stay in Admin.
+      </p>
+    </div>
   );
 }

@@ -14,6 +14,10 @@ import {
   scoreLead,
   splitDraft,
   summaryForAi,
+  ACCOUNT_GROUPS,
+  ACCOUNT_GROUP_LABEL,
+  accountGroupsOf,
+  type AccountGroup,
   type AiRun,
   type Lead,
   type MarketingData,
@@ -62,7 +66,10 @@ function leadTable(leads: Lead[], d: MarketingData): string {
     .slice(0, 150)
     .map((l) => {
       const s = scoreLead(l, d.activities).score;
-      return `${l.fullName ?? l.email ?? "?"} | ${STAGE_LABEL[l.stage]} | ${l.county ?? "-"} | ${l.propertyType ?? "-"} | value ${l.appraisedValue ?? "-"} | deadline ${l.protestDeadline ?? "-"} | score ${s} | last contact ${relDays(l.lastContactedAt)}`;
+      const acct = accountGroupsOf(l)
+        .map((g) => ACCOUNT_GROUP_LABEL[g].replace(/ \(.*\)$/, ""))
+        .join("+");
+      return `${l.fullName ?? l.email ?? "?"} | ${acct || "prospect"} | ${STAGE_LABEL[l.stage]} | ${l.county ?? "-"} | ${l.propertyType ?? "-"} | value ${l.appraisedValue ?? "-"} | deadline ${l.protestDeadline ?? "-"} | score ${s} | last contact ${relDays(l.lastContactedAt)}`;
     })
     .join("\n");
 }
@@ -88,6 +95,7 @@ export function AiWorkspace({
     "registered",
   ]);
   const [county, setCounty] = useState("");
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
   const [leadId, setLeadId] = useState("");
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -99,9 +107,12 @@ export function AiWorkspace({
   const segment = useMemo(
     () =>
       data.leads.filter(
-        (l) => (!stages.length || stages.includes(l.stage)) && (!county || l.county === county),
+        (l) =>
+          (!stages.length || stages.includes(l.stage)) &&
+          (!county || l.county === county) &&
+          (!groups.length || accountGroupsOf(l).some((g) => groups.includes(g))),
       ),
-    [data.leads, stages, county],
+    [data.leads, stages, county, groups],
   );
   const history = data.aiRuns.filter((r) => r.scope === "workspace");
   const target = scope === "lead" ? data.leads.find((l) => l.id === leadId) : null;
@@ -115,8 +126,12 @@ export function AiWorkspace({
         scope === "lead"
           ? leadFacts(target!, data.activities, data.followups)
           : scope === "segment"
-            ? `Segment: ${segment.length} leads (${stages.map((s) => STAGE_LABEL[s]).join(", ") || "all stages"}${county ? `, ${county} County` : ""}).\nname | stage | county | type | value | deadline | score | last contact\n${leadTable(segment, data)}`
-            : `${summaryForAi(data)}\n\nAll leads (name | stage | county | type | value | deadline | score | last contact):\n${leadTable(data.leads, data)}`;
+            ? `Segment: ${segment.length} leads (${stages.map((s) => STAGE_LABEL[s]).join(", ") || "all stages"}${county ? `, ${county} County` : ""}${groups.length ? `, ${groups.map((g) => ACCOUNT_GROUP_LABEL[g]).join(" or ")}` : ""}).\n${
+                summaryForAi(data)
+                  .split("\n")
+                  .find((x) => x.startsWith("CorvusPT accounts")) ?? ""
+              }\nname | account | stage | county | type | value | deadline | score | last contact\n${leadTable(segment, data)}`
+            : `${summaryForAi(data)}\n\nAll leads (name | account | stage | county | type | value | deadline | score | last contact):\n${leadTable(data.leads, data)}`;
       const r = await runAi({
         scope: "workspace",
         instruction: prompt.trim(),
@@ -162,6 +177,21 @@ export function AiWorkspace({
           </div>
           {scope === "segment" && (
             <div className="grid gap-2 rounded-md bg-secondary/40 p-3">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Account type">
+                {ACCOUNT_GROUPS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    aria-pressed={groups.includes(g)}
+                    onClick={() =>
+                      setGroups((p) => (p.includes(g) ? p.filter((x) => x !== g) : [...p, g]))
+                    }
+                    className={`rounded-full border px-2.5 py-0.5 text-xs ${groups.includes(g) ? "border-accent bg-accent text-accent-foreground" : "border-border text-muted-foreground"}`}
+                  >
+                    {ACCOUNT_GROUP_LABEL[g]}
+                  </button>
+                ))}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {STAGES.map((s) => (
                   <button
