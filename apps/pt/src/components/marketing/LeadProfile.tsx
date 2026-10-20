@@ -59,7 +59,13 @@ import {
 } from "@/lib/marketing-research";
 import { OutreachWriter } from "./OutreachWriter";
 import { eligibility } from "@/lib/marketing-analytics";
-import { loadConsentEvents, type Consent, type ConsentEvent } from "@/lib/marketing";
+import {
+  loadConsentEvents,
+  loadMessages,
+  type Consent,
+  type ConsentEvent,
+  type Message,
+} from "@/lib/marketing";
 import {
   Field,
   PriorityBadge,
@@ -591,6 +597,7 @@ export function LeadProfile({
             </section>
 
             <History lead={lead} data={data} history={history} staffName={staffName} act={act} />
+            <MessageLog lead={lead} data={data} />
           </div>
         </div>
       </div>
@@ -1706,6 +1713,70 @@ function ContactPreferences({ lead, act }: { lead: Lead; act: Act }) {
           </ul>
         </details>
       )}
+    </section>
+  );
+}
+
+/** Every email and text sent to or received from this lead, with delivery and engagement. */
+function MessageLog({ lead, data }: { lead: Lead; data: MarketingData }) {
+  const [msgs, setMsgs] = useState<Message[] | null>(null);
+  useEffect(() => {
+    loadMessages({ leadId: lead.id }, 100)
+      .then(setMsgs)
+      .catch(() => setMsgs([]));
+  }, [lead.id, data.activities.length]);
+  if (!msgs?.length) return null;
+  const campaign = new Map(data.campaigns.map((c) => [c.id, c.name]));
+  const state = (m: Message) =>
+    m.direction === "in"
+      ? "Received"
+      : m.bouncedAt
+        ? `Bounced${m.bounceType ? ` (${m.bounceType})` : ""}`
+        : m.complainedAt
+          ? "Marked as spam"
+          : m.failedReason
+            ? `Failed — ${m.failedReason}`
+            : m.repliedAt
+              ? "Replied"
+              : m.clickCount
+                ? `Clicked${m.clickCount > 1 ? ` ×${m.clickCount}` : ""}`
+                : m.openCount
+                  ? `Opened${m.openCount > 1 ? ` ×${m.openCount}` : ""}`
+                  : m.deliveredAt
+                    ? "Delivered"
+                    : m.status.replace("_", " ");
+  return (
+    <section className="rounded-lg border border-border p-4">
+      <h3 className="text-sm font-semibold">Emails &amp; texts ({msgs.length})</h3>
+      <ul className="mt-2 grid gap-1.5 text-sm">
+        {msgs.map((m) => (
+          <li key={m.id} className="grid gap-0.5 border-b border-border/60 pb-1.5 last:border-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate">
+                {m.direction === "in" ? "← " : "→ "}
+                {m.channel === "sms" ? "Text" : "Email"}
+                {m.subject ? `: ${m.subject}` : ""}
+                {m.campaignId && campaign.get(m.campaignId) ? (
+                  <span className="text-xs text-muted-foreground">
+                    {" "}
+                    · {campaign.get(m.campaignId)}
+                  </span>
+                ) : null}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">{relDays(m.sentAt)}</span>
+            </div>
+            <div
+              className={`text-xs ${m.bouncedAt || m.complainedAt || m.failedReason ? "font-semibold text-rose-700" : "text-muted-foreground"}`}
+            >
+              {state(m)}
+            </div>
+            {m.channel === "sms" && m.body && (
+              <div className="text-xs text-muted-foreground line-clamp-2">{m.body}</div>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[11px] text-muted-foreground">* Opens are estimates.</p>
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Settings2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Modal } from "@/components/Modal";
 import { confirmDialog } from "@/components/ConfirmHost";
@@ -9,6 +9,7 @@ import {
   STAGES,
   STAGE_LABEL,
   audienceLeads,
+  audienceMatch,
   deleteCampaign,
   funnel,
   pct,
@@ -26,9 +27,23 @@ import {
   OBJECTIVE_LABEL,
   TEMPLATE_OBJECTIVES,
   markTemplateUsed,
+  FREQUENCY_LABEL,
+  channelStatus,
+  loadMessages,
+  saveSettings,
+  type CampaignFrequency,
+  type CampaignRule,
+  type Message,
 } from "@/lib/marketing";
 import { TEMPLATE_TOKENS, applyFilters, pickObjective } from "@/lib/marketing-crm";
-import { audienceEligibility } from "@/lib/marketing-analytics";
+import {
+  audienceEligibility,
+  campaignRates,
+  cleanCampaignIdeas,
+  cleanRules,
+  RULE_TRIGGER_LABEL,
+  type CampaignIdea,
+} from "@/lib/marketing-analytics";
 import { Templates } from "./Templates";
 import { CampaignBadge, Field, inputCls, type Focus } from "./shared";
 
@@ -45,7 +60,11 @@ export function Campaigns({
   reload: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Campaign | "new" | null>(null);
-  const [preset, setPreset] = useState<{ name: string; audience: Audience } | null>(null);
+  const [preset, setPreset] = useState<{
+    name: string;
+    audience: Audience;
+    idea?: CampaignIdea;
+  } | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   useEffect(() => {
     if (focus.campaignId) {
@@ -66,30 +85,155 @@ export function Campaigns({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  const groups: { title: string; items: Campaign[] }[] = [
-    {
-      title: "Live",
-      items: data.campaigns.filter((c) =>
-        ["approved", "scheduled", "sending", "paused"].includes(c.status),
-      ),
-    },
-    { title: "Drafts", items: data.campaigns.filter((c) => c.status === "draft") },
-    { title: "Sent", items: data.campaigns.filter((c) => c.status === "sent") },
-  ];
+  const [tab, setTab] = useState<"all" | "live" | "draft" | "paused" | "sent">("all");
+  const [ideas, setIdeas] = useState<CampaignIdea[] | null>(null);
+  const [thinking, setThinking] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [status, setStatus] = useState<{
+    smsConfigured: boolean;
+    resend: { ok: boolean; note?: string };
+  } | null>(null);
+  useEffect(() => {
+    channelStatus()
+      .then(setStatus)
+      .catch(() => setStatus({ smsConfigured: false, resend: { ok: false } }));
+  }, []);
+  const staffName = (id: string | null) => data.staff.find((s) => s.id === id)?.name ?? "—";
+  const list = data.campaigns.filter((c) =>
+    tab === "all"
+      ? true
+      : tab === "live"
+        ? ["approved", "scheduled", "sending"].includes(c.status)
+        : c.status === tab,
+  );
+  const audienceText = (c: Campaign) =>
+    c.audience.segmentName ??
+    (c.audience.leadIds?.length
+      ? `${c.audience.leadIds.length} chosen leads`
+      : [
+          c.audience.stages?.map((s) => STAGE_LABEL[s]).join(", ") || "Everyone",
+          c.audience.counties?.join(", "),
+          c.audience.propertyTypes?.join(", "),
+        ]
+          .filter(Boolean)
+          .join(" · "));
+
+  async function suggest() {
+    setThinking(true);
+    try {
+      const f = funnel(data.leads);
+      const byStage = Object.entries(
+        data.leads.reduce<Record<string, number>>(
+          (m, l) => ((m[l.stage] = (m[l.stage] ?? 0) + 1), m),
+          {},
+        ),
+      );
+      const counties = Object.entries(
+        data.leads
+          .flatMap((l) => l.counties)
+          .reduce<Record<string, number>>((m, c) => ((m[c] = (m[c] ?? 0) + 1), m), {}),
+      )
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+      const r = await runAi({
+        scope: "campaign-ideas",
+        instruction:
+          "Recommend up to 4 campaigns for CorvusPT right now. For each: who to target, channel, message, schedule and owner. Reply with JSON only: " +
+          '[{"name": "...", "why": "one line", "objective": "initial_outreach|assessment_increase|deadline|registration_reminder|subscription_promo|follow_up|add_property|finish_checkout", ' +
+          '"channel": "email|sms", "audience": {"stages": [...], "counties": [...], "propertyTypes": [...]}, "frequency": "once|weekly|twice_monthly|monthly", "sendOn": "yyyy-mm-dd", ' +
+          '"owner": "<staff name>", "subject": "...", "body": "plain text under 120 words with {{first_name}} and links where useful"}]. ' +
+          `SMS only for leads with SMS consent (${data.leads.filter((l) => l.smsConsent === "granted").length} have it${status?.smsConfigured ? "" : "; SMS isn't connected yet, so prefer email"}). Today is ${new Date().toISOString().slice(0, 10)}. Never promise savings.`,
+        context: JSON.stringify({
+          funnel: f,
+          byStage,
+          counties,
+          staff: data.staff.map((s) => s.name),
+          recentCampaigns: data.campaigns.slice(0, 8).map((c) => ({
+            name: c.name,
+            status: c.status,
+            metrics: data.campaignMetrics.get(c.id) ?? null,
+          })),
+        }),
+      });
+      const parsed = cleanCampaignIdeas(
+        JSON.parse((r.result ?? "").match(/\[[\s\S]*\]/)?.[0] ?? "[]"),
+        data,
+      );
+      if (!parsed.length) throw new Error("Corvus AI didn't return usable ideas — try again.");
+      setIdeas(parsed);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Couldn't get campaign ideas."));
+    } finally {
+      setThinking(false);
+    }
+  }
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Email campaigns go to leads who haven&apos;t unsubscribed. Every email includes a
-          one-click unsubscribe link.
+      {!data.settings.postalAddress && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Add the company&apos;s postal address before sending email campaigns — US law (CAN-SPAM)
+          requires it in every marketing email.{" "}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => setShowSettings(true)}
+          >
+            Add it
+          </button>
         </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="inline-flex rounded-md border border-border p-0.5 text-sm"
+          role="tablist"
+          aria-label="Campaign status"
+        >
+          {(
+            [
+              ["all", "All"],
+              ["live", "Live"],
+              ["draft", "Drafts"],
+              ["paused", "Paused"],
+              ["sent", "Sent"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => setTab(k)}
+              className={`rounded px-3 py-1 ${tab === k ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={thinking}
+          onClick={() => void suggest()}
+          className="btn-outline ml-auto inline-flex items-center gap-1.5 text-sm"
+        >
+          <Sparkles className="h-4 w-4" aria-hidden />{" "}
+          {thinking ? "Thinking…" : "Suggest campaigns"}
+        </button>
         <button
           type="button"
           onClick={() => setShowTemplates(true)}
-          className="btn-outline ml-auto text-sm"
+          className="btn-outline text-sm"
         >
           Templates ({data.templates.filter((t) => t.active).length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          aria-label="Campaign settings"
+          title="Campaign settings"
+          className="btn-outline px-2.5 text-sm"
+        >
+          <Settings2 className="h-4 w-4" aria-hidden />
         </button>
         <button
           type="button"
@@ -102,45 +246,158 @@ export function Campaigns({
           <Plus className="h-4 w-4" aria-hidden /> New campaign
         </button>
       </div>
-      {groups.map((g) => (
-        <section key={g.title} className="card-elev p-4">
-          <h2 className="text-sm font-semibold">
-            {g.title} ({g.items.length})
-          </h2>
-          {g.items.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">None.</p>
-          ) : (
-            <ul className="mt-2 grid gap-1">
-              {g.items.map((c) => (
-                <li key={c.id}>
+
+      {ideas && (
+        <section className="card-elev p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-accent" aria-hidden /> Corvus AI recommends
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIdeas(null)}
+              className="text-xs text-muted-foreground"
+            >
+              Hide
+            </button>
+          </div>
+          <ul className="mt-2 grid gap-2 md:grid-cols-2">
+            {ideas.map((i) => {
+              const reach = audienceLeads(
+                {
+                  stages: i.audience.stages,
+                  counties: i.audience.counties,
+                  propertyTypes: i.audience.propertyTypes,
+                },
+                data.leads,
+                i.channel,
+              ).length;
+              return (
+                <li key={i.name} className="grid gap-1 rounded-md border border-border p-3 text-sm">
+                  <b>{i.name}</b>
+                  <span className="text-xs text-muted-foreground">{i.why}</span>
+                  <span className="text-xs">
+                    {i.channel === "sms" ? "Text" : "Email"} · {FREQUENCY_LABEL[i.frequency]}
+                    {i.sendOn && ` · from ${i.sendOn}`} · {reach} recipient{reach === 1 ? "" : "s"}
+                    {i.ownerId && ` · ${staffName(i.ownerId)}`}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setEditing(c)}
-                    className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-secondary/50 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+                    className="btn-primary btn-primary-hover mt-1 justify-self-start py-1 text-xs"
+                    onClick={() => {
+                      setPreset({
+                        name: i.name,
+                        audience: i.audience,
+                        idea: i,
+                      });
+                      setEditing("new");
+                    }}
                   >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{c.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {c.channel.toUpperCase()} · {audienceLeads(c.audience, data.leads).length}{" "}
-                        recipients
-                        {c.status === "scheduled" &&
-                          c.scheduledAt &&
-                          ` · sends ${new Date(c.scheduledAt).toLocaleString()}`}
-                      </span>
-                    </span>
-                    <span className="hidden text-xs text-muted-foreground sm:block">
-                      {c.status === "sent"
-                        ? `Sent ${c.stats.sent ?? 0}/${c.stats.targeted ?? 0} · ${relDays(c.sentAt)}`
-                        : `Updated ${relDays(c.updatedAt)}`}
-                    </span>
-                    <CampaignBadge status={c.status} />
+                    Create draft
                   </button>
                 </li>
-              ))}
-            </ul>
-          )}
+              );
+            })}
+          </ul>
         </section>
-      ))}
+      )}
+
+      <div className="card-elev overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="border-b border-border text-xs text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">Campaign</th>
+              <th className="px-3 py-2 font-medium">Audience</th>
+              <th className="px-3 py-2 font-medium">Channel</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Schedule</th>
+              <th className="px-3 py-2 font-medium">Performance</th>
+              <th className="px-3 py-2 font-medium">Owner</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                  No campaigns here. Create one, or ask Corvus AI for suggestions.
+                </td>
+              </tr>
+            )}
+            {list.map((c) => {
+              const m = data.campaignMetrics.get(c.id);
+              const r = campaignRates(m);
+              return (
+                <tr
+                  key={c.id}
+                  onClick={() => setEditing(c)}
+                  className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-secondary/40"
+                >
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{c.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Updated {relDays(c.updatedAt)}
+                    </div>
+                  </td>
+                  <td className="max-w-[14rem] px-3 py-2 text-xs">
+                    <div className="truncate">{audienceText(c)}</div>
+                    <div className="text-muted-foreground">
+                      {audienceLeads(c.audience, data.leads, c.channel).length} eligible now
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-xs">{c.channel === "sms" ? "Text" : "Email"}</td>
+                  <td className="px-3 py-2">
+                    <CampaignBadge status={c.status} />
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    <div>{FREQUENCY_LABEL[c.frequency]}</div>
+                    <div className="text-muted-foreground">
+                      {c.status === "scheduled" && c.scheduledAt
+                        ? `Next ${new Date(c.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                        : c.lastSentAt
+                          ? `Last sent ${relDays(c.lastSentAt)}`
+                          : "Not sent"}
+                      {c.runCount > 1 && ` · ${c.runCount} runs`}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    {r.sent ? (
+                      <>
+                        <div>
+                          <b>{r.sent}</b> sent · {r.delivered == null ? "—" : pct(r.delivered)}{" "}
+                          delivered
+                        </div>
+                        <div className="text-muted-foreground">
+                          {c.channel === "sms"
+                            ? `${r.replied == null ? "—" : pct(r.replied)} replied`
+                            : `${pct(r.opened ?? 0)} opened · ${pct(r.clicked ?? 0)} clicked`}
+                          {m && m.bounced > 0 && ` · ${m.bounced} bounced`}
+                          {m && m.unsubscribed > 0 && ` · ${m.unsubscribed} unsub`}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs">{staffName(c.ownerId)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        * Opens are estimates (some mail apps block or pre-load images). Delivered, bounced and
+        unsubscribed come from the email service; texts need SMS consent.
+      </p>
+
+      {showSettings && (
+        <CampaignSettings
+          data={data}
+          status={status}
+          reload={reload}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
       {showTemplates && (
         <Templates data={data} reload={reload} onClose={() => setShowTemplates(false)} />
       )}
@@ -148,6 +405,7 @@ export function Campaigns({
         <CampaignEditor
           campaign={editing === "new" ? null : editing}
           preset={editing === "new" ? preset : null}
+          smsReady={!!status?.smsConfigured}
           data={data}
           reload={reload}
           onClose={() => setEditing(null)}
@@ -157,56 +415,146 @@ export function Campaigns({
   );
 }
 
+function CampaignSettings({
+  data,
+  status,
+  reload,
+  onClose,
+}: {
+  data: MarketingData;
+  status: { smsConfigured: boolean; resend: { ok: boolean; note?: string } } | null;
+  reload: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [postal, setPostal] = useState(data.settings.postalAddress ?? "");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal onClose={onClose} wide>
+      <div className="grid gap-4 p-6">
+        <h2 className="font-serif text-xl font-semibold">Campaign settings</h2>
+        <Field label="Company postal address (shown in every marketing email — required by CAN-SPAM)">
+          <input
+            className={inputCls}
+            value={postal}
+            onChange={(e) => setPostal(e.target.value)}
+            placeholder="Street, City, TX ZIP"
+          />
+        </Field>
+        <ul className="grid gap-1.5 text-sm">
+          <li>
+            <b>Email:</b> sending through Resend · delivery, bounce and spam-complaint tracking{" "}
+            {status?.resend.ok ? (
+              <span className="text-emerald-700">on</span>
+            ) : (
+              <span className="text-amber-800">
+                not confirmed{status?.resend.note ? ` — ${status.resend.note}` : ""}
+              </span>
+            )}{" "}
+            · opens and clicks tracked on marketing email only.
+          </li>
+          <li>
+            <b>Text messages:</b>{" "}
+            {status?.smsConfigured ? (
+              <span className="text-emerald-700">connected (Telnyx)</span>
+            ) : (
+              <span className="text-amber-800">
+                not connected — add TELNYX_API_KEY, TELNYX_FROM and TELNYX_PUBLIC_KEY to switch
+                texts on.
+              </span>
+            )}{" "}
+            Only leads with recorded SMS consent can be texted; STOP/START replies are handled
+            automatically.
+          </li>
+        </ul>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-outline text-sm">
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await saveSettings({ postalAddress: postal });
+                await reload();
+                toast.success("Saved.");
+                onClose();
+              } catch (err) {
+                toast.error(getErrorMessage(err, "Couldn't save."));
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="btn-primary btn-primary-hover text-sm"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function CampaignEditor({
   campaign,
   preset,
+  smsReady,
   data,
   reload,
   onClose,
 }: {
   campaign: Campaign | null;
-  preset: { name: string; audience: Audience } | null;
+  preset: { name: string; audience: Audience; idea?: CampaignIdea } | null;
+  smsReady: boolean;
   data: MarketingData;
   reload: () => Promise<void>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(campaign?.name ?? preset?.name ?? "");
-  const [channel, setChannel] = useState<"email" | "sms">(campaign?.channel ?? "email");
+  const [channel, setChannel] = useState<"email" | "sms">(
+    campaign?.channel ?? preset?.idea?.channel ?? "email",
+  );
+  const [frequency, setFrequency] = useState<CampaignFrequency>(
+    campaign?.frequency ?? preset?.idea?.frequency ?? "once",
+  );
+  const [customDays, setCustomDays] = useState<string>(
+    campaign?.customDays ? String(campaign.customDays) : "14",
+  );
+  const [endsAt, setEndsAt] = useState(campaign?.endsAt ? campaign.endsAt.slice(0, 10) : "");
+  const [rules, setRules] = useState<CampaignRule[]>(campaign?.followupRules ?? []);
   const [audience, setAudience] = useState<Audience>(
     campaign?.audience ?? preset?.audience ?? { stages: ["ready", "contacted", "interested"] },
   );
-  const [subject, setSubject] = useState(campaign?.subject ?? "");
-  const [body, setBody] = useState(campaign?.body ?? "");
+  const [subject, setSubject] = useState(campaign?.subject ?? preset?.idea?.subject ?? "");
+  const [body, setBody] = useState(campaign?.body ?? preset?.idea?.body ?? "");
   const [templateId, setTemplateId] = useState<string | null>(campaign?.templateId ?? null);
   const [goal, setGoal] = useState("");
-  const [when, setWhen] = useState(campaign?.scheduledAt ? campaign.scheduledAt.slice(0, 16) : "");
+  const [when, setWhen] = useState(
+    campaign?.scheduledAt
+      ? campaign.scheduledAt.slice(0, 16)
+      : preset?.idea?.sendOn
+        ? `${preset.idea.sendOn}T10:00`
+        : "",
+  );
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const status = campaign?.status ?? "draft";
   const locked = status === "sent" || status === "sending";
-  const recipients = useMemo(() => audienceLeads(audience, data.leads), [audience, data.leads]);
-  const [ownerId, setOwnerId] = useState<string | null>(campaign?.ownerId ?? data.me);
+  const recipients = useMemo(
+    () => audienceLeads(audience, data.leads, channel),
+    [audience, data.leads, channel],
+  );
+  const [ownerId, setOwnerId] = useState<string | null>(
+    campaign?.ownerId ?? preset?.idea?.ownerId ?? data.me,
+  );
   const [budget, setBudget] = useState<string>(
     campaign?.budget != null ? String(campaign.budget) : "",
   );
   // everyone the filters reach, to show who's left out and why
   const reach = useMemo(() => {
-    const all = audienceLeads(
-      audience,
-      data.leads.map((l) => ({
-        ...l,
-        email: l.email ?? "x",
-        unsubscribedAt: null,
-        stage: l.stage === "do_not_contact" ? "new" : l.stage,
-        emailConsent: "unknown" as const,
-      })),
-    );
-    const ids = new Set(all.map((l) => l.id));
-    return audienceEligibility(
-      data.leads.filter((l) => ids.has(l.id)),
-      "email",
-    );
-  }, [audience, data.leads]);
+    return audienceEligibility(audienceMatch(audience, data.leads), channel);
+  }, [audience, data.leads, channel]);
   // the objective that fits most of the audience (status, value change, deadline, history)
   const bestObjective = useMemo<TemplateObjective>(() => {
     const n = new Map<TemplateObjective, number>();
@@ -271,6 +619,10 @@ function CampaignEditor({
       templateId,
       ownerId,
       budget: budget ? Number(budget) : null,
+      frequency,
+      customDays: frequency === "custom" ? Math.max(1, Number(customDays) || 14) : null,
+      endsAt: endsAt ? new Date(`${endsAt}T23:59:59`).toISOString() : null,
+      followupRules: rules,
     });
   };
 
@@ -304,37 +656,8 @@ function CampaignEditor({
           <CampaignBadge status={status} />
         </div>
 
-        {status === "sent" && (
-          <div className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-3">
-            <div>
-              <div className="text-xs text-muted-foreground">Targeted</div>
-              <div className="text-xl font-semibold">{campaign?.stats.targeted ?? 0}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Delivered to sender</div>
-              <div className="text-xl font-semibold">{campaign?.stats.sent ?? 0}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Failed</div>
-              <div className="text-xl font-semibold">{campaign?.stats.failed ?? 0}</div>
-            </div>
-            {!!campaign?.stats.errors?.length && (
-              <p className="text-xs text-rose-700 sm:col-span-3">
-                {campaign.stats.errors.join(" · ")}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground sm:col-span-3">
-              Conversions from this audience so far:{" "}
-              {recipients.filter((l) => l.stage === "subscribed").length} subscribed of{" "}
-              {recipients.length} (
-              {pct(
-                recipients.length
-                  ? recipients.filter((l) => l.stage === "subscribed").length / recipients.length
-                  : 0,
-              )}
-              ).
-            </p>
-          </div>
+        {campaign && (data.campaignMetrics.get(campaign.id)?.sent ?? 0) > 0 && (
+          <CampaignResults campaign={campaign} data={data} />
         )}
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -382,8 +705,10 @@ function CampaignEditor({
                 onChange={(e) => setChannel(e.target.value as "email" | "sms")}
               >
                 <option value="email">Email</option>
-                <option value="sms" disabled>
-                  SMS — connect an SMS provider first
+                <option value="sms" disabled={!smsReady}>
+                  {smsReady
+                    ? "Text message (SMS) — consented leads only"
+                    : "Text message — connect Telnyx first (Settings)"}
                 </option>
               </select>
             </Field>
@@ -522,23 +847,263 @@ function CampaignEditor({
                 </select>
               </Field>
             )}
-            <Field label="Subject">
-              <input
-                className={inputCls}
-                value={subject}
-                disabled={locked}
-                onChange={(e) => setSubject(e.target.value)}
-              />
-            </Field>
-            <Field label="Message">
+            {channel === "email" && (
+              <Field label="Subject">
+                <input
+                  className={inputCls}
+                  value={subject}
+                  disabled={locked}
+                  onChange={(e) => setSubject(e.target.value)}
+                />
+              </Field>
+            )}
+            <Field
+              label={
+                channel === "sms"
+                  ? `Text (${body.length} characters · "Reply STOP to opt out." is added)`
+                  : "Message"
+              }
+            >
               <textarea
                 className={inputCls}
-                rows={10}
+                rows={channel === "sms" ? 4 : 10}
                 value={body}
                 disabled={locked}
                 onChange={(e) => setBody(e.target.value)}
               />
             </Field>
+            <div className="grid gap-2 rounded-lg border border-border p-3">
+              <div className="text-xs font-semibold">Schedule</div>
+              <div className="flex flex-wrap items-end gap-2 text-sm">
+                <label className="grid gap-1 text-xs text-muted-foreground">
+                  Repeat
+                  <select
+                    className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    value={frequency}
+                    disabled={locked}
+                    onChange={(e) => setFrequency(e.target.value as CampaignFrequency)}
+                  >
+                    {(Object.keys(FREQUENCY_LABEL) as CampaignFrequency[]).map((f) => (
+                      <option key={f} value={f}>
+                        {FREQUENCY_LABEL[f]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {frequency === "custom" && (
+                  <label className="grid gap-1 text-xs text-muted-foreground">
+                    Every
+                    <input
+                      className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      inputMode="numeric"
+                      value={customDays}
+                      disabled={locked}
+                      onChange={(e) => setCustomDays(e.target.value.replace(/\D/g, ""))}
+                      aria-label="Days between sends"
+                    />
+                  </label>
+                )}
+                {frequency !== "once" && (
+                  <label className="grid gap-1 text-xs text-muted-foreground">
+                    Stop after
+                    <input
+                      type="date"
+                      className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      value={endsAt}
+                      disabled={locked}
+                      onChange={(e) => setEndsAt(e.target.value)}
+                      aria-label="Stop repeating after"
+                    />
+                  </label>
+                )}
+              </div>
+              {frequency !== "once" && (
+                <p className="text-[11px] text-muted-foreground">
+                  * Each run goes to whoever matches the audience then; nobody gets it twice in one
+                  cycle.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-2 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold">
+                  After it goes out (runs by itself once approved)
+                </span>
+                {!locked && (
+                  <span className="flex gap-2 text-xs">
+                    <button
+                      type="button"
+                      className="text-accent hover:underline"
+                      disabled={!!busy}
+                      onClick={() =>
+                        void step(
+                          "rules",
+                          async () => {
+                            const r = await runAi({
+                              scope: "campaign-rules",
+                              campaignId: campaign?.id ?? null,
+                              instruction: `Suggest 2-3 engagement follow-up rules for this ${channel} campaign. Reply with JSON only: [{"trigger": "${channel === "sms" ? "no_reply|clicked" : "no_open|opened_no_click|clicked"}", "afterDays": number, "action": "email|call|task${smsReady ? "|sms" : ""}", "subject": "...", "body": "short plain text with {{first_name}}"}]. A call for people who clicked; a different subject for non-openers. Never promise savings.`,
+                              context: `${audienceText()}\nSubject: ${subject}\nMessage: ${body}`,
+                            });
+                            const parsed = cleanRules(
+                              JSON.parse((r.result ?? "").match(/\[[\s\S]*\]/)?.[0] ?? "[]"),
+                            );
+                            if (!parsed.length)
+                              throw new Error("Corvus AI didn't return usable rules.");
+                            setRules(parsed);
+                          },
+                          "Rules drafted — review them.",
+                        )
+                      }
+                    >
+                      {busy === "rules" ? "Thinking…" : "Suggest with AI"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-accent hover:underline"
+                      onClick={() =>
+                        setRules((x) => [
+                          ...x,
+                          {
+                            trigger: channel === "sms" ? "no_reply" : "no_open",
+                            afterDays: 3,
+                            action: "email",
+                          },
+                        ])
+                      }
+                    >
+                      + Add rule
+                    </button>
+                  </span>
+                )}
+              </div>
+              {rules.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  None — e.g. call everyone who clicks, or resend to people who didn&apos;t open.
+                </p>
+              ) : (
+                <ul className="grid gap-2">
+                  {rules.map((r, i) => (
+                    <li key={i} className="grid gap-1.5 rounded-md bg-secondary/40 p-2 text-xs">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        If they
+                        <select
+                          className="rounded border border-input bg-background px-1 py-0.5"
+                          value={r.trigger}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setRules((x) =>
+                              x.map((y, k) =>
+                                k === i
+                                  ? { ...y, trigger: e.target.value as CampaignRule["trigger"] }
+                                  : y,
+                              ),
+                            )
+                          }
+                          aria-label="Trigger"
+                        >
+                          {(Object.keys(RULE_TRIGGER_LABEL) as CampaignRule["trigger"][]).map(
+                            (t) => (
+                              <option key={t} value={t}>
+                                {RULE_TRIGGER_LABEL[t]}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                        after
+                        <input
+                          className="w-12 rounded border border-input bg-background px-1 py-0.5"
+                          inputMode="numeric"
+                          value={r.afterDays}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setRules((x) =>
+                              x.map((y, k) =>
+                                k === i
+                                  ? {
+                                      ...y,
+                                      afterDays: Number(e.target.value.replace(/\D/g, "")) || 1,
+                                    }
+                                  : y,
+                              ),
+                            )
+                          }
+                          aria-label="Days"
+                        />
+                        days →
+                        <select
+                          className="rounded border border-input bg-background px-1 py-0.5"
+                          value={r.action}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setRules((x) =>
+                              x.map((y, k) =>
+                                k === i
+                                  ? { ...y, action: e.target.value as CampaignRule["action"] }
+                                  : y,
+                              ),
+                            )
+                          }
+                          aria-label="Action"
+                        >
+                          <option value="email">send an email</option>
+                          <option value="sms" disabled={!smsReady}>
+                            send a text
+                          </option>
+                          <option value="call">call (task for the owner)</option>
+                          <option value="task">create a task</option>
+                        </select>
+                        {!locked && (
+                          <button
+                            type="button"
+                            className="ml-auto text-muted-foreground hover:text-destructive"
+                            onClick={() => setRules((x) => x.filter((_, k) => k !== i))}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </span>
+                      {(r.action === "email" || r.action === "sms" || r.action === "call") && (
+                        <>
+                          {r.action === "email" && (
+                            <input
+                              className="rounded border border-input bg-background px-1.5 py-1"
+                              placeholder="Subject"
+                              value={r.subject ?? ""}
+                              disabled={locked}
+                              onChange={(e) =>
+                                setRules((x) =>
+                                  x.map((y, k) =>
+                                    k === i ? { ...y, subject: e.target.value } : y,
+                                  ),
+                                )
+                              }
+                              aria-label="Rule subject"
+                            />
+                          )}
+                          <textarea
+                            className="rounded border border-input bg-background px-1.5 py-1"
+                            rows={2}
+                            placeholder={r.action === "call" ? "Call notes / script" : "Message"}
+                            value={r.body ?? ""}
+                            disabled={locked}
+                            onChange={(e) =>
+                              setRules((x) =>
+                                x.map((y, k) => (k === i ? { ...y, body: e.target.value } : y)),
+                              )
+                            }
+                            aria-label="Rule message"
+                          />
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                * Opt-outs, consent and Do Not Contact are checked again before anything goes out.
+              </p>
+            </div>
             <p className="text-[11px] text-muted-foreground">
               * Personalised per recipient: {TEMPLATE_TOKENS.join(" ")}. Never promise a reduction
               or savings amount.
@@ -679,8 +1244,12 @@ function CampaignEditor({
                 void step(
                   "approve",
                   async () => {
-                    if (!subject.trim() || !body.trim())
+                    if ((channel === "email" && !subject.trim()) || !body.trim())
                       throw new Error("Add a subject and message before approving.");
+                    if (channel === "email" && !data.settings.postalAddress)
+                      throw new Error(
+                        "Add the company's postal address in Campaigns → Settings first (CAN-SPAM).",
+                      );
                     if (recipients.length === 0)
                       throw new Error("This audience has no one to send to.");
                     if (audience.segmentId) {
@@ -694,6 +1263,8 @@ function CampaignEditor({
                         subject,
                         body,
                         templateId,
+                        frequency,
+                        followupRules: rules,
                       });
                       await setCampaignStatus(c, "approved");
                     } else {
@@ -709,7 +1280,7 @@ function CampaignEditor({
               }
               className="btn-primary btn-primary-hover text-sm"
             >
-              {status === "paused" ? "Resume (approve)" : "Approve"}
+              {status === "paused" ? "Resume" : "Approve"}
             </button>
           )}
           {(status === "approved" || status === "scheduled") && campaign && (
@@ -812,5 +1383,98 @@ function Chip({
     >
       {children}
     </button>
+  );
+}
+
+/** Delivery and engagement for a campaign, run by run and recipient by recipient. */
+function CampaignResults({ campaign, data }: { campaign: Campaign; data: MarketingData }) {
+  const m = data.campaignMetrics.get(campaign.id);
+  const r = campaignRates(m);
+  const [msgs, setMsgs] = useState<Message[] | null>(null);
+  useEffect(() => {
+    loadMessages({ campaignId: campaign.id })
+      .then(setMsgs)
+      .catch(() => setMsgs([]));
+  }, [campaign.id]);
+  const leadName = (id: string | null) => {
+    const l = data.leads.find((x) => x.id === id);
+    return l ? (l.company ?? l.fullName ?? l.email ?? "Lead") : "Deleted lead";
+  };
+  const tile = (label: string, v: string | number, hint?: string) => (
+    <div className="rounded-md bg-secondary/40 p-2">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold tabular-nums">{v}</div>
+      {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+  const runs =
+    (
+      campaign.stats as {
+        runs?: { run: number; at: string; targeted: number; sent: number; failed: number }[];
+      }
+    ).runs ?? [];
+  return (
+    <section className="grid gap-3 rounded-lg border border-border p-4">
+      <h3 className="text-sm font-semibold">Results</h3>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
+        {tile("Sent", m?.sent ?? 0)}
+        {tile("Delivered", r.delivered == null ? "—" : pct(r.delivered), `${m?.delivered ?? 0}`)}
+        {campaign.channel === "email"
+          ? tile("Opened", pct(r.opened ?? 0), `${m?.opened ?? 0}`)
+          : tile("Replied", pct(r.replied ?? 0), `${m?.replied ?? 0}`)}
+        {tile("Clicked", pct(r.clicked ?? 0), `${m?.clicked ?? 0}`)}
+        {tile("Bounced", m?.bounced ?? 0)}
+        {tile("Unsubscribed", m?.unsubscribed ?? 0)}
+        {tile("Spam reports", m?.complained ?? 0)}
+      </div>
+      {runs.length > 1 && (
+        <p className="text-xs text-muted-foreground">
+          Runs:{" "}
+          {runs
+            .slice(-6)
+            .map((x) => `#${x.run} ${x.at.slice(0, 10)} (${x.sent})`)
+            .join(" · ")}
+        </p>
+      )}
+      <details>
+        <summary className="cursor-pointer text-xs text-accent">
+          Recipients ({msgs?.length ?? "…"})
+        </summary>
+        <div className="mt-2 max-h-72 overflow-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-muted-foreground">
+              <tr>
+                <th className="py-1 font-medium">Recipient</th>
+                <th className="py-1 font-medium">Sent</th>
+                <th className="py-1 font-medium">Status</th>
+                <th className="py-1 font-medium">Opens</th>
+                <th className="py-1 font-medium">Clicks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(msgs ?? [])
+                .filter((x) => x.direction === "out")
+                .map((x) => (
+                  <tr key={x.id} className="border-t border-border/60">
+                    <td className="py-1">{leadName(x.leadId)}</td>
+                    <td className="py-1">{relDays(x.sentAt)}</td>
+                    <td
+                      className={`py-1 ${["bounced", "complained", "failed"].includes(x.status) ? "font-semibold text-rose-700" : ""}`}
+                    >
+                      {x.status.replace("_", " ")}
+                      {x.bounceType ? ` (${x.bounceType})` : ""}
+                    </td>
+                    <td className="py-1 tabular-nums">{x.openCount}</td>
+                    <td className="py-1 tabular-nums">{x.clickCount}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <p className="text-[11px] text-muted-foreground">
+        * Opens are estimates — some mail apps block images, others open them automatically.
+      </p>
+    </section>
   );
 }

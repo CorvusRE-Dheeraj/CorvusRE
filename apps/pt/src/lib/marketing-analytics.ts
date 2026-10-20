@@ -408,6 +408,7 @@ export function eligibility(l: Lead, channel: "email" | "sms" | "call"): string 
     if (!l.email) return "No email address";
     if (l.unsubscribedAt) return "Unsubscribed from email";
     if (l.emailConsent === "withdrawn") return "Email consent withdrawn";
+    if (l.emailBouncedAt) return "Email address bounced";
   }
   if (channel === "sms") {
     if (!l.phone) return "No phone number";
@@ -769,4 +770,214 @@ export function runReport(
   }
   if (spec.limit) table = table.slice(0, spec.limit);
   return { headers: cols.map((c) => c.label), rows: table };
+}
+
+// ── Campaign funnel: Identified → Qualified → Contacted → Engaged → Registered → Subscribed ──
+export const PHASES = [
+  "identified",
+  "qualified",
+  "contacted",
+  "engaged",
+  "registered",
+  "subscribed",
+] as const;
+export type Phase = (typeof PHASES)[number];
+export const PHASE_LABEL: Record<Phase, string> = {
+  identified: "Identified",
+  qualified: "Qualified",
+  contacted: "Contacted",
+  engaged: "Engaged",
+  registered: "Registered",
+  subscribed: "Subscribed",
+};
+/**
+ * The campaign view of a lead's status. Engaged = said interested, or opened a
+ * link / replied in the last 30 days. Not Interested / Do Not Contact are out.
+ */
+export function leadPhase(l: Lead, now = new Date()): Phase | null {
+  const recent =
+    !!l.lastEngagedAt && now.getTime() - new Date(l.lastEngagedAt).getTime() < 30 * 864e5;
+  switch (l.stage) {
+    case "new":
+    case "researching":
+      return "identified";
+    case "ready":
+      return recent ? "engaged" : "qualified";
+    case "contacted":
+    case "no_response":
+      return recent ? "engaged" : "contacted";
+    case "interested":
+      return "engaged";
+    case "registration_started":
+    case "registered":
+    case "property_added":
+    case "subscription_started":
+      return "registered";
+    case "subscribed":
+      return "subscribed";
+    default:
+      return null;
+  }
+}
+/** Leads at each phase and how many have reached it (a later phase counts as reaching the earlier ones). */
+export function phaseFunnel(leads: Lead[], now = new Date()) {
+  const at = new Map<Phase, number>(PHASES.map((p) => [p, 0]));
+  for (const l of leads) {
+    const p = leadPhase(l, now);
+    if (p) at.set(p, (at.get(p) ?? 0) + 1);
+  }
+  let cum = 0;
+  const reached = [...PHASES].reverse().map((p) => ((cum += at.get(p) ?? 0), [p, cum] as const));
+  const r = new Map(reached);
+  return PHASES.map((p) => ({
+    phase: p,
+    label: PHASE_LABEL[p],
+    now: at.get(p) ?? 0,
+    reached: r.get(p) ?? 0,
+  }));
+}
+
+export type CampaignRates = {
+  sent: number;
+  delivered: number | null;
+  opened: number | null;
+  clicked: number | null;
+  bounced: number | null;
+  unsubscribed: number | null;
+  replied: number | null;
+};
+export function campaignRates(
+  m:
+    | {
+        sent: number;
+        delivered: number;
+        opened: number;
+        clicked: number;
+        bounced: number;
+        unsubscribed: number;
+        replied: number;
+      }
+    | undefined,
+): CampaignRates {
+  if (!m || !m.sent)
+    return {
+      sent: m?.sent ?? 0,
+      delivered: null,
+      opened: null,
+      clicked: null,
+      bounced: null,
+      unsubscribed: null,
+      replied: null,
+    };
+  const base = m.delivered || m.sent;
+  return {
+    sent: m.sent,
+    delivered: m.delivered / m.sent,
+    opened: m.opened / base,
+    clicked: m.clicked / base,
+    bounced: m.bounced / m.sent,
+    unsubscribed: m.unsubscribed / m.sent,
+    replied: m.replied / m.sent,
+  };
+}
+
+// ── AI campaign ideas + engagement rules (validated before use) ─────────────
+export type CampaignIdea = {
+  name: string;
+  why: string;
+  objective: string;
+  channel: "email" | "sms";
+  audience: { stages?: Stage[]; counties?: string[]; propertyTypes?: string[] };
+  frequency: "once" | "weekly" | "twice_monthly" | "monthly" | "custom";
+  sendOn: string | null;
+  ownerId: string | null;
+  subject: string | null;
+  body: string | null;
+};
+const STAGE_KEYS = Object.keys(STAGE_LABEL) as Stage[];
+export function cleanCampaignIdeas(
+  raw: unknown,
+  d: Pick<MarketingData, "leads" | "staff">,
+): CampaignIdea[] {
+  const list = Array.isArray(raw) ? raw : [];
+  const counties = new Set(d.leads.flatMap((l) => l.counties));
+  const types = new Set(d.leads.flatMap((l) => l.propertyTypes));
+  return list
+    .filter(
+      (x): x is Record<string, unknown> =>
+        !!x && typeof x === "object" && typeof (x as Record<string, unknown>).name === "string",
+    )
+    .slice(0, 6)
+    .flatMap((x): CampaignIdea[] => {
+      const a = (x.audience ?? {}) as Record<string, unknown>;
+      // a filter that names only unknown values would widen to everyone — drop the idea instead
+      const known = (v: unknown, ok: (s: string) => boolean) =>
+        !Array.isArray(v) || !v.length || v.some((s) => ok(String(s)));
+      if (
+        !known(a.counties, (c) => counties.has(c)) ||
+        !known(a.propertyTypes, (t) => types.has(t))
+      )
+        return [];
+      if (!known(a.stages, (s) => STAGE_KEYS.includes(s as Stage) && s !== "do_not_contact"))
+        return [];
+      const staff = d.staff.find(
+        (s) => s.id === x.ownerId || s.name === x.owner || s.email === x.owner,
+      );
+      return [
+        {
+          name: String(x.name).slice(0, 80),
+          why: String(x.why ?? "").slice(0, 300),
+          objective: String(x.objective ?? "follow_up"),
+          channel: x.channel === "sms" ? "sms" : "email",
+          audience: {
+            stages: Array.isArray(a.stages)
+              ? (a.stages as string[]).filter(
+                  (s): s is Stage => STAGE_KEYS.includes(s as Stage) && s !== "do_not_contact",
+                )
+              : undefined,
+            counties: Array.isArray(a.counties)
+              ? (a.counties as string[]).filter((c) => counties.has(c))
+              : undefined,
+            propertyTypes: Array.isArray(a.propertyTypes)
+              ? (a.propertyTypes as string[]).filter((t) => types.has(t))
+              : undefined,
+          },
+          frequency:
+            (["once", "weekly", "twice_monthly", "monthly", "custom"] as const).find(
+              (f) => f === x.frequency,
+            ) ?? "once",
+          sendOn:
+            typeof x.sendOn === "string" && /^\d{4}-\d{2}-\d{2}/.test(x.sendOn)
+              ? x.sendOn.slice(0, 10)
+              : null,
+          ownerId: staff?.id ?? null,
+          subject: typeof x.subject === "string" ? x.subject.slice(0, 160) : null,
+          body: typeof x.body === "string" ? x.body.slice(0, 2000) : null,
+        },
+      ];
+    });
+}
+export const RULE_TRIGGER_LABEL = {
+  no_open: "didn't open",
+  opened_no_click: "opened but didn't click",
+  clicked: "clicked a link",
+  no_reply: "didn't reply",
+} as const;
+export function cleanRules(raw: unknown): import("./marketing").CampaignRule[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((r) => r && typeof r === "object")
+    .map((r) => r as Record<string, unknown>)
+    .filter(
+      (r) =>
+        Object.hasOwn(RULE_TRIGGER_LABEL, r.trigger as string) &&
+        ["email", "sms", "call", "task"].includes(r.action as string),
+    )
+    .slice(0, 4)
+    .map((r) => ({
+      trigger: r.trigger as keyof typeof RULE_TRIGGER_LABEL,
+      afterDays: Math.max(1, Math.min(30, Math.round(Number(r.afterDays ?? 3) || 0))),
+      action: r.action as "email" | "sms" | "call" | "task",
+      subject: typeof r.subject === "string" ? r.subject.slice(0, 160) : undefined,
+      body: typeof r.body === "string" ? r.body.slice(0, 2000) : undefined,
+    }));
 }

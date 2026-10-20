@@ -155,6 +155,8 @@ export type Lead = {
   smsConsent: Consent;
   consentSource: string | null;
   consentUpdatedAt: string | null;
+  lastEngagedAt: string | null;
+  emailBouncedAt: string | null;
 };
 export type Consent = "granted" | "unknown" | "withdrawn";
 
@@ -305,7 +307,111 @@ export type Campaign = {
   templateId: string | null;
   ownerId: string | null;
   budget: number | null;
+  frequency: CampaignFrequency;
+  customDays: number | null;
+  endsAt: string | null;
+  lastSentAt: string | null;
+  runCount: number;
+  followupRules: CampaignRule[];
 };
+export type CampaignFrequency = "once" | "weekly" | "twice_monthly" | "monthly" | "custom";
+export const FREQUENCY_LABEL: Record<CampaignFrequency, string> = {
+  once: "One-time",
+  weekly: "Weekly",
+  twice_monthly: "Twice monthly (1st & 15th)",
+  monthly: "Monthly",
+  custom: "Every N days",
+};
+/** After a campaign goes out: who gets which follow-up, after how many days. */
+export type CampaignRule = {
+  trigger: "no_open" | "opened_no_click" | "clicked" | "no_reply";
+  afterDays: number;
+  action: "email" | "sms" | "call" | "task";
+  subject?: string;
+  body?: string;
+};
+export type CampaignMetrics = {
+  campaignId: string;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  complained: number;
+  failed: number;
+  replied: number;
+  unsubscribed: number;
+  lastSentAt: string | null;
+};
+export type Message = {
+  id: string;
+  leadId: string | null;
+  campaignId: string | null;
+  channel: "email" | "sms";
+  direction: "out" | "in";
+  toAddress: string | null;
+  fromAddress: string | null;
+  subject: string | null;
+  body: string | null;
+  status: string;
+  sentAt: string;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  openCount: number;
+  clickedAt: string | null;
+  clickCount: number;
+  bouncedAt: string | null;
+  bounceType: string | null;
+  complainedAt: string | null;
+  failedReason: string | null;
+  repliedAt: string | null;
+};
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+const toMessage = (x: any): Message => ({
+  id: x.id,
+  leadId: x.lead_id,
+  campaignId: x.campaign_id,
+  channel: x.channel,
+  direction: x.direction,
+  toAddress: x.to_address,
+  fromAddress: x.from_address,
+  subject: x.subject,
+  body: x.body,
+  status: x.status,
+  sentAt: x.sent_at,
+  deliveredAt: x.delivered_at,
+  openedAt: x.opened_at,
+  openCount: x.open_count ?? 0,
+  clickedAt: x.clicked_at,
+  clickCount: x.click_count ?? 0,
+  bouncedAt: x.bounced_at,
+  bounceType: x.bounce_type,
+  complainedAt: x.complained_at,
+  failedReason: x.failed_reason,
+  repliedAt: x.replied_at,
+});
+export async function loadMessages(
+  filter: { leadId?: string; campaignId?: string },
+  limit = 500,
+): Promise<Message[]> {
+  let q = supabase
+    .from("marketing_messages")
+    .select("*")
+    .order("sent_at", { ascending: false })
+    .limit(limit);
+  if (filter.leadId) q = q.eq("lead_id", filter.leadId);
+  if (filter.campaignId) q = q.eq("campaign_id", filter.campaignId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(toMessage);
+}
+/** SMS provider + Resend delivery-event status (from marketing-send). */
+export async function channelStatus() {
+  return invokeEdgeFunction<{
+    smsConfigured: boolean;
+    resend: { ok: boolean; missing?: string[]; note?: string };
+  }>("admin-update-plan?action=marketing-send", { process: "status" });
+}
 
 export type Followup = {
   id: string;
@@ -403,6 +509,8 @@ export const toLead = (r: any): Lead => ({
   smsConsent: r.sms_consent ?? "unknown",
   consentSource: r.consent_source ?? null,
   consentUpdatedAt: r.consent_updated_at ?? null,
+  lastEngagedAt: r.last_engaged_at ?? null,
+  emailBouncedAt: r.email_bounced_at ?? null,
 });
 const num = (v: unknown) => (v == null ? null : Number(v));
 export const toProperty = (r: any): LeadProperty => ({
@@ -471,6 +579,12 @@ const toCampaign = (r: any): Campaign => ({
   templateId: r.template_id ?? null,
   ownerId: r.owner_id ?? null,
   budget: r.budget == null ? null : Number(r.budget),
+  frequency: r.frequency ?? "once",
+  customDays: r.custom_days ?? null,
+  endsAt: r.ends_at ?? null,
+  lastSentAt: r.last_sent_at ?? null,
+  runCount: r.run_count ?? 0,
+  followupRules: r.followup_rules ?? [],
 });
 const toFollowup = (r: any): Followup => ({
   id: r.id,
@@ -813,6 +927,7 @@ export type MarketingSettings = {
   inactiveDays: number;
   notifyEmail: boolean;
   podio: { appId?: number; appName?: string; mapping?: Record<string, string> };
+  postalAddress: string | null;
 };
 export type Staff = {
   id: string;
@@ -835,6 +950,7 @@ export type MarketingData = {
   expenses: Expense[];
   recommendations: Recommendation[];
   reports: Report[];
+  campaignMetrics: Map<string, CampaignMetrics>;
   syncChanges: SyncChange[];
   notifications: StaffNotification[];
   settings: MarketingSettings;
@@ -851,7 +967,7 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 export async function loadMarketing(): Promise<MarketingData> {
   const { data: u } = await supabase.auth.getUser();
   const me = u.user?.id ?? null;
-  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp] = await Promise.all([
+  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp, cm] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
@@ -901,8 +1017,9 @@ export async function loadMarketing(): Promise<MarketingData> {
       .select("*")
       .order("period_start", { ascending: false })
       .limit(120),
+    supabase.from("marketing_campaign_metrics").select("*"),
   ]);
-  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp])
+  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp, cm])
     if (res.error) throw res.error;
   const s = st.data;
   return {
@@ -958,6 +1075,24 @@ export async function loadMarketing(): Promise<MarketingData> {
       decidedAt: x.decided_at,
       note: x.note,
     })),
+    campaignMetrics: new Map(
+      (cm.data ?? []).map((x) => [
+        x.campaign_id as string,
+        {
+          campaignId: x.campaign_id,
+          sent: Number(x.sent ?? 0),
+          delivered: Number(x.delivered ?? 0),
+          opened: Number(x.opened ?? 0),
+          clicked: Number(x.clicked ?? 0),
+          bounced: Number(x.bounced ?? 0),
+          complained: Number(x.complained ?? 0),
+          failed: Number(x.failed ?? 0),
+          replied: Number(x.replied ?? 0),
+          unsubscribed: Number(x.unsubscribed ?? 0),
+          lastSentAt: x.last_sent_at ?? null,
+        },
+      ]),
+    ),
     reports: (rp.data ?? []).map((x) => ({
       id: x.id,
       period: x.period,
@@ -997,6 +1132,7 @@ export async function loadMarketing(): Promise<MarketingData> {
       inactiveDays: s?.inactive_days ?? 14,
       notifyEmail: s?.notify_email ?? true,
       podio: s?.podio ?? {},
+      postalAddress: s?.postal_address ?? null,
     },
     staff: (
       (staff.data ?? []) as {
@@ -1028,6 +1164,7 @@ export async function saveSettings(patch: Partial<MarketingSettings>): Promise<v
   if (patch.inactiveDays != null) row.inactive_days = patch.inactiveDays;
   if (patch.notifyEmail != null) row.notify_email = patch.notifyEmail;
   if (patch.podio) row.podio = patch.podio;
+  if (patch.postalAddress !== undefined) row.postal_address = patch.postalAddress?.trim() || null;
   const { error } = await supabase.from("marketing_settings").update(row).eq("id", 1);
   if (error) throw error;
 }
@@ -1242,6 +1379,8 @@ export type LeadInput = Partial<
     | "zips"
     | "propertyTypes"
     | "consentUpdatedAt"
+    | "lastEngagedAt"
+    | "emailBouncedAt"
   >
 >;
 const leadRow = (p: LeadInput) => {
@@ -1380,7 +1519,15 @@ export async function dismissSuggestion(lead: Lead): Promise<Lead> {
 // ── Campaigns ───────────────────────────────────────────────────────────────
 export type CampaignInput = Partial<
   Pick<Campaign, "name" | "channel" | "status" | "audience" | "subject" | "body" | "scheduledAt">
-> & { templateId?: string | null; ownerId?: string | null; budget?: number | null };
+> & {
+  templateId?: string | null;
+  ownerId?: string | null;
+  budget?: number | null;
+  frequency?: CampaignFrequency;
+  customDays?: number | null;
+  endsAt?: string | null;
+  followupRules?: CampaignRule[];
+};
 export async function saveCampaign(id: string | null, input: CampaignInput): Promise<Campaign> {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
@@ -1393,6 +1540,10 @@ export async function saveCampaign(id: string | null, input: CampaignInput): Pro
   if (input.templateId !== undefined) row.template_id = input.templateId;
   if (input.ownerId !== undefined) row.owner_id = input.ownerId;
   if (input.budget !== undefined) row.budget = input.budget;
+  if (input.frequency !== undefined) row.frequency = input.frequency;
+  if (input.customDays !== undefined) row.custom_days = input.customDays;
+  if (input.endsAt !== undefined) row.ends_at = input.endsAt;
+  if (input.followupRules !== undefined) row.followup_rules = input.followupRules;
   const { data: u } = await supabase.auth.getUser();
   const q = id
     ? supabase.from("marketing_campaigns").update(row).eq("id", id)
@@ -1431,9 +1582,25 @@ export async function deleteCampaign(id: string): Promise<void> {
 }
 
 /** Same rule as audienceFor() in marketing-send.ts — Do Not Contact and unsubscribed never included. */
-export function audienceLeads(audience: Audience, leads: Lead[]): Lead[] {
+export function audienceLeads(
+  audience: Audience,
+  leads: Lead[],
+  channel: "email" | "sms" = "email",
+): Lead[] {
   return leads.filter((l) => {
-    if (!l.email || l.unsubscribedAt || isDnc(l) || l.emailConsent === "withdrawn") return false;
+    if (isDnc(l)) return false;
+    if (
+      channel === "email" &&
+      (!l.email || l.unsubscribedAt || l.emailConsent === "withdrawn" || l.emailBouncedAt)
+    )
+      return false;
+    if (channel === "sms" && (!l.phone || l.smsConsent !== "granted")) return false;
+    return audienceMatch(audience, [l]).length > 0;
+  });
+}
+/** Leads the audience filters reach, before any contact-eligibility check. */
+export function audienceMatch(audience: Audience, leads: Lead[]): Lead[] {
+  return leads.filter((l) => {
     if (audience.leadIds?.length) return audience.leadIds.includes(l.id);
     if (audience.stages?.length ? !audience.stages.includes(l.stage) : l.stage === "not_interested")
       return false;

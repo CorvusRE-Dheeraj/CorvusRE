@@ -99,6 +99,8 @@ const lead = (p: Partial<Lead>): Lead => ({
   smsConsent: "unknown",
   consentSource: null,
   consentUpdatedAt: null,
+  lastEngagedAt: null,
+  emailBouncedAt: null,
   ...p,
 });
 
@@ -632,11 +634,12 @@ describe("follow-ups + journey", () => {
     expenses: [],
     recommendations: [],
     reports: [],
+    campaignMetrics: new Map(),
     syncChanges: [],
     notifications: [],
     staff: [],
     me: null,
-    settings: { rules: {}, inactiveDays: 14, notifyEmail: true, podio: {} },
+    settings: { rules: {}, inactiveDays: 14, notifyEmail: true, podio: {}, postalAddress: null },
     ...p,
   });
   it("tracks journey steps — self sign-ups pass the marketing steps", () => {

@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Activity, Campaign, Lead, LeadProperty, MarketingData } from "./marketing";
 import {
   audienceEligibility,
+  campaignRates,
   campaignRows,
+  cleanCampaignIdeas,
+  cleanRules,
   cleanSpec,
+  leadPhase,
+  phaseFunnel,
   customerAcv,
   eligibility,
   kpis,
@@ -140,7 +145,7 @@ const md = (p: Partial<MarketingData>): MarketingData =>
     notifications: [],
     staff: [],
     me: null,
-    settings: { rules: {}, inactiveDays: 14, notifyEmail: true, podio: {} },
+    settings: { rules: {}, inactiveDays: 14, notifyEmail: true, podio: {}, postalAddress: null },
     ...p,
   }) as MarketingData;
 const F = { from: "2026-10-01", to: "2026-10-31" };
@@ -296,5 +301,104 @@ describe("marketing analytics", () => {
     );
     expect(t.headers).toEqual(["Owner / company", "Total assessed"]);
     expect(t.rows).toEqual([["Big", 9]]);
+  });
+});
+
+describe("campaigns", () => {
+  const now = new Date("2026-10-19T12:00:00Z");
+  it("maps statuses to the six campaign phases, with recent engagement lifting contacted leads", () => {
+    expect(leadPhase(lead({ stage: "new" }), now)).toBe("identified");
+    expect(leadPhase(lead({ stage: "ready" }), now)).toBe("qualified");
+    expect(leadPhase(lead({ stage: "contacted" }), now)).toBe("contacted");
+    expect(
+      leadPhase(lead({ stage: "contacted", lastEngagedAt: "2026-10-10T00:00:00Z" }), now),
+    ).toBe("engaged");
+    expect(
+      leadPhase(lead({ stage: "contacted", lastEngagedAt: "2026-08-01T00:00:00Z" }), now),
+    ).toBe("contacted");
+    expect(leadPhase(lead({ stage: "property_added" }), now)).toBe("registered");
+    expect(leadPhase(lead({ stage: "subscribed" }), now)).toBe("subscribed");
+    expect(leadPhase(lead({ stage: "do_not_contact" }), now)).toBeNull();
+  });
+  it("counts the funnel cumulatively (later phases have reached earlier ones)", () => {
+    const f = phaseFunnel(
+      [
+        lead({ stage: "new" }),
+        lead({ stage: "interested" }),
+        lead({ stage: "subscribed" }),
+        lead({ stage: "not_interested" }),
+      ],
+      now,
+    );
+    expect(f.map((x) => x.reached)).toEqual([3, 2, 2, 2, 1, 1]);
+    expect(f.find((x) => x.phase === "engaged")?.now).toBe(1);
+  });
+  it("computes rates over delivered mail when known", () => {
+    const r = campaignRates({
+      sent: 10,
+      delivered: 8,
+      opened: 4,
+      clicked: 2,
+      bounced: 2,
+      unsubscribed: 1,
+      replied: 0,
+    });
+    expect(r.delivered).toBe(0.8);
+    expect(r.opened).toBe(0.5);
+    expect(r.bounced).toBe(0.2);
+    expect(campaignRates(undefined).opened).toBeNull();
+  });
+  it("only keeps AI campaign ideas that target real counties, types, stages and staff", () => {
+    const d = {
+      leads: [lead({ counties: ["Harris"], propertyTypes: ["Residential"] })],
+      staff: [{ id: "s1", name: "Ana", email: "ana@x.com" }],
+    } as unknown as MarketingData;
+    const ideas = cleanCampaignIdeas(
+      [
+        {
+          name: "Harris homes",
+          channel: "sms",
+          frequency: "weekly",
+          owner: "Ana",
+          sendOn: "2026-11-02",
+          audience: { counties: ["Harris", "Mars"], stages: ["ready", "do_not_contact"] },
+        },
+        { name: "Only unknown county", audience: { counties: ["Mars"] } },
+        { name: "Bad frequency", frequency: "hourly" },
+        "junk",
+      ],
+      d,
+    );
+    expect(ideas.map((i) => i.name)).toEqual(["Harris homes", "Bad frequency"]);
+    expect(ideas[0]).toMatchObject({
+      channel: "sms",
+      frequency: "weekly",
+      ownerId: "s1",
+      sendOn: "2026-11-02",
+    });
+    expect(ideas[0].audience).toEqual({
+      counties: ["Harris"],
+      stages: ["ready"],
+      propertyTypes: undefined,
+    });
+    expect(ideas[1].frequency).toBe("once");
+  });
+  it("validates follow-up rules and clamps the delay", () => {
+    expect(
+      cleanRules([
+        { trigger: "clicked", action: "call", afterDays: 0 },
+        { trigger: "no_open", action: "email", afterDays: 99, subject: "Again" },
+        { trigger: "toString", action: "email" },
+        { trigger: "no_reply", action: "fax" },
+      ]),
+    ).toEqual([
+      { trigger: "clicked", action: "call", afterDays: 1, subject: undefined, body: undefined },
+      { trigger: "no_open", action: "email", afterDays: 30, subject: "Again", body: undefined },
+    ]);
+  });
+  it("blocks email to a bounced address", () => {
+    expect(eligibility(lead({ emailBouncedAt: "2026-10-01T00:00:00Z" }), "email")).toBe(
+      "Email address bounced",
+    );
   });
 });

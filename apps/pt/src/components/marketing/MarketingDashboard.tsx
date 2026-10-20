@@ -1,8 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  PIPELINE,
-  STAGE_LABEL,
-  funnel,
   monitor,
   pct,
   relDays,
@@ -11,7 +8,29 @@ import {
   type AiRun,
   type MarketingData,
 } from "@/lib/marketing";
+import {
+  acvByLead,
+  kpis,
+  leadDimension,
+  phaseFunnel,
+  touchDimension,
+  type AFilters,
+  type DimRow,
+  type TouchRow,
+} from "@/lib/marketing-analytics";
+import { rankAll, shownPriority } from "@/lib/marketing-crm";
 import { AiBox, AlertRow, Bars, CampaignBadge, StatTile, type Go } from "./shared";
+
+const money = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+type Dim = "county" | "propertyType" | "audience" | "channel";
+const DIM_LABEL: Record<Dim, string> = {
+  county: "County",
+  propertyType: "Property type",
+  audience: "Audience",
+  channel: "Channel",
+};
 
 // The overall picture: the funnel in numbers, what needs attention now (the AI
 // monitor), Corvus AI's recommended next actions, and quick links into the
@@ -26,7 +45,76 @@ export function MarketingDashboard({
   onAiRun: (run: AiRun) => void;
 }) {
   const now = new Date();
-  const f = funnel(data.leads, now);
+  const last30: AFilters = useMemo(() => {
+    const t = new Date();
+    return { from: isoDay(new Date(t.getTime() - 29 * 864e5)), to: isoDay(t) };
+  }, []);
+  const acv = useMemo(() => acvByLead(data), [data]);
+  const k = useMemo(() => kpis(data, last30, acv), [data, last30, acv]);
+  const phases = useMemo(() => phaseFunnel(data.leads), [data.leads]);
+  const hot = useMemo(() => {
+    const ranks = rankAll(data);
+    return data.leads.filter(
+      (l) =>
+        !["subscribed", "not_interested", "do_not_contact"].includes(l.stage) &&
+        shownPriority(l, ranks.get(l.id)!) === "high",
+    ).length;
+  }, [data]);
+  const eng = useMemo(() => {
+    let sent = 0,
+      opened = 0,
+      clicked = 0,
+      replied = 0;
+    for (const m of data.campaignMetrics.values()) {
+      sent += m.sent;
+      opened += m.opened;
+      clicked += m.clicked;
+      replied += m.replied;
+    }
+    return { sent, opened, clicked, replied };
+  }, [data.campaignMetrics]);
+  const [dim, setDim] = useState<Dim>("county");
+  const dimRows = useMemo<(DimRow | TouchRow)[]>(
+    () =>
+      dim === "county" || dim === "propertyType"
+        ? leadDimension(data, last30, dim, acv)
+        : touchDimension(data, last30, dim),
+    [data, last30, acv, dim],
+  );
+  const latestPerf = data.aiRuns.find((r) => r.scope === "dashboard-performance") ?? null;
+  const perfContext = () =>
+    (["county", "propertyType"] as const)
+      .map(
+        (d) =>
+          `By ${DIM_LABEL[d]} (last 30 days): ` +
+          leadDimension(data, last30, d, acv)
+            .slice(0, 8)
+            .map(
+              (r) =>
+                `${r.key}: ${r.leads} leads, ${r.engaged} engaged, ${r.registrations} registered, ${r.customers} paying, ${money(r.revenue)}`,
+            )
+            .join("; "),
+      )
+      .concat(
+        (["audience", "channel"] as const).map(
+          (d) =>
+            `By ${DIM_LABEL[d]} (last 30 days): ` +
+            touchDimension(data, last30, d)
+              .slice(0, 8)
+              .map((r) => `${r.key}: ${r.sent} sent, ${r.engaged} engaged, ${r.customers} paying`)
+              .join("; "),
+        ),
+      )
+      .concat(
+        data.campaigns
+          .filter((c) => data.campaignMetrics.get(c.id)?.sent)
+          .slice(0, 10)
+          .map((c) => {
+            const m = data.campaignMetrics.get(c.id)!;
+            return `Campaign "${c.name}" (${c.channel}): ${m.sent} sent, ${m.opened} opened, ${m.clicked} clicked, ${m.replied} replied, ${m.bounced} bounced, ${m.unsubscribed} unsubscribed`;
+          }),
+      )
+      .join("\n");
   const alerts = useMemo(() => monitor(data, new Date()), [data]);
   const latestBrief = data.aiRuns.find((r) => r.scope === "dashboard") ?? null;
   const liveCampaigns = data.campaigns.filter((c) =>
@@ -38,50 +126,64 @@ export function MarketingDashboard({
   return (
     <div className="grid gap-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Total leads" value={f.total} onClick={() => go("leads")} />
         <StatTile
-          label="New this week"
-          value={f.newLeads}
-          hint="Added in the last 7 days"
+          label="Prospects identified"
+          value={phases[0].reached}
+          hint={`${phases[0].now} not yet qualified`}
           onClick={() => go("leads")}
         />
         <StatTile
-          label="Active prospects"
-          value={f.activeProspects}
-          hint={`${f.researching} researching · ${f.ready} ready for outreach`}
-          onClick={() =>
-            go("leads", { stages: ["new", "researching", "ready", "contacted", "interested"] })
+          label="High-priority opportunities"
+          value={hot}
+          hint="Open leads ranked High"
+          onClick={() => go("leads", { filters: { priority: "high" } })}
+        />
+        <StatTile
+          label="Active campaigns"
+          value={liveCampaigns.length}
+          hint={`${data.campaigns.filter((c) => c.status === "draft").length} drafts`}
+          onClick={() => go("campaigns")}
+        />
+        <StatTile
+          label="Engagement"
+          value={eng.sent ? pct((eng.clicked + eng.replied) / eng.sent) : "—"}
+          hint={
+            eng.sent
+              ? `${eng.opened} opened · ${eng.clicked} clicked · ${eng.replied} replied of ${eng.sent}`
+              : "Nothing sent yet"
           }
+          onClick={() => go("campaigns")}
         />
         <StatTile
-          label="Contacted"
-          value={f.contacted}
-          hint={f.noResponse ? `${f.noResponse} no response` : undefined}
-          onClick={() => go("leads", { stages: ["contacted", "no_response"] })}
-        />
-        <StatTile
-          label="Interested"
-          value={f.interested}
+          label="Engaged now"
+          value={phases[3].now}
+          hint="Interested, or clicked/replied in 30 days"
           onClick={() => go("leads", { stages: ["interested"] })}
         />
         <StatTile
-          label="Registered users"
-          value={f.registered}
-          onClick={() => go("leads", { stages: ["registered"] })}
+          label="Registrations"
+          value={k.registrations}
+          hint="Last 30 days"
+          onClick={() =>
+            go("leads", { stages: ["registered", "property_added", "subscription_started"] })
+          }
         />
         <StatTile
-          label="Subscribed"
-          value={f.paying}
-          hint="Paying customers"
+          label="Subscriptions"
+          value={k.subscriptions}
+          hint={`Last 30 days · ${phases[5].now} paying in total`}
           onClick={() => go("leads", { stages: ["subscribed"] })}
         />
         <StatTile
-          label="Lead → paying"
-          value={pct(f.leadToPaying)}
-          hint={`Registered → paying ${pct(f.registeredToPaying)}`}
+          label="Revenue"
+          value={money(k.revenue)}
+          hint="New subscriptions, last 30 days*"
           onClick={() => go("analytics")}
         />
       </div>
+      <p className="-mt-3 text-[11px] text-muted-foreground">
+        * Annual plan value of customers who subscribed in the period.
+      </p>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card-elev p-4">
@@ -130,15 +232,19 @@ export function MarketingDashboard({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section className="card-elev p-4">
-          <h2 className="text-sm font-semibold">Pipeline</h2>
+          <h2 className="text-sm font-semibold">Campaign funnel</h2>
           <div className="mt-3">
             <Bars
-              rows={PIPELINE.map((s) => ({
-                label: STAGE_LABEL[s],
-                value: data.leads.filter((l) => l.stage === s).length,
+              rows={phases.map((x) => ({
+                label: x.label,
+                value: x.reached,
+                note: `${x.now} here now`,
               }))}
             />
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            * Bars = reached this step or beyond; updated from campaign opens, clicks and replies.
+          </p>
         </section>
 
         <section className="card-elev p-4">
@@ -211,6 +317,79 @@ export function MarketingDashboard({
             </ul>
           )}
         </section>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section className="card-elev p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Where it&apos;s working (30 days)</h2>
+            <div className="flex gap-1" role="tablist">
+              {(Object.keys(DIM_LABEL) as Dim[]).map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  role="tab"
+                  aria-selected={dim === x}
+                  onClick={() => setDim(x)}
+                  className={`rounded-md px-2 py-1 text-xs ${dim === x ? "bg-secondary font-semibold" : "text-muted-foreground hover:bg-secondary/50"}`}
+                >
+                  {DIM_LABEL[x]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {dimRows.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">No activity in the last 30 days.</p>
+          ) : (
+            <table className="mt-2 w-full text-left text-xs">
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th className="py-1 font-medium">{DIM_LABEL[dim]}</th>
+                  <th className="py-1 text-right font-medium">
+                    {"leads" in dimRows[0] ? "Leads" : "Sent"}
+                  </th>
+                  <th className="py-1 text-right font-medium">Engaged</th>
+                  <th className="py-1 text-right font-medium">Paying</th>
+                  {"leads" in dimRows[0] && (
+                    <th className="py-1 text-right font-medium">Revenue</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {dimRows.slice(0, 8).map((r) => (
+                  <tr key={r.key} className="border-t border-border/60">
+                    <td className="max-w-[12rem] truncate py-1">{r.key}</td>
+                    <td className="py-1 text-right tabular-nums">
+                      {"leads" in r ? r.leads : r.sent}
+                    </td>
+                    <td className="py-1 text-right tabular-nums">{r.engaged}</td>
+                    <td className="py-1 text-right tabular-nums">{r.customers}</td>
+                    {"leads" in r && (
+                      <td className="py-1 text-right tabular-nums">{money(r.revenue)}</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+        <AiBox
+          title="Corvus AI — performance analysis"
+          text={latestPerf?.result ?? null}
+          when={latestPerf ? relDays(latestPerf.createdAt) : null}
+          runLabel="Analyze performance"
+          run={async () =>
+            onAiRun(
+              await runAi({
+                scope: "dashboard-performance",
+                instruction:
+                  "Analyze marketing performance by county, property type, audience and channel. In 4 short sections (County, Property type, Audience, Channel) say what is working and what is not, with the numbers. " +
+                  "Finish with 3 numbered recommendations (which segment to target next, which channel/message to use, what to stop). Only use the figures given; say when a sample is too small to judge.",
+                context: perfContext(),
+              }),
+            )
+          }
+        />
       </div>
 
       <section className="card-elev p-4">

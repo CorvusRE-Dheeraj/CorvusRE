@@ -16,6 +16,8 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { emailShell, escapeHtml } from "../email-shell.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
+import { instrument, linkify } from "../marketing-tracking.ts";
+import { e164, sendSms, smsConfigured } from "../telnyx.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,20 +88,21 @@ function personalize(text: string, lead: Lead): string {
     .replaceAll("{{checkout_link}}", links(lead).checkout);
 }
 
-function renderEmail(subject: string, body: string, lead: Lead): string {
+function renderEmail(subject: string, body: string, lead: Lead, postal: string | null): string {
   const paragraphs = personalize(body, lead)
     .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 14px;">${escapeHtml(p.trim()).replaceAll("\n", "<br>")}</p>`)
+    .map((p) => `<p style="margin:0 0 14px;">${linkify(escapeHtml(p.trim())).replaceAll("\n", "<br>")}</p>`)
     .join("");
   return emailShell({
     eyebrow: "CorvusPT",
     heading: escapeHtml(personalize(subject, lead)),
     intro: paragraphs,
+    footnote: postal ? `CorvusPT · ${escapeHtml(postal)}` : undefined,
     unsubscribeUrl: `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`,
   });
 }
 
-async function sendOne(resendKey: string, to: string, subject: string, html: string, unsubUrl: string) {
+async function sendOne(resendKey: string, to: string, subject: string, html: string, unsubUrl: string): Promise<string | null> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
@@ -112,18 +115,55 @@ async function sendOne(resendKey: string, to: string, subject: string, html: str
     }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = (await res.json().catch(() => ({}))) as { id?: string };
+  return j.id ?? null;
 }
 
-async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>): Promise<Lead[]> {
-  let q = db
-    .from("marketing_leads")
-    .select(LEAD_COLS)
-    .is("unsubscribed_at", null)
-    .not("email", "is", null)
-    .neq("stage", "do_not_contact")
-    .neq("email_consent", "withdrawn")
-    .limit(MAX_RECIPIENTS);
-  // Same rule as audienceLeads() in apps/pt/src/lib/marketing.ts.
+async function postalAddress(db: SupabaseClient): Promise<string | null> {
+  const { data } = await db.from("marketing_settings").select("postal_address").eq("id", 1).maybeSingle();
+  return (data?.postal_address as string | null)?.trim() || null;
+}
+
+type Ctx = { campaignId?: string | null; followupId?: string | null; runNo?: number | null; postal: string | null };
+
+/** One tracked marketing email: logged in marketing_messages so delivery, opens, clicks and bounces land on it. */
+async function deliverEmail(db: SupabaseClient, resendKey: string, lead: Lead, subjectRaw: string, bodyRaw: string, ctx: Ctx) {
+  const { data: why } = await db.rpc("marketing_can_contact", { p_lead: lead.id, p_channel: "email" });
+  if (why) throw new Error(`Not eligible for email: ${why}`);
+  const id = crypto.randomUUID();
+  const subject = personalize(subjectRaw, lead);
+  const html = await instrument(renderEmail(subjectRaw, bodyRaw, lead, ctx.postal), id);
+  const providerId = await sendOne(resendKey, lead.email!, subject, html, `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`);
+  await db.from("marketing_messages").insert({
+    id, lead_id: lead.id, campaign_id: ctx.campaignId ?? null, followup_id: ctx.followupId ?? null, channel: "email",
+    provider: "resend", provider_id: providerId, to_address: lead.email, from_address: FROM, subject, run_no: ctx.runNo ?? null,
+  });
+  return { subject, body: personalize(bodyRaw, lead) };
+}
+
+/** One text, only with express SMS consent; opt-out wording always included. */
+async function deliverSms(db: SupabaseClient, lead: Lead & { phone?: string | null }, textRaw: string, ctx: Omit<Ctx, "postal">) {
+  if (!smsConfigured()) throw new Error("SMS isn't connected yet — add the Telnyx keys to send texts.");
+  const { data: why } = await db.rpc("marketing_can_contact", { p_lead: lead.id, p_channel: "sms" });
+  if (why) throw new Error(`Not eligible for texts: ${why}`);
+  const to = e164(lead.phone);
+  if (!to) throw new Error("Phone number isn't a valid US number.");
+  let text = personalize(textRaw, lead).trim();
+  if (!/reply stop/i.test(text)) text += " Reply STOP to opt out.";
+  if (!/^corvuspt/i.test(text)) text = `CorvusPT: ${text}`;
+  const { id } = await sendSms(to, text);
+  await db.from("marketing_messages").insert({
+    lead_id: lead.id, campaign_id: ctx.campaignId ?? null, followup_id: ctx.followupId ?? null, channel: "sms",
+    provider: "telnyx", provider_id: id, to_address: to, from_address: Deno.env.get("TELNYX_FROM"), body: text, run_no: ctx.runNo ?? null,
+  });
+  return { body: text };
+}
+
+async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>, channel: "email" | "sms"): Promise<Lead[]> {
+  let q = db.from("marketing_leads").select(`${LEAD_COLS}, phone`).neq("stage", "do_not_contact").limit(MAX_RECIPIENTS);
+  // Same rule as audienceLeads() in apps/pt/src/lib/marketing.ts (+ the channel's eligibility).
+  if (channel === "email") q = q.is("unsubscribed_at", null).not("email", "is", null).neq("email_consent", "withdrawn").is("email_bounced_at", null);
+  else q = q.not("phone", "is", null).eq("sms_consent", "granted");
   const ids = audience.leadIds as string[] | undefined;
   if (ids?.length) q = q.in("id", ids);
   else {
@@ -140,24 +180,61 @@ async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>
   return (data ?? []) as Lead[];
 }
 
+/** When a recurring campaign runs next (null = no more runs). */
+export function nextRun(frequency: string, customDays: number | null, from: Date, endsAt: string | null): Date | null {
+  const d = new Date(from);
+  if (frequency === "weekly") d.setDate(d.getDate() + 7);
+  else if (frequency === "monthly") {
+    // same day next month, clamped (Jan 31 → Feb 28, not Mar 3)
+    const day = d.getUTCDate();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
+  } else if (frequency === "twice_monthly") {
+    if (d.getUTCDate() < 15) d.setUTCDate(15);
+    else {
+      d.setUTCDate(1);
+      d.setUTCMonth(d.getUTCMonth() + 1);
+    }
+  } else if (frequency === "custom" && customDays) d.setDate(d.getDate() + customDays);
+  else return null;
+  if (endsAt && d > new Date(endsAt)) return null;
+  return d;
+}
+const windowDays = (frequency: string, customDays: number | null) =>
+  frequency === "weekly" ? 6 : frequency === "twice_monthly" ? 12 : frequency === "monthly" ? 25 : frequency === "custom" ? Math.max(1, (customDays ?? 7) - 1) : 3650;
+
 async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: string, actor: string | null) {
   const { data: c, error } = await db.from("marketing_campaigns").select("*").eq("id", campaignId).single();
   if (error || !c) throw new Error("Campaign not found");
-  if (c.channel !== "email") throw new Error("SMS isn't connected yet — only email campaigns can be sent.");
   if (!["approved", "scheduled"].includes(c.status)) throw new Error(`A ${c.status} campaign can't be sent — approve it first.`);
-  if (!c.subject || !c.body) throw new Error("Add a subject and message before sending.");
+  const channel = c.channel === "sms" ? "sms" : "email";
+  if (channel === "sms" && !smsConfigured()) throw new Error("SMS isn't connected yet — add the Telnyx keys to send text campaigns.");
+  if (!c.body || (channel === "email" && !c.subject)) throw new Error("Add a subject and message before sending.");
+  const postal = await postalAddress(db);
+  if (channel === "email" && !postal) throw new Error("Add the company's postal address (Campaigns → Settings) — US law requires it in marketing email.");
   await db.from("marketing_campaigns").update({ status: "sending" }).eq("id", campaignId);
-  const leads = await audienceFor(db, c.audience ?? {});
+  const runNo = (c.run_count ?? 0) + 1;
+  let leads = await audienceFor(db, c.audience ?? {}, channel);
+  // recurring: nobody gets the same campaign twice inside one cycle
+  if (c.frequency && c.frequency !== "once") {
+    const since = new Date(Date.now() - windowDays(c.frequency, c.custom_days) * 864e5).toISOString();
+    const { data: recent } = await db.from("marketing_messages").select("lead_id").eq("campaign_id", campaignId).gte("sent_at", since);
+    const skip = new Set((recent ?? []).map((r) => r.lead_id));
+    leads = leads.filter((l) => !skip.has(l.id));
+  }
   let sent = 0, failed = 0;
   const errors: string[] = [];
   for (const lead of leads) {
-    const unsub = `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`;
     try {
-      await sendOne(resendKey, lead.email!, personalize(c.subject, lead), renderEmail(c.subject, c.body, lead), unsub);
+      const out =
+        channel === "email"
+          ? await deliverEmail(db, resendKey, lead, c.subject, c.body, { campaignId, runNo, postal })
+          : await deliverSms(db, lead, c.body, { campaignId, runNo });
       sent++;
       await db.from("marketing_activities").insert({
-        lead_id: lead.id, campaign_id: campaignId, kind: "email", template_id: c.template_id ?? null,
-        summary: `Campaign email: ${c.name}`, body: personalize(c.subject, lead), created_by: actor,
+        lead_id: lead.id, campaign_id: campaignId, kind: channel, template_id: c.template_id ?? null,
+        summary: `Campaign ${channel === "sms" ? "text" : "email"}: ${c.name}`, body: "subject" in out ? out.subject : out.body, created_by: actor,
       });
       await db.from("marketing_leads").update({ last_contacted_at: new Date().toISOString() }).eq("id", lead.id);
     } catch (e) {
@@ -165,47 +242,112 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
       if (errors.length < 5) errors.push(e instanceof Error ? e.message : String(e));
     }
   }
-  const stats = { targeted: leads.length, sent, failed, errors };
+  const at = new Date();
+  const next = c.frequency && c.frequency !== "once" ? nextRun(c.frequency, c.custom_days, c.scheduled_at && new Date(c.scheduled_at) > new Date(at.getTime() - 864e5) ? new Date(c.scheduled_at) : at, c.ends_at) : null;
+  const runs = [...(((c.stats ?? {}) as { runs?: unknown[] }).runs ?? []), { run: runNo, at: at.toISOString(), targeted: leads.length, sent, failed }].slice(-50);
+  const stats = { targeted: leads.length, sent, failed, errors, runs };
   await db.from("marketing_campaigns")
-    .update({ status: "sent", sent_at: new Date().toISOString(), stats })
+    .update({
+      status: next ? "scheduled" : "sent",
+      scheduled_at: next ? next.toISOString() : c.scheduled_at,
+      sent_at: at.toISOString(),
+      last_sent_at: at.toISOString(),
+      run_count: runNo,
+      stats,
+    })
     .eq("id", campaignId);
   await db.from("marketing_activities").insert({
     campaign_id: campaignId, kind: "campaign",
-    summary: `Campaign "${c.name}" sent to ${sent} of ${leads.length}${failed ? ` (${failed} failed)` : ""}`,
+    summary: `Campaign "${c.name}"${runNo > 1 ? ` (run ${runNo})` : ""} sent to ${sent} of ${leads.length}${failed ? ` (${failed} failed)` : ""}${next ? ` · next run ${next.toISOString().slice(0, 10)}` : ""}`,
     created_by: actor,
   });
   // status follows the approved rules (e.g. Ready for Outreach → Contacted)
   await db.rpc("marketing_apply_rules", { p_lead: null });
-  return stats;
+  return { ...stats, nextRun: next?.toISOString() ?? null };
 }
 
 async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: string, actor: string | null) {
   const { data: f, error } = await db
     .from("marketing_followups")
-    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline, invite_token)")
+    .select("*, lead:marketing_leads(id, full_name, email, phone, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline, invite_token)")
     .eq("id", followupId)
     .single();
   if (error || !f) throw new Error("Follow-up not found");
   if (f.status === "draft") throw new Error("Approve this message before it's sent.");
   if (f.status !== "pending") throw new Error("This follow-up is already done.");
-  if (f.channel !== "email") throw new Error("Only email follow-ups can be sent from here — mark calls and tasks done instead.");
-  const lead = f.lead as Lead & { unsubscribed_at: string | null };
-  if (!lead?.email) throw new Error("This lead has no email address.");
-  if (lead.unsubscribed_at) throw new Error("This lead unsubscribed from marketing email.");
-  if (lead.stage === "do_not_contact") throw new Error("This lead is marked Do Not Contact.");
-  const { data: why } = await db.rpc("marketing_can_contact", { p_lead: lead.id, p_channel: "email" });
-  if (why) throw new Error(`Not eligible for email: ${why}`);
+  if (f.channel !== "email" && f.channel !== "sms") throw new Error("Only email and text follow-ups can be sent from here — mark calls and tasks done instead.");
+  const lead = f.lead as Lead & { phone: string | null };
   if (!f.message) throw new Error("Write or generate the message first.");
   const subject = f.subject || "Following up";
-  await sendOne(resendKey, lead.email, personalize(subject, lead), renderEmail(subject, f.message, lead), `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`);
+  const out =
+    f.channel === "email"
+      ? await deliverEmail(db, resendKey, lead, subject, f.message, { followupId, campaignId: f.campaign_id ?? null, postal: await postalAddress(db) })
+      : await deliverSms(db, lead, f.message, { followupId });
   const now = new Date().toISOString();
   await db.from("marketing_followups").update({ status: "done", completed_at: now, outcome: "sent" }).eq("id", followupId);
   await db.from("marketing_activities").insert({
-    lead_id: lead.id, kind: "email", template_id: f.template_id ?? null, summary: `Follow-up email: ${personalize(subject, lead)}`, body: personalize(f.message, lead), created_by: actor,
+    lead_id: lead.id, kind: f.channel, template_id: f.template_id ?? null,
+    summary: f.channel === "email" ? `Follow-up email: ${"subject" in out ? out.subject : subject}` : "Follow-up text",
+    body: out.body, created_by: actor,
   });
   await db.from("marketing_leads").update({ last_contacted_at: now }).eq("id", lead.id);
   await db.rpc("marketing_apply_rules", { p_lead: lead.id });
   return { sent: 1 };
+}
+
+// Approved campaigns' engagement rules: after N days, recipients who didn't
+// open / opened but didn't click / clicked / didn't reply get the follow-up the
+// rule describes (once each). Approved with the campaign, so emails go out by
+// themselves; eligibility and opt-outs are still checked when they send.
+async function runCampaignRules(db: SupabaseClient) {
+  const { data: camps } = await db
+    .from("marketing_campaigns")
+    .select("id, name, owner_id, followup_rules, status")
+    .in("status", ["sent", "scheduled"])
+    .not("last_sent_at", "is", null);
+  let created = 0;
+  for (const c of camps ?? []) {
+    const rules = (c.followup_rules ?? []) as { trigger: string; afterDays: number; action: string; subject?: string; body?: string }[];
+    for (const [i, r] of rules.entries()) {
+      if (!r?.trigger || !r.action) continue;
+      const cutoff = new Date(Date.now() - Math.max(0, Number(r.afterDays) || 0) * 864e5).toISOString();
+      let q = db.from("marketing_messages").select("lead_id, opened_at, clicked_at, replied_at, status").eq("campaign_id", c.id).eq("direction", "out").lte("sent_at", cutoff).limit(500);
+      if (r.trigger === "no_open") q = q.is("opened_at", null).not("status", "in", "(bounced,failed,complained)");
+      if (r.trigger === "opened_no_click") q = q.not("opened_at", "is", null).is("clicked_at", null);
+      if (r.trigger === "clicked") q = q.not("clicked_at", "is", null);
+      if (r.trigger === "no_reply") q = q.is("replied_at", null).not("status", "in", "(failed)");
+      const { data: msgs } = await q;
+      const seq = `campaign:${c.id}:rule${i}`;
+      const { data: done } = await db.from("marketing_followups").select("lead_id").eq("sequence_name", seq);
+      const have = new Set((done ?? []).map((x) => x.lead_id));
+      for (const m of msgs ?? []) {
+        if (!m.lead_id || have.has(m.lead_id)) continue;
+        have.add(m.lead_id);
+        const { data: l } = await db.from("marketing_leads").select("assigned_to, stage, phone").eq("id", m.lead_id).maybeSingle();
+        if (!l || ["subscribed", "do_not_contact", "not_interested"].includes(l.stage)) continue;
+        // no phone on file: the call becomes a task (find a number / reach out another way)
+        const channel = r.action === "call" && !l.phone ? "task" : r.action;
+        const { error } = await db.from("marketing_followups").insert({
+          lead_id: m.lead_id,
+          due_at: new Date().toISOString(),
+          channel,
+          subject: r.subject ?? `Following up: ${c.name}`,
+          message: r.action === "email" || r.action === "sms" ? (r.body ?? null) : null,
+          call_script: r.action === "call" ? (r.body ?? null) : null,
+          notes: channel !== r.action ? "No phone number on file — find one, or follow up another way." : null,
+          status: "pending",
+          auto_send: r.action === "email" && !!r.body,
+          assigned_to: l.assigned_to ?? c.owner_id ?? null,
+          sequence_name: seq,
+          sequence_step: i + 1,
+          ai_generated: true,
+          campaign_id: c.id,
+        });
+        if (!error) created++;
+      }
+    }
+  }
+  return { created };
 }
 
 // One email per staff member with what's new for them since the last digest
@@ -302,6 +444,9 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     const body = (await req.json().catch(() => ({}))) as { campaignId?: string; followupId?: string; process?: string };
+    // what's connected: SMS provider and the Resend delivery-event webhook
+    if (body.process === "status") return json({ smsConfigured: smsConfigured(), resend: await resendWebhook(false) });
+    if (body.process === "email-setup") return json({ resend: await resendWebhook(true) });
     if (body.campaignId) return json(await sendCampaign(db, resendKey, body.campaignId, actor));
     if (body.followupId) return json(await sendFollowup(db, resendKey, body.followupId, actor));
     if (body.process === "due") {
@@ -341,6 +486,8 @@ export async function handle(req: Request): Promise<Response> {
         }
       }
       const handoffs = await summarizeHandoffs(db).catch((e) => ({ error: String(e) }));
+      // engagement rules of approved campaigns → follow-ups
+      const campaignRules = await runCampaignRules(db).catch((e) => ({ error: String(e) }));
       // campaign / team analysis → recommendations that wait for approval
       const analysis = await db.rpc("marketing_analyze");
       // daily / weekly / monthly performance reports, AI-written
@@ -353,6 +500,7 @@ export async function handle(req: Request): Promise<Response> {
         monitor: monitor.data ?? monitor.error?.message,
         autoSent,
         handoffs,
+        campaignRules,
         analysis: analysis.data ?? analysis.error?.message,
         reports: { created: reportsMade.data ?? reportsMade.error?.message, ...reports },
         digest,
@@ -454,4 +602,33 @@ async function summarizeReports(db: SupabaseClient) {
     }
   }
   return { summarized };
+}
+
+// The Resend webhook that points at county-mail-inbound (already used for
+// received mail) — reports which marketing delivery events it sends, and with
+// fix=true adds the missing ones. Needs a Resend key with webhook access.
+const EMAIL_EVENTS = ["email.delivered", "email.delivery_delayed", "email.bounced", "email.complained", "email.failed"];
+async function resendWebhook(fix: boolean) {
+  const keys = [Deno.env.get("RESEND_API_KEY"), Deno.env.get("RESEND_RECEIVING_API_KEY")].filter(Boolean) as string[];
+  for (const key of keys) {
+    const res = await fetch("https://api.resend.com/webhooks", { headers: { Authorization: `Bearer ${key}` } });
+    if (!res.ok) continue;
+    const j = (await res.json()) as { data?: { id: string; endpoint?: string; events?: string[] }[] };
+    const hook = (j.data ?? []).find((w) => (w.endpoint ?? "").includes("county-mail-inbound"));
+    if (!hook) return { ok: false, note: "No Resend webhook points at county-mail-inbound." };
+    let events = hook.events ?? [];
+    if (!events.length) {
+      const one = await fetch(`https://api.resend.com/webhooks/${hook.id}`, { headers: { Authorization: `Bearer ${key}` } });
+      if (one.ok) events = ((await one.json()) as { events?: string[] }).events ?? [];
+    }
+    const missing = EMAIL_EVENTS.filter((e) => !events.includes(e));
+    if (!fix || !missing.length) return { ok: !missing.length, events, missing };
+    const upd = await fetch(`https://api.resend.com/webhooks/${hook.id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: hook.endpoint, events: [...new Set([...events, ...EMAIL_EVENTS])] }),
+    });
+    return upd.ok ? { ok: true, events: [...new Set([...events, ...EMAIL_EVENTS])], missing: [] } : { ok: false, events, missing, note: `Resend refused the update (${upd.status}): ${(await upd.text()).slice(0, 160)}` };
+  }
+  return { ok: false, note: "The Resend keys here can't read webhooks — add the delivery events to the webhook in the Resend dashboard." };
 }
