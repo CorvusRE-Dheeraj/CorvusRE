@@ -70,7 +70,12 @@ export async function uploadSurvey(
     survey_size: file.size,
     survey_uploaded_at: new Date().toISOString(),
   };
-  const { error } = await supabase.from("design_requests").update(fields).eq("id", dr.id);
+  // a new survey needs a new reading
+  const reset = { survey_reading: null, survey_read_at: null, survey_read_error: null };
+  const { error } = await supabase
+    .from("design_requests")
+    .update({ ...fields, ...reset })
+    .eq("id", dr.id);
   if (error) {
     await supabase.storage.from(SURVEY_BUCKET).remove([path]);
     throw error;
@@ -90,6 +95,9 @@ export async function removeSurvey(dr: Pick<DesignRequestRow, "id" | "survey_pat
       survey_type: null,
       survey_size: null,
       survey_uploaded_at: null,
+      survey_reading: null,
+      survey_read_at: null,
+      survey_read_error: null,
     })
     .eq("id", dr.id);
   if (error) throw error;

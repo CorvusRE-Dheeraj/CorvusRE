@@ -12,6 +12,7 @@ import {
   uploadSurvey,
 } from "@/lib/design-survey";
 import { Section, Loading } from "@/components/dp-ui";
+import { SurveyReadingPanel } from "@/components/SurveyReading";
 import { useActiveDesignRequest, EmptyDesign, designSubtitle } from "@/components/design-workspace";
 
 export const Route = createFileRoute("/dashboard/_layout/design-survey")({
@@ -233,6 +234,7 @@ function DesignSurvey() {
           works best.
         </p>
       </Section>
+      <SurveyReadingPanel dr={dr} refetch={refetch} />
     </div>
   );
 }

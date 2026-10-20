@@ -82,6 +82,7 @@ const AI_KIND_LABEL: Record<string, string> = {
   design_narrative: "Design narrative",
   review_comment_translation: "Review comment translation",
   assistant_chat: "Assistant chat",
+  survey_reading: "Survey reading",
 };
 
 function leadPriority(score: number): { label: string; tone: "red" | "amber" | "gray" } {
