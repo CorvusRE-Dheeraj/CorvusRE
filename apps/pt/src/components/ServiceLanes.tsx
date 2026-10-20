@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Search, UserRound, Users } from "lucide-react";
+import { ArrowRight, FileText, Gavel, Landmark, Search, UserRound, Users } from "lucide-react";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { QUESTIONS, SERVICE_LANES, type LaneId } from "@/lib/service-lanes";
 
@@ -13,6 +13,24 @@ const LANE_TONE: Record<LaneId, string> = {
   free_review: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
   owner_managed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   expert_managed: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+};
+
+// "You do" vs "CorvusPT does" is the point of the comparison, so the answer's
+// headline carries the lane's colour and weight; the detail stays quiet.
+const LEAD_TONE: Record<LaneId, string> = {
+  free_review: "text-foreground",
+  owner_managed: "text-emerald-700 dark:text-emerald-300",
+  expert_managed: "text-violet-700 dark:text-violet-300",
+};
+
+const ROLE_QUESTIONS = QUESTIONS.filter(
+  (q): q is (typeof QUESTIONS)[number] & { key: "whoFiles" | "whoAppears" | "whoCommunicates" } =>
+    q.key !== "buying",
+);
+const QUESTION_ICON: Record<(typeof ROLE_QUESTIONS)[number]["key"], typeof Search> = {
+  whoFiles: FileText,
+  whoAppears: Gavel,
+  whoCommunicates: Landmark,
 };
 
 // The three lanes side by side: Free Property Review → Owner-Managed
@@ -48,13 +66,31 @@ export function ServiceLanes({ showCta = true }: { showCta?: boolean }) {
                 <span className="text-2xl font-semibold">{lane.price}</span>
                 <div className="text-xs text-muted-foreground">{lane.priceNote}</div>
               </div>
-              <dl className="mt-4 grid gap-2.5 text-sm">
-                {QUESTIONS.filter((q) => q.key !== "buying").map((q) => (
-                  <div key={q.key}>
-                    <dt className="text-xs font-semibold text-muted-foreground">{q.label}</dt>
-                    <dd>{lane[q.key]}</dd>
-                  </div>
-                ))}
+              <dl className="mt-5 divide-y divide-border/70 border-y border-border/70 text-sm">
+                {ROLE_QUESTIONS.map((q) => {
+                  const QIcon = QUESTION_ICON[q.key];
+                  const a = lane.answers[q.key];
+                  return (
+                    <div key={q.key} className="flex gap-3 py-3">
+                      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-secondary text-muted-foreground">
+                        <QIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0">
+                        <dt className="text-xs text-muted-foreground">{q.label}</dt>
+                        <dd className="mt-0.5">
+                          <span className={`text-base font-semibold ${LEAD_TONE[lane.id]}`}>
+                            {a.lead}
+                          </span>
+                          {/* two lines reserved side by side, so each question
+                              sits at the same height in every lane */}
+                          <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground md:min-h-[2.75em]">
+                            {a.detail}
+                          </span>
+                        </dd>
+                      </div>
+                    </div>
+                  );
+                })}
               </dl>
               {showCta && (
                 <>
@@ -114,7 +150,18 @@ export function LaneComparisonTable() {
               </th>
               {SERVICE_LANES.map((lane) => (
                 <td key={lane.id} className="p-4 align-top text-muted-foreground">
-                  {lane[q.key]}
+                  {q.key === "buying" ? (
+                    lane.buying
+                  ) : (
+                    <>
+                      <span className={`font-semibold ${LEAD_TONE[lane.id]}`}>
+                        {lane.answers[q.key].lead}
+                      </span>
+                      {lane.answers[q.key].detail && (
+                        <span className="mt-0.5 block">{lane.answers[q.key].detail}</span>
+                      )}
+                    </>
+                  )}
                 </td>
               ))}
             </tr>
