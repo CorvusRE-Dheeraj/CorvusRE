@@ -50,10 +50,10 @@ Deno.serve(async (req: Request) => {
     );
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_admin")
+      .select("is_admin, operations_admin")
       .eq("id", user.id)
       .single();
-    if (!profile?.is_admin) {
+    if (!(profile?.is_admin || profile?.operations_admin)) {
       return new Response(JSON.stringify({ error: "not authorized" }), {
         status: 403,
         headers: corsHeaders,

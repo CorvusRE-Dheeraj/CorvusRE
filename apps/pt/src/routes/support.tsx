@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownLite } from "@/components/MarkdownLite";
+import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
 import { askAboutDocument } from "@/lib/document-ai";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
@@ -44,7 +45,7 @@ function SupportPage() {
   const [role, setRole] = useState<StaffRole | null>(null);
   const [handoffs, setHandoffs] = useState<Handoff[] | null>(null);
   const [details, setDetails] = useState<Map<string, Details>>(new Map());
-  const [tab, setTab] = useState<"open" | "mine" | "done">("open");
+  const [tab, setTab] = useState<"open" | "mine" | "done" | "escalations">("open");
   const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,9 +84,12 @@ function SupportPage() {
   const open = handoffs?.find((h) => h.id === openId) ?? null;
   return (
     <div className="container-page py-8">
-      <span className="badge-soft">
-        {role.isSuperAdmin ? "Super Admin" : "Customer Support Admin"}
-      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="badge-soft">Customer Support Admin</span>
+        {role.isSuperAdmin && (
+          <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
+        )}
+      </div>
       <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
       <p className="text-sm text-muted-foreground">
         New paying customers handed over from Marketing — onboard them and own their subscription
@@ -100,6 +104,7 @@ function SupportPage() {
             ["open", `New (${(handoffs ?? []).filter((h) => h.status === "open").length})`],
             ["mine", "Mine"],
             ["done", "Onboarded"],
+            ["escalations", "Escalations"],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -114,48 +119,54 @@ function SupportPage() {
           </button>
         ))}
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        <ul className="grid content-start gap-2">
-          {handoffs === null && <li className="text-sm text-muted-foreground">Loading…</li>}
-          {handoffs && list.length === 0 && (
-            <li className="card-elev p-4 text-sm text-muted-foreground">Nothing here.</li>
-          )}
-          {list.map((h) => {
-            const d = details.get(h.id);
-            return (
-              <li key={h.id}>
-                <button
-                  type="button"
-                  onClick={() => setOpenId(h.id)}
-                  className={`card-elev w-full p-3 text-left hover:bg-secondary/40 ${openId === h.id ? "ring-2 ring-accent" : ""}`}
-                >
-                  <div className="font-medium">
-                    {d?.company || d?.name || d?.email || "Customer"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Subscribed {relDays(d?.subscribed_at ?? h.createdAt)} ·{" "}
-                    {h.snapshot.properties?.length ?? 0} propert
-                    {(h.snapshot.properties?.length ?? 0) === 1 ? "y" : "ies"}
-                  </div>
-                  {!!h.snapshot.needs?.length && (
-                    <div className="mt-1 text-xs text-amber-800">
-                      {h.snapshot.needs.length} onboarding item
-                      {h.snapshot.needs.length === 1 ? "" : "s"}
+      {tab === "escalations" ? (
+        <div className="mt-4">
+          <AdminSupportEscalations />
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+          <ul className="grid content-start gap-2">
+            {handoffs === null && <li className="text-sm text-muted-foreground">Loading…</li>}
+            {handoffs && list.length === 0 && (
+              <li className="card-elev p-4 text-sm text-muted-foreground">Nothing here.</li>
+            )}
+            {list.map((h) => {
+              const d = details.get(h.id);
+              return (
+                <li key={h.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(h.id)}
+                    className={`card-elev w-full p-3 text-left hover:bg-secondary/40 ${openId === h.id ? "ring-2 ring-accent" : ""}`}
+                  >
+                    <div className="font-medium">
+                      {d?.company || d?.name || d?.email || "Customer"}
                     </div>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {open ? (
-          <HandoffDetail h={open} d={details.get(open.id)} me={user!.id} reload={load} />
-        ) : (
-          <p className="card-elev p-6 text-sm text-muted-foreground">
-            Pick a customer to see their handoff.
-          </p>
-        )}
-      </div>
+                    <div className="text-xs text-muted-foreground">
+                      Subscribed {relDays(d?.subscribed_at ?? h.createdAt)} ·{" "}
+                      {h.snapshot.properties?.length ?? 0} propert
+                      {(h.snapshot.properties?.length ?? 0) === 1 ? "y" : "ies"}
+                    </div>
+                    {!!h.snapshot.needs?.length && (
+                      <div className="mt-1 text-xs text-amber-800">
+                        {h.snapshot.needs.length} onboarding item
+                        {h.snapshot.needs.length === 1 ? "" : "s"}
+                      </div>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {open ? (
+            <HandoffDetail h={open} d={details.get(open.id)} me={user!.id} reload={load} />
+          ) : (
+            <p className="card-elev p-6 text-sm text-muted-foreground">
+              Pick a customer to see their handoff.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

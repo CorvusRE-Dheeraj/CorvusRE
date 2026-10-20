@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
+import { Route as AdminManageRouteImport } from './routes/admin-manage'
 import { Route as AiReportRouteImport } from './routes/ai-report'
 import { Route as AppointmentRouteImport } from './routes/appointment'
 import { Route as BppRenditionRouteImport } from './routes/bpp-rendition'
@@ -23,6 +24,7 @@ import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as IntakeRouteImport } from './routes/intake'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as MarketingRouteImport } from './routes/marketing'
+import { Route as OperationsRouteImport } from './routes/operations'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PropertyProtestRouteImport } from './routes/property-protest'
@@ -73,6 +75,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/admin-login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminManageRoute = AdminManageRouteImport.update({
+  id: '/admin-manage',
+  path: '/admin-manage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AiReportRoute = AiReportRouteImport.update({
   id: '/ai-report',
   path: '/ai-report',
@@ -121,6 +128,11 @@ const JoinRoute = JoinRouteImport.update({
 const MarketingRoute = MarketingRouteImport.update({
   id: '/marketing',
   path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperationsRoute = OperationsRouteImport.update({
+  id: '/operations',
+  path: '/operations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -283,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
+  '/admin-manage': typeof AdminManageRoute
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
@@ -293,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
+  '/operations': typeof OperationsRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -328,6 +342,7 @@ export interface FileRoutesByTo {
   '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
+  '/admin-manage': typeof AdminManageRoute
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
@@ -338,6 +353,7 @@ export interface FileRoutesByTo {
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
+  '/operations': typeof OperationsRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -373,6 +389,7 @@ export interface FileRoutesById {
   '/accept-invite': typeof AcceptInviteRoute
   '/admin': typeof AdminRoute
   '/admin-login': typeof AdminLoginRoute
+  '/admin-manage': typeof AdminManageRoute
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
@@ -383,6 +400,7 @@ export interface FileRoutesById {
   '/intake': typeof IntakeRoute
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
+  '/operations': typeof OperationsRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -420,6 +438,7 @@ export interface FileRouteTypes {
     | '/accept-invite'
     | '/admin'
     | '/admin-login'
+    | '/admin-manage'
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
@@ -430,6 +449,7 @@ export interface FileRouteTypes {
     | '/intake'
     | '/join'
     | '/marketing'
+    | '/operations'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -465,6 +485,7 @@ export interface FileRouteTypes {
     | '/accept-invite'
     | '/admin'
     | '/admin-login'
+    | '/admin-manage'
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
@@ -475,6 +496,7 @@ export interface FileRouteTypes {
     | '/intake'
     | '/join'
     | '/marketing'
+    | '/operations'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -509,6 +531,7 @@ export interface FileRouteTypes {
     | '/accept-invite'
     | '/admin'
     | '/admin-login'
+    | '/admin-manage'
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
@@ -519,6 +542,7 @@ export interface FileRouteTypes {
     | '/intake'
     | '/join'
     | '/marketing'
+    | '/operations'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -555,6 +579,7 @@ export interface RootRouteChildren {
   AcceptInviteRoute: typeof AcceptInviteRoute
   AdminRoute: typeof AdminRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminManageRoute: typeof AdminManageRoute
   AiReportRoute: typeof AiReportRoute
   AppointmentRoute: typeof AppointmentRoute
   BppRenditionRoute: typeof BppRenditionRoute
@@ -565,6 +590,7 @@ export interface RootRouteChildren {
   IntakeRoute: typeof IntakeRoute
   JoinRoute: typeof JoinRoute
   MarketingRoute: typeof MarketingRoute
+  OperationsRoute: typeof OperationsRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   PropertyProtestRoute: typeof PropertyProtestRoute
@@ -606,6 +632,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-login'
       fullPath: '/admin-login'
       preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin-manage': {
+      id: '/admin-manage'
+      path: '/admin-manage'
+      fullPath: '/admin-manage'
+      preLoaderRoute: typeof AdminManageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ai-report': {
@@ -676,6 +709,13 @@ declare module '@tanstack/react-router' {
       path: '/marketing'
       fullPath: '/marketing'
       preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/operations': {
+      id: '/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof OperationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -935,6 +975,7 @@ const rootRouteChildren: RootRouteChildren = {
   AcceptInviteRoute: AcceptInviteRoute,
   AdminRoute: AdminRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminManageRoute: AdminManageRoute,
   AiReportRoute: AiReportRoute,
   AppointmentRoute: AppointmentRoute,
   BppRenditionRoute: BppRenditionRoute,
@@ -945,6 +986,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntakeRoute: IntakeRoute,
   JoinRoute: JoinRoute,
   MarketingRoute: MarketingRoute,
+  OperationsRoute: OperationsRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   PropertyProtestRoute: PropertyProtestRoute,
