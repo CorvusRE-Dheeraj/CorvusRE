@@ -100,7 +100,7 @@ export function deriveSiteConstraints(input: {
   constraints.push({
     title: "Building setbacks & lot coverage",
     severity: "info",
-    detail: `Confirm ${zoning.category === "unknown" || !zoning.label ? "the zoning district's" : zoning.label} front/side/rear setbacks, height limits, and maximum lot coverage — these shape the buildable envelope.`,
+    detail: `Confirm ${zoningPhrase(zoning)} front/side/rear setbacks, height limits, and maximum lot coverage — these shape the buildable envelope.`,
   });
   constraints.push({
     title: "Utility easements",
@@ -142,4 +142,17 @@ export function availabilityLabel(a: Availability): string {
     : a === "likely_constrained"
       ? "Likely constrained"
       : "Verify";
+}
+
+/** "the zoning district's" when the district isn't known, else "the Residential district's". */
+export function zoningPhrase(zoning: { category?: string; label?: string | null }): string {
+  const label = (zoning.label ?? "").trim();
+  if (zoning.category === "unknown" || !label || /^not (determined|provided)$/i.test(label))
+    return "the zoning district's";
+  return `the ${label} district's`;
+}
+
+/** Older saved analyses said "Confirm Not determined front/side/rear setbacks" — read them sensibly. */
+export function tidyConstraintText(s: string): string {
+  return s.replace(/^Confirm Not (determined|provided) /i, "Confirm the zoning district's ");
 }

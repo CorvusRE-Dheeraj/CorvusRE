@@ -27,6 +27,8 @@ export type ProjectRow = {
   complexity_level: string | null;
   stage: string;
   analysis: PermittingAnalysis | null;
+  /** grading / floodplain / access data (site-analysis edge function) */
+  site_analysis?: import("./site-analysis").SiteAnalysisRaw | null;
   created_at: string;
   updated_at: string;
 };

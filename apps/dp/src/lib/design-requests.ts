@@ -37,6 +37,7 @@ export type DesignRequestRow = {
   survey_read_error?: string | null;
   site_inputs?: import("./survey-reading").SiteInputs | null;
   schematic?: import("./schematic").Schematic | null;
+  site_analysis?: import("./site-analysis").SiteAnalysisRaw | null;
   created_at: string;
   updated_at: string;
 };
