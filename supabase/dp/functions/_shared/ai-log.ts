@@ -10,7 +10,8 @@ export async function logAiCall(
     | "design_narrative"
     | "review_comment_translation"
     | "assistant_chat"
-    | "survey_reading",
+    | "survey_reading"
+    | "schematic_plan",
   input: unknown,
   output: unknown,
   userId?: string | null,

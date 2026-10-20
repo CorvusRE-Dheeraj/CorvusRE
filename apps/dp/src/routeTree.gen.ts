@@ -38,6 +38,7 @@ import { Route as DashboardLayoutDesignRouteImport } from './routes/dashboard/_l
 import { Route as DashboardLayoutDesignChecklistRouteImport } from './routes/dashboard/_layout.design-checklist'
 import { Route as DashboardLayoutDesignFeesRouteImport } from './routes/dashboard/_layout.design-fees'
 import { Route as DashboardLayoutDesignRoadmapRouteImport } from './routes/dashboard/_layout.design-roadmap'
+import { Route as DashboardLayoutDesignSchematicRouteImport } from './routes/dashboard/_layout.design-schematic'
 import { Route as DashboardLayoutDesignSiteRouteImport } from './routes/dashboard/_layout.design-site'
 import { Route as DashboardLayoutDesignSurveyRouteImport } from './routes/dashboard/_layout.design-survey'
 import { Route as DashboardLayoutDesignTimelineRouteImport } from './routes/dashboard/_layout.design-timeline'
@@ -208,6 +209,12 @@ const DashboardLayoutDesignRoadmapRoute =
     path: '/design-roadmap',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutDesignSchematicRoute =
+  DashboardLayoutDesignSchematicRouteImport.update({
+    id: '/design-schematic',
+    path: '/design-schematic',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutDesignSiteRoute =
   DashboardLayoutDesignSiteRouteImport.update({
     id: '/design-site',
@@ -336,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/design-checklist': typeof DashboardLayoutDesignChecklistRoute
   '/dashboard/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
+  '/dashboard/design-schematic': typeof DashboardLayoutDesignSchematicRoute
   '/dashboard/design-site': typeof DashboardLayoutDesignSiteRoute
   '/dashboard/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/design-timeline': typeof DashboardLayoutDesignTimelineRoute
@@ -384,6 +392,7 @@ export interface FileRoutesByTo {
   '/dashboard/design-checklist': typeof DashboardLayoutDesignChecklistRoute
   '/dashboard/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
+  '/dashboard/design-schematic': typeof DashboardLayoutDesignSchematicRoute
   '/dashboard/design-site': typeof DashboardLayoutDesignSiteRoute
   '/dashboard/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/design-timeline': typeof DashboardLayoutDesignTimelineRoute
@@ -434,6 +443,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/design-checklist': typeof DashboardLayoutDesignChecklistRoute
   '/dashboard/_layout/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/_layout/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
+  '/dashboard/_layout/design-schematic': typeof DashboardLayoutDesignSchematicRoute
   '/dashboard/_layout/design-site': typeof DashboardLayoutDesignSiteRoute
   '/dashboard/_layout/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/_layout/design-timeline': typeof DashboardLayoutDesignTimelineRoute
@@ -485,6 +495,7 @@ export interface FileRouteTypes {
     | '/dashboard/design-checklist'
     | '/dashboard/design-fees'
     | '/dashboard/design-roadmap'
+    | '/dashboard/design-schematic'
     | '/dashboard/design-site'
     | '/dashboard/design-survey'
     | '/dashboard/design-timeline'
@@ -533,6 +544,7 @@ export interface FileRouteTypes {
     | '/dashboard/design-checklist'
     | '/dashboard/design-fees'
     | '/dashboard/design-roadmap'
+    | '/dashboard/design-schematic'
     | '/dashboard/design-site'
     | '/dashboard/design-survey'
     | '/dashboard/design-timeline'
@@ -582,6 +594,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/design-checklist'
     | '/dashboard/_layout/design-fees'
     | '/dashboard/_layout/design-roadmap'
+    | '/dashboard/_layout/design-schematic'
     | '/dashboard/_layout/design-site'
     | '/dashboard/_layout/design-survey'
     | '/dashboard/_layout/design-timeline'
@@ -830,6 +843,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutDesignRoadmapRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/design-schematic': {
+      id: '/dashboard/_layout/design-schematic'
+      path: '/design-schematic'
+      fullPath: '/dashboard/design-schematic'
+      preLoaderRoute: typeof DashboardLayoutDesignSchematicRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/design-site': {
       id: '/dashboard/_layout/design-site'
       path: '/design-site'
@@ -969,6 +989,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutDesignChecklistRoute: typeof DashboardLayoutDesignChecklistRoute
   DashboardLayoutDesignFeesRoute: typeof DashboardLayoutDesignFeesRoute
   DashboardLayoutDesignRoadmapRoute: typeof DashboardLayoutDesignRoadmapRoute
+  DashboardLayoutDesignSchematicRoute: typeof DashboardLayoutDesignSchematicRoute
   DashboardLayoutDesignSiteRoute: typeof DashboardLayoutDesignSiteRoute
   DashboardLayoutDesignSurveyRoute: typeof DashboardLayoutDesignSurveyRoute
   DashboardLayoutDesignTimelineRoute: typeof DashboardLayoutDesignTimelineRoute
@@ -1000,6 +1021,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutDesignChecklistRoute: DashboardLayoutDesignChecklistRoute,
   DashboardLayoutDesignFeesRoute: DashboardLayoutDesignFeesRoute,
   DashboardLayoutDesignRoadmapRoute: DashboardLayoutDesignRoadmapRoute,
+  DashboardLayoutDesignSchematicRoute: DashboardLayoutDesignSchematicRoute,
   DashboardLayoutDesignSiteRoute: DashboardLayoutDesignSiteRoute,
   DashboardLayoutDesignSurveyRoute: DashboardLayoutDesignSurveyRoute,
   DashboardLayoutDesignTimelineRoute: DashboardLayoutDesignTimelineRoute,

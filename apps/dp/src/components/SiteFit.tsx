@@ -2,6 +2,7 @@ import type { DesignRequestRow } from "@/lib/design-requests";
 import { FIT_LABEL, siteFit, type SiteFit as Fit } from "@/lib/site-fit";
 import { SIDES, SIDE_LABEL, ft, sqft, type SurveyReading } from "@/lib/survey-reading";
 import { Pill } from "@/components/dp-ui";
+import { PlanLegend, SitePlanSvg } from "@/components/SitePlan";
 
 const TONE = {
   needs_info: "amber",
@@ -123,242 +124,37 @@ function FitNumbers({ fit }: { fit: Fit }) {
   );
 }
 
-// To scale: the lot, the strips kept clear on each side (setback = light,
-// easement / no-build = hatched), the buildable envelope (dashed) and the
-// footprint set at the front setback line, centred. Street at the bottom.
+// The fit drawn to scale: the planned footprint set at the front setback
+// line, centred in the buildable area (red when the program doesn't fit).
 function SiteDiagram({ fit, reading }: { fit: Fit; reading: SurveyReading | null }) {
-  const lot = fit.lot!;
   const L = fit.limits!;
-  const pad = 34;
-  const scale = Math.min(460 / lot.widthFt, 380 / lot.depthFt);
-  const w = lot.widthFt * scale,
-    d = lot.depthFt * scale;
-  const vbW = w + pad * 2,
-    vbH = d + pad * 2 + 26;
-  const x0 = pad,
-    y0 = pad;
-  const s = (n: number) => n * scale;
-  // easement / no-build strips along each side, drawn hatched
-  const strips = [
-    ...(reading?.easements ?? []).map((e) => ({
-      side: e.side,
-      ft: e.widthFt,
-      label: e.label ?? `${e.type} easement`,
-    })),
-    ...(reading?.noBuildAreas ?? []).map((n) => ({
-      side: n.side,
-      ft: n.depthFt,
-      label: n.label ?? n.description,
-    })),
-  ].filter(
-    (x): x is { side: "front" | "rear" | "left" | "right"; ft: number; label: string } =>
-      ["front", "rear", "left", "right"].includes(x.side) && x.ft != null,
-  );
-  const stripRect = (side: string, f: number) =>
-    side === "rear"
-      ? { x: x0, y: y0, width: w, height: s(f) }
-      : side === "front"
-        ? { x: x0, y: y0 + d - s(f), width: w, height: s(f) }
-        : side === "left"
-          ? { x: x0, y: y0, width: s(f), height: d }
-          : { x: x0 + w - s(f), y: y0, width: s(f), height: d };
   const env = fit.envelope;
-  const ex = x0 + s(L.left.ft),
-    ey = y0 + s(L.rear.ft);
   const fp = fit.suggested && env ? fit.suggested : null;
-  const fpx = fp ? ex + (s(env!.widthFt) - s(fp.widthFt)) / 2 : 0;
-  const fpy = fp ? ey + s(env!.depthFt) - s(fp.depthFt) : 0; // pushed to the front setback line
-  const summary = `Site diagram: lot ${lot.widthFt} by ${lot.depthFt} feet; buildable area ${env ? `${env.widthFt} by ${env.depthFt} feet` : "none"}${fp ? `; building footprint about ${Math.round(fp.widthFt)} by ${Math.round(fp.depthFt)} feet` : ""}.`;
+  const building = fp
+    ? [
+        {
+          x: L.left.ft + (env!.widthFt - fp.widthFt) / 2,
+          y: L.front.ft,
+          w: fp.widthFt,
+          d: fp.depthFt,
+        },
+      ]
+    : [];
   return (
     <figure className="min-w-0">
-      <svg
-        viewBox={`0 0 ${vbW} ${vbH}`}
-        className="h-auto w-full max-w-[560px] rounded-lg border border-border bg-background"
-        role="img"
-        aria-label={summary}
-      >
-        <defs>
-          <pattern
-            id="fit-hatch"
-            width="6"
-            height="6"
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <line
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="text-amber-600/60"
-            />
-          </pattern>
-        </defs>
-        {/* lot + setback zone */}
-        <rect
-          x={x0}
-          y={y0}
-          width={w}
-          height={d}
-          className="fill-amber-400/10 stroke-foreground"
-          strokeWidth={2}
-        />
-        {strips.map((st, i) => (
-          <rect
-            key={i}
-            {...stripRect(st.side, st.ft)}
-            fill="url(#fit-hatch)"
-            className="stroke-amber-600/60"
-            strokeDasharray="3 3"
-          />
-        ))}
-        {env && (
-          <rect
-            x={ex}
-            y={ey}
-            width={s(env.widthFt)}
-            height={s(env.depthFt)}
-            className="fill-background stroke-emerald-600"
-            strokeWidth={1.5}
-            strokeDasharray="6 4"
-          />
-        )}
-        {fp && (
-          <g>
-            <rect
-              x={fpx}
-              y={fpy}
-              width={s(fp.widthFt)}
-              height={s(fp.depthFt)}
-              className={
-                fit.status === "too_big"
-                  ? "fill-red-500/25 stroke-red-600"
-                  : "fill-sky-500/25 stroke-sky-700"
-              }
-              strokeWidth={1.5}
-            />
-            <text
-              x={fpx + s(fp.widthFt) / 2}
-              y={fpy + s(fp.depthFt) / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="fill-foreground"
-              fontSize={12}
-            >
-              {fit.status === "too_big"
-                ? `Needs ${fit.program.footprintSqFt!.toLocaleString()} sf`
-                : `Building ${Math.round(fp.widthFt)}′ × ${Math.round(fp.depthFt)}′`}
-            </text>
-            {fit.status === "too_big" && (
-              <text
-                x={fpx + s(fp.widthFt) / 2}
-                y={fpy + s(fp.depthFt) / 2 + 16}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="fill-foreground"
-                fontSize={11}
-              >
-                only {fit.envelope!.areaSqFt.toLocaleString()} sf fits
-              </text>
-            )}
-          </g>
-        )}
-        {/* limit dimensions */}
-        <text
-          x={x0 + w / 2}
-          y={y0 + d - s(L.front.ft) / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={11}
-          className="fill-muted-foreground"
-        >
-          {L.front.ft}′
-        </text>
-        <text
-          x={x0 + w / 2}
-          y={y0 + s(L.rear.ft) / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={11}
-          className="fill-muted-foreground"
-        >
-          {L.rear.ft}′
-        </text>
-        <text
-          x={x0 + s(L.left.ft) / 2}
-          y={y0 + d / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={11}
-          className="fill-muted-foreground"
-        >
-          {L.left.ft}′
-        </text>
-        <text
-          x={x0 + w - s(L.right.ft) / 2}
-          y={y0 + d / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fontSize={11}
-          className="fill-muted-foreground"
-        >
-          {L.right.ft}′
-        </text>
-        {/* lot dimensions + street */}
-        <text
-          x={x0 + w / 2}
-          y={y0 - 10}
-          textAnchor="middle"
-          fontSize={12}
-          className="fill-foreground"
-        >
-          {lot.widthFt}′ (rear)
-        </text>
-        <text
-          x={x0 - 12}
-          y={y0 + d / 2}
-          textAnchor="middle"
-          fontSize={12}
-          className="fill-foreground"
-          transform={`rotate(-90 ${x0 - 12} ${y0 + d / 2})`}
-        >
-          {lot.depthFt}′
-        </text>
-        <text
-          x={x0 + w / 2}
-          y={y0 + d + 20}
-          textAnchor="middle"
-          fontSize={12}
-          fontWeight={600}
-          className="fill-foreground"
-        >
-          {reading?.frontage.street ? `${reading.frontage.street} (front)` : "Street (front)"}
-        </text>
-      </svg>
-      <figcaption className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/30 align-middle" />
-          Setback area
-        </span>
-        {strips.length > 0 && (
-          <span>
-            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm border border-amber-600/60 align-middle" />
-            Easement / no-build
-          </span>
-        )}
-        <span>
-          <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm border border-dashed border-emerald-600 align-middle" />
-          Buildable area
-        </span>
-        {fp && (
-          <span>
-            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-sky-500/40 align-middle" />
-            Building footprint
-          </span>
-        )}
-      </figcaption>
+      <SitePlanSvg
+        fit={fit}
+        reading={reading}
+        idPrefix="fit"
+        layers={{
+          building,
+          overflow:
+            fit.status === "too_big" && env
+              ? { needSqFt: fit.program.footprintSqFt!, fitsSqFt: env.areaSqFt }
+              : null,
+        }}
+      />
+      <PlanLegend reading={reading} building={!!fp} />
     </figure>
   );
 }

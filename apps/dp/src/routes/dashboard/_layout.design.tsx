@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Fragment, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  PencilRuler,
   Map,
   ArrowRight,
   CalendarClock,
@@ -110,6 +111,14 @@ function DesignDashboard() {
       desc: dr.survey_path
         ? `Uploaded: ${dr.survey_name ?? "survey"}`
         : "Upload the property's survey (PNG, JPG, PDF)",
+    },
+    {
+      to: "/dashboard/design-schematic",
+      label: "Schematic Plan",
+      icon: PencilRuler,
+      desc: dr.schematic?.options?.length
+        ? `${dr.schematic.options.length} concept option${dr.schematic.options.length === 1 ? "" : "s"}`
+        : "AI concept layout fitted inside the setbacks",
     },
     {
       to: "/dashboard/design-checklist",
