@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Fragment, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Map,
   ArrowRight,
   CalendarClock,
   ListChecks,
@@ -101,6 +102,14 @@ function DesignDashboard() {
       label: "Site Data",
       icon: Layers,
       desc: "Location, program, utilities, and site constraints",
+    },
+    {
+      to: "/dashboard/design-survey",
+      label: "Land Survey",
+      icon: Map,
+      desc: dr.survey_path
+        ? `Uploaded: ${dr.survey_name ?? "survey"}`
+        : "Upload the property's survey (PNG, JPG, PDF)",
     },
     {
       to: "/dashboard/design-checklist",

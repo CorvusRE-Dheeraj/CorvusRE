@@ -39,6 +39,7 @@ import { Route as DashboardLayoutDesignChecklistRouteImport } from './routes/das
 import { Route as DashboardLayoutDesignFeesRouteImport } from './routes/dashboard/_layout.design-fees'
 import { Route as DashboardLayoutDesignRoadmapRouteImport } from './routes/dashboard/_layout.design-roadmap'
 import { Route as DashboardLayoutDesignSiteRouteImport } from './routes/dashboard/_layout.design-site'
+import { Route as DashboardLayoutDesignSurveyRouteImport } from './routes/dashboard/_layout.design-survey'
 import { Route as DashboardLayoutDesignTimelineRouteImport } from './routes/dashboard/_layout.design-timeline'
 import { Route as DashboardLayoutDocumentsRouteImport } from './routes/dashboard/_layout.documents'
 import { Route as DashboardLayoutFeesRouteImport } from './routes/dashboard/_layout.fees'
@@ -213,6 +214,12 @@ const DashboardLayoutDesignSiteRoute =
     path: '/design-site',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutDesignSurveyRoute =
+  DashboardLayoutDesignSurveyRouteImport.update({
+    id: '/design-survey',
+    path: '/design-survey',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutDesignTimelineRoute =
   DashboardLayoutDesignTimelineRouteImport.update({
     id: '/design-timeline',
@@ -330,6 +337,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
   '/dashboard/design-site': typeof DashboardLayoutDesignSiteRoute
+  '/dashboard/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/design-timeline': typeof DashboardLayoutDesignTimelineRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/fees': typeof DashboardLayoutFeesRoute
@@ -377,6 +385,7 @@ export interface FileRoutesByTo {
   '/dashboard/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
   '/dashboard/design-site': typeof DashboardLayoutDesignSiteRoute
+  '/dashboard/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/design-timeline': typeof DashboardLayoutDesignTimelineRoute
   '/dashboard/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/fees': typeof DashboardLayoutFeesRoute
@@ -426,6 +435,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/design-fees': typeof DashboardLayoutDesignFeesRoute
   '/dashboard/_layout/design-roadmap': typeof DashboardLayoutDesignRoadmapRoute
   '/dashboard/_layout/design-site': typeof DashboardLayoutDesignSiteRoute
+  '/dashboard/_layout/design-survey': typeof DashboardLayoutDesignSurveyRoute
   '/dashboard/_layout/design-timeline': typeof DashboardLayoutDesignTimelineRoute
   '/dashboard/_layout/documents': typeof DashboardLayoutDocumentsRoute
   '/dashboard/_layout/fees': typeof DashboardLayoutFeesRoute
@@ -476,6 +486,7 @@ export interface FileRouteTypes {
     | '/dashboard/design-fees'
     | '/dashboard/design-roadmap'
     | '/dashboard/design-site'
+    | '/dashboard/design-survey'
     | '/dashboard/design-timeline'
     | '/dashboard/documents'
     | '/dashboard/fees'
@@ -523,6 +534,7 @@ export interface FileRouteTypes {
     | '/dashboard/design-fees'
     | '/dashboard/design-roadmap'
     | '/dashboard/design-site'
+    | '/dashboard/design-survey'
     | '/dashboard/design-timeline'
     | '/dashboard/documents'
     | '/dashboard/fees'
@@ -571,6 +583,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/design-fees'
     | '/dashboard/_layout/design-roadmap'
     | '/dashboard/_layout/design-site'
+    | '/dashboard/_layout/design-survey'
     | '/dashboard/_layout/design-timeline'
     | '/dashboard/_layout/documents'
     | '/dashboard/_layout/fees'
@@ -824,6 +837,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutDesignSiteRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/design-survey': {
+      id: '/dashboard/_layout/design-survey'
+      path: '/design-survey'
+      fullPath: '/dashboard/design-survey'
+      preLoaderRoute: typeof DashboardLayoutDesignSurveyRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/design-timeline': {
       id: '/dashboard/_layout/design-timeline'
       path: '/design-timeline'
@@ -950,6 +970,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutDesignFeesRoute: typeof DashboardLayoutDesignFeesRoute
   DashboardLayoutDesignRoadmapRoute: typeof DashboardLayoutDesignRoadmapRoute
   DashboardLayoutDesignSiteRoute: typeof DashboardLayoutDesignSiteRoute
+  DashboardLayoutDesignSurveyRoute: typeof DashboardLayoutDesignSurveyRoute
   DashboardLayoutDesignTimelineRoute: typeof DashboardLayoutDesignTimelineRoute
   DashboardLayoutDocumentsRoute: typeof DashboardLayoutDocumentsRoute
   DashboardLayoutFeesRoute: typeof DashboardLayoutFeesRoute
@@ -980,6 +1001,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutDesignFeesRoute: DashboardLayoutDesignFeesRoute,
   DashboardLayoutDesignRoadmapRoute: DashboardLayoutDesignRoadmapRoute,
   DashboardLayoutDesignSiteRoute: DashboardLayoutDesignSiteRoute,
+  DashboardLayoutDesignSurveyRoute: DashboardLayoutDesignSurveyRoute,
   DashboardLayoutDesignTimelineRoute: DashboardLayoutDesignTimelineRoute,
   DashboardLayoutDocumentsRoute: DashboardLayoutDocumentsRoute,
   DashboardLayoutFeesRoute: DashboardLayoutFeesRoute,
