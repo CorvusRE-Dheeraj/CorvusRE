@@ -140,9 +140,18 @@ function MarketingPage() {
     <div className="container-page py-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <span className="badge-soft">
-            {role.isSuperAdmin ? "Super Admin" : "Marketing Admin"}
-          </span>
+          {/* the badge names this workspace; a Super Admin is told they're viewing it with
+              their own (wider) access — Marketing Admin is a separate, narrower role */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge-soft">
+              {role.isSupervisor && !role.isSuperAdmin
+                ? "Marketing Admin · Supervisor"
+                : "Marketing Admin"}
+            </span>
+            {role.isSuperAdmin && (
+              <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
+            )}
+          </div>
           <h1 className="mt-2 font-serif text-3xl font-semibold">Marketing</h1>
           <p className="text-sm text-muted-foreground">{current.purpose}</p>
         </div>

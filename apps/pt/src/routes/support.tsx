@@ -83,9 +83,12 @@ function SupportPage() {
   const open = handoffs?.find((h) => h.id === openId) ?? null;
   return (
     <div className="container-page py-8">
-      <span className="badge-soft">
-        {role.isSuperAdmin ? "Super Admin" : "Customer Support Admin"}
-      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="badge-soft">Customer Support Admin</span>
+        {role.isSuperAdmin && (
+          <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
+        )}
+      </div>
       <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
       <p className="text-sm text-muted-foreground">
         New paying customers handed over from Marketing — onboard them and own their subscription
