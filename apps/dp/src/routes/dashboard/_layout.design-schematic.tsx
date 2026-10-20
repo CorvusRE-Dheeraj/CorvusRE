@@ -9,6 +9,7 @@ import {
   makeOption,
   saveSchematic,
   siteKey,
+  isConfirmed,
   type Schematic,
   type SchematicOption,
 } from "@/lib/schematic";
@@ -55,7 +56,8 @@ function DesignSchematic() {
   const options = schematic?.options ?? [];
   const current: SchematicOption | null = options[schematic?.selected ?? 0] ?? null;
   const ready = !!fit.lot && !!fit.envelope;
-  const stale = !!current && current.siteKey !== siteKey(fit);
+  const stale = !!current && current.siteKey !== siteKey(fit, dr.site_inputs ?? null);
+  const confirmed = isConfirmed(fit, dr.site_inputs ?? null, dr.survey_read_at);
 
   async function generate(kind: "new" | "different" | "refine") {
     if (!dr || !fit) return;
@@ -68,10 +70,11 @@ function DesignSchematic() {
         fit,
         reading,
         sector: dr.sector,
+        inputs: dr.site_inputs ?? null,
         instruction,
         previous: kind === "different" ? current : null,
       });
-      const option = makeOption(layout, fit, dr.sector, instruction);
+      const option = makeOption(layout, fit, dr.sector, instruction, dr.site_inputs ?? null);
       const next = [...options, option].slice(-MAX_OPTIONS);
       await saveSchematic(dr.id, { options: next, selected: next.length - 1 });
       await refetch();
@@ -88,7 +91,7 @@ function DesignSchematic() {
     await refetch();
   }
 
-  if (!dr.survey_path || !ready)
+  if (!dr.survey_path || !ready || !confirmed)
     return (
       <Section title="Schematic Plan" subtitle={designSubtitle(dr)}>
         <p className="text-sm">
@@ -96,10 +99,14 @@ function DesignSchematic() {
             ? "Upload the land survey first — the plan is fitted to your lot."
             : fit.status === "needs_info"
               ? `Confirm the site details first (still needed: ${fit.missing.join(", ").toLowerCase()}).`
-              : "The setbacks leave no buildable area on this lot — check the site details."}
+              : !ready
+                ? "The setbacks leave no buildable area on this lot — check the site details."
+                : dr.site_inputs?.confirmedAt
+                  ? "The site details or assumptions changed since you confirmed them — review and confirm them again before generating a plan."
+                  : "Review and confirm the survey reading, setbacks and assumptions first — the plan is generated from what you confirm."}
         </p>
         <Link to="/dashboard/design-survey" className="btn-accent mt-4 inline-flex text-sm">
-          Go to Land Survey
+          {dr.survey_path && ready ? "Review & confirm" : "Go to Land Survey"}
         </Link>
       </Section>
     );

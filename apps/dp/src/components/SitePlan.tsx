@@ -48,13 +48,7 @@ export const SitePlanSvg = forwardRef<
   const Y = (y: number) => y0 + d - s(y);
   const R = (r: Rect) => ({ x: X(r.x), y: Y(r.y + r.d), width: s(r.w), height: s(r.d) });
 
-  const strips = [
-    ...(reading?.easements ?? []).map((e) => ({ side: e.side, ft: e.widthFt })),
-    ...(reading?.noBuildAreas ?? []).map((n) => ({ side: n.side, ft: n.depthFt })),
-  ].filter(
-    (x): x is { side: "front" | "rear" | "left" | "right"; ft: number } =>
-      ["front", "rear", "left", "right"].includes(x.side) && x.ft != null,
-  );
+  const strips = fit.strips as { side: "front" | "rear" | "left" | "right"; ft: number }[];
   const stripRect = (side: string, f: number): Rect =>
     side === "rear"
       ? { x: 0, y: lot.depthFt - f, w: lot.widthFt, d: f }

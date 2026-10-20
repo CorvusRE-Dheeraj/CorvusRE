@@ -6,7 +6,7 @@
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { SiteFit } from "./site-fit";
-import type { SurveyReading } from "./survey-reading";
+import type { SiteInputs, SurveyReading } from "./survey-reading";
 
 export const SCHEMATIC_LABEL =
   "Conceptual schematic — subject to professional review; not for construction or permit submission.";
@@ -42,18 +42,23 @@ export type SchematicOption = Layout & {
 };
 export type Schematic = { options: SchematicOption[]; selected: number };
 
-/** Stalls a commercial program typically needs (1 per 300 sf); null for single-family. */
+export const DEFAULT_SF_PER_STALL = 300;
+/**
+ * Stalls a program needs: 1 per `sfPerStall` of building (default 1 per 300 sf);
+ * null for single-family, or when the user says no parking is needed (0).
+ */
 export function stallsNeeded(
   sector: string | null | undefined,
   buildingAreaSqFt: number | null,
+  sfPerStall?: number | null,
 ): number | null {
-  if (!buildingAreaSqFt) return null;
-  if ((sector ?? "commercial") === "residential") return null;
-  return Math.ceil(buildingAreaSqFt / 300);
+  if (!buildingAreaSqFt || sfPerStall === 0) return null;
+  if ((sector ?? "commercial") === "residential" && !sfPerStall) return null;
+  return Math.ceil(buildingAreaSqFt / (sfPerStall || DEFAULT_SF_PER_STALL));
 }
 
-/** A fingerprint of the site the plan was fitted to. */
-export function siteKey(fit: SiteFit): string {
+/** A fingerprint of the site + assumptions a plan was fitted to (and the user confirmed). */
+export function siteKey(fit: SiteFit, inputs?: SiteInputs | null): string {
   const L = fit.limits;
   return [
     fit.lot?.widthFt,
@@ -62,10 +67,29 @@ export function siteKey(fit: SiteFit): string {
     L?.rear.ft,
     L?.left.ft,
     L?.right.ft,
-    fit.program.footprintSqFt,
+    fit.program.buildingAreaSqFt,
+    fit.program.floors,
+    fit.maxFootprintSqFt,
+    fit.strips.map((x) => `${x.side}:${x.ft}`).join(","),
+    inputs?.parkingSfPerStall ?? "",
   ]
     .map((v) => v ?? "")
     .join("|");
+}
+/** What the user confirms: the site + assumptions, and which survey reading they checked. */
+export function confirmKey(
+  fit: SiteFit,
+  inputs: SiteInputs | null,
+  readAt: string | null | undefined,
+): string {
+  return `${siteKey(fit, inputs)}|${readAt ?? "manual"}`;
+}
+export function isConfirmed(
+  fit: SiteFit,
+  inputs: SiteInputs | null,
+  readAt: string | null | undefined,
+): boolean {
+  return !!inputs?.confirmedKey && inputs.confirmedKey === confirmKey(fit, inputs, readAt);
 }
 
 const area = (r: Rect) => r.w * r.d;
@@ -88,6 +112,7 @@ export function validateLayout(
   layout: Layout,
   fit: SiteFit,
   sector?: string | null,
+  inputs?: SiteInputs | null,
 ): Pick<
   SchematicOption,
   "building" | "parking" | "driveway" | "openSpace" | "adjustments" | "metrics"
@@ -164,6 +189,10 @@ export function validateLayout(
         `Parking reaches into the ${into.join(" and ")} setback — many cities allow surface parking there with a landscape buffer; check the zoning code.`,
       );
   }
+  if (fit.maxFootprintSqFt && footprint > fit.maxFootprintSqFt * 1.02)
+    adjustments.push(
+      `The footprint (${footprint.toLocaleString()} sf) is over the ${inputs?.maxCoveragePct ?? ""}% lot-coverage limit (${fit.maxFootprintSqFt.toLocaleString()} sf).`,
+    );
   const stalls = parking ? Math.floor(area(parking) / SQFT_PER_STALL) : 0;
   return {
     building,
@@ -176,7 +205,7 @@ export function validateLayout(
       targetFootprintSqFt: fit.program.footprintSqFt,
       coveragePct: Math.round((footprint / lot.areaSqFt) * 100),
       stalls,
-      stallsNeeded: stallsNeeded(sector, fit.program.buildingAreaSqFt),
+      stallsNeeded: stallsNeeded(sector, fit.program.buildingAreaSqFt, inputs?.parkingSfPerStall),
       openSpaceSqFt: Math.round(openSpace.reduce((t, o) => t + area(o), 0)),
     },
   };
@@ -187,6 +216,7 @@ export async function generateSchematic(opts: {
   fit: SiteFit;
   reading: SurveyReading | null;
   sector?: string | null;
+  inputs?: SiteInputs | null;
   instruction?: string | null;
   previous?: SchematicOption | null;
 }): Promise<Layout> {
@@ -214,15 +244,19 @@ export async function generateSchematic(opts: {
       street: reading?.frontage.street ?? null,
       cornerLot: reading?.frontage.cornerLot ?? false,
       frontFaces: reading?.orientation.frontFaces ?? null,
-      easements: (reading?.easements ?? []).map(
-        (e) => `${e.type} ${e.widthFt ?? "?"} ft along the ${e.side}`,
-      ),
+      easements: fit.strips.map((x) => `${x.label} ${x.ft} ft along the ${x.side}`),
     },
     program: {
       buildingAreaSqFt: fit.program.buildingAreaSqFt,
       floors: fit.program.floors,
       footprintSqFt: fit.program.footprintSqFt,
-      parkingStalls: stallsNeeded(opts.sector, fit.program.buildingAreaSqFt),
+      parkingStalls: stallsNeeded(
+        opts.sector,
+        fit.program.buildingAreaSqFt,
+        opts.inputs?.parkingSfPerStall,
+      ),
+      noParking: opts.inputs?.parkingSfPerStall === 0,
+      maxFootprintSqFt: fit.maxFootprintSqFt,
     },
     instruction: opts.instruction ?? null,
     previous: opts.previous ? describe(opts.previous) : null,
@@ -235,15 +269,16 @@ export function makeOption(
   fit: SiteFit,
   sector: string | null | undefined,
   instruction: string | null,
+  inputs?: SiteInputs | null,
 ): SchematicOption {
-  const v = validateLayout(layout, fit, sector);
+  const v = validateLayout(layout, fit, sector, inputs);
   return {
     ...layout,
     ...v,
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     instruction,
-    siteKey: siteKey(fit),
+    siteKey: siteKey(fit, inputs),
   };
 }
 

@@ -88,7 +88,12 @@ Deno.serve(async (req: Request) => {
       Array.isArray(site.easements) && site.easements.length ? `Easements: ${(site.easements as string[]).join("; ")}.` : "",
       `Project: ${dr.scope ?? "new construction"}, ${dr.sector ?? "commercial"}.`,
       `Building area ${program.buildingAreaSqFt ?? "unknown"} sf on ${program.floors ?? 1} floor(s) → target footprint ${program.footprintSqFt ?? "unknown"} sf.`,
-      program.parkingStalls ? `Parking needed: about ${program.parkingStalls} stalls.` : "",
+      program.noParking
+        ? "No parking is needed for this project — do not draw a parking lot (a short driveway is fine if useful)."
+        : program.parkingStalls
+          ? `Parking needed: about ${program.parkingStalls} stalls.`
+          : "",
+      program.maxFootprintSqFt ? `Maximum lot coverage: the building footprint must not exceed ${program.maxFootprintSqFt} sf.` : "",
       dr.rooms ? `Rooms / spaces: ${String(dr.rooms).slice(0, 400)}` : "",
       dr.functional_requirements ? `Functional requirements: ${String(dr.functional_requirements).slice(0, 600)}` : "",
       dr.special_requirements ? `Special requirements: ${String(dr.special_requirements).slice(0, 600)}` : "",

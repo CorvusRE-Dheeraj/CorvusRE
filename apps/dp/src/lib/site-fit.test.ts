@@ -101,3 +101,37 @@ describe("setback-based fit", () => {
     expect(parseFloors(null)).toBe(1);
   });
 });
+
+describe("user-corrected assumptions", () => {
+  const base = { setbacks: { rear: 5 } };
+  it("an easement the user unticks stops counting; one they add does", () => {
+    const off = siteFit(reading(), { ...base, excludedStrips: ["e0"] }, { buildingArea: "3000" });
+    expect(off.limits!.rear).toMatchObject({ ft: 5, governedBy: "Rear setback" });
+    const added = siteFit(
+      reading(),
+      { ...base, extraStrips: [{ side: "front", ft: 35, label: "35' landscape buffer" }] },
+      { buildingArea: "3000" },
+    );
+    expect(added.limits!.front).toMatchObject({ ft: 35, governedBy: "35' landscape buffer" });
+    expect(added.strips.map((x) => x.label)).toContain("35' landscape buffer");
+  });
+  it("building area and floors can be overridden", () => {
+    const f = siteFit(
+      reading(),
+      { ...base, buildingAreaSqFt: 9000, floors: 3 },
+      { buildingArea: "3000", floors: "1" },
+    );
+    expect(f.program).toMatchObject({ buildingAreaSqFt: 9000, floors: 3, footprintSqFt: 3000 });
+  });
+  it("a max lot coverage caps what's allowed", () => {
+    const f = siteFit(
+      reading(),
+      { ...base, maxCoveragePct: 30 },
+      { buildingArea: "4000", floors: "1" },
+    );
+    expect(f.maxFootprintSqFt).toBe(3120);
+    expect(f.status).toBe("too_big");
+    expect(f.floorsNeeded).toBe(2);
+    expect(f.notes.join(" ")).toMatch(/30% maximum lot coverage allows 3,120 sf/);
+  });
+});

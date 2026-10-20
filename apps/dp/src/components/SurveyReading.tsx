@@ -350,7 +350,7 @@ function ConfirmValues({
     setSaving(true);
     setMsg(null);
     try {
-      await saveSiteInputs(dr.id, draft);
+      await saveSiteInputs(dr.id, { ...(dr.site_inputs ?? {}), ...draft });
       await refetch();
       setMsg(
         missing.length

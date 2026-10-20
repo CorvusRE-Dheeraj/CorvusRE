@@ -14,6 +14,7 @@ import {
 import { Section, Loading } from "@/components/dp-ui";
 import { SurveyReadingPanel } from "@/components/SurveyReading";
 import { SiteFitPanel } from "@/components/SiteFit";
+import { SiteReviewPanel } from "@/components/SiteReview";
 import { useActiveDesignRequest, EmptyDesign, designSubtitle } from "@/components/design-workspace";
 
 export const Route = createFileRoute("/dashboard/_layout/design-survey")({
@@ -237,6 +238,7 @@ function DesignSurvey() {
       </Section>
       <SurveyReadingPanel dr={dr} refetch={refetch} />
       <SiteFitPanel dr={dr} />
+      <SiteReviewPanel key={dr.survey_read_at ?? "manual"} dr={dr} refetch={refetch} />
     </div>
   );
 }

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { siteFit } from "./site-fit";
-import { makeOption, siteKey, stallsNeeded, validateLayout, type Layout } from "./schematic";
+import {
+  confirmKey,
+  isConfirmed,
+  makeOption,
+  siteKey,
+  stallsNeeded,
+  validateLayout,
+  type Layout,
+} from "./schematic";
 
 // manual site: 80' x 130', front 25, rear 10, sides 7.5 → envelope x 7.5–72.5, y 25–120
 const fit = siteFit(
@@ -101,5 +109,36 @@ describe("schematic validation", () => {
       { buildingArea: "4000" },
     );
     expect(siteKey(changed)).not.toBe(o.siteKey);
+  });
+});
+
+describe("confirmation", () => {
+  const inputs = {
+    lotWidthFt: 80,
+    lotDepthFt: 130,
+    setbacks: { front: 25, rear: 10, left: 7.5, right: 7.5 },
+  };
+  const f = siteFit(null, inputs, { buildingArea: "4000" });
+  it("stays confirmed only while the site, assumptions and reading are unchanged", () => {
+    const confirmed = { ...inputs, confirmedKey: confirmKey(f, inputs, "2026-10-20T10:00:00Z") };
+    expect(isConfirmed(f, confirmed, "2026-10-20T10:00:00Z")).toBe(true);
+    expect(isConfirmed(f, confirmed, "2026-10-21T09:00:00Z")).toBe(false); // survey read again
+    const moreParking = { ...confirmed, parkingSfPerStall: 200 };
+    expect(
+      isConfirmed(
+        siteFit(null, moreParking, { buildingArea: "4000" }),
+        moreParking,
+        "2026-10-20T10:00:00Z",
+      ),
+    ).toBe(false);
+    const wider = { ...confirmed, setbacks: { ...inputs.setbacks, front: 30 } };
+    expect(
+      isConfirmed(siteFit(null, wider, { buildingArea: "4000" }), wider, "2026-10-20T10:00:00Z"),
+    ).toBe(false);
+  });
+  it("uses the user's parking ratio, or none", () => {
+    expect(stallsNeeded("commercial", 6000, 200)).toBe(30);
+    expect(stallsNeeded("commercial", 6000, 0)).toBeNull();
+    expect(stallsNeeded("residential", 6000, 500)).toBe(12);
   });
 });

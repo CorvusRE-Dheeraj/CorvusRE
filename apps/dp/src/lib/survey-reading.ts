@@ -80,6 +80,19 @@ export type SiteInputs = {
   lotWidthFt?: number | null;
   lotDepthFt?: number | null;
   setbacks?: Partial<Record<Side, number | null>>;
+  /** buildable-area assumptions the user can correct */
+  buildingAreaSqFt?: number | null;
+  floors?: number | null;
+  /** square feet of building per parking space; 0 = no parking needed */
+  parkingSfPerStall?: number | null;
+  maxCoveragePct?: number | null;
+  /** survey easements / no-build areas the user says don't apply ("e0", "n1", …) */
+  excludedStrips?: string[];
+  /** strips the user adds that the survey didn't show */
+  extraStrips?: { side: Side; ft: number; label: string }[];
+  /** the user confirmed the reading + these values (key = what was confirmed) */
+  confirmedAt?: string | null;
+  confirmedKey?: string | null;
 };
 
 export type Sourced = {
