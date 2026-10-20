@@ -121,9 +121,16 @@ export function MapPinPicker({
       geocoderRef.current!.geocode({ location: position }, (results, geoStatus) => {
         if (cancelled) return;
         setResolving(false);
-        setResolvedAddress(
-          geoStatus === "OK" && results ? pickBestReverseGeocodeResult(results) : null,
-        );
+        const best = geoStatus === "OK" && results ? pickBestReverseGeocodeResult(results) : null;
+        // TEXAS_BOUNDS is a rectangle — it also takes in slices of Oklahoma,
+        // New Mexico, Louisiana and Arkansas (a pin in Oklahoma City passed).
+        // The geocoded address names the real state.
+        if (best && !/,\s*TX\b/.test(best)) {
+          setResolvedAddress(null);
+          setOutsideTexas(true);
+          return;
+        }
+        setResolvedAddress(best);
       });
     }
 

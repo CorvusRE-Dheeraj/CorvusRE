@@ -277,7 +277,7 @@ export function SiteNav() {
         <div className="flex min-w-0 items-center gap-3 sm:gap-5">
           <Link to="/" aria-label="CorvusPT home" className="flex items-center gap-2">
             <LogoMark />
-            <span className="hidden font-serif text-lg font-semibold tracking-tight min-[400px]:inline">
+            <span className="hidden font-serif text-lg font-semibold tracking-tight sm:inline">
               Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
             </span>
           </Link>

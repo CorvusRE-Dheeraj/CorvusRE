@@ -33,3 +33,13 @@ describe("county coverage", () => {
     expect(url).toMatch(/^https?:\/\//);
   });
 });
+
+describe("nonTexasStateCode", () => {
+  it("flags another state's address, including Google's ', USA' form", async () => {
+    const { nonTexasStateCode } = await import("./unified-search");
+    expect(nonTexasStateCode("200 W Main St, Oklahoma City, OK 73102, USA")).toBe("OK");
+    expect(nonTexasStateCode("2770 West Evans Avenue, Denver, CO 80219")).toBe("CO");
+    expect(nonTexasStateCode("410 S 17th St, Silsbee, TX 77656, USA")).toBeNull();
+    expect(nonTexasStateCode("walmart dallas")).toBeNull();
+  });
+});

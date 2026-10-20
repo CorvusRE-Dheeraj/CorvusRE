@@ -155,18 +155,18 @@ export function ProtestRow({
   return (
     <div className="card-elev row-hover p-4" style={{ animationDelay: `${delayMs}ms` }}>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
+        <div className="min-w-0 break-words">
           <div className="font-medium">{record.propertyAddress ?? "Property removed"}</div>
           <div className="text-xs text-muted-foreground">
             {requesterEmail} • Requested {new Date(record.requestedAt).toLocaleDateString()}
             {record.protestDeadline && ` • Deadline ${record.protestDeadline}`}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={record.status}
             onChange={(e) => onStatusChange(e.target.value as ProtestStatus)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             {PROTEST_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>

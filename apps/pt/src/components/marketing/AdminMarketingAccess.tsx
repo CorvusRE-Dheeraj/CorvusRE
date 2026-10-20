@@ -87,7 +87,7 @@ export function AdminMarketingAccess({
   }
 
   return (
-    <div className="mt-6 grid gap-4">
+    <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="card-elev p-4 text-sm">
         <h2 className="font-semibold">What a Marketing Admin can do</h2>
         <div className="mt-2 grid gap-3 sm:grid-cols-2">

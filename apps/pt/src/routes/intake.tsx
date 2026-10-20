@@ -19,7 +19,7 @@ import {
   type PropertyKind,
 } from "@/lib/intake-store";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
-import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
+import { nonTexasStateCode, unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { LiveSearchLoader } from "@/components/LiveSearchLoader";
@@ -86,7 +86,7 @@ async function resolveCountyName(address: string): Promise<string | null> {
     const county = data[0]?.address?.county;
     // every Texas county is covered (statewide fallback) — only flag other states
     if (!county || data[0]?.address?.state === "Texas") return null;
-    return county.replace(/\s*County$/i, "").trim();
+    return `${county.replace(/\s*County$/i, "").trim()} County`;
   } catch {
     return null;
   }
@@ -435,6 +435,14 @@ function Intake() {
     setNearby([]);
     setMultipleOptions([]);
     setUnsupportedCounty(null);
+    // "…, Oklahoma City, OK 73102, USA" — don't search Texas records for
+    // another state's address (they'd only offer same-named Texas streets)
+    const otherState = nonTexasStateCode(addr);
+    if (otherState) {
+      setUnsupportedCounty(`another state (${otherState})`);
+      setStep("address");
+      return;
+    }
     try {
       const res = await cadLookup(addr);
       if (requestIdRef.current !== requestId) return;
@@ -655,8 +663,8 @@ function Intake() {
         <Modal onClose={() => setUnsupportedCounty(null)}>
           <h2 className="font-serif text-xl font-semibold">This address isn't in Texas</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            It looks like it's in {unsupportedCounty} County outside Texas. CorvusPT covers
-            properties in all 254 Texas counties — try a Texas address.
+            It looks like it's in {unsupportedCounty}, outside Texas. CorvusPT covers properties in
+            all 254 Texas counties — try a Texas address.
           </p>
           <button
             onClick={() => setUnsupportedCounty(null)}

@@ -502,7 +502,7 @@ function AdminManage() {
           </div>
         )}
 
-        <div className="mt-4 grid gap-4">
+        <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4">
           {usersLoading ? (
             <>
               <UserRowSkeleton />
@@ -585,7 +585,7 @@ function AdminManage() {
 
   return (
     <div className="container-page py-10">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <span className="badge-soft">Super Admin</span>
           <h1 className="mt-2 font-serif text-3xl font-semibold">Manage users &amp; settings</h1>
@@ -596,7 +596,7 @@ function AdminManage() {
         {/* Nothing on this page updates live — this is the only way to see
             anything submitted/changed after the page first loaded without a
             full reload. */}
-        <div className="flex shrink-0 gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link to="/admin" className="btn-outline text-xs">
             ← Super Admin dashboard
           </Link>
@@ -644,7 +644,7 @@ function AdminManage() {
             Manage every user, their properties, and their plan.
           </p>
 
-          <div className="mt-6 grid gap-3">
+          <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-3">
             <AddUserForm onSent={refreshAll} />
             <BulkInviteForm onSent={refreshAll} />
           </div>
@@ -755,7 +755,7 @@ function AdminManage() {
             </div>
           )}
 
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-2">
             {invitedUsersLoading ? (
               <PropertyRowSkeleton />
             ) : invitedUsers.length === 0 ? (
@@ -791,7 +791,7 @@ function AdminManage() {
             first. People who tick "join as a beta tester" when creating an account are not listed
             here: they appear under Users with the Beta plan.
           </p>
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-2">
             {betaLeadsLoading ? (
               <PropertyRowSkeleton />
             ) : betaLeads.length === 0 ? (
@@ -825,7 +825,7 @@ function AdminManage() {
             Who on staff did what — plan changes, admin access, invites, deletions, and protest
             edits. Most recent 50.
           </p>
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-2">
             {auditLogLoading ? (
               <PropertyRowSkeleton />
             ) : auditLog.length === 0 ? (
@@ -1400,7 +1400,7 @@ function UserRow({
   return (
     <div className="card-elev row-hover p-6" style={{ animationDelay: `${delayMs}ms` }}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           {/* Hidden for yourself — same self-protection as the single-row
               Delete User button below; you can't select your own account
               for bulk delete either. */}
@@ -1413,7 +1413,7 @@ function UserRow({
               aria-label={`Select ${record.email}`}
             />
           )}
-          <div>
+          <div className="min-w-0 break-words">
             <h3 className="font-serif text-lg font-semibold">
               {displayName}
               {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
@@ -1430,11 +1430,11 @@ function UserRow({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex min-w-0 max-w-full items-center gap-2 flex-wrap">
           <select
             value={record.plan}
             onChange={(e) => onPlanChange(e.target.value as PlanValue)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             title={
               record.plan === "owner_managed" || record.plan === "corvusrf_managed"
                 ? "Reflects this account's real per-property Stripe subscriptions — not manually assignable. Use Beta to grant free full access instead."
@@ -1621,7 +1621,7 @@ function UserProperties({ userId }: { userId: string }) {
           onResolving={setResolvingAddress}
           onPlaceSelected={addAddress}
           placeholder="Add a property address"
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="max-w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
         <button
           disabled={adding || resolvingAddress}
@@ -1891,13 +1891,13 @@ function InvitedUserRow({
 
 function AuditLogRow({ entry }: { entry: AdminAuditEntry }) {
   return (
-    <div className="flex items-start justify-between gap-2 rounded-md bg-secondary/40 px-3 py-2 text-sm">
+    <div className="flex flex-wrap items-start justify-between gap-2 rounded-md bg-secondary/40 px-3 py-2 text-sm [overflow-wrap:anywhere]">
       <div className="min-w-0 flex-1">
         <span className="font-medium">{AUDIT_ACTION_LABELS[entry.action] ?? entry.action}</span>
         {entry.targetEmail && <span className="text-muted-foreground"> — {entry.targetEmail}</span>}
         {entry.detail && <div className="text-xs text-muted-foreground">{entry.detail}</div>}
       </div>
-      <div className="shrink-0 text-right text-xs text-muted-foreground">
+      <div className="text-right text-xs text-muted-foreground">
         <div>{entry.actorEmail}</div>
         <div>{new Date(entry.createdAt).toLocaleString()}</div>
       </div>

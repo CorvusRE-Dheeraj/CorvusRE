@@ -177,10 +177,10 @@ export function Followups({
   });
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className="inline-flex rounded-md border border-border p-0.5 text-sm"
+          className="inline-flex max-w-full flex-wrap rounded-md border border-border p-0.5 text-sm"
           role="tablist"
           aria-label="Follow-ups view"
         >
@@ -502,7 +502,7 @@ function Tasks({
   const staffName = (id: string | null) =>
     data.staff.find((s) => s.id === id)?.name ?? "Unassigned";
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <select
           className={sel}
@@ -1194,7 +1194,7 @@ function Journey({
     }
   };
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <section className="card-elev p-4">
         <h2 className="text-sm font-semibold">Contacted → Subscribed</h2>
         {worst && (
@@ -1342,7 +1342,7 @@ function Performance({ data, onAiRun }: { data: MarketingData; onAiRun?: (r: AiR
   const brief = data.aiRuns.find((r) => r.scope === "followup-performance") ?? null;
   const tplName = (id: string) => data.templates.find((t) => t.id === id)?.name ?? "Template";
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Last</span>
         <select

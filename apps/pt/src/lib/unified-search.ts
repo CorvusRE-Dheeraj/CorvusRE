@@ -192,14 +192,19 @@ const NON_TEXAS_STATE_CODES = new Set([
 ]);
 
 function detectNonTexasState(query: string): boolean {
+  return nonTexasStateCode(query) !== null;
+}
+
+/** "200 W Main St, Oklahoma City, OK 73102, USA" → "OK"; Texas / unclear → null. */
+export function nonTexasStateCode(query: string): string | null {
   // The LAST ", XX" in the text is the one that actually sits in the
   // state position ("123 Texas St, Denver, CO" has "Texas" as a street
   // name earlier but the real state code at the end) — matched with a word
   // boundary after it so "CO" doesn't also match inside "CO2" or similar.
   const matches = [...query.matchAll(/,\s*([A-Za-z]{2})\b/g)];
-  if (matches.length === 0) return false;
+  if (matches.length === 0) return null;
   const code = matches[matches.length - 1][1].toUpperCase();
-  return NON_TEXAS_STATE_CODES.has(code);
+  return NON_TEXAS_STATE_CODES.has(code) ? code : null;
 }
 
 export type UnifiedMatch = {
