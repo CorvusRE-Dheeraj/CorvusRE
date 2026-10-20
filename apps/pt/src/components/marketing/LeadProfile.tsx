@@ -26,11 +26,14 @@ import {
   type Activity,
   type Lead,
   type LeadInput,
+  type LeadProperty,
   type MarketingData,
   type Outcome,
   type Stage,
 } from "@/lib/marketing";
 import {
+  rankLead,
+  shownPriority,
   cleanCounty,
   cleanEmail,
   cleanPhone,
@@ -42,11 +45,15 @@ import {
 } from "@/lib/marketing-crm";
 import {
   acceptCandidate,
+  analyzeProperty,
   dropFlag,
+  refreshProperty,
   researchLead,
+  researchPropertyOwner,
   verifyField,
   verifyProperty,
 } from "@/lib/marketing-research";
+import { OutreachWriter } from "./OutreachWriter";
 import {
   Field,
   PriorityBadge,
@@ -99,6 +106,9 @@ export function LeadProfile({
   const s = scoreLead(lead, data.activities);
   const rec = recommend(lead, data, s.score);
   const props = data.properties.filter((p) => p.leadId === lead.id);
+  const rank = rankLead(lead, props, data.activities);
+  const shown = shownPriority(lead, rank);
+  const staffPriority = lead.fieldSources.priority?.source === "Staff";
   const history = data.activities.filter((a) => a.leadId === lead.id);
   const fups = data.followups.filter((x) => x.leadId === lead.id);
   const staffName = (id: string | null) => data.staff.find((x) => x.id === id)?.name ?? null;
@@ -188,7 +198,7 @@ export function LeadProfile({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-serif text-2xl font-semibold">{leadName(lead)}</h2>
-              <PriorityBadge priority={lead.priority ?? rec.priority} />
+              <PriorityBadge priority={shown} />
               <StageBadge stage={lead.stage} />
             </div>
             <p className="text-sm text-muted-foreground">
@@ -227,6 +237,30 @@ export function LeadProfile({
                   {STAGE_LABEL[st]}
                 </option>
               ))}
+            </select>
+            <select
+              aria-label="Priority"
+              value={staffPriority ? (lead.priority ?? "") : ""}
+              disabled={!!busy}
+              title="Corvus AI ranks every lead; pick a level to override it"
+              onChange={(e) => {
+                const v = e.target.value as "high" | "medium" | "low" | "";
+                const fs = { ...lead.fieldSources };
+                if (v)
+                  fs.priority = { source: "Staff", verified: true, at: new Date().toISOString() };
+                else delete fs.priority;
+                void act(
+                  "priority",
+                  () => updateLead(lead.id, { priority: v || null, fieldSources: fs }),
+                  v ? "Priority set." : "Back to the AI ranking.",
+                );
+              }}
+              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="">Priority: AI ({rank.level})</option>
+              <option value="high">High (set by staff)</option>
+              <option value="medium">Medium (set by staff)</option>
+              <option value="low">Low (set by staff)</option>
             </select>
             <select
               aria-label="Assigned to"
@@ -454,6 +488,8 @@ export function LeadProfile({
               onClose={onClose}
             />
 
+            <OutreachWriter lead={lead} data={data} reload={reload} />
+
             <section className="rounded-lg border border-border p-4">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -472,12 +508,40 @@ export function LeadProfile({
                   Press Research for a profile, priority and next action.
                 </p>
               )}
-              <p className="mt-2 text-xs text-muted-foreground">
-                <b>Priority {lead.priority ?? rec.priority}:</b>{" "}
-                {lead.priorityReason ||
-                  rec.why.join(" · ") ||
-                  s.reasons.join(" · ") ||
-                  "not enough information yet"}
+            </section>
+
+            <section className="rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  Why {shown[0].toUpperCase() + shown.slice(1)} priority
+                </h3>
+                <span className="text-[11px] text-muted-foreground">
+                  {staffPriority
+                    ? `Set by staff · AI ranks it ${rank.level}`
+                    : `AI ranking · ${rank.points} points`}
+                </span>
+              </div>
+              {rank.strongest && (
+                <p className="mt-2 rounded-md bg-emerald-50 px-2 py-1.5 text-xs text-emerald-950">
+                  <b>Strongest opportunity:</b> {rank.strongest}
+                </p>
+              )}
+              <ul className="mt-2 grid gap-0.5 text-xs">
+                {rank.factors.map((f) => (
+                  <li key={f.label} className="flex justify-between gap-2">
+                    <span>{f.label}</span>
+                    <span
+                      className={`tabular-nums ${f.points < 0 ? "text-rose-700" : "text-muted-foreground"}`}
+                    >
+                      {f.points > 0 ? "+" : ""}
+                      {f.points}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                * High 55+, Medium 30+. Indicators of protest potential — not a promise of a lower
+                value or savings.
               </p>
             </section>
 
@@ -572,7 +636,7 @@ function PortfolioCard({
       {props.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
           <b className="text-foreground">{money(total)}</b> assessed ·{" "}
-          {counties.join(", ") || "county unknown"} · est. savings ~
+          {counties.join(", ") || "county unknown"} · possible savings ~
           <b className="text-foreground">{money(savings)}/yr</b>*
         </p>
       )}
@@ -676,81 +740,15 @@ function PortfolioCard({
         </p>
       ) : (
         <ul className="mt-2 grid gap-1.5">
-          {props.map((p) => {
-            const o = opportunity(p);
-            return (
-              <li
-                key={p.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-b border-border/60 pb-1.5 text-sm last:border-0"
-              >
-                <span className="min-w-0 truncate font-medium" title={p.address ?? undefined}>
-                  {p.address ?? `Account ${p.accountNumber}`}
-                </span>
-                <span className="text-right font-semibold tabular-nums">
-                  {money(p.assessedValue)}
-                </span>
-                <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  {[
-                    p.county && `${p.county} County`,
-                    p.propertyType,
-                    p.accountNumber && `#${p.accountNumber}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  {o && (
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${OPP_TONE[o.level]}`}
-                    >
-                      {o.note}
-                    </span>
-                  )}
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] ${p.verified ? "bg-secondary" : "bg-amber-50 text-amber-900"}`}
-                    title={p.sourceDetail ?? undefined}
-                  >
-                    {p.verified ? "✓ " : ""}
-                    {p.sourceDetail ?? p.source}
-                  </span>
-                </span>
-                <span className="flex justify-end gap-1">
-                  {!p.verified && (
-                    <button
-                      type="button"
-                      aria-label="Mark verified"
-                      title="Mark verified"
-                      className="rounded p-1 hover:bg-secondary"
-                      onClick={() => void act("vp", () => verifyProperty(p))}
-                    >
-                      <Check className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  )}
-                  {p.source !== "account" && (
-                    <button
-                      type="button"
-                      aria-label="Remove from portfolio"
-                      title="Remove from portfolio"
-                      className="rounded p-1 hover:bg-secondary"
-                      onClick={async () => {
-                        if (
-                          await confirmDialog(
-                            `Remove ${p.address ?? "this property"} from ${leadName(lead)}'s portfolio?`,
-                          )
-                        )
-                          void act("rmprop", () => deleteProperty(p.id));
-                      }}
-                    >
-                      <X className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  )}
-                </span>
-              </li>
-            );
-          })}
+          {props.map((p) => (
+            <PropertyRow key={p.id} p={p} lead={lead} data={data} busy={busy} act={act} />
+          ))}
         </ul>
       )}
       {props.length > 0 && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          * Estimate for prioritising only: a 5% reduction at a ~2.2% tax rate.
+          * Possible savings are a rough illustration for prioritising (a 5% reduction at a ~2.2%
+          tax rate) — not a quote or a guarantee.
         </p>
       )}
     </section>
@@ -1215,5 +1213,198 @@ export function LeadForm({
         </button>
       </div>
     </form>
+  );
+}
+
+const FLAG_DOT = { strong: "bg-rose-600", moderate: "bg-amber-500", info: "bg-sky-500" } as const;
+
+function PropertyRow({
+  p,
+  lead,
+  data,
+  busy,
+  act,
+}: {
+  p: LeadProperty;
+  lead: Lead;
+  data: MarketingData;
+  busy: string | null;
+  act: Act;
+}) {
+  const o = opportunity(p);
+  const flags = p.analysis?.flags ?? [];
+  return (
+    <li className="grid gap-1 border-b border-border/60 pb-2 text-sm last:border-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3">
+        <span className="min-w-0 truncate font-medium" title={p.address ?? undefined}>
+          {p.address ?? `Account ${p.accountNumber}`}
+        </span>
+        <span className="text-right font-semibold tabular-nums">
+          {money(p.assessedValue)}
+          {p.valueYear && (
+            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+              {p.valueYear}
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        {[
+          p.county && `${p.county} County`,
+          p.propertyType,
+          p.accountNumber && `#${p.accountNumber}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        {p.changePct != null && (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${p.changePct >= 10 ? "bg-rose-100 text-rose-900" : p.changePct >= 5 ? "bg-amber-100 text-amber-900" : "bg-secondary"}`}
+            title={`Previous${p.priorYear ? ` (${p.priorYear})` : ""}: ${money(p.priorValue)}`}
+          >
+            {p.changePct > 0 ? "+" : ""}
+            {p.changePct}% vs {p.priorYear ?? "last year"}
+          </span>
+        )}
+        {o && !flags.length && !(p.changePct != null && o.note.startsWith("Value up")) && (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${OPP_TONE[o.level]}`}>
+            {o.note}
+          </span>
+        )}
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] ${p.verified ? "bg-secondary" : "bg-amber-50 text-amber-900"}`}
+          title={p.sourceDetail ?? undefined}
+        >
+          {p.verified ? "✓ " : ""}
+          {p.sourceDetail ?? p.source}
+          {p.refreshedAt && ` · updated ${relDays(p.refreshedAt)}`}
+        </span>
+      </div>
+      {flags.length > 0 && (
+        <ul className="grid gap-0.5 text-xs">
+          {flags.map((f, i) => (
+            <li key={i} className="flex items-start gap-1.5">
+              <span
+                className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${FLAG_DOT[f.level]}`}
+                aria-hidden
+              />
+              <span>{f.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.analysis?.explanation && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-accent">Corvus AI on this assessment</summary>
+          <MarkdownLite text={p.analysis.explanation} className="mt-1" />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Sources:{" "}
+            {p.analysis.sources.map((src, i) => (
+              <span key={i}>
+                {i > 0 && " · "}
+                {src.url ? (
+                  <a
+                    href={src.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    {src.label}
+                  </a>
+                ) : (
+                  src.label
+                )}
+              </span>
+            ))}
+            {p.analyzedAt && ` · reviewed ${relDays(p.analyzedAt)}`}
+          </p>
+        </details>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <button
+          type="button"
+          disabled={!!busy}
+          className="text-accent hover:underline disabled:opacity-50"
+          onClick={() =>
+            void act(
+              `refresh-${p.id}`,
+              async () => {
+                if (!(await refreshProperty(p)))
+                  throw new Error("The county record wasn't found for this address.");
+              },
+              "Updated from the county record.",
+            )
+          }
+        >
+          {busy === `refresh-${p.id}` ? "Refreshing…" : "Refresh from county"}
+        </button>
+        <button
+          type="button"
+          disabled={!!busy}
+          className="text-accent hover:underline disabled:opacity-50"
+          onClick={() =>
+            void act(`analyze-${p.id}`, async () => {
+              const a = await analyzeProperty(lead, p);
+              toast.success(
+                a.flags.filter((f) => f.level !== "info").length
+                  ? "Assessment reviewed — concerns flagged."
+                  : "Assessment reviewed — nothing flagged.",
+              );
+            })
+          }
+        >
+          {busy === `analyze-${p.id}`
+            ? "Reviewing…"
+            : p.analysis && "comps" in p.analysis
+              ? "Review again"
+              : "Review assessment"}
+        </button>
+        <button
+          type="button"
+          disabled={!!busy}
+          className="text-accent hover:underline disabled:opacity-50"
+          onClick={() =>
+            void act(`owner-${p.id}`, async () => {
+              const r = await researchPropertyOwner(lead, p, data);
+              toast.success(
+                `Owner researched — ${r.linked} more propert${r.linked === 1 ? "y" : "ies"} linked${r.candidates ? `, ${r.candidates} to verify` : ""}.`,
+              );
+            })
+          }
+        >
+          {busy === `owner-${p.id}` ? "Researching…" : "Research owner"}
+        </button>
+        <span className="ml-auto flex gap-1">
+          {!p.verified && (
+            <button
+              type="button"
+              aria-label="Mark verified"
+              title="Mark verified"
+              className="rounded p-1 hover:bg-secondary"
+              onClick={() => void act("vp", () => verifyProperty(p))}
+            >
+              <Check className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+          {p.source !== "account" && (
+            <button
+              type="button"
+              aria-label="Remove from portfolio"
+              title="Remove from portfolio"
+              className="rounded p-1 hover:bg-secondary"
+              onClick={async () => {
+                if (
+                  await confirmDialog(
+                    `Remove ${p.address ?? "this property"} from ${leadName(lead)}'s portfolio?`,
+                  )
+                )
+                  void act("rmprop", () => deleteProperty(p.id));
+              }}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+        </span>
+      </div>
+    </li>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Building2,
   ChevronRight,
   Filter,
   Mail,
@@ -32,6 +33,7 @@ import {
   setLeadStage,
   updateLead,
   type AiRun,
+  type Lead,
   type MarketingData,
   type Stage,
 } from "@/lib/marketing";
@@ -40,12 +42,16 @@ import {
   autoSegments,
   describeFilters,
   isEmptyFilter,
+  rankAll,
+  shownPriority,
   leadName,
   recommend,
   type LeadFilters,
 } from "@/lib/marketing-crm";
 import { addLeadWithProperty, researchMany } from "@/lib/marketing-research";
 import { CrmRules } from "./CrmRules";
+import { ProspectFinder } from "./ProspectFinder";
+import { ProspectLists } from "./ProspectLists";
 import { LeadForm, LeadProfile } from "./LeadProfile";
 import { LeadImport } from "./LeadImport";
 import { PodioSync } from "./PodioSync";
@@ -82,10 +88,11 @@ export function LeadsCrm({
   const [filters, setFilters] = useState<LeadFilters>(
     focus.filters ?? (focus.stages ? { stages: focus.stages } : {}),
   );
-  const [view, setView] = useState<"list" | "portfolios">("list");
+  const [view, setView] = useState<"list" | "portfolios" | "lists">("list");
+  const [findCounty, setFindCounty] = useState<string | undefined>(undefined);
   const [showFilters, setShowFilters] = useState(false);
   const [openId, setOpenId] = useState<string | null>(focus.leadId ?? null);
-  const [modal, setModal] = useState<"add" | "import" | "podio" | "rules" | null>(
+  const [modal, setModal] = useState<"add" | "import" | "podio" | "rules" | "prospects" | null>(
     typeof window !== "undefined" && /[?&]podio=/.test(window.location.search) ? "podio" : null,
   );
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -106,10 +113,44 @@ export function LeadsCrm({
     }
   }, [modal]);
 
-  const ctx = useMemo(
-    () => ({ activities: data.activities, campaigns: data.campaigns, me: data.me }),
-    [data],
+  // Corvus AI's explained ranking for every lead; a staff-set priority wins.
+  const ranks = useMemo(() => rankAll(data), [data]);
+  const priorityOf = useCallback(
+    (l: Lead) => (ranks.get(l.id) ? shownPriority(l, ranks.get(l.id)!) : (l.priority ?? "low")),
+    [ranks],
   );
+  const ctx = useMemo(
+    () => ({ activities: data.activities, campaigns: data.campaigns, me: data.me, priorityOf }),
+    [data, priorityOf],
+  );
+  // Ownership research runs on its own for high-priority prospects nobody has
+  // researched yet (a few per visit, in the background).
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current) return;
+    autoRan.current = true;
+    const due = data.leads
+      .filter(
+        (l) =>
+          !l.researchedAt &&
+          priorityOf(l) === "high" &&
+          ["new", "researching", "ready", "contacted", "interested", "registered"].includes(
+            l.stage,
+          ),
+      )
+      .slice(0, 5);
+    if (!due.length) return;
+    const id = toast.loading(
+      `Corvus AI is researching ${due.length} high-priority prospect${due.length === 1 ? "" : "s"}…`,
+    );
+    researchMany(due, data, () => undefined)
+      .then(async (r) => {
+        await reload();
+        toast.success(`Researched ${r.ok} high-priority prospect${r.ok === 1 ? "" : "s"}.`, { id });
+      })
+      .catch(() => toast.dismiss(id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const matched = useMemo(() => applyFilters(data.leads, filters, ctx), [data.leads, filters, ctx]);
   const rows = useMemo(
     () =>
@@ -117,10 +158,16 @@ export function LeadsCrm({
         .map((l) => {
           const s = scoreLead(l, data.activities);
           const r = recommend(l, data, s.score);
-          return { l, s, r, p: l.priority ?? r.priority };
+          const rk = ranks.get(l.id);
+          return { l, s, r, rk, p: priorityOf(l) };
         })
-        .sort((a, b) => PRIORITY_RANK[a.p] - PRIORITY_RANK[b.p] || b.s.score - a.s.score),
-    [matched, data],
+        .sort(
+          (a, b) =>
+            PRIORITY_RANK[a.p] - PRIORITY_RANK[b.p] ||
+            (b.rk?.points ?? 0) - (a.rk?.points ?? 0) ||
+            b.s.score - a.s.score,
+        ),
+    [matched, data, ranks, priorityOf],
   );
   const attention = useMemo(
     () =>
@@ -129,7 +176,7 @@ export function LeadsCrm({
         .slice(0, 6),
     [data],
   );
-  const suggested = useMemo(() => autoSegments(data), [data]);
+  const suggested = useMemo(() => autoSegments(data, new Date(), priorityOf), [data, priorityOf]);
   const options = useMemo(() => {
     const uniq = (xs: (string | null)[]) => [...new Set(xs.filter(Boolean) as string[])].sort();
     return {
@@ -281,6 +328,17 @@ export function LeadsCrm({
           className="btn-primary btn-primary-hover inline-flex items-center gap-1.5 text-sm"
         >
           <Plus className="h-4 w-4" aria-hidden /> Add lead
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setFindCounty(undefined);
+            setModal("prospects");
+          }}
+          className="btn-outline inline-flex items-center gap-1.5 text-sm"
+          title="Commercial properties from the county appraisal district, grouped by owner"
+        >
+          <Building2 className="h-4 w-4" aria-hidden /> Find prospects
         </button>
         <button
           type="button"
@@ -437,6 +495,33 @@ export function LeadsCrm({
             onChange={(v) => setF({ deadlineWithinDays: v ? Number(v) : null })}
             options={["7", "14", "30", "60"]}
             display={(v) => `Within ${v} days`}
+          />
+          <FilterSelect
+            label="Assessed value change"
+            value={filters.minChangePct?.toString() ?? ""}
+            onChange={(v) => setF({ minChangePct: v ? Number(v) : null })}
+            options={["5", "10", "20"]}
+            display={(v) => `Up ${v}%+ on last year`}
+          />
+          <FilterSelect
+            label="Protest potential"
+            value={filters.flaggedOnly ? "yes" : ""}
+            onChange={(v) => setF({ flaggedOnly: v ? true : null })}
+            options={["yes"]}
+            display={() => "Flagged by the assessment review"}
+          />
+          <FilterSelect
+            label="Engagement"
+            value={filters.engagement ?? ""}
+            onChange={(v) => setF({ engagement: (v || null) as LeadFilters["engagement"] })}
+            options={["never_contacted", "engaged", "unresponsive"]}
+            display={(v) =>
+              ({
+                never_contacted: "Never contacted",
+                engaged: "Engaged (replied / interested)",
+                unresponsive: "No reply to 2+ attempts",
+              })[v as "engaged"]
+            }
           />
           <FilterSelect
             label="Source"
@@ -614,7 +699,7 @@ export function LeadsCrm({
           role="tablist"
           aria-label="View"
         >
-          {(["list", "portfolios"] as const).map((v) => (
+          {(["list", "portfolios", "lists"] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -623,7 +708,7 @@ export function LeadsCrm({
               onClick={() => setView(v)}
               className={`rounded px-3 py-1 ${view === v ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
             >
-              {v === "list" ? "Leads" : "Portfolios"}
+              {v === "list" ? "Leads" : v === "portfolios" ? "Portfolios" : "Prospect lists"}
             </button>
           ))}
         </div>
@@ -733,8 +818,29 @@ export function LeadsCrm({
         </span>
       </div>
 
-      {view === "portfolios" ? (
-        <Portfolios data={data} leads={matched} onOpen={setOpenId} onAiRun={onAiRun} />
+      {view === "lists" ? (
+        <ProspectLists
+          data={data}
+          reload={reload}
+          go={go}
+          priorityOf={priorityOf}
+          onOpen={(f) => {
+            setFilters(f);
+            setView("list");
+          }}
+          onFind={(c) => {
+            setFindCounty(c);
+            setModal("prospects");
+          }}
+        />
+      ) : view === "portfolios" ? (
+        <Portfolios
+          data={data}
+          leads={matched}
+          onOpen={setOpenId}
+          onAiRun={onAiRun}
+          priorityOf={priorityOf}
+        />
       ) : (
         <div className="card-elev overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
@@ -815,6 +921,16 @@ export function LeadsCrm({
                           </div>
                           <div className="truncate text-muted-foreground">
                             {l.counties.join(", ")}
+                            {l.maxChangePct != null && l.maxChangePct >= 5 && (
+                              <span className="ml-1.5 font-semibold text-rose-700">
+                                +{l.maxChangePct}%
+                              </span>
+                            )}
+                            {l.flaggedCount > 0 && (
+                              <span className="ml-1.5 text-amber-800">
+                                {l.flaggedCount} flagged
+                              </span>
+                            )}
                           </div>
                         </>
                       ) : (
@@ -903,6 +1019,14 @@ export function LeadsCrm({
         <PodioSync data={data} reload={reload} onClose={() => setModal(null)} />
       )}
       {modal === "rules" && <CrmRules data={data} reload={reload} onClose={() => setModal(null)} />}
+      {modal === "prospects" && (
+        <ProspectFinder
+          data={data}
+          reload={reload}
+          initialCounty={findCounty}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }

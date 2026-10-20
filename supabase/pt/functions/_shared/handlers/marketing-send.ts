@@ -37,15 +37,34 @@ type Lead = {
   property_type: string | null;
   property_address: string | null;
   unsubscribe_token: string;
+  company: string | null;
+  portfolio_count: number | null;
+  portfolio_value: number | null;
+  max_change_pct: number | null;
+  protest_deadline: string | null;
 };
+const LEAD_COLS =
+  "id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline";
 
+// Same tokens and fallbacks as personalize() in apps/pt/src/lib/marketing-crm.ts.
 function personalize(text: string, lead: Lead): string {
   const first = (lead.full_name ?? "").trim().split(/\s+/)[0] || "there";
+  const n = lead.portfolio_count ?? 0;
+  const money = (v: number | null) => (v == null ? "your properties" : `$${Math.round(v).toLocaleString("en-US")}`);
+  const deadline = lead.protest_deadline
+    ? new Date(`${lead.protest_deadline}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    : "May 15 (or 30 days after your notice, if later)";
   return text
     .replaceAll("{{first_name}}", first)
     .replaceAll("{{name}}", lead.full_name ?? "there")
+    .replaceAll("{{company}}", lead.company ?? lead.full_name ?? "your company")
     .replaceAll("{{property_address}}", lead.property_address ?? "your property")
-    .replaceAll("{{county}}", lead.county ?? "your county");
+    .replaceAll("{{county}}", lead.county ?? "your")
+    .replaceAll("{{property_count}}", String(n || 1))
+    .replaceAll("{{portfolio_value}}", money(lead.portfolio_value))
+    .replaceAll("{{value_change}}", lead.max_change_pct != null && lead.max_change_pct > 0 ? `${lead.max_change_pct}%` : "noticeably")
+    .replaceAll("{{protest_deadline}}", deadline)
+    .replaceAll("{{portfolio_note}}", n > 1 ? ` and your other ${n - 1} propert${n === 2 ? "y" : "ies"}` : "");
 }
 
 function renderEmail(subject: string, body: string, lead: Lead): string {
@@ -79,7 +98,7 @@ async function sendOne(resendKey: string, to: string, subject: string, html: str
 async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>): Promise<Lead[]> {
   let q = db
     .from("marketing_leads")
-    .select("id, full_name, email, stage, county, property_type, property_address, unsubscribe_token")
+    .select(LEAD_COLS)
     .is("unsubscribed_at", null)
     .not("email", "is", null)
     .neq("stage", "do_not_contact")
@@ -117,7 +136,7 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
       await sendOne(resendKey, lead.email!, personalize(c.subject, lead), renderEmail(c.subject, c.body, lead), unsub);
       sent++;
       await db.from("marketing_activities").insert({
-        lead_id: lead.id, campaign_id: campaignId, kind: "email",
+        lead_id: lead.id, campaign_id: campaignId, kind: "email", template_id: c.template_id ?? null,
         summary: `Campaign email: ${c.name}`, body: personalize(c.subject, lead), created_by: actor,
       });
       await db.from("marketing_leads").update({ last_contacted_at: new Date().toISOString() }).eq("id", lead.id);
@@ -143,7 +162,7 @@ async function sendCampaign(db: SupabaseClient, resendKey: string, campaignId: s
 async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: string, actor: string | null) {
   const { data: f, error } = await db
     .from("marketing_followups")
-    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to)")
+    .select("*, lead:marketing_leads(id, full_name, email, stage, county, property_type, property_address, unsubscribe_token, unsubscribed_at, assigned_to, company, portfolio_count, portfolio_value, max_change_pct, protest_deadline)")
     .eq("id", followupId)
     .single();
   if (error || !f) throw new Error("Follow-up not found");
@@ -159,7 +178,7 @@ async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: s
   const now = new Date().toISOString();
   await db.from("marketing_followups").update({ status: "done", completed_at: now }).eq("id", followupId);
   await db.from("marketing_activities").insert({
-    lead_id: lead.id, kind: "email", summary: `Follow-up email: ${personalize(subject, lead)}`, body: personalize(f.message, lead), created_by: actor,
+    lead_id: lead.id, kind: "email", template_id: f.template_id ?? null, summary: `Follow-up email: ${personalize(subject, lead)}`, body: personalize(f.message, lead), created_by: actor,
   });
   await db.from("marketing_leads").update({ last_contacted_at: now }).eq("id", lead.id);
   await db.rpc("marketing_apply_rules", { p_lead: lead.id });

@@ -126,6 +126,9 @@ export type Lead = {
   cities: string[];
   zips: string[];
   propertyTypes: string[];
+  maxChangePct: number | null;
+  flaggedCount: number;
+  lastRefreshedAt: string | null;
 };
 
 /** Where a lead detail came from, so staff can see it and verify uncertain ones. */
@@ -179,6 +182,33 @@ export type LeadProperty = {
   confidence: number | null;
   notes: string | null;
   dedupeKey: string;
+  valueYear: number | null;
+  priorYear: number | null;
+  refreshedAt: string | null;
+  analysis: AssessmentAnalysis | null;
+  analyzedAt: string | null;
+  changePct: number | null;
+  flagged: boolean;
+};
+
+/** What the assessment review found for one property (see analyzeProperty). */
+export type AssessmentFlag = {
+  kind: "increase" | "comparables" | "high_value" | "deadline" | "land_ratio";
+  level: "strong" | "moderate" | "info";
+  text: string;
+};
+export type AssessmentAnalysis = {
+  flags: AssessmentFlag[];
+  comps?: {
+    count: number;
+    median: number | null;
+    medianPerAcre: number | null;
+    subjectPerAcre: number | null;
+  } | null;
+  history?: { year: number; value: number | null }[];
+  explanation?: string | null;
+  analyzedAt: string;
+  sources: { label: string; url?: string | null }[];
 };
 
 export type Outcome = "interested" | "not_interested" | "no_answer" | "replied" | "do_not_contact";
@@ -212,6 +242,7 @@ export type Activity = {
   body: string | null;
   outcome: Outcome | null;
   createdBy: string | null;
+  templateId: string | null;
 };
 
 export type CampaignStatus = "draft" | "approved" | "scheduled" | "sending" | "sent" | "paused";
@@ -239,6 +270,7 @@ export type Campaign = {
   sentAt: string | null;
   pausedAt: string | null;
   stats: { targeted?: number; sent?: number; failed?: number; errors?: string[] };
+  templateId: string | null;
 };
 
 export type Followup = {
@@ -312,6 +344,9 @@ export const toLead = (r: any): Lead => ({
   cities: r.cities ?? [],
   zips: r.zips ?? [],
   propertyTypes: r.property_types ?? [],
+  maxChangePct: r.max_change_pct == null ? null : Number(r.max_change_pct),
+  flaggedCount: r.flagged_count ?? 0,
+  lastRefreshedAt: r.last_refreshed_at ?? null,
 });
 const num = (v: unknown) => (v == null ? null : Number(v));
 export const toProperty = (r: any): LeadProperty => ({
@@ -339,6 +374,13 @@ export const toProperty = (r: any): LeadProperty => ({
   confidence: num(r.confidence),
   notes: r.notes,
   dedupeKey: r.dedupe_key,
+  valueYear: r.value_year ?? null,
+  priorYear: r.prior_year ?? null,
+  refreshedAt: r.refreshed_at ?? null,
+  analysis: r.analysis ?? null,
+  analyzedAt: r.analyzed_at ?? null,
+  changePct: num(r.change_pct),
+  flagged: !!r.flagged,
 });
 const toActivity = (r: any): Activity => ({
   id: r.id,
@@ -350,6 +392,7 @@ const toActivity = (r: any): Activity => ({
   body: r.body,
   outcome: r.outcome ?? null,
   createdBy: r.created_by ?? null,
+  templateId: r.template_id ?? null,
 });
 const toCampaign = (r: any): Campaign => ({
   id: r.id,
@@ -366,6 +409,7 @@ const toCampaign = (r: any): Campaign => ({
   sentAt: r.sent_at,
   pausedAt: r.paused_at,
   stats: r.stats ?? {},
+  templateId: r.template_id ?? null,
 });
 const toFollowup = (r: any): Followup => ({
   id: r.id,
@@ -407,6 +451,43 @@ export type Segment = {
   description: string | null;
   filters: LeadFilters;
   aiSuggested: boolean;
+  updatedAt: string;
+  kind: "segment" | "list";
+  status: "draft" | "approved";
+  county: string | null;
+  notes: string | null;
+  approvedAt: string | null;
+};
+
+export const TEMPLATE_OBJECTIVES = [
+  "initial_outreach",
+  "assessment_increase",
+  "deadline",
+  "registration_reminder",
+  "subscription_promo",
+  "follow_up",
+] as const;
+export type TemplateObjective = (typeof TEMPLATE_OBJECTIVES)[number];
+export const OBJECTIVE_LABEL: Record<TemplateObjective, string> = {
+  initial_outreach: "Initial outreach",
+  assessment_increase: "Assessment increase alert",
+  deadline: "Protest deadline",
+  registration_reminder: "Registration reminder",
+  subscription_promo: "Subscription offer",
+  follow_up: "Follow-up",
+};
+export type Template = {
+  id: string;
+  name: string;
+  objective: TemplateObjective;
+  channel: "email" | "sms";
+  subject: string | null;
+  body: string;
+  active: boolean;
+  isDefault: boolean;
+  aiGenerated: boolean;
+  uses: number;
+  lastUsedAt: string | null;
   updatedAt: string;
 };
 export type SyncChange = {
@@ -459,6 +540,7 @@ export type MarketingData = {
   followups: Followup[];
   aiRuns: AiRun[];
   segments: Segment[];
+  templates: Template[];
   syncChanges: SyncChange[];
   notifications: StaffNotification[];
   settings: MarketingSettings;
@@ -475,7 +557,7 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 export async function loadMarketing(): Promise<MarketingData> {
   const { data: u } = await supabase.auth.getUser();
   const me = u.user?.id ?? null;
-  const [l, p, a, c, f, r, sg, sc, n, st, staff] = await Promise.all([
+  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
@@ -512,8 +594,9 @@ export async function loadMarketing(): Promise<MarketingData> {
       .limit(100),
     supabase.from("marketing_settings").select("*").eq("id", 1).maybeSingle(),
     supabase.rpc("marketing_staff"),
+    supabase.from("marketing_templates").select("*").order("objective").order("channel"),
   ]);
-  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff]) if (res.error) throw res.error;
+  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp]) if (res.error) throw res.error;
   const s = st.data;
   return {
     leads: (l.data ?? []).map(toLead),
@@ -536,7 +619,13 @@ export async function loadMarketing(): Promise<MarketingData> {
       filters: x.filters ?? {},
       aiSuggested: x.ai_suggested,
       updatedAt: x.updated_at,
+      kind: x.kind ?? "segment",
+      status: x.status ?? "draft",
+      county: x.county ?? null,
+      notes: x.notes ?? null,
+      approvedAt: x.approved_at ?? null,
     })),
+    templates: (tp.data ?? []).map(toTemplate),
     syncChanges: (sc.data ?? []).map((x) => ({
       id: x.id,
       createdAt: x.created_at,
@@ -613,19 +702,96 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
 
 export async function saveSegment(
   id: string | null,
-  s: { name: string; description?: string | null; filters: LeadFilters; aiSuggested?: boolean },
+  s: {
+    name: string;
+    description?: string | null;
+    filters: LeadFilters;
+    aiSuggested?: boolean;
+    kind?: "segment" | "list";
+    county?: string | null;
+    notes?: string | null;
+  },
 ): Promise<void> {
   const { data: u } = await supabase.auth.getUser();
-  const row = {
+  const row: Record<string, unknown> = {
     name: s.name,
     description: s.description ?? null,
     filters: s.filters,
     ai_suggested: !!s.aiSuggested,
   };
+  if (s.kind) row.kind = s.kind;
+  if (s.county !== undefined) row.county = s.county;
+  if (s.notes !== undefined) row.notes = s.notes;
+  // an edited list goes back to draft until approved again
+  if (id) {
+    row.status = "draft";
+    row.approved_at = null;
+    row.approved_by = null;
+  }
   const { error } = id
     ? await supabase.from("marketing_segments").update(row).eq("id", id)
     : await supabase.from("marketing_segments").insert({ ...row, created_by: u.user?.id ?? null });
   if (error) throw error;
+}
+
+export async function approveSegment(id: string): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("marketing_segments")
+    .update({
+      status: "approved",
+      approved_by: u.user?.id ?? null,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// ── Templates ───────────────────────────────────────────────────────────────
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+const toTemplate = (x: any): Template => ({
+  id: x.id,
+  name: x.name,
+  objective: x.objective,
+  channel: x.channel,
+  subject: x.subject,
+  body: x.body,
+  active: x.active,
+  isDefault: x.is_default,
+  aiGenerated: x.ai_generated,
+  uses: x.uses ?? 0,
+  lastUsedAt: x.last_used_at,
+  updatedAt: x.updated_at,
+});
+export type TemplateInput = Partial<
+  Pick<Template, "name" | "objective" | "channel" | "subject" | "body" | "active" | "aiGenerated">
+>;
+export async function saveTemplate(id: string | null, t: TemplateInput): Promise<Template> {
+  const { data: u } = await supabase.auth.getUser();
+  const row: Record<string, unknown> = {};
+  if (t.name !== undefined) row.name = t.name;
+  if (t.objective !== undefined) row.objective = t.objective;
+  if (t.channel !== undefined) row.channel = t.channel;
+  if (t.subject !== undefined) row.subject = t.subject || null;
+  if (t.body !== undefined) row.body = t.body;
+  if (t.active !== undefined) row.active = t.active;
+  if (t.aiGenerated !== undefined) row.ai_generated = t.aiGenerated;
+  const q = id
+    ? supabase.from("marketing_templates").update(row).eq("id", id)
+    : supabase.from("marketing_templates").insert({ ...row, created_by: u.user?.id ?? null });
+  const { data, error } = await q.select("*").single();
+  if (error) throw error;
+  return toTemplate(data);
+}
+export async function deleteTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from("marketing_templates").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function markTemplateUsed(t: Template): Promise<void> {
+  await supabase
+    .from("marketing_templates")
+    .update({ uses: t.uses + 1, last_used_at: new Date().toISOString() })
+    .eq("id", t.id);
 }
 
 export async function deleteSegment(id: string): Promise<void> {
@@ -634,7 +800,9 @@ export async function deleteSegment(id: string): Promise<void> {
 }
 
 // ── Portfolio properties ────────────────────────────────────────────────────
-export type PropertyInput = Partial<Omit<LeadProperty, "id" | "createdAt" | "dedupeKey">> & {
+export type PropertyInput = Partial<
+  Omit<LeadProperty, "id" | "createdAt" | "dedupeKey" | "changePct" | "flagged">
+> & {
   leadId: string;
 };
 const propertyRow = (p: Partial<PropertyInput>) => {
@@ -660,6 +828,11 @@ const propertyRow = (p: Partial<PropertyInput>) => {
     ["verified", "verified"],
     ["confidence", "confidence"],
     ["notes", "notes"],
+    ["valueYear", "value_year"],
+    ["priorYear", "prior_year"],
+    ["refreshedAt", "refreshed_at"],
+    ["analysis", "analysis"],
+    ["analyzedAt", "analyzed_at"],
   ];
   const row: Record<string, unknown> = {};
   for (const [k, col] of map) if (p[k] !== undefined) row[col] = p[k] === "" ? null : p[k];
@@ -843,7 +1016,7 @@ export async function dismissSuggestion(lead: Lead): Promise<Lead> {
 // ── Campaigns ───────────────────────────────────────────────────────────────
 export type CampaignInput = Partial<
   Pick<Campaign, "name" | "channel" | "status" | "audience" | "subject" | "body" | "scheduledAt">
->;
+> & { templateId?: string | null };
 export async function saveCampaign(id: string | null, input: CampaignInput): Promise<Campaign> {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
@@ -853,6 +1026,7 @@ export async function saveCampaign(id: string | null, input: CampaignInput): Pro
   if (input.subject !== undefined) row.subject = input.subject;
   if (input.body !== undefined) row.body = input.body;
   if (input.scheduledAt !== undefined) row.scheduled_at = input.scheduledAt;
+  if (input.templateId !== undefined) row.template_id = input.templateId;
   const { data: u } = await supabase.auth.getUser();
   const q = id
     ? supabase.from("marketing_campaigns").update(row).eq("id", id)
@@ -932,7 +1106,7 @@ export type FollowupInput = Partial<
     | "sequenceStep"
     | "aiGenerated"
   >
->;
+> & { templateId?: string | null };
 export async function saveFollowup(id: string | null, f: FollowupInput): Promise<Followup> {
   const row: Record<string, unknown> = {};
   if (f.leadId !== undefined) row.lead_id = f.leadId;
@@ -947,6 +1121,7 @@ export async function saveFollowup(id: string | null, f: FollowupInput): Promise
   if (f.sequenceName !== undefined) row.sequence_name = f.sequenceName;
   if (f.sequenceStep !== undefined) row.sequence_step = f.sequenceStep;
   if (f.aiGenerated !== undefined) row.ai_generated = f.aiGenerated;
+  if (f.templateId !== undefined) row.template_id = f.templateId;
   const { data: u } = await supabase.auth.getUser();
   const q = id
     ? supabase.from("marketing_followups").update(row).eq("id", id)
@@ -1220,7 +1395,14 @@ export function monitor(d: MarketingData, now = new Date()): Alert[] {
 const AI_RULES =
   "You are Corvus AI, the marketing assistant for CorvusPT (Texas property tax protest software for property owners). " +
   "Use ONLY the facts given. Never invent leads, numbers, or results. Be concise and practical. " +
-  "Never mention customers' protest cases or legal filings — you only see marketing data.";
+  "Never mention customers' protest cases or legal filings — you only see marketing data. " +
+  "When writing marketing content, highlight what CorvusPT is: AI-powered assessment reviews, owner-managed protests (the owner stays in control and files with our tools and guidance), and owners keep 100% of their tax savings (no contingency fee). " +
+  "Never promise, guarantee or estimate a specific reduction, refund or savings amount — say a value may be worth reviewing, not that it will go down.";
+export const BRAND_POINTS = [
+  "AI-powered assessment reviews",
+  "Owner-managed protests — you stay in control",
+  "Keep 100% of your tax savings — no contingency fee",
+];
 
 export function leadFacts(l: Lead, acts: Activity[], fups: Followup[]): string {
   const hist = acts

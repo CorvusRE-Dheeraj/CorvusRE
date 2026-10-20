@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { Lead, LeadProperty } from "./marketing";
+import type { Lead, LeadProperty, Template } from "./marketing";
 import {
   applyFilters,
+  assessmentFlags,
+  deadlineInfo,
+  groupProspects,
+  leadsCsv,
+  personalize,
+  pickObjective,
+  pickTemplate,
+  rankLead,
+  shownPriority,
+  statutoryDeadline,
+  summarizeComps,
   buildImport,
   cleanCounty,
   cleanEmail,
@@ -69,6 +80,9 @@ const lead = (p: Partial<Lead>): Lead => ({
   cities: [],
   zips: [],
   propertyTypes: [],
+  maxChangePct: null,
+  flaggedCount: 0,
+  lastRefreshedAt: null,
   ...p,
 });
 
@@ -97,6 +111,13 @@ const prop = (p: Partial<LeadProperty>): LeadProperty => ({
   confidence: null,
   notes: null,
   dedupeKey: "",
+  valueYear: null,
+  priorYear: null,
+  refreshedAt: null,
+  analysis: null,
+  analyzedAt: null,
+  changePct: null,
+  flagged: false,
   ...p,
 });
 
@@ -382,5 +403,184 @@ describe("Podio sync proposals", () => {
       lead({ id: "q", podioItemId: 5, podioAppId: 9 }),
     ]);
     expect(m).toMatchObject({ confidence: 1 });
+  });
+});
+
+describe("AI-powered leads", () => {
+  const now = new Date("2026-10-19T12:00:00");
+  it("flags assessment increases and above-comparables values, without promising savings", () => {
+    const comps = summarizeComps({ value: 3e6, acres: 2 }, [
+      { marketValue: 1e6, legalAcreage: 1 },
+      { marketValue: 1.1e6, legalAcreage: 1 },
+      { marketValue: 1.2e6, legalAcreage: 1 },
+    ]);
+    expect(comps).toMatchObject({ count: 3, medianPerAcre: 1.1e6, subjectPerAcre: 1.5e6 });
+    const f = assessmentFlags(
+      {
+        assessedValue: 3e6,
+        priorValue: 2.5e6,
+        valueYear: 2026,
+        priorYear: 2025,
+        protestDeadline: null,
+      },
+      comps,
+      now,
+    );
+    expect(f.map((x) => [x.kind, x.level])).toEqual([
+      ["increase", "strong"],
+      ["comparables", "strong"],
+    ]);
+    expect(f[0].text).toContain("up 20.0% (2025 → 2026)");
+    expect(f.map((x) => x.text).join(" ")).not.toMatch(/save|guarantee|will be reduced/i);
+    expect(
+      assessmentFlags({ assessedValue: 2e6, priorValue: null, protestDeadline: null }, null, now)[0]
+        .kind,
+    ).toBe("high_value");
+  });
+  it("ranks with explained factors and lets staff override", () => {
+    const l = lead({
+      id: "a",
+      stage: "ready",
+      email: "a@b.com",
+      portfolioCount: 6,
+      portfolioValue: 30e6,
+      counties: ["Harris"],
+    });
+    const props = [
+      prop({
+        leadId: "a",
+        changePct: 15,
+        priorValue: 1,
+        analysis: {
+          flags: [{ kind: "increase", level: "strong", text: "Assessed value up 15%." }],
+          analyzedAt: "",
+          sources: [],
+        },
+      }),
+    ];
+    const r = rankLead(l, props, [], now);
+    expect(r.level).toBe("high");
+    expect(r.strongest).toBe("Assessed value up 15%.");
+    expect(r.factors[0].points).toBeGreaterThan(0);
+    expect(shownPriority(l, r)).toBe("high");
+    expect(
+      shownPriority({ ...l, priority: "low", fieldSources: { priority: { source: "Staff" } } }, r),
+    ).toBe("low");
+    expect(rankLead(lead({ stage: "do_not_contact" }), [], [], now).level).toBe("low");
+  });
+  it("uses the notice deadline when known, else the statutory one (next business day)", () => {
+    expect(statutoryDeadline(2027).toDateString()).toBe(new Date(2027, 4, 17).toDateString()); // May 15 2027 is a Saturday
+    expect(deadlineInfo(lead({}), now)).toMatchObject({ basis: "statutory", date: "2027-05-17" });
+    expect(deadlineInfo(lead({ protestDeadline: "2026-11-10" }), now)).toMatchObject({
+      basis: "notice",
+    });
+  });
+  it("groups county results by owner and marks known owners and parcels", () => {
+    const rec = (o: string, acct: string, v: number, prior: number | null = null) => ({
+      ownerName: o,
+      propertyAddress: `${acct} Main St, Houston, TX 77002`,
+      city: "HOUSTON",
+      zip: "77002",
+      county: "Harris",
+      cad: "Harris Central Appraisal District",
+      accountNumber: acct,
+      stateCode: "F1",
+      propertyType: "Commercial",
+      assessedValue: v,
+      priorValue: prior,
+      valueYear: 2026,
+      mailingAddress: "PO Box 1",
+    });
+    const g = groupProspects(
+      [
+        rec("BLOCK 58 LLC", "1", 5e6, 4e6),
+        rec("Block 58, L.L.C.", "2", 2e6),
+        rec("OTHER LP", "3", 1e6),
+      ],
+      [lead({ id: "x", company: "Other LP" })],
+      [prop({ leadId: "x", dedupeKey: "acct:harris:3" })],
+    );
+    expect(g).toHaveLength(2);
+    expect(g[0]).toMatchObject({
+      owner: "Block 58 LLC",
+      total: 7e6,
+      maxChangePct: 25,
+      existing: null,
+    });
+    expect(g[0].newRecords).toHaveLength(2);
+    expect(g[1]).toMatchObject({ existing: { leadId: "x" }, known: 1 });
+    expect(g[1].newRecords).toHaveLength(0);
+  });
+  it("picks the objective and template that fit, avoiding ones already sent", () => {
+    const tpl = (id: string, objective: Template["objective"], uses = 0): Template => ({
+      id,
+      name: id,
+      objective,
+      channel: "email",
+      subject: "s",
+      body: "Hi {{first_name}}, {{company}} {{value_change}}",
+      active: true,
+      isDefault: false,
+      aiGenerated: false,
+      uses,
+      lastUsedAt: null,
+      updatedAt: "",
+    });
+    const l = lead({
+      id: "a",
+      fullName: "Pat Lee",
+      company: "Acme LLC",
+      maxChangePct: 12,
+      stage: "ready",
+    });
+    expect(pickObjective(l, [], now).objective).toBe("assessment_increase");
+    expect(pickObjective({ ...l, stage: "registered" }, [], now).objective).toBe(
+      "subscription_promo",
+    );
+    expect(pickObjective({ ...l, maxChangePct: null }, [], now).objective).toBe("initial_outreach");
+    const sent = [
+      {
+        id: "1",
+        createdAt: "",
+        leadId: "a",
+        campaignId: null,
+        kind: "email" as const,
+        summary: "x",
+        body: null,
+        outcome: null,
+        createdBy: null,
+        templateId: "t1",
+      },
+    ];
+    const pick = pickTemplate(
+      l,
+      [tpl("t1", "assessment_increase", 9), tpl("t2", "assessment_increase")],
+      sent,
+      "email",
+    );
+    expect(pick.template?.id).toBe("t2");
+    expect(personalize("Hi {{first_name}}, {{company}} up {{value_change}}", l)).toBe(
+      "Hi Pat, Acme LLC up 12%",
+    );
+  });
+  it("filters by value change, protest potential and engagement; exports CSV without DNC contact details", () => {
+    const leads = [
+      lead({ id: "a", maxChangePct: 12, flaggedCount: 1 }),
+      lead({
+        id: "b",
+        maxChangePct: 2,
+        stage: "do_not_contact",
+        email: "x@y.com",
+        company: 'Quote "Co"',
+      }),
+    ];
+    const ctx = { activities: [], campaigns: [], me: null };
+    expect(applyFilters(leads, { minChangePct: 10 }, ctx).map((l) => l.id)).toEqual(["a"]);
+    expect(applyFilters(leads, { flaggedOnly: true }, ctx).map((l) => l.id)).toEqual(["a"]);
+    expect(applyFilters(leads, { engagement: "never_contacted" }, ctx)).toHaveLength(2);
+    const csv = leadsCsv(leads, { properties: [], staff: [] }, () => "low");
+    expect(csv.split("\n")[0]).toContain("Deadline basis");
+    expect(csv).toContain('"Quote ""Co"""');
+    expect(csv).not.toContain("x@y.com");
   });
 });

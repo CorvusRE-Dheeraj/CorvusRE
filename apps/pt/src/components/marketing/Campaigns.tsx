@@ -22,8 +22,13 @@ import {
   type Campaign,
   type MarketingData,
   type Stage,
+  type TemplateObjective,
+  OBJECTIVE_LABEL,
+  TEMPLATE_OBJECTIVES,
+  markTemplateUsed,
 } from "@/lib/marketing";
-import { applyFilters } from "@/lib/marketing-crm";
+import { TEMPLATE_TOKENS, applyFilters, pickObjective } from "@/lib/marketing-crm";
+import { Templates } from "./Templates";
 import { CampaignBadge, Field, inputCls, type Focus } from "./shared";
 
 // Create → approve → send now / schedule → (pause/resume) → sent, with
@@ -40,6 +45,7 @@ export function Campaigns({
 }) {
   const [editing, setEditing] = useState<Campaign | "new" | null>(null);
   const [preset, setPreset] = useState<{ name: string; audience: Audience } | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
   useEffect(() => {
     if (focus.campaignId) {
       const c = data.campaigns.find((x) => x.id === focus.campaignId);
@@ -77,6 +83,13 @@ export function Campaigns({
           Email campaigns go to leads who haven&apos;t unsubscribed. Every email includes a
           one-click unsubscribe link.
         </p>
+        <button
+          type="button"
+          onClick={() => setShowTemplates(true)}
+          className="btn-outline ml-auto text-sm"
+        >
+          Templates ({data.templates.filter((t) => t.active).length})
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -127,6 +140,9 @@ export function Campaigns({
           )}
         </section>
       ))}
+      {showTemplates && (
+        <Templates data={data} reload={reload} onClose={() => setShowTemplates(false)} />
+      )}
       {editing && (
         <CampaignEditor
           campaign={editing === "new" ? null : editing}
@@ -160,6 +176,7 @@ function CampaignEditor({
   );
   const [subject, setSubject] = useState(campaign?.subject ?? "");
   const [body, setBody] = useState(campaign?.body ?? "");
+  const [templateId, setTemplateId] = useState<string | null>(campaign?.templateId ?? null);
   const [goal, setGoal] = useState("");
   const [when, setWhen] = useState(campaign?.scheduledAt ? campaign.scheduledAt.slice(0, 16) : "");
   const [aiNote, setAiNote] = useState<string | null>(null);
@@ -167,6 +184,15 @@ function CampaignEditor({
   const status = campaign?.status ?? "draft";
   const locked = status === "sent" || status === "sending";
   const recipients = useMemo(() => audienceLeads(audience, data.leads), [audience, data.leads]);
+  // the objective that fits most of the audience (status, value change, deadline, history)
+  const bestObjective = useMemo<TemplateObjective>(() => {
+    const n = new Map<TemplateObjective, number>();
+    for (const l of recipients) {
+      const o = pickObjective(l, data.activities).objective;
+      n.set(o, (n.get(o) ?? 0) + 1);
+    }
+    return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "initial_outreach";
+  }, [recipients, data.activities]);
   const counties = useMemo(
     () => [...new Set(data.leads.flatMap((l) => l.counties))].sort(),
     [data.leads],
@@ -219,10 +245,17 @@ function CampaignEditor({
       audience,
       subject,
       body,
+      templateId,
     });
   };
 
   const audienceText = () => {
+    const ups = recipients.filter((l) => (l.maxChangePct ?? 0) >= 5).length;
+    const flagged = recipients.filter((l) => l.flaggedCount > 0).length;
+    const extra = ` ${ups} have an assessed-value increase of 5%+; ${flagged} have properties flagged by the assessment review. Template objective: ${OBJECTIVE_LABEL[bestObjective]}.`;
+    return audienceTextBase() + extra;
+  };
+  const audienceTextBase = () => {
     const f = funnel(recipients);
     return `Audience: ${recipients.length} leads (${Object.entries({
       new: f.total - f.contacted,
@@ -395,6 +428,43 @@ function CampaignEditor({
           </div>
 
           <div className="grid content-start gap-3">
+            {!locked && (
+              <Field
+                label={`Start from a template — best fit for this audience: ${OBJECTIVE_LABEL[bestObjective]}`}
+              >
+                <select
+                  className={inputCls}
+                  value={templateId ?? ""}
+                  onChange={(e) => {
+                    const t = data.templates.find((x) => x.id === e.target.value);
+                    setTemplateId(t?.id ?? null);
+                    if (t) {
+                      setSubject(t.subject ?? "");
+                      setBody(t.body);
+                    }
+                  }}
+                >
+                  <option value="">— write your own —</option>
+                  {TEMPLATE_OBJECTIVES.map((o) => {
+                    const items = data.templates.filter(
+                      (t) => t.active && t.channel === "email" && t.objective === o,
+                    );
+                    return items.length ? (
+                      <optgroup
+                        key={o}
+                        label={`${OBJECTIVE_LABEL[o]}${o === bestObjective ? " (recommended)" : ""}`}
+                      >
+                        {items.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null;
+                  })}
+                </select>
+              </Field>
+            )}
             <Field label="Subject">
               <input
                 className={inputCls}
@@ -413,7 +483,8 @@ function CampaignEditor({
               />
             </Field>
             <p className="text-[11px] text-muted-foreground">
-              * Personalize with {"{{first_name}}"}, {"{{property_address}}"}, {"{{county}}"}.
+              * Personalised per recipient: {TEMPLATE_TOKENS.join(" ")}. Never promise a reduction
+              or savings amount.
             </p>
             {!locked && (
               <div className="grid gap-2 rounded-lg border border-dashed border-border p-3">
@@ -565,12 +636,15 @@ function CampaignEditor({
                         audience: frozen,
                         subject,
                         body,
+                        templateId,
                       });
                       await setCampaignStatus(c, "approved");
                     } else {
                       const c = await save();
                       await setCampaignStatus(c, "approved");
                     }
+                    const used = data.templates.find((t) => t.id === templateId);
+                    if (used) await markTemplateUsed(used);
                     onClose();
                   },
                   "Approved — send it now or schedule it.",

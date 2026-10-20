@@ -19,12 +19,14 @@ export function Portfolios({
   leads,
   onOpen,
   onAiRun,
+  priorityOf,
 }: {
   data: MarketingData;
   /** the leads currently shown by the CRM filters */
   leads: Lead[];
   onOpen: (leadId: string) => void;
   onAiRun: (r: AiRun) => void;
+  priorityOf?: (l: Lead) => "high" | "medium" | "low";
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [onlyHigh, setOnlyHigh] = useState(false);
@@ -91,7 +93,7 @@ export function Portfolios({
               <th className="px-3 py-2 text-right font-medium">Properties</th>
               <th className="px-3 py-2 text-right font-medium">Assessed</th>
               <th className="px-3 py-2 font-medium">Counties</th>
-              <th className="px-3 py-2 text-right font-medium">Est. savings*</th>
+              <th className="px-3 py-2 text-right font-medium">Possible savings*</th>
               <th className="px-3 py-2 font-medium">Status</th>
             </tr>
           </thead>
@@ -140,7 +142,7 @@ export function Portfolios({
                           High value
                         </span>
                       )}
-                      <PriorityBadge priority={r.lead.priority} />
+                      <PriorityBadge priority={priorityOf ? priorityOf(r.lead) : r.lead.priority} />
                       {r.strong > 0 && (
                         <span className="text-emerald-800">
                           {r.strong} strong protest case{r.strong === 1 ? "" : "s"}
@@ -226,7 +228,8 @@ export function Portfolios({
         </table>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        * Estimated yearly savings for prioritising only: a 5% reduction at a ~2.2% tax rate.
+        * Possible yearly savings, for prioritising only (a 5% reduction at a ~2.2% tax rate) — not
+        a quote or a guarantee.
       </p>
     </div>
   );

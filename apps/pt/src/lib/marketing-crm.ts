@@ -5,6 +5,8 @@
 // every screen applies the same rules.
 import type {
   Activity,
+  AssessmentAnalysis,
+  AssessmentFlag,
   Campaign,
   Followup,
   Lead,
@@ -16,6 +18,8 @@ import type {
   Source,
   Stage,
   SyncFieldChange,
+  Template,
+  TemplateObjective,
 } from "./marketing";
 import { daysUntilIso } from "./local-day";
 
@@ -657,6 +661,11 @@ export type LeadFilters = {
   assignedTo?: string | null;
   priority?: "high" | "medium" | "low" | null;
   deadlineWithinDays?: number | null;
+  /** biggest year-over-year assessed-value increase in the portfolio, in % */
+  minChangePct?: number | null;
+  /** only leads with a property the assessment review flagged */
+  flaggedOnly?: boolean | null;
+  engagement?: "never_contacted" | "engaged" | "unresponsive" | null;
 };
 
 export const isEmptyFilter = (f: LeadFilters) =>
@@ -665,10 +674,27 @@ export const isEmptyFilter = (f: LeadFilters) =>
 export function applyFilters(
   leads: Lead[],
   f: LeadFilters,
-  ctx: { activities: Activity[]; campaigns: Campaign[]; me: string | null },
+  ctx: {
+    activities: Activity[];
+    campaigns: Campaign[];
+    me: string | null;
+    /** the shown priority (staff override or the explained ranking) */
+    priorityOf?: (l: Lead) => "high" | "medium" | "low";
+  },
   now = new Date(),
 ): Lead[] {
   const q = (f.q ?? "").trim().toLowerCase();
+  const touched = new Map<string, { out: number; recent: boolean; reply: boolean }>();
+  if (f.engagement)
+    for (const a of ctx.activities) {
+      if (!a.leadId) continue;
+      const t = touched.get(a.leadId) ?? { out: 0, recent: false, reply: false };
+      if (["email", "sms", "call"].includes(a.kind)) t.out++;
+      if (a.outcome === "interested" || a.outcome === "replied") t.reply = true;
+      if (now.getTime() - new Date(a.createdAt).getTime() < 30 * 864e5 && a.createdBy)
+        t.recent = true;
+      touched.set(a.leadId, t);
+    }
   const inCampaign = f.campaignId
     ? new Set([
         ...ctx.activities
@@ -700,7 +726,20 @@ export function applyFilters(
       l.assignedTo !== f.assignedTo
     )
       return false;
-    if (f.priority && l.priority !== f.priority) return false;
+    if (f.priority && (ctx.priorityOf ? ctx.priorityOf(l) : l.priority) !== f.priority)
+      return false;
+    if (f.minChangePct != null && (l.maxChangePct ?? -Infinity) < f.minChangePct) return false;
+    if (f.flaggedOnly && l.flaggedCount === 0) return false;
+    if (f.engagement) {
+      const t = touched.get(l.id) ?? { out: 0, recent: false, reply: false };
+      if (f.engagement === "never_contacted" && (t.out > 0 || l.lastContactedAt)) return false;
+      if (
+        f.engagement === "engaged" &&
+        !(t.reply || ["interested", "registered"].includes(l.stage))
+      )
+        return false;
+      if (f.engagement === "unresponsive" && !(t.out >= 2 && !t.reply)) return false;
+    }
     if (f.deadlineWithinDays != null) {
       const d = daysUntilIso(l.protestDeadline, now);
       if (d == null || d < 0 || d > f.deadlineWithinDays) return false;
@@ -738,8 +777,12 @@ export type SuggestedSegment = {
 };
 
 /** Ready-made groups, recomputed live, so prospects are always organised. */
-export function autoSegments(d: MarketingData, now = new Date()): SuggestedSegment[] {
-  const ctx = { activities: d.activities, campaigns: d.campaigns, me: d.me };
+export function autoSegments(
+  d: MarketingData,
+  now = new Date(),
+  priorityOf?: (l: Lead) => "high" | "medium" | "low",
+): SuggestedSegment[] {
+  const ctx = { activities: d.activities, campaigns: d.campaigns, me: d.me, priorityOf };
   const open: Stage[] = ["new", "researching", "ready", "contacted", "interested", "registered"];
   const out: Omit<SuggestedSegment, "count">[] = [
     {
@@ -833,6 +876,14 @@ export function describeFilters(
   if (f.minProperties != null) parts.push(`${f.minProperties}+ properties`);
   if (f.deadlineWithinDays != null) parts.push(`deadline ≤ ${f.deadlineWithinDays} days`);
   if (f.priority) parts.push(`${f.priority} priority`);
+  if (f.minChangePct != null) parts.push(`value up ${f.minChangePct}%+`);
+  if (f.flaggedOnly) parts.push("flagged for review");
+  if (f.engagement)
+    parts.push(
+      { never_contacted: "never contacted", engaged: "engaged", unresponsive: "no reply yet" }[
+        f.engagement
+      ],
+    );
   if (f.assignedTo)
     parts.push(
       f.assignedTo === "none"
@@ -1425,4 +1476,547 @@ export function podioProperty(v: PodioValues): ImportProperty | null {
     accountNumber: v.accountNumber ?? null,
     ownerName: v.ownerNames ?? v.company ?? null,
   };
+}
+
+// ── Assessment review ───────────────────────────────────────────────────────
+export type CompsSummary = {
+  count: number;
+  median: number | null;
+  medianPerAcre: number | null;
+  subjectPerAcre: number | null;
+};
+const median = (xs: number[]) => {
+  const v = xs.filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+/** Comparable parcels reduced to what the review needs (per-acre where acreage is published). */
+export function summarizeComps(
+  subject: { value: number | null; acres: number | null },
+  comps: {
+    marketValue: number | null;
+    appraisedValue?: number | null;
+    legalAcreage?: number | null;
+  }[],
+): CompsSummary {
+  const val = (c: (typeof comps)[number]) => c.appraisedValue ?? c.marketValue ?? null;
+  return {
+    count: comps.length,
+    median: median(comps.map((c) => val(c) ?? NaN)),
+    medianPerAcre: median(
+      comps.map((c) => (c.legalAcreage && val(c) ? val(c)! / c.legalAcreage : NaN)),
+    ),
+    subjectPerAcre: subject.value && subject.acres ? subject.value / subject.acres : null,
+  };
+}
+
+const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+
+/**
+ * Signs an assessment may be worth protesting, each explained in plain words.
+ * Indicators only — never a claim the value will come down.
+ */
+export function assessmentFlags(
+  p: {
+    assessedValue: number | null;
+    priorValue: number | null;
+    valueYear?: number | null;
+    priorYear?: number | null;
+    protestDeadline: string | null;
+  },
+  comps: CompsSummary | null,
+  now = new Date(),
+): AssessmentFlag[] {
+  const out: AssessmentFlag[] = [];
+  if (p.assessedValue && p.priorValue && p.priorValue > 0) {
+    const up = (p.assessedValue / p.priorValue - 1) * 100;
+    const yrs = p.valueYear && p.priorYear ? ` (${p.priorYear} → ${p.valueYear})` : "";
+    if (up >= 10)
+      out.push({
+        kind: "increase",
+        level: "strong",
+        text: `Assessed value up ${up.toFixed(1)}%${yrs}: ${usd(p.priorValue)} → ${usd(p.assessedValue)}.`,
+      });
+    else if (up >= 5)
+      out.push({
+        kind: "increase",
+        level: "moderate",
+        text: `Assessed value up ${up.toFixed(1)}%${yrs}: ${usd(p.priorValue)} → ${usd(p.assessedValue)}.`,
+      });
+  }
+  if (comps && comps.count >= 3 && comps.subjectPerAcre && comps.medianPerAcre) {
+    const r = comps.subjectPerAcre / comps.medianPerAcre;
+    const msg = `Valued at ${usd(comps.subjectPerAcre)}/acre vs a median of ${usd(comps.medianPerAcre)}/acre across ${comps.count} nearby comparable parcels (${r >= 1 ? "+" : ""}${Math.round((r - 1) * 100)}%).`;
+    if (r >= 1.25) out.push({ kind: "comparables", level: "strong", text: msg });
+    else if (r >= 1.1) out.push({ kind: "comparables", level: "moderate", text: msg });
+  }
+  const d = daysUntilIso(p.protestDeadline, now);
+  if (d != null && d >= 0 && d <= 45)
+    out.push({ kind: "deadline", level: "moderate", text: `Protest deadline in ${d} days.` });
+  if ((p.assessedValue ?? 0) >= 1e6 && !out.some((f) => f.level !== "info"))
+    out.push({
+      kind: "high_value",
+      level: "info",
+      text: "High-value commercial property — worth an assessment review.",
+    });
+  return out;
+}
+
+// ── Explained priority (High / Medium / Low) ────────────────────────────────
+export type PriorityFactor = { label: string; points: number };
+export type Ranking = {
+  level: "high" | "medium" | "low";
+  points: number;
+  factors: PriorityFactor[];
+  strongest: string | null;
+};
+/** Counties with county-wide data (prospecting or comparables) — more evidence to work with. */
+export const DATA_COUNTIES = [
+  "Harris",
+  "Collin",
+  "Denton",
+  "Fort Bend",
+  "Williamson",
+  "Tarrant",
+  "Travis",
+  "Montgomery",
+  "Grayson",
+];
+
+export function rankLead(
+  l: Lead,
+  props: LeadProperty[],
+  activities: Activity[],
+  now = new Date(),
+): Ranking {
+  if (["subscribed", "not_interested", "do_not_contact"].includes(l.stage))
+    return {
+      level: "low",
+      points: 0,
+      factors: [{ label: `Status: ${l.stage.replace(/_/g, " ")}`, points: 0 }],
+      strongest: null,
+    };
+  const f: PriorityFactor[] = [];
+  const add = (label: string, points: number) => points && f.push({ label, points });
+  // assessment issues
+  const flags = props.flatMap((p) => p.analysis?.flags ?? []);
+  const strong = flags.filter((x) => x.level === "strong").length;
+  const moderate = flags.filter((x) => x.level === "moderate" && x.kind !== "deadline").length;
+  const maxUp = Math.max(-Infinity, ...props.map((p) => p.changePct ?? -Infinity));
+  if (strong)
+    add(`${strong} strong assessment concern${strong === 1 ? "" : "s"}`, Math.min(30, strong * 15));
+  else if (maxUp >= 10) add(`Value up ${maxUp}% on last year`, 15);
+  if (moderate)
+    add(`${moderate} moderate concern${moderate === 1 ? "" : "s"}`, Math.min(16, moderate * 8));
+  // value
+  const v = l.portfolioValue ?? l.appraisedValue ?? 0;
+  add(
+    `Assessed ${usd(v)}`,
+    v >= 100e6
+      ? 35
+      : v >= 25e6
+        ? 30
+        : v >= 5e6
+          ? 22
+          : v >= 2e6
+            ? 15
+            : v >= 1e6
+              ? 10
+              : v >= 5e5
+                ? 5
+                : 0,
+  );
+  // portfolio size
+  const n = l.portfolioCount;
+  add(`${n}-property portfolio`, n >= 10 ? 15 : n >= 5 ? 10 : n >= 3 ? 6 : n === 2 ? 3 : 0);
+  // evidence available
+  if (props.some((p) => (p.analysis?.comps?.count ?? 0) >= 3)) add("Comparable parcels on file", 5);
+  if (props.some((p) => p.priorValue)) add("Value history on file", 3);
+  // location: data coverage + deadline
+  if (l.counties.some((c) => DATA_COUNTIES.includes(c)))
+    add(`${l.counties.find((c) => DATA_COUNTIES.includes(c))} County — full county data`, 4);
+  const d = daysUntilIso(l.protestDeadline, now);
+  if (d != null && d >= 0 && d <= 45) add(`Protest deadline in ${d} days`, 10);
+  // engagement + reachability
+  if (l.stage === "interested") add("Said they're interested", 12);
+  if (l.stage === "registered") add("Has an account, not subscribed", 8);
+  if (l.stage === "no_response") add("No reply to outreach", -6);
+  if (
+    activities.some(
+      (a) => a.leadId === l.id && (a.outcome === "replied" || a.outcome === "interested"),
+    )
+  )
+    add("Replied to outreach", 5);
+  if (l.email || l.phone) add("Reachable (email or phone)", 4);
+  else add("No email or phone yet", -6);
+  const points = f.reduce((s, x) => s + x.points, 0);
+  const best = flags.find((x) => x.level === "strong") ?? flags.find((x) => x.level === "moderate");
+  return {
+    level: points >= 55 ? "high" : points >= 30 ? "medium" : "low",
+    points,
+    factors: f.sort((a, b) => b.points - a.points),
+    strongest: best?.text ?? null,
+  };
+}
+/** What the CRM shows: a staff-set priority wins over the ranking. */
+export const shownPriority = (l: Lead, r: Ranking) =>
+  l.fieldSources.priority?.source === "Staff" && l.priority ? l.priority : r.level;
+
+// ── Protest deadlines ───────────────────────────────────────────────────────
+/** Texas Tax Code §41.44: May 15, moved to the next business day when it falls on a weekend. */
+export function statutoryDeadline(year: number): Date {
+  const d = new Date(year, 4, 15, 12);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+/** The next protest season's statutory deadline. */
+export function nextStatutoryDeadline(now = new Date()): Date {
+  const d = statutoryDeadline(now.getFullYear());
+  return now.getTime() > d.getTime() + 864e5 ? statutoryDeadline(now.getFullYear() + 1) : d;
+}
+export function deadlineInfo(l: Pick<Lead, "protestDeadline">, now = new Date()) {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  if (l.protestDeadline && new Date(`${l.protestDeadline}T23:59:59`) >= now)
+    return {
+      date: l.protestDeadline,
+      label: fmt(new Date(`${l.protestDeadline}T12:00:00`)),
+      basis: "notice" as const,
+    };
+  const d = nextStatutoryDeadline(now);
+  return { date: d.toISOString().slice(0, 10), label: fmt(d), basis: "statutory" as const };
+}
+
+// ── County prospect lists + target groups ───────────────────────────────────
+export type TargetGroup = {
+  key: string;
+  name: string;
+  why: string;
+  filters: LeadFilters;
+  count: number;
+};
+export function countyTargets(
+  d: MarketingData,
+  county: string,
+  priorityOf: (l: Lead) => "high" | "medium" | "low",
+  now = new Date(),
+): TargetGroup[] {
+  const ctx = { activities: d.activities, campaigns: d.campaigns, me: d.me, priorityOf };
+  const open: Stage[] = [
+    "new",
+    "researching",
+    "ready",
+    "contacted",
+    "interested",
+    "registered",
+    "no_response",
+  ];
+  const base = { counties: [county], stages: open };
+  const inCounty = applyFilters(d.leads, base, ctx, now);
+  const types = new Map<string, number>();
+  for (const l of inCounty) for (const t of l.propertyTypes) types.set(t, (types.get(t) ?? 0) + 1);
+  const groups: Omit<TargetGroup, "count">[] = [
+    {
+      key: "high",
+      name: "High priority",
+      why: "Strongest assessment issues, value and portfolio",
+      filters: { ...base, priority: "high" },
+    },
+    {
+      key: "increase",
+      name: "Assessment increases",
+      why: "Assessed value up 5%+ on last year",
+      filters: { ...base, minChangePct: 5 },
+    },
+    {
+      key: "flagged",
+      name: "Protest potential",
+      why: "Properties the assessment review flagged",
+      filters: { ...base, flaggedOnly: true },
+    },
+    {
+      key: "portfolio",
+      name: "Multi-property owners",
+      why: "3+ properties — one conversation, several protests",
+      filters: { ...base, minProperties: 3 },
+    },
+    {
+      key: "5m",
+      name: "$5M+ assessed",
+      why: "Largest tax bills",
+      filters: { ...base, minValue: 5e6 },
+    },
+    {
+      key: "new",
+      name: "Never contacted",
+      why: "Researched, no outreach yet",
+      filters: { ...base, engagement: "never_contacted" },
+    },
+    {
+      key: "engaged",
+      name: "Engaged",
+      why: "Replied, interested or signed up",
+      filters: { ...base, engagement: "engaged" },
+    },
+    ...[...types.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([t]) => ({
+        key: `type-${t}`,
+        name: t,
+        why: "Same property type — one tailored message",
+        filters: { ...base, propertyTypes: [t] },
+      })),
+  ];
+  return groups
+    .map((g) => ({ ...g, count: applyFilters(d.leads, g.filters, ctx, now).length }))
+    .filter((g) => g.count > 0);
+}
+
+/** Counties with leads, most leads first. */
+export function leadCounties(leads: Lead[]): { county: string; n: number }[] {
+  const m = new Map<string, number>();
+  for (const l of leads)
+    for (const c of l.counties.length ? l.counties : l.county ? [l.county] : [])
+      m.set(c, (m.get(c) ?? 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([county, n]) => ({ county, n }));
+}
+
+const csvCell = (v: unknown) => {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+export function leadsCsv(
+  leads: Lead[],
+  d: Pick<MarketingData, "properties" | "staff">,
+  priorityOf: (l: Lead) => string,
+): string {
+  const head = [
+    "Owner / company",
+    "Contact",
+    "Email",
+    "Phone",
+    "Mailing address",
+    "Status",
+    "Priority",
+    "Properties",
+    "Total assessed",
+    "Counties",
+    "Top property",
+    "Biggest value change %",
+    "Protest deadline",
+    "Deadline basis",
+    "Next action",
+    "Assigned to",
+  ];
+  const rows = leads.map((l) => {
+    const dl = deadlineInfo(l);
+    return [
+      l.company ?? l.fullName ?? l.email,
+      l.company ? l.fullName : "",
+      l.unsubscribedAt || l.stage === "do_not_contact" ? "" : l.email,
+      l.stage === "do_not_contact" ? "" : l.phone,
+      l.mailingAddress,
+      l.stage,
+      priorityOf(l),
+      l.portfolioCount,
+      l.portfolioValue != null ? Math.round(l.portfolioValue) : "",
+      l.counties.join("; "),
+      l.propertyAddress,
+      l.maxChangePct ?? "",
+      dl.date,
+      dl.basis === "notice" ? "From notice" : "Statutory (May 15 or 30 days after notice)",
+      l.nextAction,
+      d.staff.find((s) => s.id === l.assignedTo)?.name ?? "",
+    ];
+  });
+  return [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+}
+
+// ── County prospecting results → leads ─────────────────────────────────────
+export type ProspectRecord = {
+  ownerName: string | null;
+  propertyAddress: string;
+  city: string | null;
+  zip: string | null;
+  county: string;
+  cad: string;
+  accountNumber: string | null;
+  stateCode: string | null;
+  propertyType: string;
+  assessedValue: number | null;
+  priorValue: number | null;
+  valueYear: number | null;
+  mailingAddress: string | null;
+};
+export type ProspectGroup = {
+  key: string;
+  owner: string;
+  records: ProspectRecord[];
+  total: number;
+  maxChangePct: number | null;
+  mailingAddress: string | null;
+  existing: { leadId: string; name: string } | null;
+  newRecords: ProspectRecord[];
+  known: number;
+};
+/** One group per owner; flags owners already in the CRM and parcels already linked. */
+export function groupProspects(
+  records: ProspectRecord[],
+  leads: Lead[],
+  props: LeadProperty[],
+): ProspectGroup[] {
+  const linked = new Set(props.map((p) => p.dedupeKey));
+  const byOwner = new Map<string, Lead>();
+  for (const l of leads)
+    for (const n of [l.company, l.ownerNames, l.fullName]) {
+      const k = ownerKey(n);
+      if (k.length > 3 && !byOwner.has(k)) byOwner.set(k, l);
+    }
+  const groups = new Map<string, ProspectGroup>();
+  for (const r of records) {
+    const k = ownerKey(r.ownerName) || r.accountNumber || r.propertyAddress;
+    let g = groups.get(k);
+    if (!g) {
+      const ex = byOwner.get(k);
+      g = {
+        key: k,
+        owner: tidyName(r.ownerName) ?? "Unknown owner",
+        records: [],
+        total: 0,
+        maxChangePct: null,
+        mailingAddress: r.mailingAddress,
+        existing: ex ? { leadId: ex.id, name: leadName(ex) } : null,
+        newRecords: [],
+        known: 0,
+      };
+      groups.set(k, g);
+    }
+    g.records.push(r);
+    g.total += r.assessedValue ?? 0;
+    if (r.assessedValue && r.priorValue) {
+      const up = Math.round((r.assessedValue / r.priorValue - 1) * 1000) / 10;
+      g.maxChangePct = Math.max(g.maxChangePct ?? -Infinity, up);
+    }
+    const key = propertyKey({
+      accountNumber: r.accountNumber,
+      county: r.county,
+      address: r.propertyAddress,
+    });
+    if (linked.has(key)) g.known++;
+    else g.newRecords.push(r);
+  }
+  return [...groups.values()].sort((a, b) => b.total - a.total);
+}
+
+// ── Templates ───────────────────────────────────────────────────────────────
+/** Same tokens and fallbacks as personalize() in marketing-send.ts. */
+export function personalize(text: string, l: Lead): string {
+  const first = (l.fullName ?? "").trim().split(/\s+/)[0] || "there";
+  const n = l.portfolioCount;
+  const dl = deadlineInfo(l);
+  return text
+    .replaceAll("{{first_name}}", first)
+    .replaceAll("{{name}}", l.fullName ?? "there")
+    .replaceAll("{{company}}", l.company ?? l.fullName ?? "your company")
+    .replaceAll("{{property_address}}", l.propertyAddress ?? "your property")
+    .replaceAll("{{county}}", l.county ?? "your")
+    .replaceAll("{{property_count}}", String(n || 1))
+    .replaceAll(
+      "{{portfolio_value}}",
+      l.portfolioValue != null ? usd(l.portfolioValue) : "your properties",
+    )
+    .replaceAll(
+      "{{value_change}}",
+      l.maxChangePct != null && l.maxChangePct > 0 ? `${l.maxChangePct}%` : "noticeably",
+    )
+    .replaceAll(
+      "{{protest_deadline}}",
+      dl.basis === "notice" ? dl.label : "May 15 (or 30 days after your notice, if later)",
+    )
+    .replaceAll(
+      "{{portfolio_note}}",
+      n > 1 ? ` and your other ${n - 1} propert${n === 2 ? "y" : "ies"}` : "",
+    );
+}
+export const TEMPLATE_TOKENS = [
+  "{{first_name}}",
+  "{{company}}",
+  "{{property_address}}",
+  "{{county}}",
+  "{{property_count}}",
+  "{{portfolio_value}}",
+  "{{value_change}}",
+  "{{protest_deadline}}",
+];
+
+/** The objective that fits this prospect right now, and why. */
+export function pickObjective(
+  l: Lead,
+  activities: Activity[],
+  now = new Date(),
+): { objective: TemplateObjective; why: string } {
+  const out = activities.filter(
+    (a) => a.leadId === l.id && ["email", "sms", "call"].includes(a.kind),
+  );
+  const d = daysUntilIso(l.protestDeadline, now);
+  if (l.stage === "registered")
+    return { objective: "subscription_promo", why: "Has an account but no plan yet" };
+  if (l.source === "beta_signup" && !l.profileId)
+    return { objective: "registration_reminder", why: "Signed up for the beta, no account yet" };
+  if (d != null && d >= 0 && d <= 30)
+    return { objective: "deadline", why: `Protest deadline in ${d} days` };
+  const usedIncrease = activities.some(
+    (a) => a.leadId === l.id && a.summary.toLowerCase().includes("increase"),
+  );
+  if ((l.maxChangePct ?? 0) >= 5 && !usedIncrease)
+    return { objective: "assessment_increase", why: `Assessed value up ${l.maxChangePct}%` };
+  if (!out.length) return { objective: "initial_outreach", why: "Not contacted yet" };
+  return {
+    objective: "follow_up",
+    why: `${out.length} earlier touch${out.length === 1 ? "" : "es"}, no conversion yet`,
+  };
+}
+
+/** Picks the best active template: right objective + channel, not already sent to them, then most used. */
+export function pickTemplate(
+  l: Lead,
+  templates: Template[],
+  activities: Activity[],
+  channel: "email" | "sms",
+  objective?: TemplateObjective,
+): { template: Template | null; objective: TemplateObjective; why: string } {
+  const auto = pickObjective(l, activities);
+  const obj = objective ?? auto.objective;
+  const sent = new Set(
+    activities.filter((a) => a.leadId === l.id && a.templateId).map((a) => a.templateId),
+  );
+  const pool = templates
+    .filter((t) => t.active && t.channel === channel && t.objective === obj)
+    .sort(
+      (a, b) =>
+        Number(sent.has(a.id)) - Number(sent.has(b.id)) ||
+        Number(a.isDefault) - Number(b.isDefault) ||
+        b.uses - a.uses,
+    );
+  return {
+    template: pool[0] ?? null,
+    objective: obj,
+    why: objective ? "Chosen objective" : auto.why,
+  };
+}
+
+export type { AssessmentAnalysis };
+
+/** Ranking for every lead at once (one pass over properties). */
+export function rankAll(
+  d: Pick<MarketingData, "leads" | "properties" | "activities">,
+  now = new Date(),
+) {
+  const byLead = new Map<string, LeadProperty[]>();
+  for (const p of d.properties) byLead.set(p.leadId, [...(byLead.get(p.leadId) ?? []), p]);
+  const out = new Map<string, Ranking>();
+  for (const l of d.leads) out.set(l.id, rankLead(l, byLead.get(l.id) ?? [], d.activities, now));
+  return out;
 }
