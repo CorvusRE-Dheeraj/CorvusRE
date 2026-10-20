@@ -301,7 +301,7 @@ export function LeadsCrm({
   const allOn = rows.length > 0 && rows.every(({ l }) => selected.has(l.id));
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-0 flex-1 basis-60">

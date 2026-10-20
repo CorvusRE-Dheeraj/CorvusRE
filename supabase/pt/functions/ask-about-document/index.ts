@@ -46,9 +46,20 @@ Deno.serve(async (req: Request) => {
       ? `You are ${personaName}, a friendly, patient support associate at CorvusPT — a platform that helps Texas commercial property owners protest their property-tax assessments. You're having a live chat with a real user who needs help using the product: answer their questions, walk them through common fixes step by step, and clear up confusion. Sound like a genuinely helpful person, warm and conversational, never robotic or corporate.\n\n${SUPPORT_STYLE}\n\nOnly use the context below for anything about their account, properties, or cases — never invent numbers or details. If the context doesn't cover something, say so honestly rather than guessing.`
       : `You are CorvusPT's Texas property tax assistant. Answer accurately and concisely. If unsure, say so. Do not invent numbers.\n\n${PROSE_STYLE}\n\n${styleRule}`;
 
+    // Without today's date the model answered "file by May 15" in October —
+    // it can't tell a deadline that has already passed.
+    const today = new Date().toLocaleDateString("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const dated = `${systemText}\n\nToday is ${today} (Texas time). When a deadline comes up, say whether it has already passed for this year; if May 15 has passed, explain the late options (30 days after the notice was delivered, or a late protest under Tax Code §41.411/§25.25) instead of telling them to file by May 15.`;
+
     const body = {
       systemInstruction: {
-        parts: [{ text: withAdvisoryTone(systemText) }],
+        parts: [{ text: withAdvisoryTone(dated) }],
       },
       contents: [
         {

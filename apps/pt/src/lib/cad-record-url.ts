@@ -1,4 +1,5 @@
 import type { CadRecord } from "./cad-lookup";
+import { lookupCadDirectory } from "./cad-directory";
 
 // A link to the property's real, official county record — lets a user
 // independently verify what this app shows (owner, values, account number)
@@ -105,6 +106,12 @@ const BIS_DETAIL_BASE: Record<string, string> = {
 
 const WCAD_DETAIL_BASE = "https://search.wcad.org";
 
+// Counties without their own integration (statewide coverage): the district website
+// from the Comptroller directory.
+function homepageFor(cad: string): string | null {
+  return CAD_SEARCH_HOMEPAGE[cad] ?? lookupCadDirectory(cad)?.appraisalDistrict?.website ?? null;
+}
+
 export function getCadRecordUrl(
   record: Pick<CadRecord, "cad" | "accountNumber"> & Partial<Pick<CadRecord, "bisPropertyId">>,
 ): string | null {
@@ -115,10 +122,10 @@ export function getCadRecordUrl(
     // populated bisPropertyId yet.
     return record.bisPropertyId
       ? `https://esearch.fbcad.org/Property/View/${encodeURIComponent(record.bisPropertyId)}`
-      : (CAD_SEARCH_HOMEPAGE[record.cad] ?? null);
+      : homepageFor(record.cad);
   }
 
-  if (!record.accountNumber) return CAD_SEARCH_HOMEPAGE[record.cad] ?? null;
+  if (!record.accountNumber) return homepageFor(record.cad);
 
   if (record.cad === "Bexar Appraisal District") {
     return `https://bexar.trueautomation.com/clientdb/Property.aspx?cid=110&prop_id=${encodeURIComponent(record.accountNumber)}`;
@@ -137,7 +144,7 @@ export function getCadRecordUrl(
   if (bisBase) {
     return `${bisBase}/Property/View/${encodeURIComponent(record.accountNumber)}`;
   }
-  return CAD_SEARCH_HOMEPAGE[record.cad] ?? null;
+  return homepageFor(record.cad);
 }
 
 // True only for the counties with a real, verified deep link straight to the

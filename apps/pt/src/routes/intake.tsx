@@ -6,12 +6,7 @@ import { AnimatedSteps } from "@/components/AnimatedSteps";
 import { CircularSearchLoader } from "@/components/CircularSearchLoader";
 import { ValueHistorySection } from "@/components/ValueHistorySection";
 import { MapPinPicker } from "@/components/MapPinPicker";
-import {
-  getCadRecordUrl,
-  isDirectCadRecordUrl,
-  SUPPORTED_COUNTY_NAMES,
-  CAD_SEARCH_HOMEPAGE,
-} from "@/lib/cad-record-url";
+import { getCadRecordUrl, isDirectCadRecordUrl, CAD_SEARCH_HOMEPAGE } from "@/lib/cad-record-url";
 import { Modal } from "@/components/Modal";
 import {
   readIntake,
@@ -24,7 +19,7 @@ import {
   type PropertyKind,
 } from "@/lib/intake-store";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
-import { unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
+import { nonTexasStateCode, unifiedPropertySearch, type UnifiedMatch } from "@/lib/unified-search";
 import { classifyPropertyCategory } from "@/lib/texas-tax-rates";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { LiveSearchLoader } from "@/components/LiveSearchLoader";
@@ -35,6 +30,7 @@ import { SampleNoticeDialog } from "@/components/SampleNoticeDialog";
 import { HouseIllustration } from "@/assets/illustrations/house";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { PropertyIds } from "@/components/PropertyIds";
+import { isStandardCoverageCad } from "@/lib/county-coverage";
 import { BPP_PROPERTY_TYPE } from "../../../../supabase/pt/functions/_shared/bexar-tax-office";
 
 export const Route = createFileRoute("/intake")({
@@ -86,9 +82,11 @@ async function resolveCountyName(address: string): Promise<string | null> {
     });
     const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`);
     if (!res.ok) return null;
-    const data = (await res.json()) as Array<{ address?: { county?: string } }>;
+    const data = (await res.json()) as Array<{ address?: { county?: string; state?: string } }>;
     const county = data[0]?.address?.county;
-    return county ? county.replace(/\s*County$/i, "").trim() : null;
+    // every Texas county is covered (statewide fallback) — only flag other states
+    if (!county || data[0]?.address?.state === "Texas") return null;
+    return `${county.replace(/\s*County$/i, "").trim()} County`;
   } catch {
     return null;
   }
@@ -437,6 +435,14 @@ function Intake() {
     setNearby([]);
     setMultipleOptions([]);
     setUnsupportedCounty(null);
+    // "…, Oklahoma City, OK 73102, USA" — don't search Texas records for
+    // another state's address (they'd only offer same-named Texas streets)
+    const otherState = nonTexasStateCode(addr);
+    if (otherState) {
+      setUnsupportedCounty(`another state (${otherState})`);
+      setStep("address");
+      return;
+    }
     try {
       const res = await cadLookup(addr);
       if (requestIdRef.current !== requestId) return;
@@ -455,7 +461,7 @@ function Intake() {
         // long it takes.
         resolveCountyName(addr).then((county) => {
           if (requestIdRef.current !== requestId) return;
-          if (county && !SUPPORTED_COUNTY_NAMES.has(county)) setUnsupportedCounty(county);
+          if (county) setUnsupportedCounty(county);
         });
         return;
       }
@@ -655,14 +661,10 @@ function Intake() {
 
       {unsupportedCounty && (
         <Modal onClose={() => setUnsupportedCounty(null)}>
-          <h2 className="font-serif text-xl font-semibold">
-            We don't cover {unsupportedCounty} County yet
-          </h2>
+          <h2 className="font-serif text-xl font-semibold">This address isn't in Texas</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            CorvusPT currently supports properties in{" "}
-            {[...SUPPORTED_COUNTY_NAMES].slice(0, -1).join(", ")}, and{" "}
-            {[...SUPPORTED_COUNTY_NAMES].slice(-1)} counties. We're adding more counties over time —
-            try a different address, or check back soon.
+            It looks like it's in {unsupportedCounty}, outside Texas. CorvusPT covers properties in
+            all 254 Texas counties — try a Texas address.
           </p>
           <button
             onClick={() => setUnsupportedCounty(null)}
@@ -1400,7 +1402,11 @@ function Intake() {
         <section className="mt-8 card-elev p-6">
           <div className="flex items-center gap-2">
             <span className="badge-soft">Official CAD Record</span>
-            <span className="text-xs text-muted-foreground">Source: County Appraisal District</span>
+            <span className="text-xs text-muted-foreground">
+              {isStandardCoverageCad(state.cad)
+                ? "Source: Texas statewide parcel data (TxGIO)"
+                : "Source: County Appraisal District"}
+            </span>
           </div>
           <h2 className="mt-3 font-serif text-2xl font-semibold">Confirm your property</h2>
           <dl className="mt-5 grid gap-3 sm:grid-cols-2 text-sm">
@@ -1429,6 +1435,14 @@ function Intake() {
           {state.totalValue == null && (
             <p className="mt-3 text-xs text-muted-foreground">
               Value data is not published in this county's public records.
+            </p>
+          )}
+          {isStandardCoverageCad(state.cad) && (
+            <p className="mt-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+              Standard coverage: owner and values come from the State of Texas statewide parcel data
+              (compiled from {state.cad}). Value history, deed history and comparable sales aren't
+              available for this county yet — your notice or the district's website can fill those
+              in.
             </p>
           )}
 

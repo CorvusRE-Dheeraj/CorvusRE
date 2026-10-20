@@ -146,7 +146,7 @@ export function ScheduleAppointment({
   const input = "rounded-md border border-input bg-background px-3 py-2 text-sm";
 
   const headerBtn =
-    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-md transition-transform hover:scale-[1.04] sm:px-5 sm:py-2 sm:text-base";
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-md transition-transform hover:scale-[1.04] max-[359px]:hidden md:px-5 md:py-2 md:text-base";
 
   return (
     <>
@@ -154,8 +154,9 @@ export function ScheduleAppointment({
         // Already booked: the same button opens that booking instead of a second one.
         mine ? (
           <Link to="/appointment" search={{ token: mine.manageToken }} className={headerBtn}>
-            <Video className="h-4 w-4 sm:h-5 sm:w-5" />
-            {buttonLabel}
+            <Video className="h-4 w-4 md:h-5 md:w-5" />
+            {/* icon-only on phones — the label ran under the header icons */}
+            <span className="sr-only md:not-sr-only">{buttonLabel}</span>
           </Link>
         ) : (
           <button
@@ -166,8 +167,9 @@ export function ScheduleAppointment({
             }}
             className={headerBtn}
           >
-            <Video className="h-4 w-4 sm:h-5 sm:w-5" />
-            {buttonLabel}
+            <Video className="h-4 w-4 md:h-5 md:w-5" />
+            {/* icon-only on phones — the label ran under the header icons */}
+            <span className="sr-only md:not-sr-only">{buttonLabel}</span>
           </button>
         )
       ) : mine ? (

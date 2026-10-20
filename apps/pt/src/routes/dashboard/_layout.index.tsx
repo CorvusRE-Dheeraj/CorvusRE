@@ -983,7 +983,12 @@ function Overview() {
       {loaded && (
         <GettingStarted
           properties={properties.length}
-          documents={documents.length}
+          // only files the owner uploaded — not the signed packet or the
+          // AI-generated base-data / summary documents saved automatically
+          documents={
+            documents.filter((d) => d.source !== "signed" && !/^AI\b/.test(d.documentType ?? ""))
+              .length
+          }
           protests={protests.length}
           resolved={protests.filter((p) => p.status === "resolved").length}
         />

@@ -124,7 +124,7 @@ export function MarketingDashboard({
   const upcoming = data.followups.filter((x) => x.status === "pending").slice(0, 6);
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile
           label="Prospects identified"
@@ -440,7 +440,7 @@ export function MarketingDashboard({
             No activity yet — it appears here as you contact leads and send campaigns.
           </p>
         ) : (
-          <ul className="mt-2 grid gap-1 text-sm">
+          <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
             {data.activities.slice(0, 8).map((a) => (
               <li
                 key={a.id}

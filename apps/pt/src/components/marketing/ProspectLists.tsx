@@ -109,7 +109,7 @@ export function ProspectLists({
   };
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <section className="card-elev p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Saved prospect lists</h2>

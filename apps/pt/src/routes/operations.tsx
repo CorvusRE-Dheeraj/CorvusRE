@@ -208,7 +208,7 @@ function Cases() {
 
   if (!protests) return <LoadingLine text="Loading cases…" className="mt-8 text-sm" />;
   return (
-    <section className="mt-6 grid gap-4">
+    <section className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           ["Open cases", (protests ?? []).filter((p) => !CLOSED.includes(p.status)).length],

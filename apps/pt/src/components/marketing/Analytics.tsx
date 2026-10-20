@@ -115,7 +115,7 @@ export function Analytics({
     ...(supervisor ? ([["audit", "Audit"]] as [View, string][]) : []),
   ];
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div
         className="inline-flex flex-wrap gap-0.5 self-start rounded-md border border-border p-0.5 text-sm"
         role="tablist"
@@ -769,7 +769,7 @@ function DimTable({
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No data for these filters.</p>
       ) : (
-        <ul className="mt-2 grid gap-1 text-sm">
+        <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
           {rows.slice(0, 8).map((r) => (
             <li key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <span className="truncate capitalize">{r.key}</span>
@@ -1117,7 +1117,7 @@ function Team({
             {suggestions.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">Every open prospect is assigned.</p>
             ) : (
-              <ul className="mt-2 grid gap-1 text-sm">
+              <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
                 {suggestions.map((s) => (
                   <li key={s.lead.id}>
                     <label className="flex items-start gap-2">
@@ -1566,7 +1566,7 @@ function Financials() {
     rows: f.planMix.map((p) => [p.label, p.count, dollars(p.mrrCents)]),
   };
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {f.mode === "test" && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           Stripe is in test mode — these are test figures.
@@ -1686,7 +1686,7 @@ function Feedback({ data, go }: { data: MarketingData; go?: Go }) {
   );
   const leadIds = new Set(data.leads.map((l) => l.id));
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <p className="text-xs text-muted-foreground">
         {fb.responses.length} completed response{fb.responses.length === 1 ? "" : "s"}
         {fb.insights
@@ -1701,7 +1701,7 @@ function Feedback({ data, go }: { data: MarketingData; go?: Go }) {
       </div>
       <section className="card-elev p-4">
         <h2 className="text-sm font-semibold">Responses</h2>
-        <ul className="mt-2 grid gap-1 text-sm">
+        <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
           {fb.responses.slice(0, 50).map((r, i) => (
             <li
               key={i}
@@ -1789,7 +1789,7 @@ function ActivityLog({ data, go }: { data: MarketingData; go?: Go }) {
       {shown.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">Nothing logged.</p>
       ) : (
-        <ul className="mt-2 grid gap-1 text-sm">
+        <ul className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
           {shown.slice(0, 200).map((r) => {
             const l = r.targetEmail ? leadByEmail.get(r.targetEmail.toLowerCase()) : undefined;
             return (

@@ -38,7 +38,7 @@ export function Portfolios({
   const total = rows.reduce((s, r) => s + r.total, 0);
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p className="text-muted-foreground">
           {rows.length} owner{rows.length === 1 ? "" : "s"} ·{" "}
