@@ -2,6 +2,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  PencilRuler,
+  Map,
   LayoutDashboard,
   FileStack,
   Route as RouteIcon,
@@ -56,6 +58,8 @@ const OVERVIEW: NavLink = { to: "/dashboard", label: "Overview", icon: LayoutDas
 const DESIGN_ITEMS: NavLink[] = [
   { to: "/dashboard/design", label: "Design Overview", icon: DraftingCompass },
   { to: "/dashboard/design-site", label: "Site Data", icon: Layers },
+  { to: "/dashboard/design-survey", label: "Land Survey", icon: Map },
+  { to: "/dashboard/design-schematic", label: "Schematic Plan", icon: PencilRuler },
   { to: "/dashboard/design-checklist", label: "Checklist", icon: ListChecks },
   { to: "/dashboard/design-fees", label: "Fees", icon: Receipt },
   { to: "/dashboard/design-roadmap", label: "Roadmap", icon: RouteIcon },

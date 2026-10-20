@@ -1,7 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { designSiteAnalysis } from "@/lib/design-workspace";
-import { availabilityLabel } from "@/lib/constraints";
+import { availabilityLabel, tidyConstraintText } from "@/lib/constraints";
+import { analysisSummaryLines } from "@/lib/site-analysis";
+import { parseArea } from "@/lib/format";
+import { SiteAnalyses } from "@/components/SiteAnalyses";
 import { scopeLabel } from "@/lib/design";
 import { Section, Pill, Loading } from "@/components/dp-ui";
 import {
@@ -24,12 +27,19 @@ const AVAIL_TONE = {
 } as const;
 
 function DesignSite() {
-  const { loading, dr, brief } = useActiveDesignRequest();
+  const { loading, dr, brief, refetch } = useActiveDesignRequest();
   const site = useMemo(() => (dr ? designSiteAnalysis(dr) : null), [dr]);
   if (loading) return <Loading />;
   if (!dr || !brief || !site) return <EmptyDesign />;
 
   const c = site.constraints;
+  const trafficProgram = {
+    sector: dr.sector,
+    subcategory: null,
+    buildingAreaSqFt: parseArea(dr.building_area),
+    floors: dr.floors ? Number(dr.floors.match(/\d+/)?.[0]) || null : null,
+    intent: dr.scope,
+  };
   const program: [string, string | null][] = [
     ["Location", dr.address ?? dr.city],
     ["County", dr.county],
@@ -60,10 +70,14 @@ function DesignSite() {
         ...c.utilities.map((u) => `  ${u.name}: ${availabilityLabel(u.status)} — ${u.note}`),
         ``,
         `CONSTRAINTS`,
-        ...c.constraints.map((x) => `  [${x.severity}] ${x.title}: ${x.detail}`),
+        ...c.constraints.map(
+          (x) => `  [${x.severity}] ${x.title}: ${tidyConstraintText(x.detail)}`,
+        ),
         ``,
         `CRITICAL WARNINGS`,
         ...(c.criticalWarnings.length ? c.criticalWarnings.map((w) => `  - ${w}`) : ["  (none)"]),
+        ``,
+        ...analysisSummaryLines(dr!.site_analysis ?? null, trafficProgram),
         ``,
         c.disclaimer,
       ].join("\n"),
@@ -159,10 +173,17 @@ function DesignSite() {
                 </Pill>
                 <span className="font-medium">{x.title}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{x.detail}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tidyConstraintText(x.detail)}</p>
             </li>
           ))}
         </ul>
+        <SiteAnalyses
+          target={{ designRequestId: dr.id }}
+          address={dr.address}
+          raw={dr.site_analysis ?? null}
+          program={trafficProgram}
+          refetch={refetch}
+        />
         <p className="mt-3 text-xs text-muted-foreground">{c.disclaimer}</p>
       </Section>
     </div>

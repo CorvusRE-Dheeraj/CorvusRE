@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useActiveProjectBundle } from "@/hooks/use-project";
-import { availabilityLabel } from "@/lib/constraints";
+import { availabilityLabel, tidyConstraintText } from "@/lib/constraints";
+import { analysisSummaryLines } from "@/lib/site-analysis";
+import { parseArea } from "@/lib/format";
+import { SiteAnalyses } from "@/components/SiteAnalyses";
 import { Section, Pill, EmptyProject, Loading } from "@/components/dp-ui";
 
 export const Route = createFileRoute("/dashboard/_layout/constraints")({
@@ -15,13 +18,20 @@ const AVAIL_TONE = {
 } as const;
 
 function Constraints() {
-  const { loading, hasProject, project } = useActiveProjectBundle();
+  const { loading, hasProject, project, refetch } = useActiveProjectBundle();
   if (loading) return <Loading />;
   if (!hasProject || !project?.analysis) return <EmptyProject />;
 
   const a = project.analysis;
   const c = a.constraints;
   const m = a.preAppMeeting;
+  const program = {
+    sector: project.sector,
+    subcategory: project.sector_subcategory,
+    buildingAreaSqFt: parseArea(project.building_area),
+    floors: project.floors ? Number(project.floors.match(/\d+/)?.[0]) || null : null,
+    intent: project.intent,
+  };
 
   function downloadSiteSummary() {
     const lines = [
@@ -39,10 +49,12 @@ function Constraints() {
       ...c.utilities.map((u) => `  ${u.name}: ${availabilityLabel(u.status)} — ${u.note}`),
       ``,
       `CONSTRAINTS`,
-      ...c.constraints.map((x) => `  [${x.severity}] ${x.title}: ${x.detail}`),
+      ...c.constraints.map((x) => `  [${x.severity}] ${x.title}: ${tidyConstraintText(x.detail)}`),
       ``,
       `CRITICAL WARNINGS`,
       ...(c.criticalWarnings.length ? c.criticalWarnings.map((w) => `  - ${w}`) : ["  (none)"]),
+      ``,
+      ...analysisSummaryLines(project!.site_analysis ?? null, program),
       ``,
       c.disclaimer,
     ];
@@ -104,10 +116,17 @@ function Constraints() {
                 </Pill>
                 <span className="font-medium">{x.title}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{x.detail}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tidyConstraintText(x.detail)}</p>
             </li>
           ))}
         </ul>
+        <SiteAnalyses
+          target={{ projectId: project.id }}
+          address={project.address}
+          raw={project.site_analysis ?? null}
+          program={program}
+          refetch={refetch}
+        />
         <p className="mt-3 text-xs text-muted-foreground">{c.disclaimer}</p>
       </Section>
 
