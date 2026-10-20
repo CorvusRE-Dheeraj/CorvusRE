@@ -92,6 +92,7 @@ const NO_SHELL_PREFIXES = [
   "/sign-in",
   "/marketing",
   "/support",
+  "/operations",
   "/unsubscribe",
 ];
 

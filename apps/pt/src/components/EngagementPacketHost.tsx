@@ -69,7 +69,10 @@ export function EngagementPacketHost() {
     pathname === "/admin-login" ||
     // An invitee accepts before anything else; they never sign for the owner.
     pathname === "/accept-invite" ||
-    // The staff marketing workspace and the public unsubscribe page aren't customer flows.
+    // Staff dashboards and the public unsubscribe page aren't customer flows.
+    pathname === "/admin" ||
+    pathname === "/admin-manage" ||
+    pathname === "/operations" ||
     pathname === "/marketing" ||
     pathname === "/support" ||
     pathname === "/unsubscribe";
@@ -90,7 +93,10 @@ export function EngagementPacketHost() {
     ]).then(([latest, terms, profile, staff]) => {
       if (cancelled) return;
       // A Marketing Admin is staff, not a customer — no welcome, no agreements.
-      if ((staff?.isMarketingAdmin || staff?.isSupportAdmin) && !staff.isSuperAdmin) {
+      if (
+        (staff?.isMarketingAdmin || staff?.isSupportAdmin || staff?.isOperationsAdmin) &&
+        !staff.isSuperAdmin
+      ) {
         setWelcome(false);
         return;
       }

@@ -38,13 +38,26 @@ function AdminLogin() {
       if (signInError) throw signInError;
 
       const role = await getStaffRole(data.user.id);
-      if (!role.isSuperAdmin && !role.isMarketingAdmin && !role.isSupportAdmin) {
+      if (
+        !role.isSuperAdmin &&
+        !role.isMarketingAdmin &&
+        !role.isSupportAdmin &&
+        !role.isOperationsAdmin
+      ) {
         await supabase.auth.signOut();
         setError("Not authorized.");
         return;
       }
       // Marketing Admins have their own workspace; the full Admin is Super Admin only.
-      nav({ to: role.isSuperAdmin ? "/admin" : role.isMarketingAdmin ? "/marketing" : "/support" });
+      nav({
+        to: role.isSuperAdmin
+          ? "/admin"
+          : role.isOperationsAdmin
+            ? "/operations"
+            : role.isMarketingAdmin
+              ? "/marketing"
+              : "/support",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {

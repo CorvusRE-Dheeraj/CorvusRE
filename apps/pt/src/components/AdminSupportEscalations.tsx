@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Phone, Mail, ChevronDown } from "lucide-react";
 import { getErrorMessage } from "@/lib/error-message";
-import { listAllUsers, type AdminUserRecord } from "@/lib/admin";
+import { supabase } from "@/lib/supabase";
 import {
   listSupportEscalations,
   setSupportEscalationStatus,
@@ -23,18 +23,26 @@ const STATUS_TONE: Record<SupportEscalationStatus, string> = {
 // support team" line — if nothing shows up here, that line was a lie.
 export function AdminSupportEscalations() {
   const [rows, setRows] = useState<SupportEscalation[]>([]);
-  const [users, setUsers] = useState<AdminUserRecord[]>([]);
+  const [users, setUsers] = useState<{ id: string; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  function load() {
-    return Promise.all([listSupportEscalations(), listAllUsers()])
-      .then(([r, u]) => {
-        setRows(r);
-        setUsers(u);
-      })
-      .catch((err) => toast.error(getErrorMessage(err, "Could not load support escalations.")));
+  // customer emails come from customer_contacts (Support + Super Admins), not the
+  // full user list, which only Super Admins can read
+  async function load() {
+    try {
+      const r = await listSupportEscalations();
+      setRows(r);
+      const ids = [...new Set(r.map((x) => x.userId).filter(Boolean))] as string[];
+      if (ids.length) {
+        const { data, error } = await supabase.rpc("customer_contacts", { p_ids: ids });
+        if (error) throw error;
+        setUsers((data ?? []) as { id: string; email: string | null }[]);
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not load support escalations."));
+    }
   }
 
   useEffect(() => {
