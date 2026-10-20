@@ -28,6 +28,7 @@ import {
   markTemplateUsed,
 } from "@/lib/marketing";
 import { TEMPLATE_TOKENS, applyFilters, pickObjective } from "@/lib/marketing-crm";
+import { audienceEligibility } from "@/lib/marketing-analytics";
 import { Templates } from "./Templates";
 import { CampaignBadge, Field, inputCls, type Focus } from "./shared";
 
@@ -184,6 +185,28 @@ function CampaignEditor({
   const status = campaign?.status ?? "draft";
   const locked = status === "sent" || status === "sending";
   const recipients = useMemo(() => audienceLeads(audience, data.leads), [audience, data.leads]);
+  const [ownerId, setOwnerId] = useState<string | null>(campaign?.ownerId ?? data.me);
+  const [budget, setBudget] = useState<string>(
+    campaign?.budget != null ? String(campaign.budget) : "",
+  );
+  // everyone the filters reach, to show who's left out and why
+  const reach = useMemo(() => {
+    const all = audienceLeads(
+      audience,
+      data.leads.map((l) => ({
+        ...l,
+        email: l.email ?? "x",
+        unsubscribedAt: null,
+        stage: l.stage === "do_not_contact" ? "new" : l.stage,
+        emailConsent: "unknown" as const,
+      })),
+    );
+    const ids = new Set(all.map((l) => l.id));
+    return audienceEligibility(
+      data.leads.filter((l) => ids.has(l.id)),
+      "email",
+    );
+  }, [audience, data.leads]);
   // the objective that fits most of the audience (status, value change, deadline, history)
   const bestObjective = useMemo<TemplateObjective>(() => {
     const n = new Map<TemplateObjective, number>();
@@ -246,6 +269,8 @@ function CampaignEditor({
       subject,
       body,
       templateId,
+      ownerId,
+      budget: budget ? Number(budget) : null,
     });
   };
 
@@ -323,6 +348,32 @@ function CampaignEditor({
                 placeholder="e.g. Collin County deadline reminder"
               />
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Owner">
+                <select
+                  className={inputCls}
+                  value={ownerId ?? ""}
+                  disabled={locked}
+                  onChange={(e) => setOwnerId(e.target.value || null)}
+                >
+                  <option value="">No owner</option>
+                  {data.staff.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Budget ($)">
+                <input
+                  className={inputCls}
+                  inputMode="decimal"
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="optional"
+                />
+              </Field>
+            </div>
             <Field label="Channel">
               <select
                 className={inputCls}
@@ -340,6 +391,12 @@ function CampaignEditor({
               <div className="text-xs font-medium text-muted-foreground">
                 Audience — {recipients.length} recipient{recipients.length === 1 ? "" : "s"}
               </div>
+              {reach.excluded.length > 0 && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Left out automatically:{" "}
+                  {reach.excluded.map(([why, n]) => `${n} ${why.toLowerCase()}`).join(" · ")}
+                </p>
+              )}
               {data.segments.length > 0 && (
                 <select
                   className={`${inputCls} mt-1.5`}

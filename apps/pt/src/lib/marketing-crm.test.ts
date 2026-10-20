@@ -95,6 +95,10 @@ const lead = (p: Partial<Lead>): Lead => ({
   propertyAddedAt: null,
   subscriptionStartedAt: null,
   subscribedAt: null,
+  emailConsent: "unknown",
+  smsConsent: "unknown",
+  consentSource: null,
+  consentUpdatedAt: null,
   ...p,
 });
 
@@ -130,6 +134,9 @@ const prop = (p: Partial<LeadProperty>): LeadProperty => ({
   analyzedAt: null,
   changePct: null,
   flagged: false,
+  planTier: null,
+  valueBracket: null,
+  subscriptionStatus: null,
   ...p,
 });
 
@@ -622,6 +629,9 @@ describe("follow-ups + journey", () => {
     segments: [],
     templates: [],
     handoffs: [],
+    expenses: [],
+    recommendations: [],
+    reports: [],
     syncChanges: [],
     notifications: [],
     staff: [],

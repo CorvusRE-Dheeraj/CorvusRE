@@ -49,7 +49,11 @@ const TABS: { key: MarketingTab; label: string; purpose: string }[] = [
     label: "Follow-ups",
     purpose: "AI queue, team tasks, the registration journey and what works",
   },
-  { key: "analytics", label: "Analytics", purpose: "Sources, conversion, campaigns and revenue" },
+  {
+    key: "analytics",
+    label: "Analytics",
+    purpose: "Performance, spend and ROI, what works, recommendations, team, reports and audit",
+  },
 ];
 
 function MarketingPage() {
@@ -267,7 +271,7 @@ function MarketingPage() {
         ) : tab === "followups" ? (
           <Followups data={data} focus={focus} go={go} reload={reload} onAiRun={onAiRun} />
         ) : (
-          <Analytics data={data} onAiRun={onAiRun} />
+          <Analytics data={data} role={role} reload={reload} go={go} onAiRun={onAiRun} />
         )}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Ban, Check, Mail, MapPin, Phone, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Modal } from "@/components/Modal";
@@ -58,6 +58,8 @@ import {
   verifyProperty,
 } from "@/lib/marketing-research";
 import { OutreachWriter } from "./OutreachWriter";
+import { eligibility } from "@/lib/marketing-analytics";
+import { loadConsentEvents, type Consent, type ConsentEvent } from "@/lib/marketing";
 import {
   Field,
   PriorityBadge,
@@ -414,6 +416,8 @@ export function LeadProfile({
                 </p>
               )}
             </section>
+
+            <ContactPreferences lead={lead} act={act} />
 
             <PortfolioCard
               lead={lead}
@@ -1599,5 +1603,109 @@ function JourneyStrip({ lead, data }: { lead: Lead; data: MarketingData }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Consent per channel, who may be contacted how, and the consent history. */
+function ContactPreferences({ lead, act }: { lead: Lead; act: Act }) {
+  const [history, setHistory] = useState<ConsentEvent[] | null>(null);
+  const [source, setSource] = useState("");
+  const load = () =>
+    loadConsentEvents(lead.id)
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id, lead.emailConsent, lead.smsConsent, lead.unsubscribedAt, lead.stage]);
+  const set = (k: "emailConsent" | "smsConsent", v: Consent) =>
+    void act(
+      "consent",
+      () => updateLead(lead.id, { [k]: v, consentSource: source.trim() || "Recorded by staff" }),
+      "Consent saved.",
+    );
+  const row = (label: string, ch: "email" | "sms" | "call") => {
+    const why = eligibility(lead, ch);
+    return (
+      <li className="flex items-center justify-between gap-2">
+        <span>{label}</span>
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${why ? "bg-rose-50 text-rose-800" : "bg-emerald-50 text-emerald-800"}`}
+        >
+          {why ? `Not eligible — ${why}` : "Eligible"}
+        </span>
+      </li>
+    );
+  };
+  return (
+    <section className="rounded-lg border border-border p-4">
+      <h3 className="text-sm font-semibold">Contact preferences</h3>
+      <ul className="mt-2 grid gap-1 text-sm">
+        {row("Marketing email", "email")}
+        {row("Text messages", "sms")}
+        {row("Calls", "call")}
+      </ul>
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <label className="grid gap-1">
+          Email consent
+          <select
+            className="rounded border border-input bg-background px-1.5 py-1"
+            value={lead.emailConsent}
+            onChange={(e) => set("emailConsent", e.target.value as Consent)}
+          >
+            <option value="unknown">Not recorded (opt-out rules)</option>
+            <option value="granted">Opted in</option>
+            <option value="withdrawn">Withdrawn — no marketing email</option>
+          </select>
+        </label>
+        <label className="grid gap-1">
+          SMS consent
+          <select
+            className="rounded border border-input bg-background px-1.5 py-1"
+            value={lead.smsConsent}
+            onChange={(e) => set("smsConsent", e.target.value as Consent)}
+          >
+            <option value="unknown">Not recorded — no texts</option>
+            <option value="granted">Express written consent</option>
+            <option value="withdrawn">Withdrawn (replied STOP)</option>
+          </select>
+        </label>
+        <label className="grid gap-1">
+          Where it came from
+          <input
+            className="rounded border border-input bg-background px-1.5 py-1"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="e.g. signed web form 10/2"
+          />
+        </label>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        * Texts need express written consent; marketing email stops on unsubscribe, withdrawn
+        consent or Do Not Contact. Enforced before anything is scheduled or sent.
+      </p>
+      {history && history.length > 0 && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-accent">
+            Consent history ({history.length})
+          </summary>
+          <ul className="mt-1 grid gap-0.5">
+            {history.map((h) => (
+              <li key={h.id}>
+                {new Date(h.createdAt).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}{" "}
+                · {h.channel} · <b>{h.action.replace(/_/g, " ")}</b>
+                {h.source && <span className="text-muted-foreground"> · {h.source}</span>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
   );
 }

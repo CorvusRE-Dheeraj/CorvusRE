@@ -121,6 +121,7 @@ async function audienceFor(db: SupabaseClient, audience: Record<string, unknown>
     .is("unsubscribed_at", null)
     .not("email", "is", null)
     .neq("stage", "do_not_contact")
+    .neq("email_consent", "withdrawn")
     .limit(MAX_RECIPIENTS);
   // Same rule as audienceLeads() in apps/pt/src/lib/marketing.ts.
   const ids = audience.leadIds as string[] | undefined;
@@ -192,6 +193,8 @@ async function sendFollowup(db: SupabaseClient, resendKey: string, followupId: s
   if (!lead?.email) throw new Error("This lead has no email address.");
   if (lead.unsubscribed_at) throw new Error("This lead unsubscribed from marketing email.");
   if (lead.stage === "do_not_contact") throw new Error("This lead is marked Do Not Contact.");
+  const { data: why } = await db.rpc("marketing_can_contact", { p_lead: lead.id, p_channel: "email" });
+  if (why) throw new Error(`Not eligible for email: ${why}`);
   if (!f.message) throw new Error("Write or generate the message first.");
   const subject = f.subject || "Following up";
   await sendOne(resendKey, lead.email, personalize(subject, lead), renderEmail(subject, f.message, lead), `${SITE}/unsubscribe?t=${lead.unsubscribe_token}`);
@@ -338,8 +341,22 @@ export async function handle(req: Request): Promise<Response> {
         }
       }
       const handoffs = await summarizeHandoffs(db).catch((e) => ({ error: String(e) }));
+      // campaign / team analysis → recommendations that wait for approval
+      const analysis = await db.rpc("marketing_analyze");
+      // daily / weekly / monthly performance reports, AI-written
+      const reportsMade = await db.rpc("marketing_generate_reports");
+      const reports = await summarizeReports(db).catch((e) => ({ error: String(e) }));
       const digest = await sendDigests(db, resendKey).catch((e) => ({ error: String(e) }));
-      return json({ processed: results.length, results, monitor: monitor.data ?? monitor.error?.message, autoSent, handoffs, digest });
+      return json({
+        processed: results.length,
+        results,
+        monitor: monitor.data ?? monitor.error?.message,
+        autoSent,
+        handoffs,
+        analysis: analysis.data ?? analysis.error?.message,
+        reports: { created: reportsMade.data ?? reportsMade.error?.message, ...reports },
+        digest,
+      });
     }
     return json({ error: "Nothing to send." }, 400);
   } catch (err) {
@@ -382,6 +399,59 @@ async function summarizeHandoffs(db: SupabaseClient) {
     if (!text) continue;
     await db.from("support_handoffs").update({ summary: text, summary_at: new Date().toISOString() }).eq("id", h.id);
     summarized++;
+  }
+  return { summarized };
+}
+
+async function gemini(prompt: string): Promise<string | null> {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) return null;
+  const res = await fetch(geminiUrl(GEMINI_MODEL_FAST, key), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3 } }),
+  });
+  if (!res.ok) return null;
+  const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  return j.candidates?.[0]?.content?.parts?.map((x) => x.text ?? "").join("").trim() || null;
+}
+
+// AI summary for each new daily / weekly / monthly report, compared with the
+// period before; the marketing team is told it's ready.
+async function summarizeReports(db: SupabaseClient) {
+  const { data: rs } = await db.from("marketing_reports").select("*").is("summary", null).order("period_start").limit(6);
+  let summarized = 0;
+  for (const r of rs ?? []) {
+    const { data: prev } = await db
+      .from("marketing_reports")
+      .select("metrics")
+      .eq("period", r.period)
+      .lt("period_start", r.period_start)
+      .order("period_start", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const text = await gemini(
+      `You are Corvus AI writing the CorvusPT ${r.period} marketing performance summary (${r.period_start} to ${r.period_end}). ` +
+        "In markdown: **Headline** (one line), **Achievements**, **Concerns**, **Next actions** (3 bullets max each). Cover lead generation, campaign results, team productivity, conversion, customer acquisition cost (spend ÷ subscriptions) and new subscription revenue (annual list value). " +
+        "Compare with the previous period where given. Use ONLY these numbers; say plainly when a number is zero or missing. No promises about savings.\n\n" +
+        `This period: ${JSON.stringify(r.metrics)}\nPrevious period: ${JSON.stringify(prev?.metrics ?? null)}`,
+    );
+    if (!text) continue;
+    await db.from("marketing_reports").update({ summary: text, summary_at: new Date().toISOString() }).eq("id", r.id);
+    summarized++;
+    if (r.period !== "daily") {
+      const { data: staff } = await db.from("profiles").select("id").or("is_admin.eq.true,marketing_admin.eq.true");
+      await db.from("marketing_notifications").upsert(
+        (staff ?? []).map((p) => ({
+          staff_id: p.id,
+          kind: "report",
+          title: `${r.period === "weekly" ? "Weekly" : "Monthly"} marketing report ready`,
+          detail: `${r.period_start} – ${r.period_end}. Open Analytics → Reports.`,
+          dedupe_key: `report:${r.id}:${p.id}`,
+        })),
+        { onConflict: "dedupe_key", ignoreDuplicates: true },
+      );
+    }
   }
   return { summarized };
 }

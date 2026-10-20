@@ -22,6 +22,7 @@ export type AdminUserRecord = {
   isFranchiseOwner: boolean;
   isMarketingAdmin: boolean;
   isSupportAdmin: boolean;
+  isSupervisor: boolean;
   createdAt: string;
 };
 
@@ -36,6 +37,7 @@ type ProfileRow = {
   is_franchise_owner: boolean;
   marketing_admin: boolean | null;
   support_admin: boolean | null;
+  marketing_supervisor: boolean | null;
   created_at: string;
 };
 
@@ -51,6 +53,7 @@ function fromRow(row: ProfileRow): AdminUserRecord {
     isFranchiseOwner: row.is_franchise_owner,
     isMarketingAdmin: !!row.marketing_admin,
     isSupportAdmin: !!row.support_admin,
+    isSupervisor: !!row.marketing_supervisor,
     createdAt: row.created_at,
   };
 }
@@ -75,7 +78,7 @@ export async function listAllUsers(): Promise<AdminUserRecord[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, email, first_name, last_name, phone, plan, is_admin, is_franchise_owner, marketing_admin, support_admin, created_at",
+      "id, email, first_name, last_name, phone, plan, is_admin, is_franchise_owner, marketing_admin, support_admin, marketing_supervisor, created_at",
     )
     .neq("email", CI_TEST_ACCOUNT_EMAIL)
     .order("created_at", { ascending: false });

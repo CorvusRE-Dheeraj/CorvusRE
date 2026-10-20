@@ -151,7 +151,12 @@ export type Lead = {
   propertyAddedAt: string | null;
   subscriptionStartedAt: string | null;
   subscribedAt: string | null;
+  emailConsent: Consent;
+  smsConsent: Consent;
+  consentSource: string | null;
+  consentUpdatedAt: string | null;
 };
+export type Consent = "granted" | "unknown" | "withdrawn";
 
 /** Where a lead detail came from, so staff can see it and verify uncertain ones. */
 export type FieldSource = {
@@ -211,6 +216,9 @@ export type LeadProperty = {
   analyzedAt: string | null;
   changePct: number | null;
   flagged: boolean;
+  planTier: string | null;
+  valueBracket: string | null;
+  subscriptionStatus: string | null;
 };
 
 /** What the assessment review found for one property (see analyzeProperty). */
@@ -295,6 +303,8 @@ export type Campaign = {
   pausedAt: string | null;
   stats: { targeted?: number; sent?: number; failed?: number; errors?: string[] };
   templateId: string | null;
+  ownerId: string | null;
+  budget: number | null;
 };
 
 export type Followup = {
@@ -389,6 +399,10 @@ export const toLead = (r: any): Lead => ({
   propertyAddedAt: r.property_added_at ?? null,
   subscriptionStartedAt: r.subscription_started_at ?? null,
   subscribedAt: r.subscribed_at ?? null,
+  emailConsent: r.email_consent ?? "unknown",
+  smsConsent: r.sms_consent ?? "unknown",
+  consentSource: r.consent_source ?? null,
+  consentUpdatedAt: r.consent_updated_at ?? null,
 });
 const num = (v: unknown) => (v == null ? null : Number(v));
 export const toProperty = (r: any): LeadProperty => ({
@@ -423,6 +437,9 @@ export const toProperty = (r: any): LeadProperty => ({
   analyzedAt: r.analyzed_at ?? null,
   changePct: num(r.change_pct),
   flagged: !!r.flagged,
+  planTier: r.plan_tier ?? null,
+  valueBracket: r.value_bracket ?? null,
+  subscriptionStatus: r.subscription_status ?? null,
 });
 const toActivity = (r: any): Activity => ({
   id: r.id,
@@ -452,6 +469,8 @@ const toCampaign = (r: any): Campaign => ({
   pausedAt: r.paused_at,
   stats: r.stats ?? {},
   templateId: r.template_id ?? null,
+  ownerId: r.owner_id ?? null,
+  budget: r.budget == null ? null : Number(r.budget),
 });
 const toFollowup = (r: any): Followup => ({
   id: r.id,
@@ -485,18 +504,164 @@ export type StaffRole = {
   isSuperAdmin: boolean;
   isMarketingAdmin: boolean;
   isSupportAdmin: boolean;
+  isSupervisor: boolean;
 };
 export async function getStaffRole(userId: string): Promise<StaffRole> {
   const { data } = await supabase
     .from("profiles")
-    .select("is_admin, marketing_admin, support_admin")
+    .select("is_admin, marketing_admin, support_admin, marketing_supervisor")
     .eq("id", userId)
     .maybeSingle();
   return {
     isSuperAdmin: !!data?.is_admin,
     isMarketingAdmin: !!data?.marketing_admin,
     isSupportAdmin: !!data?.support_admin,
+    isSupervisor: !!data?.is_admin || (!!data?.marketing_admin && !!data?.marketing_supervisor),
   };
+}
+
+/** Super Admin only (enforced in the database). Also grants Marketing Admin. */
+export async function setMarketingSupervisor(userId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_marketing_supervisor", { target: userId, enabled });
+  if (error) throw error;
+}
+
+// ── Spend, recommendations, reports, audit ──────────────────────────────────
+export const EXPENSE_CATEGORIES = [
+  "ads",
+  "email",
+  "sms",
+  "events",
+  "content",
+  "tools",
+  "data",
+  "staff",
+  "other",
+] as const;
+export type Expense = {
+  id: string;
+  spentOn: string;
+  amount: number;
+  category: (typeof EXPENSE_CATEGORIES)[number];
+  campaignId: string | null;
+  vendor: string | null;
+  description: string | null;
+};
+export type Recommendation = {
+  id: string;
+  createdAt: string;
+  kind: "underperforming" | "high_cost" | "declining" | "opportunity" | "reassign" | "winning";
+  action: "adjust" | "pause" | "increase" | "reassign" | "review";
+  campaignId: string | null;
+  staffId: string | null;
+  targetStaffId: string | null;
+  title: string;
+  detail: string | null;
+  metrics: Record<string, unknown> | null;
+  status: "pending" | "approved" | "rejected" | "applied";
+  decidedAt: string | null;
+  note: string | null;
+};
+export type Report = {
+  id: string;
+  period: "daily" | "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+  metrics: Record<string, unknown>;
+  summary: string | null;
+  summaryAt: string | null;
+};
+export type AuditEntry = {
+  id: string;
+  createdAt: string;
+  actorId: string | null;
+  actorLabel: string;
+  entity: string;
+  entityId: string | null;
+  action: string;
+  summary: string;
+  detail: unknown;
+};
+export type ConsentEvent = {
+  id: string;
+  createdAt: string;
+  leadId: string;
+  channel: "email" | "sms" | "all";
+  action: string;
+  source: string | null;
+};
+
+export async function saveExpense(id: string | null, e: Omit<Expense, "id">): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const row = {
+    spent_on: e.spentOn,
+    amount: e.amount,
+    category: e.category,
+    campaign_id: e.campaignId,
+    vendor: e.vendor || null,
+    description: e.description || null,
+  };
+  const { error } = id
+    ? await supabase.from("marketing_expenses").update(row).eq("id", id)
+    : await supabase.from("marketing_expenses").insert({ ...row, created_by: u.user?.id ?? null });
+  if (error) throw error;
+}
+export async function deleteExpense(id: string): Promise<void> {
+  const { error } = await supabase.from("marketing_expenses").delete().eq("id", id);
+  if (error) throw error;
+}
+export async function decideRecommendation(
+  id: string,
+  status: "approved" | "rejected" | "applied",
+  note?: string,
+): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from("marketing_recommendations")
+    .update({
+      status,
+      decided_by: u.user?.id ?? null,
+      decided_at: new Date().toISOString(),
+      note: note ?? null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+/** Supervisors and Super Admins only (database-enforced). */
+export async function loadAudit(limit = 500): Promise<AuditEntry[]> {
+  const { data, error } = await supabase
+    .from("marketing_audit")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((x) => ({
+    id: x.id,
+    createdAt: x.created_at,
+    actorId: x.actor_id,
+    actorLabel: x.actor_label,
+    entity: x.entity,
+    entityId: x.entity_id,
+    action: x.action,
+    summary: x.summary,
+    detail: x.detail,
+  }));
+}
+export async function loadConsentEvents(leadId: string): Promise<ConsentEvent[]> {
+  const { data, error } = await supabase
+    .from("marketing_consent_events")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((x) => ({
+    id: x.id,
+    createdAt: x.created_at,
+    leadId: x.lead_id,
+    channel: x.channel,
+    action: x.action,
+    source: x.source,
+  }));
 }
 
 /** Super Admin only (enforced in the database). */
@@ -649,7 +814,13 @@ export type MarketingSettings = {
   notifyEmail: boolean;
   podio: { appId?: number; appName?: string; mapping?: Record<string, string> };
 };
-export type Staff = { id: string; name: string; email: string; isSuperAdmin: boolean };
+export type Staff = {
+  id: string;
+  name: string;
+  email: string;
+  isSuperAdmin: boolean;
+  isSupervisor: boolean;
+};
 
 export type MarketingData = {
   leads: Lead[];
@@ -661,6 +832,9 @@ export type MarketingData = {
   segments: Segment[];
   templates: Template[];
   handoffs: Handoff[];
+  expenses: Expense[];
+  recommendations: Recommendation[];
+  reports: Report[];
   syncChanges: SyncChange[];
   notifications: StaffNotification[];
   settings: MarketingSettings;
@@ -677,7 +851,7 @@ export async function syncLeads(): Promise<{ betaSignups: number; registeredUser
 export async function loadMarketing(): Promise<MarketingData> {
   const { data: u } = await supabase.auth.getUser();
   const me = u.user?.id ?? null;
-  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho] = await Promise.all([
+  const [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp] = await Promise.all([
     supabase
       .from("marketing_leads")
       .select("*")
@@ -716,8 +890,19 @@ export async function loadMarketing(): Promise<MarketingData> {
     supabase.rpc("marketing_staff"),
     supabase.from("marketing_templates").select("*").order("objective").order("channel"),
     supabase.from("support_handoffs").select("*").order("created_at", { ascending: false }),
+    supabase.from("marketing_expenses").select("*").order("spent_on", { ascending: false }),
+    supabase
+      .from("marketing_recommendations")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("marketing_reports")
+      .select("*")
+      .order("period_start", { ascending: false })
+      .limit(120),
   ]);
-  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho])
+  for (const res of [l, p, a, c, f, r, sg, sc, n, st, staff, tp, ho, ex, rc, rp])
     if (res.error) throw res.error;
   const s = st.data;
   return {
@@ -749,6 +934,39 @@ export async function loadMarketing(): Promise<MarketingData> {
     })),
     templates: (tp.data ?? []).map(toTemplate),
     handoffs: (ho.data ?? []).map(toHandoff),
+    expenses: (ex.data ?? []).map((x) => ({
+      id: x.id,
+      spentOn: x.spent_on,
+      amount: Number(x.amount),
+      category: x.category,
+      campaignId: x.campaign_id,
+      vendor: x.vendor,
+      description: x.description,
+    })),
+    recommendations: (rc.data ?? []).map((x) => ({
+      id: x.id,
+      createdAt: x.created_at,
+      kind: x.kind,
+      action: x.action,
+      campaignId: x.campaign_id,
+      staffId: x.staff_id,
+      targetStaffId: x.target_staff_id,
+      title: x.title,
+      detail: x.detail,
+      metrics: x.metrics,
+      status: x.status,
+      decidedAt: x.decided_at,
+      note: x.note,
+    })),
+    reports: (rp.data ?? []).map((x) => ({
+      id: x.id,
+      period: x.period,
+      periodStart: x.period_start,
+      periodEnd: x.period_end,
+      metrics: x.metrics ?? {},
+      summary: x.summary,
+      summaryAt: x.summary_at,
+    })),
     syncChanges: (sc.data ?? []).map((x) => ({
       id: x.id,
       createdAt: x.created_at,
@@ -781,12 +999,19 @@ export async function loadMarketing(): Promise<MarketingData> {
       podio: s?.podio ?? {},
     },
     staff: (
-      (staff.data ?? []) as { id: string; name: string; email: string; is_super_admin: boolean }[]
+      (staff.data ?? []) as {
+        id: string;
+        name: string;
+        email: string;
+        is_super_admin: boolean;
+        is_supervisor: boolean;
+      }[]
     ).map((x) => ({
       id: x.id,
       name: x.name,
       email: x.email,
       isSuperAdmin: x.is_super_admin,
+      isSupervisor: !!x.is_supervisor,
     })),
     me,
   };
@@ -924,7 +1149,17 @@ export async function deleteSegment(id: string): Promise<void> {
 
 // ── Portfolio properties ────────────────────────────────────────────────────
 export type PropertyInput = Partial<
-  Omit<LeadProperty, "id" | "createdAt" | "dedupeKey" | "changePct" | "flagged">
+  Omit<
+    LeadProperty,
+    | "id"
+    | "createdAt"
+    | "dedupeKey"
+    | "changePct"
+    | "flagged"
+    | "planTier"
+    | "valueBracket"
+    | "subscriptionStatus"
+  >
 > & {
   leadId: string;
 };
@@ -1006,6 +1241,7 @@ export type LeadInput = Partial<
     | "cities"
     | "zips"
     | "propertyTypes"
+    | "consentUpdatedAt"
   >
 >;
 const leadRow = (p: LeadInput) => {
@@ -1045,6 +1281,9 @@ const leadRow = (p: LeadInput) => {
     ["fieldSources", "field_sources"],
     ["researchFlags", "research_flags"],
     ["researchedAt", "researched_at"],
+    ["emailConsent", "email_consent"],
+    ["smsConsent", "sms_consent"],
+    ["consentSource", "consent_source"],
   ];
   for (const [k, col] of map) if (p[k] !== undefined) row[col] = p[k] === "" ? null : p[k];
   return row;
@@ -1141,7 +1380,7 @@ export async function dismissSuggestion(lead: Lead): Promise<Lead> {
 // ── Campaigns ───────────────────────────────────────────────────────────────
 export type CampaignInput = Partial<
   Pick<Campaign, "name" | "channel" | "status" | "audience" | "subject" | "body" | "scheduledAt">
-> & { templateId?: string | null };
+> & { templateId?: string | null; ownerId?: string | null; budget?: number | null };
 export async function saveCampaign(id: string | null, input: CampaignInput): Promise<Campaign> {
   const row: Record<string, unknown> = {};
   if (input.name !== undefined) row.name = input.name;
@@ -1152,6 +1391,8 @@ export async function saveCampaign(id: string | null, input: CampaignInput): Pro
   if (input.body !== undefined) row.body = input.body;
   if (input.scheduledAt !== undefined) row.scheduled_at = input.scheduledAt;
   if (input.templateId !== undefined) row.template_id = input.templateId;
+  if (input.ownerId !== undefined) row.owner_id = input.ownerId;
+  if (input.budget !== undefined) row.budget = input.budget;
   const { data: u } = await supabase.auth.getUser();
   const q = id
     ? supabase.from("marketing_campaigns").update(row).eq("id", id)
@@ -1192,7 +1433,7 @@ export async function deleteCampaign(id: string): Promise<void> {
 /** Same rule as audienceFor() in marketing-send.ts — Do Not Contact and unsubscribed never included. */
 export function audienceLeads(audience: Audience, leads: Lead[]): Lead[] {
   return leads.filter((l) => {
-    if (!l.email || l.unsubscribedAt || isDnc(l)) return false;
+    if (!l.email || l.unsubscribedAt || isDnc(l) || l.emailConsent === "withdrawn") return false;
     if (audience.leadIds?.length) return audience.leadIds.includes(l.id);
     if (audience.stages?.length ? !audience.stages.includes(l.stage) : l.stage === "not_interested")
       return false;
