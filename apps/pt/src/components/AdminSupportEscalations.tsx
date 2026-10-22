@@ -10,6 +10,9 @@ import {
   type SupportEscalationStatus,
 } from "@/lib/support-escalations";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { OwnerHandoff, RecordHistory } from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
+import { useLiveRefresh } from "@/lib/staff-records";
 
 const STATUS_TONE: Record<SupportEscalationStatus, string> = {
   open: "bg-warning/15 text-warning-foreground",
@@ -21,7 +24,8 @@ const STATUS_TONE: Record<SupportEscalationStatus, string> = {
 // from the Ask AI widget, newest first, with the chat transcript that led to
 // it. This is the real backstop behind the bot's "I've reported this to our
 // support team" line — if nothing shows up here, that line was a lie.
-export function AdminSupportEscalations() {
+export function AdminSupportEscalations({ mineOnly }: { mineOnly?: boolean } = {}) {
+  const staffCtx = useStaffContext();
   const [rows, setRows] = useState<SupportEscalation[]>([]);
   const [users, setUsers] = useState<{ id: string; email: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +52,7 @@ export function AdminSupportEscalations() {
   useEffect(() => {
     void load().finally(() => setLoading(false));
   }, []);
+  useLiveRefresh(["support_escalations", "record_transfers"], () => void load());
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -65,17 +70,20 @@ export function AdminSupportEscalations() {
 
   if (loading) return <PageSkeleton />;
 
-  if (rows.length === 0) {
+  const shown = mineOnly ? rows.filter((r) => r.assignedTo === staffCtx.me) : rows;
+  if (shown.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No one has asked to escalate from the Ask AI widget yet.
+        {mineOnly
+          ? "No support tickets assigned to you."
+          : "No one has asked to escalate from the Ask AI widget yet."}
       </p>
     );
   }
 
   return (
     <ul className="grid gap-2">
-      {rows.map((r) => {
+      {shown.map((r) => {
         const u = r.userId ? userById.get(r.userId) : undefined;
         const open = expandedId === r.id;
         return (
@@ -107,6 +115,17 @@ export function AdminSupportEscalations() {
                   {new Date(r.createdAt).toLocaleString()}
                 </div>
                 {r.summary && <p className="mt-1 truncate">{r.summary}</p>}
+                <div className="mt-1.5">
+                  <OwnerHandoff
+                    ctx={staffCtx}
+                    entityType="escalation"
+                    entityId={r.id}
+                    ownerId={r.assignedTo ?? null}
+                    label={r.summary.slice(0, 80)}
+                    onChanged={() => void load()}
+                    compact
+                  />
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <select
@@ -131,6 +150,11 @@ export function AdminSupportEscalations() {
                 </button>
               </div>
             </div>
+            {open && (
+              <div className="mt-2 rounded-md border border-border p-2.5">
+                <RecordHistory entityId={r.id} profileId={r.userId} title="History" limit={15} />
+              </div>
+            )}
             {open && (
               <div className="mt-2 grid gap-1.5 rounded-md bg-secondary/40 p-2.5 text-xs">
                 {r.transcript.length === 0 ? (

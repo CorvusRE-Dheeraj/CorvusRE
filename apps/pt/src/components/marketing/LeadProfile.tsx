@@ -66,6 +66,8 @@ import {
   type ConsentEvent,
   type Message,
 } from "@/lib/marketing";
+import { OwnerHandoff, RecordHistory } from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
 import {
   Field,
   PriorityBadge,
@@ -117,6 +119,7 @@ export function LeadProfile({
 }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const staffCtx = useStaffContext();
   const s = scoreLead(lead, data.activities);
   const rec = recommend(lead, data, s.score);
   const props = data.properties.filter((p) => p.leadId === lead.id);
@@ -276,26 +279,40 @@ export function LeadProfile({
               <option value="medium">Medium (set by staff)</option>
               <option value="low">Low (set by staff)</option>
             </select>
-            <select
-              aria-label="Assigned to"
-              value={lead.assignedTo ?? ""}
-              disabled={!!busy}
-              onChange={(e) =>
-                void act(
-                  "assign",
-                  () => updateLead(lead.id, { assignedTo: e.target.value || null }),
-                  "Assignment saved.",
-                )
-              }
-              className="max-w-[11rem] rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {data.staff.map((st) => (
-                <option key={st.id} value={st.id}>
-                  {st.id === data.me ? `${st.name} (me)` : st.name}
-                </option>
-              ))}
-            </select>
+            {/* One owner per lead. With no owner yet, pick one; once it has
+                one, a change is a handoff (reason + history, accepted by the
+                receiver) — see components/staff/StaffRecords.tsx. */}
+            {lead.assignedTo ? (
+              <OwnerHandoff
+                ctx={staffCtx}
+                entityType="lead"
+                entityId={lead.id}
+                ownerId={lead.assignedTo}
+                label={leadName(lead)}
+                onChanged={() => void reload()}
+              />
+            ) : (
+              <select
+                aria-label="Assign an owner"
+                value=""
+                disabled={!!busy}
+                onChange={(e) =>
+                  void act(
+                    "assign",
+                    () => updateLead(lead.id, { assignedTo: e.target.value || null }),
+                    "Owner set.",
+                  )
+                }
+                className="max-w-[11rem] rounded-md border border-warning bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="">Needs an owner…</option>
+                {data.staff.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    {st.id === data.me ? `${st.name} (me)` : st.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               disabled={!!busy}
@@ -560,6 +577,22 @@ export function LeadProfile({
                 * High 55+, Medium 30+. Indicators of protest potential — not a promise of a lower
                 value or savings.
               </p>
+            </section>
+
+            {lead.outreachPausedAt && (
+              <p className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
+                Marketing outreach is paused —{" "}
+                {lead.outreachPausedReason ?? "a handoff is in progress"}. No emails, texts or calls
+                go out from Marketing until it's back with Marketing.
+              </p>
+            )}
+            <section className="rounded-lg border border-border p-4">
+              <RecordHistory
+                leadId={lead.id}
+                profileId={lead.profileId}
+                title="Shared history (owners, handoffs, cases, approvals)"
+                limit={15}
+              />
             </section>
 
             <section className="rounded-lg border border-border p-4">

@@ -97,10 +97,13 @@ export type AdminAuditEntry = {
   targetEmail: string | null;
   detail: string | null;
   createdAt: string;
+  /** the Super-Admin approval this change was made under, if any */
+  approvalId?: string | null;
 };
 
 type AdminAuditRow = {
   id: string;
+  approval_id?: string | null;
   actor_email: string;
   action: string;
   target_email: string | null;
@@ -139,7 +142,7 @@ async function logAdminAction(input: {
 export async function listAdminAuditLog(limit = 50): Promise<AdminAuditEntry[]> {
   const { data, error } = await supabase
     .from("admin_audit_log")
-    .select("id, actor_email, action, target_email, detail, created_at")
+    .select("id, actor_email, action, target_email, detail, created_at, approval_id")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -150,6 +153,7 @@ export async function listAdminAuditLog(limit = 50): Promise<AdminAuditEntry[]> 
     targetEmail: row.target_email,
     detail: row.detail,
     createdAt: row.created_at,
+    approvalId: row.approval_id ?? null,
   }));
 }
 
@@ -441,6 +445,8 @@ export type AdminProtestRecord = {
   // Who at CorvusPT is actually handling this case — admin-set (see
   // updateProtestAssignedRep below).
   assignedRepresentative: string | null;
+  /** the staff member responsible for this case (auto-assigned; changed by a handoff) */
+  ownerId?: string | null;
   assignedRepSetAt: string | null;
 };
 
@@ -463,6 +469,7 @@ type AdminProtestRow = {
   closed_at: string | null;
   tax_year: number | null;
   assigned_representative: string | null;
+  owner_id?: string | null;
   assigned_rep_set_at: string | null;
   properties: {
     address: string;
@@ -484,7 +491,7 @@ export async function listAllProtests(): Promise<AdminProtestRecord[]> {
   const { data, error } = await supabase
     .from("protests")
     .select(
-      "id, property_id, user_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, assigned_representative, assigned_rep_set_at, properties(address, cad, property_type, protest_deadline, total_value, land_value, improvement_value, tax_year, account_number)",
+      "id, property_id, user_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, assigned_representative, assigned_rep_set_at, owner_id, properties(address, cad, property_type, protest_deadline, total_value, land_value, improvement_value, tax_year, account_number)",
     )
     .order("requested_at", { ascending: false });
   if (error) throw error;
@@ -516,6 +523,7 @@ export async function listAllProtests(): Promise<AdminProtestRecord[]> {
     escalationPath: row.escalation_path,
     closedAt: row.closed_at,
     assignedRepresentative: row.assigned_representative,
+    ownerId: row.owner_id ?? null,
     assignedRepSetAt: row.assigned_rep_set_at,
   }));
 }

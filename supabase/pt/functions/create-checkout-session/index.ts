@@ -23,7 +23,7 @@ import {
   subscriptionProductName,
   type Tier,
 } from "../_shared/pricing.ts";
-import { checkoutCouponFor } from "../_shared/discounts.ts";
+import { bestCheckoutCoupon, type PricingException } from "../_shared/discounts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -153,7 +153,21 @@ Deno.serve(async (req: Request) => {
 
     // Billed annually: Checkout shows the full $3,588/yr, then the launch or
     // franchise coupon as its own line (see ../_shared/discounts.ts).
-    const discount = await checkoutCouponFor(stripe, profile?.is_franchise_owner === true);
+    // ...or a Super-Admin-approved pricing exception for this customer /
+    // property, when it's the bigger discount (see staff-approvals).
+    const { data: exceptions } = await adminClient
+      .from("pricing_exceptions")
+      .select("id, percent_off, duration, duration_in_months, property_id")
+      .eq("profile_id", user.id)
+      .eq("active", true)
+      .or(`property_id.is.null,property_id.eq.${propertyId}`)
+      .order("percent_off", { ascending: false })
+      .limit(1);
+    const discount = await bestCheckoutCoupon(
+      stripe,
+      profile?.is_franchise_owner === true,
+      (exceptions?.[0] as PricingException | undefined) ?? null,
+    );
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",

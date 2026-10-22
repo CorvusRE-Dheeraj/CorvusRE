@@ -1,4 +1,3 @@
-import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
 import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,8 +18,6 @@ import {
   Mic,
   Volume2,
   VolumeX,
-  MessageSquareHeart,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -81,11 +78,8 @@ import { useSpeechInput } from "@/hooks/use-speech-input";
 import { useSpeechOutput } from "@/hooks/use-speech-output";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
-import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
-import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling, propertyMonthlyPrice } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
-import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 import { isPaidStatus } from "@/lib/subscription-status";
@@ -95,11 +89,6 @@ const URGENCY_RANK: Record<Urgency, number> = { overdue: 0, urgent: 1, soon: 2, 
 export const Route = createFileRoute("/dashboard/_layout/")({
   component: Overview,
 });
-
-// Per-viewer convenience, not a durable record of anything — a fresh
-// browser (or cleared storage) just sees the banner again, which is fine
-// since it's also gone for good the moment they actually complete the form.
-const FEEDBACK_BANNER_DISMISSED_KEY = "corvusre.feedbackBannerDismissed";
 
 const STATUS_LABEL: Record<ProtestStatus, string> = {
   requested: "Requested",
@@ -153,46 +142,12 @@ function Overview() {
   const nudgedPropertyId = useRef<string | null>(null);
   const [hearingNudge, setHearingNudge] = useState<string | null>(null);
   const nudgedHearingProtestId = useRef<string | null>(null);
-  const [showFeedbackBanner, setShowFeedbackBanner] = useState(false);
 
   // Brand-new accounts (nothing added yet) get the quick tour once.
   useEffect(() => {
     if (!loaded || properties.length > 0 || protests.length > 0) return;
     return maybeStartTour();
   }, [loaded, properties.length, protests.length]);
-
-  useEffect(() => {
-    if (!user) return;
-    let dismissed = false;
-    try {
-      dismissed = localStorage.getItem(FEEDBACK_BANNER_DISMISSED_KEY) === "1";
-    } catch {
-      // storage blocked — just show the banner, same as any dismissible UI
-      // that can't remember a prior dismissal.
-    }
-    if (dismissed) return;
-    // Beta testers only (plan === "beta") — a real paying customer isn't
-    // part of that cohort, same reasoning as SiteChrome's sign-out/tab-close
-    // prompts.
-    Promise.all([getMyBilling(user.id), getMyFeedbackResponse(user.id)])
-      .then(([billing, r]) =>
-        setShowFeedbackBanner(billing.plan === "beta" && !isFormV2Complete(r)),
-      )
-      .catch(() => {
-        // Fail closed here (unlike SiteChrome's sign-out prompt): an
-        // unprompted banner on a page every user sees is worth skipping on
-        // a network hiccup, not worth risking on incomplete data.
-      });
-  }, [user]);
-
-  function dismissFeedbackBanner() {
-    setShowFeedbackBanner(false);
-    try {
-      localStorage.setItem(FEEDBACK_BANNER_DISMISSED_KEY, "1");
-    } catch {
-      // best-effort only
-    }
-  }
 
   useEffect(() => {
     if (!user) return;
@@ -942,57 +897,7 @@ function Overview() {
         </div>
       )}
 
-      {showFeedbackBanner && properties.length > 0 && (
-        <div className="card-elev p-4 flex items-start gap-3">
-          <MessageSquareHeart className="h-5 w-5 shrink-0 text-accent mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Help us make CorvusPT better</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              You're one of our beta testers — 2–3 minutes, and it directly shapes what we build
-              next.
-            </p>
-            <button
-              type="button"
-              onClick={openFeedbackWidget}
-              className="btn-outline text-sm mt-3 inline-flex"
-            >
-              Give Feedback
-            </button>
-          </div>
-          <button
-            onClick={dismissFeedbackBanner}
-            aria-label="Dismiss"
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {loaded && (
-        <ProtestVerdictCard
-          properties={properties}
-          protests={protests}
-          healthScores={healthScores}
-          onOpenReport={openAiReport}
-        />
-      )}
-
       <MyAppointments />
-
-      {loaded && (
-        <GettingStarted
-          properties={properties.length}
-          // only files the owner uploaded — not the signed packet or the
-          // AI-generated base-data / summary documents saved automatically
-          documents={
-            documents.filter((d) => d.source !== "signed" && !/^AI\b/.test(d.documentType ?? ""))
-              .length
-          }
-          protests={protests.length}
-          resolved={protests.filter((p) => p.status === "resolved").length}
-        />
-      )}
 
       <div>
         <h2 className="font-serif text-xl font-bold">Insights &amp; Activity</h2>
@@ -1096,7 +1001,9 @@ function StatCard({
       >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
+      {/* one line, sized to the card (container query) — big on wide cards, never
+          broken mid-word ("Propertie / s") on narrow ones */}
+      <div className="mt-2 whitespace-nowrap text-[clamp(0.75rem,9cqi,2.1875rem)] font-medium text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -1115,7 +1022,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -1124,7 +1031,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
+      className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
