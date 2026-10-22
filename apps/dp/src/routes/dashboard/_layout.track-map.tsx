@@ -46,6 +46,8 @@ function TrackMap() {
   const [query, setQuery] = useState("");
   // Only used when the browser blocks the popup window.
   const [fallback, setFallback] = useState<{ n: number; view: "station" | "module" } | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  useTrackLight(mapRef, `${loading}|${filter}|${query}|${location?.station ?? ""}`);
 
   if (loading) return <Loading />;
   if (!hasProject || !project) return <EmptyProject />;
@@ -73,7 +75,7 @@ function TrackMap() {
   };
 
   return (
-    <div className="grid gap-5">
+    <div ref={mapRef} className="grid gap-5">
       <header className="card-elev p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -198,6 +200,7 @@ function TrackMap() {
                     <StationSlot
                       key={s.n}
                       station={s}
+                      projectId={project.id}
                       wagons={wagons}
                       boardDelay={
                         route.color === "gray" && location?.station === LAST_STATION && s.n < LAST_STATION
@@ -347,6 +350,9 @@ type ConnectorGeom = {
 
 const CURVE = 24; // radius of the right-hand corners
 const OUT = 9; // outside track centreline, px past the box border
+const LIGHT = 64; // length of the travelling light, px (rails' blob = connectors' dash)
+const LIGHT_SPEED = 170; // px per second, the same everywhere on the line
+const LIGHT_MIN_PERIOD = 7; // s between lights passing any one point, at least
 
 function RouteConnector({ color }: { color: RouteColor }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -418,7 +424,15 @@ function RouteConnector({ color }: { color: RouteColor }) {
   };
 
   return (
-    <span ref={ref} className="pointer-events-none absolute inset-0 z-[5]" aria-hidden>
+    <span
+      ref={ref}
+      className="pointer-events-none absolute inset-0 z-[5]"
+      aria-hidden
+      // Where this connector leaves the top rail and where it joins the next
+      // section's rail, for useTrackLight's timing.
+      data-light-start={start ?? ""}
+      data-light-entry={gapLeft}
+    >
       {/* Hide the straight rails where the route's curves take over from them:
           the top rail's tail past the curve start, the next rail's head. */}
       {g.ry != null && g.railEnd > curveStart && (
@@ -433,6 +447,29 @@ function RouteConnector({ color }: { color: RouteColor }) {
           <path d={route(0)} stroke="#b9c4ce" strokeWidth="14" strokeDasharray="3 11" />
           <path d={route(5.5) + route(-5.5)} stroke="#566777" strokeWidth="3" />
         </g>
+        {/* The travelling light (useTrackLight): a short dash on the same
+            centreline, parked before the path's start until animated. A wide
+            soft dash plus a shorter bright core matches the rails' gradient. */}
+        <g className="track-light-path" opacity="0.85" fill="none" strokeWidth="14">
+          <path
+            className="track-light-dash"
+            d={route(0)}
+            stroke="#bbf7d0"
+            strokeOpacity="0.5"
+            strokeDasharray={`${LIGHT} 100000`}
+            strokeDashoffset={LIGHT}
+            data-dash={LIGHT}
+          />
+          <path
+            className="track-light-dash"
+            d={route(0)}
+            stroke="#f0fdf4"
+            strokeOpacity="0.7"
+            strokeDasharray={`${LIGHT / 2} 100000`}
+            strokeDashoffset={LIGHT}
+            data-dash={LIGHT / 2}
+          />
+        </g>
       </svg>
       {g.ry != null && (
         <ChevronDown
@@ -442,6 +479,156 @@ function RouteConnector({ color }: { color: RouteColor }) {
       )}
     </span>
   );
+}
+
+// A soft light that travels the whole line at one constant speed: along each
+// section's rails (a blob inside each .track-rail's .track-light, clipped to
+// its slot so neighbours meet without overlapping), then round that section's
+// RouteConnector (a dash on the connector's own centreline path), into the
+// next section's rail — on the existing geometry, never a path of its own.
+// Rails in later rows of a wrapped section light in step with the first row.
+//
+// Every piece is one native Web Animation with a shared startTime of 0, so all
+// pieces run on one clock with no JS per frame: each piece's delay is simply
+// when the light reaches it. Rails animate transform only (compositor); a
+// connector's dash moves only while the light is on it and holds still
+// otherwise. A light enters the line every `period` seconds, which is just
+// long enough for the longest piece, so each piece shows one light at a time.
+// Timings are measured once per layout — after a debounced resize, or when
+// the filter / search / train change what's shown — never per frame.
+// Off entirely under prefers-reduced-motion (CSS also hides the pieces).
+function useTrackLight(ref: RefObject<HTMLElement | null>, layoutKey: string) {
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !root.animate || typeof ResizeObserver === "undefined") return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let anims: Animation[] = [];
+    let timer = 0;
+
+    const stop = () => {
+      for (const a of anims) a.cancel();
+      anims = [];
+    };
+
+    const start = () => {
+      stop();
+      if (reduce.matches) return;
+      type Piece = {
+        el: Element;
+        t0: number; // s: when the light's centre is at the piece's start
+        travel: number; // s: how long the light takes to cross the piece
+        from: Keyframe;
+        to: Keyframe;
+      };
+      const pieces: Piece[] = [];
+      let s = 0; // px along the line at this section's entry point
+      let entry: number | null = null; // that entry point's x in section px
+
+      for (const section of root.querySelectorAll<HTMLElement>(":scope > section")) {
+        const box = section.getBoundingClientRect();
+        const ox = box.left + section.clientLeft;
+        const slots = [
+          ...section.querySelectorAll<HTMLElement>(":scope > ol > li > .track-rail > .track-light"),
+        ].map((slot) => {
+          const r = slot.getBoundingClientRect();
+          return { blob: slot.firstElementChild, a: r.left - ox, w: r.width };
+        });
+        const enter = entry ?? (slots.length ? Math.min(...slots.map((x) => x.a)) : 0);
+
+        // The blob's centre starts LIGHT/2 before the slot (fully hidden) and
+        // leaves LIGHT/2 past its end.
+        for (const { blob, a, w } of slots) {
+          if (!blob) continue;
+          pieces.push({
+            el: blob,
+            t0: (s + a - LIGHT / 2 - enter) / LIGHT_SPEED,
+            travel: (w + LIGHT) / LIGHT_SPEED,
+            from: { transform: `translateX(${-LIGHT}px)` },
+            to: { transform: `translateX(${w}px)` },
+          });
+        }
+
+        const conn = section.querySelector<HTMLElement>(":scope > [data-light-entry]");
+        const dashes = conn
+          ? [...conn.querySelectorAll<SVGPathElement>("path.track-light-dash")]
+          : [];
+        if (!conn || !dashes.length) break; // last section, or not measured yet
+        const startX = conn.dataset.lightStart;
+        const exit = startX ? s + Number(startX) - enter : s; // px where it leaves the rail
+        const len = dashes[0].getTotalLength();
+        for (const dash of dashes) {
+          // Dash centred at distance x along the path: offset = d/2 - x.
+          const d = Number(dash.dataset.dash);
+          pieces.push({
+            el: dash,
+            t0: (exit - LIGHT / 2) / LIGHT_SPEED,
+            travel: (len + LIGHT) / LIGHT_SPEED,
+            from: { strokeDashoffset: `${d / 2 + LIGHT / 2}px` },
+            to: { strokeDashoffset: `${d / 2 - LIGHT / 2 - len}px` },
+          });
+        }
+        s = exit + len;
+        entry = Number(conn.dataset.lightEntry);
+      }
+      if (!pieces.length) return;
+
+      const period = Math.max(LIGHT_MIN_PERIOD, ...pieces.map((p) => p.travel + 0.25));
+      for (const p of pieces) {
+        const anim = p.el.animate(
+          [
+            { ...p.from, offset: 0 },
+            { ...p.to, offset: p.travel / period },
+            { ...p.to, offset: 1 },
+          ],
+          {
+            duration: period * 1000,
+            // Negative, so every piece is already mid-cycle at the right phase.
+            delay: ((((p.t0 % period) + period) % period) - period) * 1000,
+            iterations: Infinity,
+            easing: "linear",
+          },
+        );
+        anim.startTime = 0;
+        anims.push(anim);
+      }
+    };
+
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(start, 150);
+    };
+    // Fires once on observe, then only when the map's size really changes;
+    // the delay lets RouteConnector re-measure and re-render first.
+    const ro = new ResizeObserver(schedule);
+    ro.observe(root);
+    reduce.addEventListener("change", schedule);
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+      reduce.removeEventListener("change", schedule);
+      stop();
+    };
+  }, [ref, layoutKey]);
+}
+
+// The first time this browser sees a project's line complete (the train at
+// the last station, i.e. every permit approved), the outcome card shimmers
+// once. Remembered per project, so revisits and re-renders never replay it;
+// if storage is blocked it can only replay on a fresh mount of the page.
+function useCompletionShimmer(done: boolean, projectId: string) {
+  const [play, setPlay] = useState(false);
+  useEffect(() => {
+    if (!done) return;
+    const key = `corvusdp.trackMap.completed.${projectId}`;
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, "1");
+    } catch {
+      // Storage unavailable: fall through and play for this mount only.
+    }
+    setPlay(true);
+  }, [done, projectId]);
+  return done && play;
 }
 
 // Approval / Clearance / Expiry only: once the line is complete, each finished
@@ -473,12 +660,14 @@ function useBoardTrain(ref: RefObject<HTMLElement | null>, delay: number | undef
 
 function StationSlot({
   station,
+  projectId,
   state,
   onOpen,
   boardDelay,
   wagons,
 }: {
   station: Station;
+  projectId: string;
   wagons: Wagon[];
   state: "passed" | "current" | "ahead";
   onOpen: (n: number) => void;
@@ -487,9 +676,17 @@ function StationSlot({
   const style = ROUTE_STYLE[station.color];
   const cardRef = useRef<HTMLButtonElement>(null);
   useBoardTrain(cardRef, boardDelay);
+  // The train only reaches the last station once every permit is approved.
+  const complete = station.n === LAST_STATION && state === "current";
+  const shimmer = useCompletionShimmer(complete, projectId);
   return (
     <li className="relative pt-11">
-      <span className="track-rail" aria-hidden />
+      <span className="track-rail" aria-hidden>
+        {/* useTrackLight's blob for this slot's stretch of rail. */}
+        <span className="track-light">
+          <span />
+        </span>
+      </span>
       <span
         className={cn(
           "absolute left-2 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full border-[3px] border-white text-xs font-bold text-white shadow",
@@ -519,6 +716,8 @@ function StationSlot({
           style.border,
           state === "current" && "bg-green-50 ring-4 ring-green-500/25",
           state === "passed" && "opacity-75",
+          complete && "track-outcome-done",
+          shimmer && "track-outcome-shimmer",
         )}
       >
         <span className="text-[13px] font-semibold leading-snug">{station.title}</span>
@@ -533,7 +732,11 @@ function StationSlot({
           >
             {station.module}
           </span>
-          <AvailabilityDot availability={station.availability} />
+          {/* Only working stations signal; a planned one stays still. */}
+          <AvailabilityDot
+            availability={station.availability}
+            className={station.availability !== "planned" ? "track-status" : undefined}
+          />
         </span>
       </button>
     </li>

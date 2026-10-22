@@ -1102,6 +1102,127 @@ header .container-page {
     transform: translate3d(-10px, -14px, 0) scale(1.4);
   }
 }
+/* Travelling light along the line. useTrackLight (_layout.track-map.tsx) drives
+   it with the Web Animations API; this is only its static shape. Each slot's
+   light is clipped to its own stretch of rail — the li plus half the grid gap
+   (1rem) either side — so neighbouring slots meet exactly with no doubled
+   overlap. It sits inside .track-rail, so under the station badges (z-10) and
+   the train (z-20), and never over the cards. Until animated, the blob waits
+   off the left edge, so nothing shows. */
+.track-light {
+  position: absolute;
+  inset: 0 0.25rem;
+  overflow: hidden;
+}
+.track-light > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 64px; /* LIGHT */
+  transform: translateX(-64px);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(187 247 208 / 0.5) 25%,
+    rgb(240 253 244 / 0.85) 50%,
+    rgb(187 247 208 / 0.5) 75%,
+    transparent
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  .track-light,
+  .track-light-path {
+    display: none;
+  }
+}
+
+/* Station status signal: a soft ripple in the dot's own colour expands out
+   from behind it and fades (the dot itself never scales). Staggered across a
+   row so they don't beat in unison. Only working stations get .track-status. */
+@media (prefers-reduced-motion: no-preference) {
+  .track-status {
+    position: relative;
+  }
+  .track-status::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: inherit;
+    opacity: 0;
+    animation: track-status-ripple 3.2s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+  }
+  li:nth-child(3n + 2) > button .track-status::after {
+    animation-delay: -1.05s;
+  }
+  li:nth-child(3n) > button .track-status::after {
+    animation-delay: -2.1s;
+  }
+}
+@keyframes track-status-ripple {
+  0% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+/* Central Visibility Outcome, once the line is complete (every permit
+   approved): a soft green halo just outside the card — an overlay, so the
+   card's size, radius, layout and "you are here" ring are untouched. It
+   breathes slowly; the first time a project completes, one light sweep
+   crosses the card first. Under reduced motion the halo is simply static. */
+.track-outcome-done {
+  position: relative;
+}
+.track-outcome-done::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: calc(1rem + 4px);
+  pointer-events: none;
+  box-shadow:
+    0 0 0 2px rgb(34 197 94 / 0.45),
+    0 0 12px 2px rgb(34 197 94 / 0.3);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .track-outcome-done::after {
+    animation: track-outcome-breathe 5s ease-in-out infinite;
+  }
+  /* Starts after the finished stations have boarded the train (~1.1s). */
+  .track-outcome-shimmer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.55) 50%, transparent 60%)
+      no-repeat;
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    animation: track-outcome-shimmer 1.4s cubic-bezier(0.4, 0, 0.2, 1) 1.2s both;
+  }
+}
+@keyframes track-outcome-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes track-outcome-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
 
 /* Train journey (TrainJourney on the Track Map). Static styles first; every
    animation is in the prefers-reduced-motion: no-preference block below, so

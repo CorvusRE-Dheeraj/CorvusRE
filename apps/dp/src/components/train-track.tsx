@@ -94,10 +94,20 @@ export function AvailabilityPill({ availability }: { availability: Availability 
   );
 }
 
-export function AvailabilityDot({ availability }: { availability: Availability }) {
+export function AvailabilityDot({
+  availability,
+  className,
+}: {
+  availability: Availability;
+  className?: string;
+}) {
   return (
     <span
-      className={cn("inline-block h-2 w-2 shrink-0 rounded-full", AVAILABILITY_STYLE[availability].dot)}
+      className={cn(
+        "inline-block h-2 w-2 shrink-0 rounded-full",
+        AVAILABILITY_STYLE[availability].dot,
+        className,
+      )}
       title={AVAILABILITY_LABEL[availability]}
       aria-label={AVAILABILITY_LABEL[availability]}
     />
