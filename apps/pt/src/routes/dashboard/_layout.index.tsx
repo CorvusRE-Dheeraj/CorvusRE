@@ -1,4 +1,3 @@
-import { ProtestVerdictCard } from "@/components/ProtestVerdictCard";
 import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -897,15 +896,6 @@ function Overview() {
             </Link>
           </div>
         </div>
-      )}
-
-      {loaded && (
-        <ProtestVerdictCard
-          properties={properties}
-          protests={protests}
-          healthScores={healthScores}
-          onOpenReport={openAiReport}
-        />
       )}
 
       <MyAppointments />
