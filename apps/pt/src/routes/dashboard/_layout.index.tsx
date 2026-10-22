@@ -1096,7 +1096,9 @@ function StatCard({
       >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="mt-2 break-words text-base font-medium sm:text-[2.1875rem] text-muted-foreground leading-tight">
+      {/* one line, sized to the card (container query) — big on wide cards, never
+          broken mid-word ("Propertie / s") on narrow ones */}
+      <div className="mt-2 whitespace-nowrap text-[clamp(0.75rem,9cqi,2.1875rem)] font-medium text-muted-foreground leading-tight">
         {label}
       </div>
       <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
@@ -1115,7 +1117,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}
@@ -1124,7 +1126,7 @@ function StatCard({
   }
   return (
     <div
-      className="card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
+      className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
       style={{ animationDelay: `${delayMs}ms` }}
     >
       {content}
