@@ -80,7 +80,6 @@ import { MarkdownLite } from "@/components/MarkdownLite";
 import { ICON_COLORS } from "@/lib/icon-colors";
 import { getMyBilling, propertyMonthlyPrice } from "@/lib/billing";
 import { MyAppointments } from "@/components/MyAppointments";
-import { GettingStarted } from "@/components/GettingStarted";
 import { PageHero } from "@/components/PageHero";
 import { Sparkles as HeroWelcomeIcon } from "lucide-react";
 import { isPaidStatus } from "@/lib/subscription-status";
@@ -899,20 +898,6 @@ function Overview() {
       )}
 
       <MyAppointments />
-
-      {loaded && (
-        <GettingStarted
-          properties={properties.length}
-          // only files the owner uploaded — not the signed packet or the
-          // AI-generated base-data / summary documents saved automatically
-          documents={
-            documents.filter((d) => d.source !== "signed" && !/^AI\b/.test(d.documentType ?? ""))
-              .length
-          }
-          protests={protests.length}
-          resolved={protests.filter((p) => p.status === "resolved").length}
-        />
-      )}
 
       <div>
         <h2 className="font-serif text-xl font-bold">Insights &amp; Activity</h2>
