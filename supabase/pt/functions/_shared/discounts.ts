@@ -16,7 +16,8 @@ type CouponDef = {
   id: string;
   name: string;
   percent_off: number;
-  duration: "once" | "forever";
+  duration: "once" | "forever" | "repeating";
+  duration_in_months?: number;
   redeem_by?: number;
 };
 
@@ -91,4 +92,35 @@ export async function checkoutCouponFor(
   if (!kind) return null;
   const couponId = await ensureCoupon(stripe, kind === "franchise" ? FRANCHISE_COUPON : LAUNCH_COUPON);
   return { kind, couponId };
+}
+
+// A Super-Admin-approved pricing exception (public.pricing_exceptions,
+// executed by staff-approvals) as a Stripe coupon of its own.
+export type PricingException = {
+  id: string;
+  percent_off: number;
+  duration: "once" | "forever" | "repeating";
+  duration_in_months: number | null;
+};
+export function exceptionCouponDef(x: PricingException): CouponDef {
+  return {
+    id: `corvuspt_exception_${x.id.replace(/-/g, "").slice(0, 20)}`,
+    name: `Approved pricing exception — ${x.percent_off}% off`,
+    percent_off: Number(x.percent_off),
+    duration: x.duration,
+    ...(x.duration === "repeating" ? { duration_in_months: x.duration_in_months ?? 12 } : {}),
+  };
+}
+
+/** Standard discount vs an approved exception: Stripe takes one coupon, so the larger wins. */
+export async function bestCheckoutCoupon(
+  stripe: Stripe,
+  isFranchiseOwner: boolean,
+  exception: PricingException | null,
+): Promise<{ kind: CheckoutDiscountKind | "exception"; couponId: string } | null> {
+  const standard = checkoutDiscountKind(isFranchiseOwner);
+  if (exception && Number(exception.percent_off) >= (standard ? 50 : 0)) {
+    return { kind: "exception", couponId: await ensureCoupon(stripe, exceptionCouponDef(exception)) };
+  }
+  return checkoutCouponFor(stripe, isFranchiseOwner);
 }

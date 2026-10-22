@@ -82,6 +82,7 @@ Deno.serve(async (req: Request) => {
         .select("id")
         .eq("id", engagementPacketId)
         .eq("user_id", user.id)
+        .is("voided_at", null)
         .maybeSingle();
       if (!packet) {
         return new Response(JSON.stringify({ error: "Signed agreement not found." }), {

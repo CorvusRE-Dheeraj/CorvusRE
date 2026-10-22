@@ -450,11 +450,19 @@ export async function handle(req: Request): Promise<Response> {
     if (body.campaignId) return json(await sendCampaign(db, resendKey, body.campaignId, actor));
     if (body.followupId) return json(await sendFollowup(db, resendKey, body.followupId, actor));
     if (body.process === "due") {
-      const { data: due } = await db
-        .from("marketing_campaigns")
-        .select("id")
-        .eq("status", "scheduled")
-        .lte("scheduled_at", new Date().toISOString());
+      // Which automations a Super Admin has allowed (automation_permissions;
+      // changing one needs an approval — see staff-approvals). Unknown or
+      // unreadable → allowed, the behaviour before these switches existed.
+      const { data: perms } = await db.from("automation_permissions").select("key, enabled");
+      const allowed = (key: string) => (perms ?? []).find((p) => p.key === key)?.enabled !== false;
+      const off = (key: string) => ({ skipped: `automation "${key}" is turned off` });
+      const { data: due } = allowed("scheduled_campaigns")
+        ? await db
+            .from("marketing_campaigns")
+            .select("id")
+            .eq("status", "scheduled")
+            .lte("scheduled_at", new Date().toISOString())
+        : { data: [] as { id: string }[] };
       const results = [];
       for (const c of due ?? []) {
         try {
@@ -465,14 +473,16 @@ export async function handle(req: Request): Promise<Response> {
       }
       const monitor = await db.rpc("marketing_monitor");
       // approved emails that are due go out by themselves
-      const { data: dueF } = await db
-        .from("marketing_followups")
-        .select("id")
-        .eq("status", "pending")
-        .eq("channel", "email")
-        .eq("auto_send", true)
-        .lte("due_at", new Date().toISOString())
-        .limit(100);
+      const { data: dueF } = allowed("auto_send_followups")
+        ? await db
+            .from("marketing_followups")
+            .select("id")
+            .eq("status", "pending")
+            .eq("channel", "email")
+            .eq("auto_send", true)
+            .lte("due_at", new Date().toISOString())
+            .limit(100)
+        : { data: [] as { id: string }[] };
       const autoSent: { id: string; error?: string }[] = [];
       for (const f of dueF ?? []) {
         try {
@@ -485,11 +495,17 @@ export async function handle(req: Request): Promise<Response> {
           await db.from("marketing_followups").update({ status: "skipped", completed_at: new Date().toISOString(), stop_reason: msg }).eq("id", f.id);
         }
       }
-      const handoffs = await summarizeHandoffs(db).catch((e) => ({ error: String(e) }));
+      const handoffs = allowed("ai_handoff_summaries")
+        ? await summarizeHandoffs(db).catch((e) => ({ error: String(e) }))
+        : off("ai_handoff_summaries");
       // engagement rules of approved campaigns → follow-ups
-      const campaignRules = await runCampaignRules(db).catch((e) => ({ error: String(e) }));
+      const campaignRules = allowed("campaign_engagement_rules")
+        ? await runCampaignRules(db).catch((e) => ({ error: String(e) }))
+        : off("campaign_engagement_rules");
       // campaign / team analysis → recommendations that wait for approval
-      const analysis = await db.rpc("marketing_analyze");
+      const analysis = allowed("ai_recommendations")
+        ? await db.rpc("marketing_analyze")
+        : { data: off("ai_recommendations"), error: null };
       // daily / weekly / monthly performance reports, AI-written
       const reportsMade = await db.rpc("marketing_generate_reports");
       const reports = await summarizeReports(db).catch((e) => ({ error: String(e) }));

@@ -9,6 +9,15 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
 import { supabase } from "@/lib/supabase";
 import {
+  HandoffInbox,
+  OwnerHandoff,
+  RecordHistory,
+  RequestApprovalButton,
+  type StaffContext,
+} from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
+import { useLiveRefresh } from "@/lib/staff-records";
+import {
   getStaffRole,
   money,
   relDays,
@@ -47,6 +56,7 @@ function SupportPage() {
   const [details, setDetails] = useState<Map<string, Details>>(new Map());
   const [tab, setTab] = useState<"open" | "mine" | "done" | "escalations">("open");
   const [openId, setOpenId] = useState<string | null>(null);
+  const staffCtx = useStaffContext();
 
   useEffect(() => {
     if (loading) return;
@@ -68,6 +78,12 @@ function SupportPage() {
   useEffect(() => {
     if (role) load().catch((e) => toast.error(getErrorMessage(e, "Couldn't load the queue.")));
   }, [role, load]);
+  // a handoff from Marketing or a ticket moved by a colleague appears live
+  useLiveRefresh(
+    ["support_handoffs", "record_transfers"],
+    () => void load().catch(() => undefined),
+    !!role,
+  );
 
   const list = useMemo(
     () =>
@@ -75,7 +91,7 @@ function SupportPage() {
         tab === "open"
           ? h.status === "open"
           : tab === "mine"
-            ? h.status === "accepted" && h.assignedTo === user?.id
+            ? h.status !== "done" && h.assignedTo === user?.id
             : h.status === "done",
       ),
     [handoffs, tab, user],
@@ -90,11 +106,17 @@ function SupportPage() {
           <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
         )}
       </div>
-      <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
-      <p className="text-sm text-muted-foreground">
-        New paying customers handed over from Marketing — onboard them and own their subscription
-        and protest support.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
+          <p className="text-sm text-muted-foreground">
+            New paying customers handed over from Marketing — onboard them and own their
+            subscription and protest support.
+          </p>
+        </div>
+        <RequestApprovalButton ctx={staffCtx} />
+      </div>
+      <HandoffInbox ctx={staffCtx} department="support" />
       <div
         className="mt-5 inline-flex rounded-md border border-border p-0.5 text-sm"
         role="tablist"
@@ -102,7 +124,10 @@ function SupportPage() {
         {(
           [
             ["open", `New (${(handoffs ?? []).filter((h) => h.status === "open").length})`],
-            ["mine", "Mine"],
+            [
+              "mine",
+              `Mine (${(handoffs ?? []).filter((h) => h.status !== "done" && h.assignedTo === user?.id).length})`,
+            ],
             ["done", "Onboarded"],
             ["escalations", "Escalations"],
           ] as const
@@ -147,6 +172,10 @@ function SupportPage() {
                       {h.snapshot.properties?.length ?? 0} propert
                       {(h.snapshot.properties?.length ?? 0) === 1 ? "y" : "ies"}
                     </div>
+                    <div className="text-xs text-muted-foreground">
+                      {h.assignedTo ? `Owner: ${staffCtx.nameOf(h.assignedTo)}` : "Needs an owner"}
+                      {h.status === "open" ? " · not accepted yet" : ""}
+                    </div>
                     {!!h.snapshot.needs?.length && (
                       <div className="mt-1 text-xs text-amber-800">
                         {h.snapshot.needs.length} onboarding item
@@ -159,7 +188,13 @@ function SupportPage() {
             })}
           </ul>
           {open ? (
-            <HandoffDetail h={open} d={details.get(open.id)} me={user!.id} reload={load} />
+            <HandoffDetail
+              h={open}
+              d={details.get(open.id)}
+              me={user!.id}
+              reload={load}
+              ctx={staffCtx}
+            />
           ) : (
             <p className="card-elev p-6 text-sm text-muted-foreground">
               Pick a customer to see their handoff.
@@ -176,11 +211,13 @@ function HandoffDetail({
   d,
   me,
   reload,
+  ctx,
 }: {
   h: Handoff;
   d: Details | undefined;
   me: string;
   reload: () => Promise<void>;
+  ctx: StaffContext;
 }) {
   const [notes, setNotes] = useState(h.notes ?? "");
   const [busy, setBusy] = useState<string | null>(null);
@@ -239,12 +276,15 @@ function HandoffDetail({
           </p>
           <p className="text-xs text-muted-foreground">
             Handed over {relDays(h.createdAt)}
+            {h.status === "open" && h.assignedTo && h.assignedTo !== me
+              ? ` · waiting for ${ctx.nameOf(h.assignedTo)} to accept`
+              : ""}
             {h.status === "accepted" && ` · being onboarded${h.assignedTo === me ? " by you" : ""}`}
             {h.status === "done" && ` · onboarded ${relDays(h.doneAt)}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {h.status === "open" && (
+          {h.status === "open" && (!h.assignedTo || h.assignedTo === me) && (
             <button
               type="button"
               disabled={!!busy}
@@ -252,12 +292,12 @@ function HandoffDetail({
                 void update(
                   "accept",
                   { status: "accepted", assigned_to: me, accepted_at: new Date().toISOString() },
-                  "It's yours.",
+                  "Accepted — it's yours.",
                 )
               }
               className="btn-primary btn-primary-hover text-sm"
             >
-              Take it
+              Accept handoff
             </button>
           )}
           {h.status === "accepted" && (
@@ -289,6 +329,24 @@ function HandoffDetail({
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <OwnerHandoff
+          ctx={ctx}
+          entityType="onboarding"
+          entityId={h.id}
+          ownerId={h.assignedTo}
+          label={d?.company || d?.name || d?.email || "Customer"}
+          onChanged={() => void reload()}
+        />
+        <RequestApprovalButton
+          ctx={ctx}
+          kind="refund"
+          email={d?.email}
+          label="Refund / discount / agreement…"
+          className="btn-outline inline-flex items-center gap-1.5 py-1 text-xs"
+        />
       </div>
 
       <div className="rounded-lg border border-border p-4">
@@ -385,6 +443,15 @@ function HandoffDetail({
         >
           Save notes
         </button>
+      </div>
+
+      <div className="rounded-lg border border-border p-4">
+        <RecordHistory
+          profileId={h.profileId}
+          leadId={h.leadId}
+          title="Shared history (Marketing → Support, cases, approvals)"
+          limit={20}
+        />
       </div>
 
       <details className="rounded-lg border border-border p-4">

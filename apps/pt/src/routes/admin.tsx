@@ -33,6 +33,12 @@ type Stats = {
   leads: number | null;
   leadsNew7: number | null;
   campaignsActive: number | null;
+  approvalsPending: number | null;
+  transfersPending: number | null;
+  unownedCases: number | null;
+  unownedTickets: number | null;
+  unownedLeads: number | null;
+  changes7: number | null;
 };
 
 const DASHBOARDS = [
@@ -137,6 +143,45 @@ function SuperAdmin() {
           .select("id", { count: "exact", head: true })
           .in("status", ["approved", "scheduled", "sending"]),
       ),
+      count(
+        supabase
+          .from("approval_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+      ),
+      count(
+        supabase
+          .from("record_transfers")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+      ),
+      count(
+        supabase
+          .from("protests")
+          .select("id", { count: "exact", head: true })
+          .is("owner_id", null)
+          .neq("status", "resolved"),
+      ),
+      count(
+        supabase
+          .from("support_escalations")
+          .select("id", { count: "exact", head: true })
+          .is("assigned_to", null)
+          .neq("status", "resolved"),
+      ),
+      count(
+        supabase
+          .from("marketing_leads")
+          .select("id", { count: "exact", head: true })
+          .is("assigned_to", null)
+          .is("subscribed_at", null),
+      ),
+      count(
+        supabase
+          .from("record_events")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", since7),
+      ),
     ]).then(
       ([
         accounts,
@@ -148,6 +193,12 @@ function SuperAdmin() {
         leads,
         leadsNew7,
         campaignsActive,
+        approvalsPending,
+        transfersPending,
+        unownedCases,
+        unownedTickets,
+        unownedLeads,
+        changes7,
       ]) =>
         setStats({
           accounts,
@@ -159,6 +210,12 @@ function SuperAdmin() {
           leads,
           leadsNew7,
           campaignsActive,
+          approvalsPending,
+          transfersPending,
+          unownedCases,
+          unownedTickets,
+          unownedLeads,
+          changes7,
         }),
     );
     setFinLoading(true);
@@ -207,6 +264,30 @@ function SuperAdmin() {
       </div>
 
       <h2 className="mt-8 font-serif text-xl font-semibold">Statistics</h2>
+      <StatGroup
+        title="Approvals, handoffs & ownership"
+        link={{ to: "/admin-manage", label: "Review approvals", search: { tab: "approvals" } }}
+        tiles={[
+          ["Approvals waiting", n(stats?.approvalsPending)],
+          ["Handoffs not yet accepted", n(stats?.transfersPending)],
+          [
+            "Work with no owner",
+            n(
+              stats &&
+                stats.unownedCases != null &&
+                stats.unownedTickets != null &&
+                stats.unownedLeads != null
+                ? stats.unownedCases + stats.unownedTickets + stats.unownedLeads
+                : null,
+            ),
+            stats?.unownedCases
+              ? `${stats.unownedCases} protest case${stats.unownedCases === 1 ? "" : "s"}`
+              : undefined,
+          ],
+          ["Changes recorded (7 days)", n(stats?.changes7)],
+        ]}
+        loading={!stats}
+      />
       <StatGroup
         title="Customers & accounts"
         link={{ to: "/admin-manage", label: "Manage users" }}
@@ -275,7 +356,11 @@ function StatGroup({
   loading,
 }: {
   title: string;
-  link: { to: "/admin-manage" | "/operations" | "/marketing" | "/support"; label: string };
+  link: {
+    to: "/admin-manage" | "/operations" | "/marketing" | "/support";
+    label: string;
+    search?: { tab: string };
+  };
   tiles: [string, string, string?][];
   loading: boolean;
 }) {
@@ -285,7 +370,11 @@ function StatGroup({
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </h3>
-        <Link to={link.to} className="text-xs text-accent hover:underline">
+        <Link
+          to={link.to}
+          {...(link.search ? { search: link.search as never } : {})}
+          className="text-xs text-accent hover:underline"
+        >
           {link.label} →
         </Link>
       </div>

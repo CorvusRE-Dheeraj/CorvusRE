@@ -5,6 +5,8 @@ import { MarkdownLite } from "@/components/MarkdownLite";
 import { getErrorMessage } from "@/lib/error-message";
 import type { Alert, CampaignStatus, FieldSource, Stage } from "@/lib/marketing";
 import { STAGE_LABEL } from "@/lib/marketing";
+import { RequestApprovalButton } from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
 
 export type MarketingTab = "dashboard" | "leads" | "campaigns" | "ai" | "followups" | "analytics";
 export type Focus = {
@@ -266,6 +268,7 @@ export function AiBox({
       {text ? (
         <>
           <MarkdownLite text={text} className="mt-3 text-sm" />
+          <AiSensitiveHint text={text} />
           {when && <p className="mt-2 text-[11px] text-muted-foreground">Generated {when}</p>}
           {children}
         </>
@@ -289,3 +292,50 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export const inputCls =
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40";
+
+// Corvus AI may suggest a discount, refund, fee waiver or agreement change —
+// it can't make one. Those go to a Super Admin as an approval request marked
+// as an AI suggestion (see components/staff/StaffRecords.tsx).
+const SENSITIVE =
+  /(\d+\s?%\s?(off|discount)|discount|price (cut|reduction|exception)|refund|waive|fee waiver|free (month|year)|agreement change|change (the|their) agreement)/i;
+function AiSensitiveHint({ text }: { text: string }) {
+  const m = SENSITIVE.exec(text);
+  if (!m) return null;
+  const sentence =
+    text
+      .split(/(?<=[.!?])\s+|\n+/)
+      .find((x) => SENSITIVE.test(x))
+      ?.replace(/[*_#>]/g, "")
+      .trim()
+      .slice(0, 400) ?? m[0];
+  const kind = /refund/i.test(m[0])
+    ? "refund"
+    : /agreement/i.test(m[0])
+      ? "agreement_change"
+      : "pricing_exception";
+  return <AiSensitiveHintInner sentence={sentence} kind={kind} />;
+}
+function AiSensitiveHintInner({
+  sentence,
+  kind,
+}: {
+  sentence: string;
+  kind: "refund" | "agreement_change" | "pricing_exception";
+}) {
+  const ctx = useStaffContext();
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
+      <span>
+        Pricing, refunds and agreement changes need a Super Admin&apos;s approval — Corvus AI can
+        only suggest them.
+      </span>
+      <RequestApprovalButton
+        ctx={ctx}
+        kind={kind}
+        aiRationale={sentence}
+        label="Request approval"
+        className="btn-outline inline-flex items-center gap-1 py-1 text-xs"
+      />
+    </div>
+  );
+}

@@ -52,6 +52,14 @@ import { AdminBetaFeedback } from "@/components/AdminBetaFeedback";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/CopyButton";
 import { ProtestRow, groupProtestsByYear } from "@/components/admin/ProtestRow";
+import {
+  ApprovalsPanel,
+  AutomationSwitches,
+  DefaultOwners,
+  HandoffInbox,
+  RecordHistory,
+} from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
 
 // Manage users & settings — Super Admin only. Account, plan and role
 // management, invites, beta signups/feedback, the activity log and settings.
@@ -74,13 +82,20 @@ type AdminTab =
   | "beta"
   | "beta_feedback"
   | "activity"
+  | "approvals"
   | "settings";
 
 function AdminManage() {
   const nav = useNavigate();
   const { user, loading } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>("users");
+  // ?tab=approvals (from the Super Admin dashboard) opens Approvals & handoffs
+  const [activeTab, setActiveTab] = useState<AdminTab>(() =>
+    typeof window !== "undefined" && /[?&]tab=approvals(&|$)/.test(window.location.search)
+      ? "approvals"
+      : "users",
+  );
+  const staffCtx = useStaffContext();
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
@@ -580,6 +595,7 @@ function AdminManage() {
     { key: "beta", label: "Beta Signups", count: betaLeadsLoading ? null : betaLeads.length },
     { key: "beta_feedback", label: "Beta Feedback", count: null },
     { key: "activity", label: "Activity Log", count: auditLogLoading ? null : auditLog.length },
+    { key: "approvals", label: "Approvals & handoffs", count: null },
     { key: "settings", label: "Settings", count: null },
   ];
 
@@ -833,6 +849,28 @@ function AdminManage() {
             ) : (
               auditLog.map((entry) => <AuditLogRow key={entry.id} entry={entry} />)
             )}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "approvals" && (
+        <section className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-5">
+          <div>
+            <h2 className="font-serif text-xl font-semibold">Approvals &amp; handoffs</h2>
+            <p className="text-sm text-muted-foreground">
+              Pricing exceptions, refunds, agreement changes, automation and access changes need
+              your approval — requested by staff or suggested by Corvus AI. Approving carries the
+              change out and records who approved it.
+            </p>
+          </div>
+          <ApprovalsPanel ctx={staffCtx} />
+          <HandoffInbox ctx={staffCtx} />
+          <div className="grid gap-5 lg:grid-cols-2">
+            <AutomationSwitches ctx={staffCtx} />
+            <DefaultOwners ctx={staffCtx} />
+          </div>
+          <div className="card-elev p-4">
+            <RecordHistory all title="Everything recorded (newest first)" limit={60} />
           </div>
         </section>
       )}
@@ -1896,6 +1934,11 @@ function AuditLogRow({ entry }: { entry: AdminAuditEntry }) {
         <span className="font-medium">{AUDIT_ACTION_LABELS[entry.action] ?? entry.action}</span>
         {entry.targetEmail && <span className="text-muted-foreground"> — {entry.targetEmail}</span>}
         {entry.detail && <div className="text-xs text-muted-foreground">{entry.detail}</div>}
+        {entry.approvalId && (
+          <div className="text-[11px] text-muted-foreground">
+            Under approval #{entry.approvalId.slice(0, 8)}
+          </div>
+        )}
       </div>
       <div className="text-right text-xs text-muted-foreground">
         <div>{entry.actorEmail}</div>
