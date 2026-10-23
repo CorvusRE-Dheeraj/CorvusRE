@@ -51,6 +51,7 @@ import {
   taxYearUpdates,
 } from "@/lib/tax-updates";
 import { EmptyState } from "@/components/EmptyState";
+import { TaxRegulatoryWatch } from "@/components/TaxRegulatoryWatch";
 
 export const Route = createFileRoute("/dashboard/_layout/tax-updates")({
   head: () => ({ meta: [{ title: "Texas Tax Law & Updates — CorvusPT" }] }),
@@ -305,6 +306,8 @@ function TaxUpdates() {
         </div>
       </div>
 
+      <TaxRegulatoryWatch lastChecked={report?.generatedAt ?? null} />
+
       {loading ? (
         <div className="mt-6 grid gap-3">
           <Skeleton className="h-10 w-64" />
@@ -312,8 +315,8 @@ function TaxUpdates() {
         </div>
       ) : !report ? (
         <div className="card-elev mt-6 p-6 text-sm text-muted-foreground">
-          No report has been generated yet. The first one is created automatically on the next
-          Monday run.
+          No report has been generated yet. The official sources are checked every morning — the
+          first report appears after the next daily check.
         </div>
       ) : (
         <>
@@ -325,7 +328,8 @@ function TaxUpdates() {
             </a>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.title} · updated {new Date(report.generatedAt).toLocaleString()}
+            {report.title} · official sources checked daily · last checked{" "}
+            {new Date(report.generatedAt).toLocaleString()}
           </p>
           <button
             type="button"
@@ -541,7 +545,7 @@ function TaxUpdates() {
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Enacted laws, adopted rules, and deadlines for the whole tax year — every one found in
-              any weekly check so far.
+              any daily check so far.
             </p>
             {sortedCriticalItems.length > 0 ? (
               // Most of these also appear in their chapter above, so the full

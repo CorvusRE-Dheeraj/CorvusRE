@@ -25,7 +25,10 @@ export type TaxUpdateTag =
   | "court"
   | "valuation"
   | "tax_rate"
-  | "deadlines";
+  | "deadlines"
+  | "evidence"
+  | "hearings"
+  | "representation";
 
 export type TaxUpdate = {
   id: string;
@@ -44,7 +47,7 @@ export type TaxUpdate = {
   sourceUrl: string;
   sourceCheckedAt: string;
   quote: string;
-  // New since the last weekly check, vs. information that is simply posted now.
+  // New this week (sources are checked daily), vs. information that is simply posted now.
   isNew: boolean;
 };
 
@@ -94,6 +97,9 @@ export const TAG_LABEL: Record<TaxUpdateTag, string> = {
   valuation: "Valuation",
   tax_rate: "Tax Rate",
   deadlines: "Deadlines",
+  evidence: "Evidence",
+  hearings: "Hearings",
+  representation: "Representation",
 };
 
 export const ALL_TAGS = Object.keys(TAG_LABEL) as TaxUpdateTag[];

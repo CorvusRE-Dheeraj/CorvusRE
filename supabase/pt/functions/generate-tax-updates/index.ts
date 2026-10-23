@@ -1,7 +1,14 @@
 // Deploy via CLI: `supabase functions deploy generate-tax-updates` (JWT-verified).
 //
-// Weekly Texas Property Tax Law & Updates report. Triggered by pg_cron (Mondays,
-// service-role Bearer) or by an admin's "Generate now" button.
+// Texas Property Tax Law & Updates — the CorvusPT Regulatory Watch. Runs DAILY
+// (pg_cron, service-role Bearer) or from an admin's "Generate now" button. The
+// week's report is refreshed every day; anything found new during the week
+// stays marked new until the week ends. Every NEW change the model judges
+// MATERIAL for commercial owners (deadlines, protest procedures, evidence,
+// hearings, representation) also becomes a staff-only alert in
+// public.tax_update_alerts — with what it means for CorvusPT's owner-managed
+// platform and the recommended action — and the team is notified (in-app for
+// Super Admins + an email to the staff inbox). See supabase/pt/tax-watch.sql.
 //
 // HOW IT STAYS HONEST — the AI here has no way to look anything up (Gemini's
 // search-grounding tool has never worked on this project's key), so it is NEVER
@@ -16,7 +23,7 @@
 //   5. A page that couldn't be read is listed as such in the report's source list,
 //      so a quiet week is never confused with an unread source.
 // The result is stored in public.tax_update_reports; only the 5 newest are kept.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { isServiceRoleRequest } from "../_shared/service-role-only.ts";
 
@@ -51,7 +58,30 @@ const TAGS = [
   "valuation",
   "tax_rate",
   "deadlines",
+  "evidence",
+  "hearings",
+  "representation",
 ] as const;
+// what a change is about — the Regulatory Watch's priority areas first
+const AREAS = [
+  "deadlines",
+  "protest_procedures",
+  "evidence",
+  "hearings",
+  "representation",
+  "valuation",
+  "tax_rate",
+  "other",
+] as const;
+
+// Internal, staff-only analysis of one update (never stored on the
+// customer-facing report).
+type Watch = {
+  area: (typeof AREAS)[number];
+  material: boolean;
+  corvusImpact: string;
+  teamAction: string;
+};
 
 type Source = {
   id: string;
@@ -144,7 +174,11 @@ const SYSTEM =
   `- status must be one of: ${STATUSES.join(", ")}. Use enacted_law only for law the page says has been enacted; adopted_rule for a rule the page says is adopted/effective; proposed_rule for a proposed rule; pending_legislation / failed_legislation for bills; otherwise notice_guidance.\n` +
   `- tags: choose any that apply from: ${TAGS.join(", ")}.\n` +
   "- chapter: 1 Texas statewide updates; 2 county updates (only for a county-specific page); 3 current-year rules & law changes; 4 commercial property updates; 5 protest, ARB & appeals; 6 important deadlines; 7 what property owners should know or do.\n" +
-  'Return ONLY JSON: {"updates":[{"title","chapter","whatChanged","effectiveDate","affects","whyItMatters","actionNeeded","status","tags","quote"}]}';
+  `- area: the main subject, one of: ${AREAS.join(", ")}. protest_procedures = how/where/when a protest is filed or handled; evidence = what evidence is required, exchanged or allowed (incl. the district's evidence); hearings = ARB / informal / arbitration hearing rules; representation = agents, Form 50-162, who may represent an owner.\n` +
+  "- material: true when the change alters what a COMMERCIAL property owner must or can do — filing deadlines, protest procedures, evidence requirements, hearings, representation rules, commercial valuation or tax-rate rules, or the official forms they must use. false for routine notices, reminders of unchanged rules, staffing, events, or anything that doesn't change the rules.\n" +
+  '- corvusImpact: CorvusPT is an owner-managed protest platform for Texas commercial property owners (it computes protest deadlines automatically, prepares evidence packets with AI, guides the protest / ARB hearing / arbitration workflow and fills the official forms). In one or two sentences say which of these would need to change because of THIS change, or "None".\n' +
+  '- teamAction: one sentence — the specific step the CorvusPT team should take, or "No action".\n' +
+  'Return ONLY JSON: {"updates":[{"title","chapter","whatChanged","effectiveDate","affects","whyItMatters","actionNeeded","status","tags","area","material","corvusImpact","teamAction","quote"}]}';
 
 async function extract(
   apiKey: string,
@@ -207,7 +241,7 @@ function validate(
   pageText: string,
   checkedAt: string,
   isNew: boolean,
-): Update | null {
+): { u: Update; w: Watch } | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const str = (v: unknown, d = "Not stated") =>
@@ -240,23 +274,33 @@ function validate(
     effective = r.effectiveDate.trim().slice(0, 40);
   }
 
+  const area = AREAS.includes(r.area as never) ? (r.area as Watch["area"]) : "other";
   return {
-    id: crypto.randomUUID(),
-    chapter,
-    title: title.slice(0, 160),
-    whatChanged: whatChanged.slice(0, 600),
-    effectiveDate: effective,
-    affects: str(r.affects).slice(0, 300),
-    whyItMatters: str(r.whyItMatters).slice(0, 400),
-    actionNeeded: str(r.actionNeeded).slice(0, 400),
-    status,
-    tags,
-    counties: source.county ? [source.county] : [],
-    sourceName: source.name,
-    sourceUrl: source.url,
-    sourceCheckedAt: checkedAt,
-    quote: quote.slice(0, 220),
-    isNew,
+    u: {
+      id: crypto.randomUUID(),
+      chapter,
+      title: title.slice(0, 160),
+      whatChanged: whatChanged.slice(0, 600),
+      effectiveDate: effective,
+      affects: str(r.affects).slice(0, 300),
+      whyItMatters: str(r.whyItMatters).slice(0, 400),
+      actionNeeded: str(r.actionNeeded).slice(0, 400),
+      status,
+      tags,
+      counties: source.county ? [source.county] : [],
+      sourceName: source.name,
+      sourceUrl: source.url,
+      sourceCheckedAt: checkedAt,
+      quote: quote.slice(0, 220),
+      isNew,
+    },
+    w: {
+      area,
+      // failed bills never change the rules
+      material: r.material === true && status !== "failed_legislation",
+      corvusImpact: str(r.corvusImpact, "None").slice(0, 500),
+      teamAction: str(r.teamAction, "No action").slice(0, 300),
+    },
   };
 }
 
@@ -282,6 +326,79 @@ function mondayOf(d: Date): string {
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - diff),
   );
   return m.toISOString().slice(0, 10);
+}
+
+type AlertRow = {
+  id: string;
+  title: string;
+  area: string;
+  what_changed: string;
+  effective_date: string | null;
+  corvus_impact: string | null;
+  recommended_action: string | null;
+  source_name: string;
+  source_url: string;
+};
+const AREA_LABEL: Record<string, string> = {
+  deadlines: "Filing deadlines",
+  protest_procedures: "Protest procedures",
+  evidence: "Evidence requirements",
+  hearings: "Hearings",
+  representation: "Representation",
+  valuation: "Valuation",
+  tax_rate: "Tax rates",
+  other: "Other",
+};
+const esc = (s: string | null) =>
+  (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+// Tell the team: an in-app notification for each Super Admin and one email to
+// the staff inbox (same address as the other staff notifications).
+async function announce(admin: SupabaseClient, rows: AlertRow[]) {
+  for (const a of rows) {
+    await admin.rpc("notify_department", {
+      p_department: "super_admin",
+      p_owner: null,
+      p_kind: "tax_alert",
+      p_title: `Texas tax rule change: ${a.title}`,
+      p_detail: `${AREA_LABEL[a.area] ?? a.area}${a.effective_date ? ` · effective ${a.effective_date}` : ""} — ${a.recommended_action ?? ""}`,
+      p_entity_type: "tax_alert",
+      p_entity_id: a.id,
+      p_lead: null,
+    });
+  }
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey) return;
+  const to = Deno.env.get("STAFF_ALERT_EMAIL") ?? "properties@srclandbuilding.com";
+  const html =
+    `<h2 style="font-family:sans-serif">Texas property-tax regulatory watch — ${rows.length} material change${rows.length === 1 ? "" : "s"}</h2>` +
+    rows
+      .map(
+        (a) =>
+          `<div style="font-family:sans-serif;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0">` +
+          `<p style="margin:0;font-weight:bold">${esc(a.title)}</p>` +
+          `<p style="margin:4px 0;color:#555">${esc(AREA_LABEL[a.area] ?? a.area)}${a.effective_date ? ` · effective ${esc(a.effective_date)}` : " · effective date not stated"}</p>` +
+          `<p style="margin:6px 0"><b>What changed:</b> ${esc(a.what_changed)}</p>` +
+          `<p style="margin:6px 0"><b>CorvusPT implications:</b> ${esc(a.corvus_impact)}</p>` +
+          `<p style="margin:6px 0"><b>Recommended action:</b> ${esc(a.recommended_action)}</p>` +
+          `<p style="margin:6px 0"><b>Official source:</b> <a href="${esc(a.source_url)}">${esc(a.source_name)}</a></p></div>`,
+      )
+      .join("") +
+    `<p style="font-family:sans-serif;color:#777;font-size:12px">Found by CorvusPT's daily check of official Texas sources. Review and mark each one in CorvusPT → Texas Tax Updates.</p>`;
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "CorvusPT <info@corvusre.com>",
+        to: [to],
+        subject: `Texas tax rule change${rows.length === 1 ? `: ${rows[0].title}` : `s: ${rows.length} material updates`}`,
+        html,
+      }),
+    });
+  } catch (err) {
+    console.error("tax alert email failed:", err);
+  }
 }
 
 async function inBatches<T, R>(
@@ -349,7 +466,7 @@ Deno.serve(async (req: Request) => {
     const results = await inBatches(sources, CONCURRENCY, async (source) => {
       const page = await fetchPage(source.url);
       if ("error" in page) {
-        return { source, ok: false, note: page.error, updates: [] as Update[] };
+        return { source, ok: false, note: page.error, updates: [] as Update[], watch: [] as Watch[] };
       }
       try {
         // First check of a source: everything on the page is "currently posted".
@@ -360,11 +477,14 @@ Deno.serve(async (req: Request) => {
           ? page.text
           : newLines(source.last_text ?? "", page.text);
         let updates: Update[] = [];
+        let watch: Watch[] = [];
         if (examine.length >= 60) {
           const raw = await extract(apiKey, source, examine);
-          updates = raw
+          const ok = raw
             .map((r) => validate(r, source, page.text, checkedAt, !baseline))
-            .filter((u): u is Update => u !== null);
+            .filter((x): x is { u: Update; w: Watch } => x !== null);
+          updates = ok.map((x) => x.u);
+          watch = ok.map((x) => x.w);
         }
         await admin
           .from("tax_update_sources")
@@ -377,6 +497,7 @@ Deno.serve(async (req: Request) => {
             ? `${updates.length} currently posted (first check)`
             : `${updates.length} new`,
           updates,
+          watch,
         };
       } catch (err) {
         return {
@@ -384,6 +505,7 @@ Deno.serve(async (req: Request) => {
           ok: false,
           note: err instanceof Error ? err.message : "extraction failed",
           updates: [] as Update[],
+          watch: [] as Watch[],
         };
       }
     });
@@ -407,13 +529,17 @@ Deno.serve(async (req: Request) => {
     // an empty report, so the page read "0 updates". Last report's verified
     // items are still in effect — keep them, marked not-new, after this
     // week's new ones (same dedup key and per-chapter cap).
+    // Daily runs: this week's report (from earlier days) is the most recent
+    // one — what it found new stays new until the week ends; anything from a
+    // previous week is carried forward as not-new.
     const { data: prior } = await admin
       .from("tax_update_reports")
-      .select("updates")
-      .lt("week_start", weekStart)
+      .select("updates, week_start")
+      .lte("week_start", weekStart)
       .order("week_start", { ascending: false })
       .limit(1)
       .maybeSingle();
+    const sameWeek = prior?.week_start === weekStart;
     for (const u of (prior?.updates ?? []) as Update[]) {
       const key = `${norm(u.title)}|${u.counties.join(",")}`;
       if (seen.has(key)) continue;
@@ -421,7 +547,7 @@ Deno.serve(async (req: Request) => {
       if (n >= MAX_PER_CHAPTER) continue;
       seen.add(key);
       perChapter.set(u.chapter, n + 1);
-      updates.push({ ...u, isNew: false });
+      updates.push({ ...u, isNew: sameWeek ? u.isNew : false });
     }
     updates.sort((a, b) => a.chapter - b.chapter);
 
@@ -459,7 +585,7 @@ Deno.serve(async (req: Request) => {
     }
     const summary =
       updates.length > 0
-        ? `${updates.length} verified update${updates.length === 1 ? "" : "s"} (${updates.filter((u) => u.isNew).length} new this week) from ${readCount} of ${sources.length} official sources.`
+        ? `${updates.length} verified update${updates.length === 1 ? "" : "s"} (${updates.filter((u) => u.isNew).length} new this week) from ${readCount} of ${sources.length} official sources, checked daily.`
         : `No new or changed information found on the ${readCount} official sources that could be read this week (${sources.length - readCount} could not be read).`;
 
     const { error: upErr } = await admin.from("tax_update_reports").upsert(
@@ -499,6 +625,40 @@ Deno.serve(async (req: Request) => {
     if (stale.length > 0)
       await admin.from("tax_update_reports").delete().in("id", stale);
 
+    // ── Regulatory Watch alerts: material, NEW changes only (a source's first
+    // check is a baseline, never an alert). One alert per change — the
+    // dedup key makes a change that stays posted for days alert once.
+    const material = results
+      .flatMap((r) => r.updates.map((u, i) => ({ u, w: r.watch[i] })))
+      .filter((x) => x.u.isNew && x.w?.material);
+    let alerted: { id: string; title: string; area: string }[] = [];
+    if (material.length > 0) {
+      const { data: inserted, error: alertErr } = await admin
+        .from("tax_update_alerts")
+        .upsert(
+          material.map(({ u, w }) => ({
+            dedup_key: `${norm(u.title)}|${u.counties.join(",")}|${u.sourceUrl}`,
+            title: u.title,
+            area: w.area,
+            status: u.status,
+            what_changed: u.whatChanged,
+            effective_date: u.effectiveDate,
+            owner_impact: [u.affects, u.whyItMatters].filter((x) => x && x !== "Not stated").join(" — "),
+            corvus_impact: w.corvusImpact,
+            recommended_action: w.teamAction,
+            counties: u.counties,
+            source_name: u.sourceName,
+            source_url: u.sourceUrl,
+            quote: u.quote,
+          })),
+          { onConflict: "dedup_key", ignoreDuplicates: true },
+        )
+        .select("id, title, area, what_changed, effective_date, corvus_impact, recommended_action, source_name, source_url");
+      if (alertErr) console.error("tax_update_alerts upsert failed:", alertErr);
+      alerted = (inserted ?? []) as typeof alerted;
+      if (inserted && inserted.length > 0) await announce(admin, inserted as AlertRow[]);
+    }
+
     return new Response(
       JSON.stringify({
         ok: true,
@@ -506,6 +666,7 @@ Deno.serve(async (req: Request) => {
         updates: updates.length,
         sourcesRead: readCount,
         sources: sources.length,
+        alerts: alerted.length,
       }),
       { status: 200, headers: corsHeaders },
     );
