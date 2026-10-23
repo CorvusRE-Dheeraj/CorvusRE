@@ -9,7 +9,7 @@ import { filingSubmissionStatus } from "./filing-submission-status";
 // never a separately tracked "done" flag that could drift.
 //
 //   Case Readiness → File Protest → Confirm Filing → Request CAD Evidence →
-//   Informal → ARB → Decision → Appeal Decision → Close Case
+//   Informal → ARB → Post ARB → Appeal Decision → Close Case
 
 export const PIPELINE_STAGES = [
   { id: "readiness", label: "Case Readiness" },
@@ -18,7 +18,7 @@ export const PIPELINE_STAGES = [
   { id: "cad_evidence", label: "Request CAD Evidence" },
   { id: "informal", label: "Informal" },
   { id: "arb", label: "ARB" },
-  { id: "decision", label: "Decision" },
+  { id: "decision", label: "Post ARB" },
   { id: "appeal", label: "Appeal Decision" },
   { id: "close", label: "Close Case" },
 ] as const;
@@ -116,7 +116,17 @@ export function casePipeline(input: PipelineInput): Pipeline {
   const { protest: p, notice, managed, today } = input;
   const rank = p ? RANK[p.status] : -1;
   const resolved = !!p && (p.status === "resolved" || !!p.closedAt);
-  const settled = p?.informalStatus === "accepted";
+  // Closed at the informal stage: an accepted offer, or a case resolved with
+  // no hearing, decision, arbitration or court step behind it (e.g. "Informal
+  // review completed" then a settlement upload). The later stages never
+  // happened — they're "not needed", not done.
+  const settled =
+    p?.informalStatus === "accepted" ||
+    (resolved &&
+      !p?.hearingCompletedAt &&
+      !p?.arbDecision &&
+      !p?.arbitrationFiledAt &&
+      !p?.courtAppeal?.petitionFiledAt);
   const filing = filingSubmissionStatus(
     notice ? { ...notice, filingMethod: notice.filingMethod ?? null } : null,
   );

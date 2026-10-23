@@ -133,10 +133,10 @@ Deno.serve(async (req: Request) => {
     if (doc.user_id !== user.id) {
       const { data: me } = await adminClient
         .from("profiles")
-        .select("is_admin")
+        .select("is_admin, operations_admin")
         .eq("id", user.id)
         .maybeSingle();
-      if (!me?.is_admin) {
+      if (!(me?.is_admin || me?.operations_admin)) {
         return new Response(JSON.stringify({ error: "forbidden" }), {
           status: 403,
           headers: corsHeaders,

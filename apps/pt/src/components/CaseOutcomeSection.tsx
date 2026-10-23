@@ -1,3 +1,4 @@
+import { OutcomeFigures } from "@/components/OutcomeFigures";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { PropertyRecord } from "@/lib/properties";
@@ -30,12 +31,59 @@ function readLocalAnswer(protestId: string): Answer | null {
 const pct = (n: number | null) =>
   n == null ? "—" : `${n.toFixed(n >= 10 ? 1 : 2).replace(/\.?0+$/, "")}%`;
 
-// The Decision tab's answer to "how did this end?": closed at the informal or
+// The Informal / Formal tab's answer to "how did this end?": closed at the informal or
 // the formal stage, what the settlement/decision says, what it saved in $ and
 // %, what the tax comes to now, and whether the owner is happy with it. Renders
 // nothing until the case has actually concluded.
+const ARB_DECISION_LABEL: Record<string, string> = {
+  approved: "Approved",
+  partial: "Partial reduction",
+  denied: "Denied",
+};
+
+// The decision in one bold line: what was decided and the value it set.
+function decisionHeadline(
+  stage: "informal" | "formal" | "arbitration" | "appeal",
+  protest: ProtestRecord,
+  finalValue: number | null,
+): string {
+  const value = finalValue != null ? currency(finalValue) : null;
+  if (stage === "informal") return value ? `Settled at ${value}` : "Settlement accepted";
+  if (stage === "formal") {
+    const d = protest.arbDecision
+      ? (ARB_DECISION_LABEL[protest.arbDecision] ?? protest.arbDecision)
+      : "Decided";
+    return value ? `ARB decision: ${d} — final value ${value}` : `ARB decision: ${d}`;
+  }
+  const who = stage === "arbitration" ? "Arbitration decision" : "Court decision";
+  return value ? `${who}: final value ${value}` : who;
+}
+
+// Top of the Arbitration / Court Appeal tab once that path ended: the decision,
+// in bold, before anything else.
+export function StageDecisionBanner({
+  kind,
+  property,
+  protest,
+}: {
+  kind: "arbitration" | "appeal";
+  property: PropertyRecord;
+  protest: ProtestRecord;
+}) {
+  if (protest.status !== "resolved" || protest.escalationPath !== kind) return null;
+  if (protest.finalValue == null) return null;
+  const outcome = buildCaseOutcome(property, protest);
+  return (
+    <div className="mb-4 rounded-md border border-success/40 bg-success/5 p-4">
+      <p className="text-lg font-bold">{decisionHeadline(kind, protest, protest.finalValue)}</p>
+      {outcome && <OutcomeFigures outcome={outcome} />}
+    </div>
+  );
+}
+
 export function CaseOutcomeSection({
   userId,
+  stage: onlyStage,
   protest,
   property,
   agreement,
@@ -44,6 +92,8 @@ export function CaseOutcomeSection({
   onUpdate,
 }: {
   userId: string;
+  // Only show an outcome reached at this stage (the tab it's shown on).
+  stage?: "informal" | "formal";
   protest: ProtestRecord;
   property: PropertyRecord;
   agreement: SettlementAgreementRecord | null;
@@ -57,7 +107,7 @@ export function CaseOutcomeSection({
   const [choosing, setChoosing] = useState(false);
 
   const outcome = buildCaseOutcome(property, protest, agreement?.settledValue ?? null);
-  if (!outcome) return null;
+  if (!outcome || (onlyStage && outcome.stage !== onlyStage)) return null;
 
   // An informal settlement's answer lives on the settlement agreement row; a
   // formal decision has no such row, so it is remembered in this browser and
@@ -144,12 +194,11 @@ export function CaseOutcomeSection({
     if (agreement.propertyAddress) rows.push(["Property", agreement.propertyAddress]);
   }
   if (outcome.stage === "formal") {
-    if (protest.arbDecision) rows.push(["ARB decision", protest.arbDecision]);
     if (protest.arbDecisionDate) rows.push(["Decision date", protest.arbDecisionDate]);
   }
 
   return (
-    <div className="mt-2 rounded-md border border-border bg-card p-4">
+    <div className="mb-4 rounded-md border border-success/40 bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-serif text-base font-semibold">How your protest ended</h2>
         <span
@@ -164,7 +213,12 @@ export function CaseOutcomeSection({
               : "Closed"}
         </span>
       </div>
-      <p className="mt-1 text-sm">{outcome.headline}.</p>
+      {outcome.stage && (
+        <p className="mt-2 text-lg font-bold">
+          {decisionHeadline(outcome.stage, protest, outcome.finalValue)}
+        </p>
+      )}
+      <p className="mt-1 text-sm text-muted-foreground">{outcome.headline}.</p>
 
       {(rows.length > 0 || agreement?.termsSummary) && (
         <div className="mt-3 rounded-md bg-secondary/40 p-3 text-xs">
@@ -204,36 +258,7 @@ export function CaseOutcomeSection({
         </div>
       )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Value reduced
-          </div>
-          <div className="mt-0.5 text-sm">
-            {currency(outcome.originalValue)} → <strong>{currency(outcome.finalValue)}</strong>
-          </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">You saved</div>
-          <div className="mt-0.5 text-lg font-semibold text-success">
-            {outcome.taxSavings != null ? currency(outcome.taxSavings) : "—"}
-            <span className="text-xs font-normal text-muted-foreground"> /yr in tax</span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {pct(outcome.valueReductionPct)} lower value
-            {outcome.valueReduction != null ? ` (−${currency(outcome.valueReduction)})` : ""}
-          </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Your tax now
-          </div>
-          <div className="mt-0.5 text-sm">
-            {outcome.taxBefore != null ? currency(outcome.taxBefore) : "—"} →{" "}
-            <strong>{outcome.taxAfter != null ? currency(outcome.taxAfter) : "—"}</strong>
-          </div>
-        </div>
-      </div>
+      <OutcomeFigures outcome={outcome} />
       <p className="mt-2 text-[11px] text-muted-foreground">
         Tax figures apply your county&apos;s average combined rate (
         {(outcome.taxRate * 100).toFixed(2)}%) to the value change — an estimate; your actual bill

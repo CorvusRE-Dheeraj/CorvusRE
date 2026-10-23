@@ -1,4 +1,5 @@
 import type { ProtestRecord } from "./protests";
+import { localDay } from "./local-day";
 
 // Deterministic user-facing hearing status — no AI, no new DB column. Every
 // input is already a real field this app has (protest.status/hearingDate,
@@ -15,7 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // date-only string parsed as-is reads as UTC midnight, which rolls the
 // "days until" count back a day for anyone west of UTC.
 function daysUntil(iso: string): number {
-  const target = new Date(`${iso}T00:00:00`).getTime();
+  const target = localDay(iso)?.getTime() ?? Number.NaN;
   return Math.ceil((target - Date.now()) / DAY_MS);
 }
 

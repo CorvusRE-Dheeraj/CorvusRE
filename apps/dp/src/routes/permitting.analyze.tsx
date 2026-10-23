@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ArrowLeft, Lock, Loader2, Sparkles, RotateCcw } from "lucide-react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { cn } from "@/lib/utils";
 import {
   emptyIntake,
   readDpIntake,
@@ -15,6 +16,7 @@ import {
 import { runPermittingAnalysis } from "@/lib/analysis";
 import { generateFeasibilitySummary, type FeasibilitySummary } from "@/lib/ai";
 import { statusLabel } from "@/lib/zoning";
+import { lookupZoning, zoningFields } from "@/lib/zoning-lookup";
 import { groupByCategory } from "@/lib/permits";
 import { currency, currencyRange, weeksLabel, monthsFromWeeks } from "@/lib/format";
 import { captureLead } from "@/lib/leads";
@@ -136,7 +138,12 @@ function Analyze() {
         <ProjectStep state={state} patch={patch} onBack={() => go(0)} onNext={() => go(2)} />
       )}
       {step === 2 && analysis && (
-        <ZoningStep analysis={analysis} onBack={() => go(1)} onNext={() => go(3)} />
+        <ZoningStep
+          analysis={analysis}
+          property={state.property}
+          onBack={() => go(1)}
+          onNext={() => go(3)}
+        />
       )}
       {step === 3 && analysis && (
         <FeasibilityStep
@@ -192,6 +199,41 @@ function Analyze() {
 
 type PatchFn = (next: Parameters<typeof updateDpIntake>[0]) => void;
 
+// Under the Zoning box: where the zoning came from, or why there isn't any.
+function ZoningLookupNote({
+  looking,
+  property: p,
+}: {
+  looking: boolean;
+  property: ReturnType<typeof readDpIntake>["property"];
+}) {
+  if (looking)
+    return (
+      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking the city's zoning map…
+      </p>
+    );
+  if (!p.zoningStatus) return null;
+  if (p.zoningStatus === "found")
+    return (
+      <p className="mt-1.5 text-xs text-green-700">
+        ✓ {p.zoningDescription ? `${p.zoningDescription} — ` : ""}from the {p.zoningSource}
+        {p.zoningNote && <span className="block text-muted-foreground">* {p.zoningNote}</span>}
+      </p>
+    );
+  return (
+    <p
+      className={cn(
+        "mt-1.5 text-xs",
+        p.zoningStatus === "no_zoning" ? "text-foreground" : "text-amber-700",
+      )}
+    >
+      {p.zoningStatus === "no_zoning" ? "No zoning here. " : ""}
+      {p.zoningNote}
+    </p>
+  );
+}
+
 function PropertyStep({
   state,
   patch,
@@ -204,6 +246,27 @@ function PropertyStep({
   const [manual, setManual] = useState(state.property.manualEntry ?? false);
   const p = state.property;
   const canContinue = manual ? Boolean(p.city) : Boolean(p.address);
+  // Zoning from the city's zoning map, looked up when an address is picked.
+  const [zoningLooking, setZoningLooking] = useState(false);
+  const lookupSeq = useRef(0);
+  const CLEAR_AUTO_ZONING = {
+    zoningStatus: undefined,
+    zoningSource: undefined,
+    zoningNote: undefined,
+    zoningDescription: undefined,
+  };
+  async function fillZoning(address: string) {
+    const seq = ++lookupSeq.current;
+    setZoningLooking(true);
+    const result = await lookupZoning(address);
+    if (seq !== lookupSeq.current) return; // a newer address was picked
+    setZoningLooking(false);
+    // Never overwrite zoning the user typed in while this was running.
+    const now = readDpIntake().property;
+    if (now.zoning && !now.zoningStatus) return;
+    patch({ property: zoningFields(result) });
+  }
+  const typedZoning = (v: string) => patch({ property: { zoning: v, ...CLEAR_AUTO_ZONING } });
 
   return (
     <Section
@@ -223,16 +286,19 @@ function PropertyStep({
                 placeholder="123 Lone Star Trail, Celina, TX 75009"
                 value={p.address ?? ""}
                 onChange={(v) => patch({ property: { address: v } })}
-                onSelect={(pick) =>
+                onSelect={(pick) => {
+                  const typed = Boolean(p.zoning && !p.zoningStatus);
                   patch({
                     property: {
                       address: pick.formatted,
                       city: pick.city ?? p.city,
                       county: pick.county ?? p.county,
                       state: pick.state ?? p.state ?? "TX",
+                      ...(typed ? {} : { zoning: "", ...CLEAR_AUTO_ZONING }),
                     },
-                  })
-                }
+                  });
+                  void fillZoning(pick.formatted);
+                }}
               />
             </div>
           </Field>
@@ -260,14 +326,16 @@ function PropertyStep({
             </Field>
           </div>
           <Field
-            label="Zoning (if known)"
-            hint="e.g. C-2, SF-3, MU-1 — leave blank and we'll estimate."
+            label="Zoning"
+            hint="Filled from the city's zoning map when we can read it — or type it in (e.g. C-2, SF-3, MU-1)."
           >
             <input
               className={inputCls}
               value={p.zoning ?? ""}
-              onChange={(e) => patch({ property: { zoning: e.target.value } })}
+              placeholder={zoningLooking ? "Looking up zoning…" : undefined}
+              onChange={(e) => typedZoning(e.target.value)}
             />
+            <ZoningLookupNote looking={zoningLooking} property={p} />
           </Field>
           <button
             className="text-sm text-accent underline underline-offset-2 justify-self-start"
@@ -308,7 +376,7 @@ function PropertyStep({
             <input
               className={inputCls}
               value={p.zoning ?? ""}
-              onChange={(e) => patch({ property: { zoning: e.target.value } })}
+              onChange={(e) => typedZoning(e.target.value)}
             />
           </Field>
           <button
@@ -388,7 +456,8 @@ function ProjectStep({
                 onChange={(e) =>
                   patch({
                     project: {
-                      subcategory: (e.target.value || undefined) as CommercialSubcategory | undefined,
+                      subcategory: (e.target.value || undefined) as
+                        CommercialSubcategory | undefined,
                     },
                   })
                 }
@@ -459,14 +528,23 @@ function ProjectStep({
 
 function ZoningStep({
   analysis,
+  property,
   onBack,
   onNext,
 }: {
   analysis: ReturnType<typeof runPermittingAnalysis>;
+  property: ReturnType<typeof readDpIntake>["property"];
   onBack: () => void;
   onNext: () => void;
 }) {
   const { zoning, jurisdiction } = analysis;
+  // Where the zoning came from (the city's map), or why there's none.
+  const zoningHint =
+    property.zoningStatus === "found" && property.zoningSource
+      ? `${property.zoningDescription || zoning.label} · from the ${property.zoningSource}`
+      : property.zoningStatus && property.zoningNote
+        ? property.zoningNote
+        : zoning.label;
   return (
     <Section
       title="Property, zoning & jurisdiction"
@@ -475,8 +553,10 @@ function ZoningStep({
       <div className="grid gap-4 sm:grid-cols-2">
         <Stat
           label="Zoning classification"
-          value={zoning.code || "Not provided"}
-          hint={zoning.label}
+          value={
+            zoning.code || (property.zoningStatus === "no_zoning" ? "No zoning" : "Not provided")
+          }
+          hint={zoningHint}
         />
         <Stat
           label="Governing authority"
@@ -634,7 +714,9 @@ function AiFeasibilitySummary({
       });
       setSummary(result);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Couldn't generate the AI summary. Please try again.");
+      setErr(
+        e instanceof Error ? e.message : "Couldn't generate the AI summary. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -673,11 +755,7 @@ function AiFeasibilitySummary({
             <span className="font-semibold">Next step: </span>
             {summary.recommendedNextStep}
           </p>
-          <button
-            className="btn-outline w-fit text-xs"
-            onClick={generate}
-            disabled={loading}
-          >
+          <button className="btn-outline w-fit text-xs" onClick={generate} disabled={loading}>
             <RotateCcw className="h-3.5 w-3.5" /> Regenerate
           </button>
         </div>

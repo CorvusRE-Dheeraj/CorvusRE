@@ -5,7 +5,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // throws — a logging failure must never turn a successful AI response into
 // an error for the caller.
 export async function logAiCall(
-  kind: "feasibility_summary" | "design_narrative" | "review_comment_translation" | "assistant_chat",
+  kind:
+    | "feasibility_summary"
+    | "design_narrative"
+    | "review_comment_translation"
+    | "assistant_chat"
+    | "survey_reading"
+    | "schematic_plan",
   input: unknown,
   output: unknown,
   userId?: string | null,

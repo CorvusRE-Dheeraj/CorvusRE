@@ -27,6 +27,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Types and lint gate the PR too (they once drifted unnoticed: DP had
+      # 5 type errors and 237 lint errors while tests and build stayed green).
+      - name: Type-check
+        run: npx tsc --noEmit
+        working-directory: apps/pt
+      - name: Lint
+        run: npx eslint src --max-warnings 35
+        working-directory: apps/pt
       - run: npm run test -w apps/pt
       - run: npm run build -w apps/pt
         env:
@@ -46,6 +54,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Types and lint gate the PR too (they once drifted unnoticed: DP had
+      # 5 type errors and 237 lint errors while tests and build stayed green).
+      - name: Type-check
+        run: npx tsc --noEmit
+        working-directory: apps/dp
+      - name: Lint
+        run: npx eslint src --max-warnings 25
+        working-directory: apps/dp
       - run: npm run test -w apps/dp
       - run: npm run build -w apps/dp
         env:
@@ -63,6 +79,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Types and lint gate the PR too (they once drifted unnoticed: DP had
+      # 5 type errors and 237 lint errors while tests and build stayed green).
+      - name: Type-check
+        run: npx tsc --noEmit
+        working-directory: apps/identity
       - run: npm run test -w apps/identity
       - run: npm run build -w apps/identity
         env:

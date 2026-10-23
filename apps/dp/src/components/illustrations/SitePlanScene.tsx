@@ -59,7 +59,10 @@ export function SitePlanScene({ className }: { className?: string }) {
       />
       {/* boundary bearing ticks */}
       <g stroke="currentColor" strokeOpacity="0.45" strokeWidth="1.4">
-        <path d="M92 56l8 8M388 56l8 8M92 342l8 8M388 342l8 8" style={{ ["--d" as string]: "260ms" }} />
+        <path
+          d="M92 56l8 8M388 56l8 8M92 342l8 8M388 342l8 8"
+          style={{ ["--d" as string]: "260ms" }}
+        />
       </g>
 
       {/* setback line (dashed, inset) */}
@@ -231,7 +234,14 @@ export function SitePlanScene({ className }: { className?: string }) {
 
       {/* north arrow */}
       <g className="text-accent" style={{ ["--d" as string]: "1440ms" }}>
-        <circle cx="448" cy="340" r="18" stroke="currentColor" strokeOpacity="0.5" strokeWidth="1.5" />
+        <circle
+          cx="448"
+          cy="340"
+          r="18"
+          stroke="currentColor"
+          strokeOpacity="0.5"
+          strokeWidth="1.5"
+        />
         <path d="M448 326l6 16-6-4-6 4z" fill="currentColor" fillOpacity="0.9" data-fill="" />
         <text
           x="448"

@@ -153,6 +153,8 @@ export function designChecklist(dr: DesignRequestRow, b: DesignBrief): DesignChe
       ? !!autoDone[i.key]
       : done.has(i.key) ||
         // Staff moving the request past a stage means that stage's work is done.
+        // an uploaded survey covers "provide an existing survey"
+        (i.key === "survey" && !!dr.survey_path) ||
         (i.group === "Concept design" && reached("development")) ||
         (i.group === "Design development" && reached("final_drawings")) ||
         (i.group === "Permit set" && reached("completed")),

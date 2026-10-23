@@ -36,28 +36,28 @@ export const ROUTE_STYLE: Record<
     chip: "border-violet-200 bg-violet-50 text-violet-800",
   },
   orange: {
-    solid: "bg-orange-500",
+    solid: "bg-orange-700",
     text: "text-orange-700",
     soft: "bg-orange-50",
     border: "border-orange-500",
     chip: "border-orange-200 bg-orange-50 text-orange-800",
   },
   teal: {
-    solid: "bg-teal-600",
+    solid: "bg-teal-700",
     text: "text-teal-700",
     soft: "bg-teal-50",
     border: "border-teal-600",
     chip: "border-teal-200 bg-teal-50 text-teal-800",
   },
   green: {
-    solid: "bg-green-600",
+    solid: "bg-green-700",
     text: "text-green-700",
     soft: "bg-green-50",
     border: "border-green-600",
     chip: "border-green-200 bg-green-50 text-green-800",
   },
   red: {
-    solid: "bg-red-500",
+    solid: "bg-red-700",
     text: "text-red-700",
     soft: "bg-red-50",
     border: "border-red-500",
@@ -108,6 +108,7 @@ export function AvailabilityDot({
         AVAILABILITY_STYLE[availability].dot,
         className,
       )}
+      role="img"
       title={AVAILABILITY_LABEL[availability]}
       aria-label={AVAILABILITY_LABEL[availability]}
     />
@@ -163,11 +164,21 @@ export function TrainCar({ className, color }: { className?: string; color: Rout
  *  one marker — used to show the whole train at the project's current station
  *  on the track-map grid. The engine sits at the far right with Intake right
  *  behind it, the latest route furthest left. */
-export function TrainWithCars({ className, wagons }: { className?: string; wagons: Pick<Wagon, "route" | "color">[] }) {
+export function TrainWithCars({
+  className,
+  wagons,
+}: {
+  className?: string;
+  wagons: Pick<Wagon, "route" | "color">[];
+}) {
   return (
     <span className={cn("flex items-end", className)} aria-hidden>
       {[...wagons].reverse().map((w, i) => (
-        <TrainCar key={w.route} color={w.color} className={cn("h-7 w-8 shrink-0", i > 0 && "-ml-1")} />
+        <TrainCar
+          key={w.route}
+          color={w.color}
+          className={cn("h-7 w-8 shrink-0", i > 0 && "-ml-1")}
+        />
       ))}
       <TrainIcon className={cn("h-9 w-14 shrink-0 drop-shadow", wagons.length > 0 && "-ml-1")} />
     </span>
@@ -366,18 +377,30 @@ export function StationDetail({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         <div className="flex gap-2">
           {view === "module" ? (
-            <button type="button" className="btn-outline" onClick={() => onOpenStation(station.n, "station")}>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => onOpenStation(station.n, "station")}
+            >
               <ArrowLeft className="h-4 w-4" aria-hidden /> Process station
             </button>
           ) : (
             <>
               {prev && (
-                <button type="button" className="btn-outline" onClick={() => onOpenStation(prev.n, "station")}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => onOpenStation(prev.n, "station")}
+                >
                   <ArrowLeft className="h-4 w-4" aria-hidden /> Station {prev.n}
                 </button>
               )}
               {next && (
-                <button type="button" className="btn-outline" onClick={() => onOpenStation(next.n, "station")}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => onOpenStation(next.n, "station")}
+                >
                   Station {next.n} <ArrowRight className="h-4 w-4" aria-hidden />
                 </button>
               )}

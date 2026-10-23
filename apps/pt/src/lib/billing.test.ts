@@ -106,9 +106,12 @@ describe("cancelPropertySubscription", () => {
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue({ ok: true });
     await cancelPropertySubscription("prop-1");
-    expect(mockInvoke).toHaveBeenCalledWith("cancel-property-subscription", {
-      propertyId: "prop-1",
-    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "resume-subscription?action=cancel-property-subscription",
+      {
+        propertyId: "prop-1",
+      },
+    );
   });
 });
 

@@ -10,6 +10,7 @@
 // remindOn is null and the caller asks the user for one — same "honest data"
 // rule the rest of the app follows.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,9 @@ const corsHeaders = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "extract-reminder", 30, corsHeaders);
+  if (limited) return limited;
 
   try {
     const { phrase, today, properties } = (await req.json()) as {

@@ -10,6 +10,7 @@ import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-sta
 import { getMyBilling } from "@/lib/billing";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ProtestAuthorizationFlow } from "@/components/ProtestAuthorizationFlow";
+import { isPaidStatus } from "@/lib/subscription-status";
 
 const STEP_LABELS = [
   "Start",
@@ -396,7 +397,7 @@ export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
           userId={user.id}
           property={activeProperty}
           userEmail={user.email}
-          isPaid={isBeta || activeProperty.subscriptionStatus === "active"}
+          isPaid={isBeta || isPaidStatus(activeProperty.subscriptionStatus)}
           open={!!authorizingProperty}
           onOpenChange={(open) => {
             if (!open) setAuthorizingProperty(null);

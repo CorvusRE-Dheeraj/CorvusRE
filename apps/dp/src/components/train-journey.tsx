@@ -133,7 +133,10 @@ export function TrainJourney({
               return (
                 <div
                   key={r.name}
-                  className={cn("absolute bottom-9 h-1.5 rounded-full opacity-80", ROUTE_STYLE[r.color].solid)}
+                  className={cn(
+                    "absolute bottom-9 h-1.5 rounded-full opacity-80",
+                    ROUTE_STYLE[r.color].solid,
+                  )}
                   style={{ left: start, width: end - start }}
                   title={`${r.name}: stations ${r.stations[0]}–${r.stations[r.stations.length - 1]}`}
                 />
@@ -172,7 +175,7 @@ export function TrainJourney({
                   <span
                     className={cn(
                       "grid h-6 w-6 place-items-center rounded-full border-2 border-slate-700 text-[10px] font-bold shadow transition-transform group-hover:scale-125",
-                      state === "passed" && "bg-green-500 text-white",
+                      state === "passed" && "bg-green-700 text-white",
                       state === "current" && "journey-signal bg-amber-400 text-slate-900",
                       state === "ahead" && "bg-slate-200 text-slate-600",
                     )}
@@ -199,7 +202,9 @@ export function TrainJourney({
               }}
             >
               {wagons
-                .map((w, i) => <WagonCar key={w.route} wagon={w} index={i} arrived={phase === "arrived"} />)
+                .map((w, i) => (
+                  <WagonCar key={w.route} wagon={w} index={i} arrived={phase === "arrived"} />
+                ))
                 .reverse()}
               <Locomotive />
             </div>
@@ -211,7 +216,10 @@ export function TrainJourney({
             >
               <div className="absolute bottom-0 right-1.5 h-24 w-9 rounded-t-full bg-stone-950" />
             </div>
-            <div className="absolute inset-x-0 bottom-0 h-9 bg-gradient-to-b from-stone-400 to-stone-500" aria-hidden />
+            <div
+              className="absolute inset-x-0 bottom-0 h-9 bg-gradient-to-b from-stone-400 to-stone-500"
+              aria-hidden
+            />
           </div>
         </div>
         <span className="pointer-events-none absolute bottom-2 left-3 rounded-full bg-white/85 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 shadow-sm">
@@ -239,7 +247,7 @@ function DepartureBoard(props: {
   const cells = 20;
   const lit = Math.round((props.progress / 100) * cells);
   return (
-    <div className="grid gap-x-8 gap-y-2 bg-slate-900 px-5 py-4 font-mono text-[13px] uppercase tracking-wider text-amber-300 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-x-8 gap-y-2 bg-slate-900 px-5 py-4 font-mono text-[13px] uppercase tracking-wider text-amber-300 sm:grid-cols-2">
       <div className="flex min-w-0 items-center gap-3">
         <span className="journey-led h-2 w-2 shrink-0 rounded-full bg-green-400" aria-hidden />
         <span className="shrink-0 text-slate-400">Now at</span>
@@ -250,16 +258,21 @@ function DepartureBoard(props: {
       <div className="flex min-w-0 items-center gap-3">
         <span className="shrink-0 text-slate-400">Next stop</span>
         <span className="truncate">
-          {props.nextN ? `${String(props.nextN).padStart(2, "0")} ${props.nextTitle}` : "End of the line"}
+          {props.nextN
+            ? `${String(props.nextN).padStart(2, "0")} ${props.nextTitle}`
+            : "End of the line"}
         </span>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <span className="shrink-0 text-slate-400">Progress</span>
-        <span className="flex gap-0.5" aria-hidden>
+        <span className="flex gap-px sm:gap-0.5" aria-hidden>
           {Array.from({ length: cells }, (_, i) => (
             <span
               key={i}
-              className={cn("journey-cell h-3 w-1.5 rounded-sm", i < lit ? "bg-amber-400" : "bg-slate-700")}
+              className={cn(
+                "journey-cell h-3 w-1 rounded-sm sm:w-1.5",
+                i < lit ? "bg-amber-400" : "bg-slate-700",
+              )}
               style={{ animationDelay: `${i * 70}ms` }}
             />
           ))}
@@ -313,7 +326,10 @@ function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arri
       >
         {SHORT[wagon.color]}
         {/* coupling to the car in front (the locomotive or the previous wagon) */}
-        <span className="absolute -right-2.5 top-1/2 h-1.5 w-3 -translate-y-1/2 rounded-sm bg-slate-800" aria-hidden />
+        <span
+          className="absolute -right-2.5 top-1/2 h-1.5 w-3 -translate-y-1/2 rounded-sm bg-slate-800"
+          aria-hidden
+        />
       </div>
       {/* Inset (px-8) so each wagon's pair sits under its own body instead of
           bunching with the next wagon's wheels at the coupling. */}
@@ -325,8 +341,30 @@ function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arri
   );
 }
 
+/** The hero's train in miniature — the same locomotive and route wagons (the
+ *  latest two, in the hero's order: the earlier one nearer the engine), empty —
+ *  for parking on the track map's rail. */
+export function MiniTrain({ wagons, scale = 0.5 }: { wagons: Wagon[]; scale?: number }) {
+  return (
+    <div className="flex items-end" style={{ zoom: scale }} aria-hidden>
+      {wagons
+        .slice(-2)
+        .map((w, i) => (
+          <WagonCar key={w.route} wagon={{ ...w, crates: [], loading: false }} index={i} arrived />
+        ))
+        .reverse()}
+      <Locomotive />
+    </div>
+  );
+}
+
 function Wheel({ size = "h-5 w-5" }: { size?: string }) {
-  return <span className={cn("journey-wheel block rounded-full border-2 border-slate-800", size)} aria-hidden />;
+  return (
+    <span
+      className={cn("journey-wheel block rounded-full border-2 border-slate-800", size)}
+      aria-hidden
+    />
+  );
 }
 
 function Locomotive() {
@@ -343,7 +381,12 @@ function Locomotive() {
           aria-hidden
         />
       ))}
-      <svg viewBox="0 0 150 64" className="block w-full" role="img" aria-label="Your project's locomotive">
+      <svg
+        viewBox="0 0 150 64"
+        className="block w-full"
+        role="img"
+        aria-label="Your project's locomotive"
+      >
         {/* chimney + dome */}
         <rect x="86" y="4" width="16" height="22" rx="3" fill="#1e293b" />
         <rect x="82" y="1" width="24" height="7" rx="3" fill="#334155" />

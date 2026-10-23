@@ -41,8 +41,8 @@ Deno.serve(async (req: Request) => {
     } = await callerClient.auth.getUser();
     if (!user) return json({ error: "unauthenticated" }, 401);
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-    if (!profile?.is_admin) return json({ error: "not authorized" }, 403);
+    const { data: profile } = await admin.from("profiles").select("is_admin, operations_admin").eq("id", user.id).single();
+    if (!(profile?.is_admin || profile?.operations_admin)) return json({ error: "not authorized" }, 403);
 
     const body = (await req.json()) as {
       action?: string;

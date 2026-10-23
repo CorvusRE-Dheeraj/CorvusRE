@@ -87,7 +87,9 @@
   /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
      feedback — same hue (163) and lightness, just richer, so every existing
      accent/badge/ring usage sitewide reads more vivid without a redesign. */
-  --accent: oklch(0.62 0.155 58); /* amber, matching the CorvusDP door (#d97706) */
+  /* Amber, a shade deeper than the CorvusDP door (#d97706) so it passes WCAG AA
+     (4.5:1) both as text on the cream background and behind white button text. */
+  --accent: oklch(0.55 0.155 58);
   --accent-foreground: oklch(0.99 0.01 90);
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.985 0 0);
@@ -367,6 +369,10 @@ header .container-page {
   border: 1px solid var(--color-border);
   border-radius: 1rem;
   box-shadow: var(--shadow-card);
+  /* Cards are often grid/flex children; without this they grow to fit a wide
+     table inside them and push the page sideways on phones, instead of the
+     table scrolling in its own overflow-x-auto box. */
+  min-width: 0;
   /* No forced hover effect here — plenty of card-elev usages are static info
      cards, and a lift/tint would falsely imply they're clickable. This just
      makes whichever hover:* Tailwind classes a call site already applies
@@ -1056,34 +1062,19 @@ header .container-page {
   color: var(--muted-foreground);
 }
 
-/* Permitting Train-Track Map (/dashboard/track-map). A rail runs through each
-   station slot and bleeds into the grid gap, so every row of stations reads
-   as one continuous line even after the grid wraps. */
-.track-rail {
-  position: absolute;
-  left: -0.75rem;
-  right: -0.75rem;
-  top: 1.1rem;
-  height: 14px;
-  pointer-events: none;
-  background:
-    linear-gradient(#566777, #566777) top / 100% 3px no-repeat,
-    linear-gradient(#566777, #566777) bottom / 100% 3px no-repeat,
-    repeating-linear-gradient(90deg, #b9c4ce 0 3px, transparent 3px 14px);
-  opacity: 0.85;
-}
-/* The vertical bridge between two route sections — same rail/sleeper
-   language as .track-rail, rotated, so the line reads as continuing from
+/* Permitting Train-Track Map (/dashboard/track-map). The track inside each
+   route card is drawn by RouteTrack (components/route-track.tsx), curves and all. */
+/* The vertical bridge between two route sections — same rails and
+   sleepers as RouteTrack, so the line reads as continuing from
    one route's box down into the next rather than stopping at the border. */
 .track-link {
   position: relative;
   width: 14px;
   pointer-events: none;
   background:
-    linear-gradient(90deg, #566777, #566777) left / 3px 100% no-repeat,
-    linear-gradient(90deg, #566777, #566777) right / 3px 100% no-repeat,
-    repeating-linear-gradient(180deg, #b9c4ce 0 3px, transparent 3px 14px);
-  opacity: 0.85;
+    linear-gradient(90deg, #6a7987, #6a7987) left / 3px 100% no-repeat,
+    linear-gradient(90deg, #6a7987, #6a7987) right / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, #c4cdd5 0 3px, transparent 3px 14px);
 }
 /* The Track Map train is parked at a station, so it stays still — no idle
    bob. Only the smoke puff animates. */
@@ -1102,34 +1093,11 @@ header .container-page {
     transform: translate3d(-10px, -14px, 0) scale(1.4);
   }
 }
-/* Travelling light along the line. useTrackLight (_layout.track-map.tsx) drives
-   it with the Web Animations API; this is only its static shape. Each slot's
-   light is clipped to its own stretch of rail — the li plus half the grid gap
-   (1rem) either side — so neighbouring slots meet exactly with no doubled
-   overlap. It sits inside .track-rail, so under the station badges (z-10) and
-   the train (z-20), and never over the cards. Until animated, the blob waits
-   off the left edge, so nothing shows. */
-.track-light {
-  position: absolute;
-  inset: 0 0.25rem;
-  overflow: hidden;
-}
-.track-light > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 64px; /* LIGHT */
-  transform: translateX(-64px);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(187 247 208 / 0.5) 25%,
-    rgb(240 253 244 / 0.85) 50%,
-    rgb(187 247 208 / 0.5) 75%,
-    transparent
-  );
-}
+/* Travelling light along the line: dashes on RouteTrack's and RouteConnector's
+   centre lines (.track-light-path), driven by useTrackLight
+   (_layout.track-map.tsx) with the Web Animations API. Until animated, each
+   dash waits before its shape's start, so nothing shows. */
 @media (prefers-reduced-motion: reduce) {
-  .track-light,
   .track-light-path {
     display: none;
   }
@@ -1199,7 +1167,12 @@ header .container-page {
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(105deg, transparent 40%, rgb(255 255 255 / 0.55) 50%, transparent 60%)
+    background: linear-gradient(
+        105deg,
+        transparent 40%,
+        rgb(255 255 255 / 0.55) 50%,
+        transparent 60%
+      )
       no-repeat;
     background-size: 250% 100%;
     background-position: 100% 0;
@@ -1241,7 +1214,16 @@ header .container-page {
     repeating-linear-gradient(90deg, #78716c 0 5px, transparent 5px 18px);
 }
 .journey-wheel {
-  background: conic-gradient(#334155 0 12.5%, #e2e8f0 0 25%, #334155 0 37.5%, #e2e8f0 0 50%, #334155 0 62.5%, #e2e8f0 0 75%, #334155 0 87.5%, #e2e8f0 0);
+  background: conic-gradient(
+    #334155 0 12.5%,
+    #e2e8f0 0 25%,
+    #334155 0 37.5%,
+    #e2e8f0 0 50%,
+    #334155 0 62.5%,
+    #e2e8f0 0 75%,
+    #334155 0 87.5%,
+    #e2e8f0 0
+  );
 }
 .journey-puff {
   opacity: 0;

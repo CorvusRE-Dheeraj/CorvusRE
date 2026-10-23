@@ -228,6 +228,8 @@ export function TaxUpdateCard({
           </p>
         )}
 
+        {/* "What changed" always shows; the rest opens on Read more, so a page
+            of updates stays scannable (each card was ~600px tall on phones). */}
         <div className="mt-3 grid gap-3">
           <Points
             icon={FileText}
@@ -235,33 +237,35 @@ export function TaxUpdateCard({
             tone="text-sky-700"
             text={update.whatChanged}
           />
-          <Points
-            icon={Lightbulb}
-            label="Why it matters"
-            tone="text-amber-700"
-            text={update.whyItMatters}
-          />
-          <Points
-            icon={CheckCircle2}
-            label="What to do"
-            tone="text-emerald-700"
-            text={update.actionNeeded}
-          />
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-accent hover:underline"
         >
-          Who it affects &amp; source
+          {open ? "Show less" : "Read more — why it matters, what to do, source"}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
         <div
           className={`grid transition-all duration-300 ${open ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
         >
           <div className="overflow-hidden">
+            <div className="mb-3 grid gap-3">
+              <Points
+                icon={Lightbulb}
+                label="Why it matters"
+                tone="text-amber-700"
+                text={update.whyItMatters}
+              />
+              <Points
+                icon={CheckCircle2}
+                label="What to do"
+                tone="text-emerald-700"
+                text={update.actionNeeded}
+              />
+            </div>
             <div className="grid gap-2 rounded-lg bg-secondary/40 p-3 text-xs">
               <div>
                 <span className="font-semibold">Who it affects: </span>
@@ -272,7 +276,7 @@ export function TaxUpdateCard({
                 href={update.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-accent hover:underline"
+                className="inline-flex min-h-6 items-center gap-1 text-accent hover:underline"
               >
                 {update.sourceName}
                 <ExternalLink className="h-3 w-3" />

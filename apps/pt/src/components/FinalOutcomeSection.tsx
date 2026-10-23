@@ -5,6 +5,7 @@ import type { PropertyRecord } from "@/lib/properties";
 import { INFORMAL_STATUS_LABEL, type ProtestRecord } from "@/lib/protests";
 import { buildCaseOutcome } from "@/lib/case-outcome";
 import { currency } from "@/lib/intake-store";
+import { OutcomeFigures } from "@/components/OutcomeFigures";
 
 // Confetti plays once per case per browser — reopening the tab later stays calm.
 const celebrateKey = (id: string) => `corvuspt.celebrated.${id}`;
@@ -178,37 +179,7 @@ export function FinalOutcomeSection({
           {protest.closedAt ? ` on ${fmt(protest.closedAt)}` : ""}.
         </p>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Value reduced
-            </div>
-            <div className="mt-0.5 text-sm">
-              {currency(outcome.originalValue)} → <strong>{currency(outcome.finalValue)}</strong>
-            </div>
-          </div>
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              You saved
-            </div>
-            <div className="mt-0.5 text-lg font-semibold text-success">
-              {outcome.taxSavings != null ? currency(outcome.taxSavings) : "—"}
-              <span className="text-xs font-normal text-muted-foreground"> /yr in tax</span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {pct(outcome.valueReductionPct)} lower value
-            </div>
-          </div>
-          <div className="rounded-md border border-border p-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Your tax now
-            </div>
-            <div className="mt-0.5 text-sm">
-              {outcome.taxBefore != null ? currency(outcome.taxBefore) : "—"} →{" "}
-              <strong>{outcome.taxAfter != null ? currency(outcome.taxAfter) : "—"}</strong>
-            </div>
-          </div>
-        </div>
+        <OutcomeFigures outcome={outcome} />
         <p className="mt-2 text-[11px] text-muted-foreground">
           Tax figures apply your county&apos;s average combined rate (
           {(outcome.taxRate * 100).toFixed(2)}
@@ -242,10 +213,18 @@ export function FinalOutcomeSection({
           </ol>
           <button
             type="button"
-            onClick={() => onOpenTab("decision")}
+            onClick={() =>
+              onOpenTab(
+                protest.arbDecision
+                  ? "hearing"
+                  : protest.informalStatus === "accepted"
+                    ? "informal"
+                    : "decision",
+              )
+            }
             className="mt-3 text-xs text-muted-foreground hover:underline"
           >
-            Made a mistake? Review or undo on the Decision tab →
+            Made a mistake? Review or undo the decision →
           </button>
         </div>
       )}

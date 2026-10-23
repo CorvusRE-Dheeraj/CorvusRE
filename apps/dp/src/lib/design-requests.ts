@@ -26,6 +26,18 @@ export type DesignRequestRow = {
   consultation_notes: string | null;
   /** Keys of the design checklist items the customer has ticked off. */
   checklist_done: string[] | null;
+  /** The land survey (design-survey.ts) — private storage path + file details. */
+  survey_path?: string | null;
+  survey_name?: string | null;
+  survey_type?: string | null;
+  survey_size?: number | null;
+  survey_uploaded_at?: string | null;
+  survey_reading?: import("./survey-reading").SurveyReading | null;
+  survey_read_at?: string | null;
+  survey_read_error?: string | null;
+  site_inputs?: import("./survey-reading").SiteInputs | null;
+  schematic?: import("./schematic").Schematic | null;
+  site_analysis?: import("./site-analysis").SiteAnalysisRaw | null;
   created_at: string;
   updated_at: string;
 };

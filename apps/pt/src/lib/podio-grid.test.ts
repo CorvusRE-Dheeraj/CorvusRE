@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   fieldText,
   itemsToGrid,
+  podioWriteValue,
   signState,
   TITLE_COLUMN,
   verifyState,
@@ -102,5 +103,22 @@ describe("safeReturn", () => {
     expect(safeReturn("https://corvusre.com.evil.com/")).toBeNull();
     expect(safeReturn("//evil.com")).toBeNull();
     expect(safeReturn("javascript:alert(1)")).toBeNull();
+  });
+});
+
+describe("podioWriteValue", () => {
+  it("shapes a CRM value for each writable Podio field type", () => {
+    expect(podioWriteValue("text", "Acme LLC")).toBe("Acme LLC");
+    expect(podioWriteValue("email", "a@b.com")).toEqual([{ type: "work", value: "a@b.com" }]);
+    expect(podioWriteValue("phone", "(214) 555-0100")).toEqual([
+      { type: "work", value: "(214) 555-0100" },
+    ]);
+    expect(podioWriteValue("money", "$1,250,000")).toEqual({ value: "1250000", currency: "USD" });
+    expect(podioWriteValue("number", "12")).toBe(12);
+  });
+  it("never writes types the CRM doesn't own", () => {
+    expect(podioWriteValue("category", "x")).toBeUndefined();
+    expect(podioWriteValue("app", "x")).toBeUndefined();
+    expect(podioWriteValue("number", "abc")).toBeUndefined();
   });
 });

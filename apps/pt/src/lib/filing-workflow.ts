@@ -76,13 +76,10 @@ export function requiredFilingSteps(input: FilingStepInput): FilingStepId[] {
   // shouldn't have to hunt for where that lives. It's optional unless the
   // case has actually signalled an agent is involved — see
   // optionalFilingSteps/firstIncompleteFilingStep for how that's enforced.
-  const steps: FilingStepId[] = ["prefiling", "file", "agent"];
-
-  if (willNotAppearInPerson(input.hearingAppearance)) {
-    steps.push("affidavit");
-  }
-
-  steps.push("evidence");
+  // The Evidence Affidavit (Form 50-283) is part of the Evidence step for
+  // every case now — completed and submitted with the evidence — not a
+  // separate step shown only when the owner won't appear in person.
+  const steps: FilingStepId[] = ["prefiling", "file", "agent", "evidence"];
   return steps;
 }
 

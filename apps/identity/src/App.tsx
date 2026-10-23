@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "./lib/supabase";
 import { safeRedirectTarget } from "./redirect";
+import { isPwnedPassword, PWNED_MESSAGE } from "./lib/pwned";
 
 type Mode = "sign-in" | "sign-up" | "forgot-password";
 type Status =
@@ -224,6 +225,11 @@ export function App() {
       return;
     }
     setSubmitting(true);
+    if (await isPwnedPassword(password)) {
+      setSubmitting(false);
+      setError(PWNED_MESSAGE);
+      return;
+    }
     const { error: updateErr } = await supabase.auth.updateUser({ password });
     setSubmitting(false);
     if (updateErr) {
@@ -257,6 +263,11 @@ export function App() {
       return;
     }
 
+    if (await isPwnedPassword(password)) {
+      setError(PWNED_MESSAGE);
+      setStatus("error");
+      return;
+    }
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email,
       password,

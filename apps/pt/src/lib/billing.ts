@@ -198,11 +198,15 @@ export async function startBppCheckout(
 }
 
 export async function cancelBppSubscription(bppAccountId: string): Promise<void> {
-  await invokeEdgeFunction<{ ok: boolean }>("cancel-bpp-subscription", { bppAccountId });
+  await invokeEdgeFunction<{ ok: boolean }>("resume-subscription?action=cancel-bpp-subscription", {
+    bppAccountId,
+  });
 }
 
 export async function resumeBppSubscription(bppAccountId: string): Promise<void> {
-  await invokeEdgeFunction<{ ok: boolean }>("resume-bpp-subscription", { bppAccountId });
+  await invokeEdgeFunction<{ ok: boolean }>("resume-subscription?action=resume-bpp-subscription", {
+    bppAccountId,
+  });
 }
 
 export const PLAN_OPTIONS: { value: PlanValue; label: string }[] = [
@@ -296,7 +300,12 @@ export async function openBillingPortal(options?: { newTab?: boolean }): Promise
 // property has its own (see cancel-property-subscription/index.ts): no more
 // bracket-quantity guessing about which property actually loses coverage.
 export async function cancelPropertySubscription(propertyId: string): Promise<void> {
-  await invokeEdgeFunction<{ ok: boolean }>("cancel-property-subscription", { propertyId });
+  await invokeEdgeFunction<{ ok: boolean }>(
+    "resume-subscription?action=cancel-property-subscription",
+    {
+      propertyId,
+    },
+  );
 }
 
 // Undoes a scheduled cancel-at-period-end on one property's own subscription,

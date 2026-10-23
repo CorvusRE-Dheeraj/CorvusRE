@@ -26,6 +26,8 @@ import {
   geoIdFromTaxAccount,
   isBusinessPersonalProperty,
 } from "../_shared/bexar-tax-office.ts";
+import { rateLimit } from "../_shared/rate-limit.ts";
+import { statewideLookup } from "../_shared/statewide-parcels.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -99,6 +101,9 @@ type CadRecord = {
   buildingClass?: string | null;
   lotSizeSqft?: number | null;
   lotSizeAcres?: number | null;
+  // "statewide" = found through the State's parcel layer for a county
+  // without its own integration (see _shared/statewide-parcels.ts)
+  dataSource?: "statewide";
 };
 
 // Per-county parcel-layer field names for structure / lot detail. Only the
@@ -4428,6 +4433,9 @@ async function bexarTaxOfficeRecords(
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "cad-lookup", 60, corsHeaders);
+  if (limited) return limited;
 
   try {
     const body = await req.json();
@@ -4516,24 +4524,90 @@ Deno.serve(async (req: Request) => {
     // branch — computed here too so isConfidentMatch knows which shape of
     // "confident" applies to this particular query.
     const isNameQuery = !parseAddressForQuery(address, "nearby");
-    let result: LookupResult;
-    if (hintedQuery) {
-      const hinted = await runLookup(
-        address,
-        queryTimeoutMs,
-        [hintedQuery],
-        preview,
-      );
-      result = isConfidentMatch(hinted, isNameQuery)
-        ? hinted
-        : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
-    } else {
-      result = await runLookup(
+    // Every other Texas county (see _shared/statewide-parcels.ts): the
+    // State's statewide parcel layer. Addresses only, never names.
+    const tryStatewide = async (): Promise<LookupResult | null> => {
+      if (isNameQuery) return null;
+      try {
+        return await statewideLookup(address);
+      } catch {
+        return null; // state service down / slow
+      }
+    };
+    // Google already placed it in a county without its own integration —
+    // go to the state layer first instead of sweeping the 13 counties.
+    const otherCounty =
+      typeof body.countyHint === "string" &&
+      body.countyHint.trim() !== "" &&
+      !countyQueryForHint(body.countyHint);
+    // Started alongside the county search (one call, reused below): a
+    // pinned or typed address with no county hint used to wait ~25 s for
+    // the 13-county sweep before the state layer was even asked.
+    // Not for the as-you-type previews (one per candidate per keystroke) —
+    // those ask the state layer only after the sweep finds nothing.
+    let statewideCall: Promise<LookupResult | null> | null = null;
+    const statewide = () => (statewideCall ??= tryStatewide());
+    if (!preview) statewide();
+    // A state-layer exact match in a county without its own integration
+    // is the answer — the 13-county sweep can't do better.
+    const statewideOtherCounty = (
+      preview ? new Promise<never>(() => {}) : statewide()
+    ).then((r) =>
+      r?.matched === true &&
+      !countyQueryForHint(
+        r.record.cad.replace(/\s*(central\s+|county\s+)?appraisal district$/i, ""),
+      )
+        ? r
+        : new Promise<never>(() => {}),
+    );
+    const sweep = async (): Promise<LookupResult> => {
+      if (hintedQuery) {
+        const hinted = await runLookup(
+          address,
+          queryTimeoutMs,
+          [hintedQuery],
+          preview,
+        );
+        return isConfidentMatch(hinted, isNameQuery)
+          ? hinted
+          : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
+      }
+      return await runLookup(
         address,
         queryTimeoutMs,
         ALL_COUNTY_QUERIES,
         preview,
       );
+    };
+    let result: LookupResult | null = otherCounty ? await statewide() : null;
+    if (result && result.matched === false && result.nearby.length === 0)
+      result = null;
+    if (!result) result = await Promise.race([sweep(), statewideOtherCounty]);
+    // Nothing in the 13 counties — or only "nearby" guesses in a different
+    // ZIP than the one typed (same street name in another county) → the
+    // state layer, kept only if it actually found something.
+    // "410 S 17th St, Silsbee, TX 77656, USA" (Google pins end in ", USA")
+    const zip = address.match(/\bTX,?\s+(\d{5})\b/i)?.[1];
+    const city = address
+      .match(/,\s*([^,]+?)\s*,\s*TX\b/i)?.[1]
+      ?.trim()
+      .toLowerCase();
+    const elsewhere = (r: CadRecord) => {
+      const a = r.propertyAddress.toLowerCase();
+      return !(zip && a.includes(zip)) && !(city && a.includes(city));
+    };
+    if (
+      !otherCounty &&
+      result.matched === false &&
+      (result.nearby.length === 0 ||
+        ((zip || city) && result.nearby.every(elsewhere)))
+    ) {
+      const found = await statewide();
+      if (
+        found &&
+        (found.matched !== false || found.nearby.length > 0)
+      )
+        result = found;
     }
 
     return new Response(JSON.stringify(withValueYearsResult(result)), {

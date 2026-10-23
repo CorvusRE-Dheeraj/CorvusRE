@@ -44,6 +44,12 @@ export type PropertyInfo = {
   jurisdiction?: string;
   zoning?: string;
   zoningDescription?: string;
+  /** How `zoning` was filled: by the city map lookup (lib/zoning-lookup), or absent when typed. */
+  zoningStatus?: "found" | "no_zoning" | "not_covered" | "not_found";
+  /** e.g. "City of Frisco zoning map" */
+  zoningSource?: string;
+  /** PD / SUP on the parcel, or why there's no zoning, in a short line */
+  zoningNote?: string;
 };
 
 export type ProjectDefinition = {

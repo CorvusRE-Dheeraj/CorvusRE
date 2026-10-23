@@ -9,6 +9,7 @@ import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
 import { evaluateEscalation } from "./escalation-eval";
 import { getEffectiveTaxRate } from "./texas-tax-rates";
+import { daysUntilIso } from "./local-day";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -37,9 +38,7 @@ const LABEL: Record<ArbitrationStatus, ArbitrationEligibility["label"]> = {
 };
 
 function daysUntil(iso: string, now: Date): number {
-  const target = new Date(`${iso}T00:00:00`).getTime();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return Math.round((target - today) / DAY);
+  return daysUntilIso(iso, now) ?? Number.NaN;
 }
 
 export function evaluateArbitrationEligibility(
@@ -75,7 +74,7 @@ export function evaluateArbitrationEligibility(
     return done(
       "needs_info",
       ["Arbitration is available after the ARB issues its order."],
-      ["The ARB decision — record it on the Decision tab (upload the ARB order)."],
+      ["The ARB decision — record it on the Formal Hearing tab (upload the ARB order)."],
     );
   }
   if (protest.arbDecision === "approved") {

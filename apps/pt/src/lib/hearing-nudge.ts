@@ -6,5 +6,5 @@ export type HearingNudgeInput = {
 };
 
 export async function getHearingNudge(input: HearingNudgeInput): Promise<{ message: string }> {
-  return invokeEdgeFunction<{ message: string }>("hearing-nudge", input);
+  return invokeEdgeFunction<{ message: string }>("deadline-nudge?action=hearing-nudge", input);
 }

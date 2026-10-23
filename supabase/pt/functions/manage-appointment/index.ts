@@ -60,8 +60,8 @@ Deno.serve(async (req: Request) => {
       const { data: userData } = await callerClient.auth.getUser();
       const uid = userData.user?.id;
       if (!uid) return fail(401, "Sign in as an admin to cancel appointments.");
-      const { data: prof } = await admin.from("profiles").select("is_admin").eq("id", uid).maybeSingle();
-      if (!prof?.is_admin) return fail(403, "Only admins can cancel other people's appointments.");
+      const { data: prof } = await admin.from("profiles").select("is_admin, operations_admin").eq("id", uid).maybeSingle();
+      if (!(prof?.is_admin || prof?.operations_admin)) return fail(403, "Only admins can cancel other people's appointments.");
       found = await admin.from("appointments").select(cols).eq("id", String(body.id ?? "")).maybeSingle();
       if (found.data) token = found.data.manage_token as string;
       action = "cancel";

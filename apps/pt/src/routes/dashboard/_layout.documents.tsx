@@ -1089,7 +1089,7 @@ function PropertyDocGroup({
             {summary && <span className="text-muted-foreground text-xs">{summary}</span>}
           </span>
         </button>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {hasDocs && (
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <input

@@ -248,6 +248,7 @@ import { CaseOutcomeBanner, CaseResultContext } from "@/components/CaseOutcomeBa
 import { ProgressRing } from "@/components/ProgressRing";
 import { buildCaseOutcome, caseStageLabel, outcomeRouteLabel } from "@/lib/case-outcome";
 import { protestOutcome } from "@/lib/protest-outcome";
+import { isPaidStatus } from "@/lib/subscription-status";
 
 type ModuleAsyncState = {
   data: unknown;
@@ -2355,7 +2356,7 @@ function Report() {
   // never decides access on its own.
   useEffect(() => {
     if (myPlan === "beta" || myPlan === "ai_report" || myPlan === "managed_protest") return;
-    setHasFullAccess(resolvedProperty?.subscriptionStatus === "active");
+    setHasFullAccess(isPaidStatus(resolvedProperty?.subscriptionStatus));
   }, [myPlan, resolvedProperty]);
 
   // Auto-opens a module for a deep link (CaseDetailModal's "Upload Evidence —

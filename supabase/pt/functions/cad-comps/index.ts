@@ -1,3 +1,4 @@
+import { rateLimit } from "../_shared/rate-limit.ts";
 // Deploy via CLI: `supabase functions deploy cad-comps`.
 // No secrets required — same public TrueProdigy API used by cad-lookup's enrichment.
 //
@@ -595,6 +596,9 @@ async function spatialComps(
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
+  // Per-caller limit (public endpoint; see _shared/rate-limit.ts).
+  const limited = await rateLimit(req, "cad-comps", 40, corsHeaders);
+  if (limited) return limited;
 
   try {
     const input = (await req.json()) as CompsInput;

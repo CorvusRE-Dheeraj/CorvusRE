@@ -1,4 +1,5 @@
 import { TextSizeControl } from "@/components/TextSizeControl";
+import { isPwnedPassword, PWNED_MESSAGE } from "@/lib/pwned";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -220,6 +221,7 @@ function Settings() {
         password: currentPassword,
       });
       if (reauthError) throw new Error("Current password is incorrect.");
+      if (await isPwnedPassword(newPassword)) throw new Error(PWNED_MESSAGE);
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
       if (updateError) throw updateError;
       toast.success("Password updated.");

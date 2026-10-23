@@ -12,14 +12,14 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // port clash from a strictPort `preview` server, now removed below.)
 const base = process.env.SITE_BASE || "/";
 
-// Opt-in only, dev-server-only (never touches `vite build`/production) — same
-// as apps/pt: proxies /auth/* to apps/identity's own dev server so a local
-// `npm run dev -w apps/dp` can reach the real shared sign-in screen instead of
-// the 404 you'd otherwise get hitting /auth/ against a lone dp dev server.
+// Opt-in, dev-server-only (same as apps/pt/vite.config.ts): sign-in lives in
+// the shared apps/identity app at /auth/, which a lone DP dev server doesn't
+// serve (you'd get a 404). To sign in locally:
 //   1. In another terminal: SITE_BASE=/auth/ npm run dev -w apps/identity -- --port 8081
 //   2. LOCAL_AUTH_PROXY=1 npm run dev -w apps/dp
+// /auth/callback is DP's own route, so it is not proxied.
 const authProxy = process.env.LOCAL_AUTH_PROXY
-  ? { proxy: { "/auth": "http://localhost:8081" } }
+  ? { proxy: { "^/auth(?!/callback)": "http://localhost:8081" } }
   : {};
 
 export default defineConfig({

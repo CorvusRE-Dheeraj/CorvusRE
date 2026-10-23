@@ -29,20 +29,64 @@ export const Route = createFileRoute("/permitting/")({
 });
 
 const STEPS = [
-  { icon: FileInput, label: "Input", text: "Address or manual site details, plus your project intent." },
-  { icon: ScanSearch, label: "Analysis", text: "Zoning, jurisdiction, feasibility, and site constraints — in plain language." },
-  { icon: FileCheck2, label: "Permits", text: "Every required permit, its reviewing agency, and a submission checklist." },
-  { icon: Send, label: "Submission", text: "A dependency-ordered roadmap, fee estimate, and a multi-cycle timeline." },
-  { icon: BadgeCheck, label: "Approval", text: "Track review cycles, comments, approvals, clearance, and expiry." },
+  {
+    icon: FileInput,
+    label: "Input",
+    text: "Address or manual site details, plus your project intent.",
+  },
+  {
+    icon: ScanSearch,
+    label: "Analysis",
+    text: "Zoning, jurisdiction, feasibility, and site constraints — in plain language.",
+  },
+  {
+    icon: FileCheck2,
+    label: "Permits",
+    text: "Every required permit, its reviewing agency, and a submission checklist.",
+  },
+  {
+    icon: Send,
+    label: "Submission",
+    text: "A dependency-ordered roadmap, fee estimate, and a multi-cycle timeline.",
+  },
+  {
+    icon: BadgeCheck,
+    label: "Approval",
+    text: "Track review cycles, comments, approvals, clearance, and expiry.",
+  },
 ];
 
 const OUTPUTS = [
-  { icon: Building2, t: "Zoning & jurisdiction", d: "Classification, the governing authority (city / county / ETJ), and which department reviews what." },
-  { icon: ScanSearch, t: "Feasibility", d: "Allowed / conditional / not allowed, with each risk explained and its added time and cost." },
-  { icon: FileCheck2, t: "Permits & checklists", d: "Grouped by category, mapped to agencies, each with a jurisdiction-specific submittal checklist." },
-  { icon: RouteIcon, t: "Roadmap", d: "What must clear before what, and what can run in parallel — as a phased timeline." },
-  { icon: Receipt, t: "Fees & timeline", d: "Per-permit fees, impact fees, and a realistic review schedule, with assumptions stated." },
-  { icon: MessagesSquare, t: "Review tracking", d: "Once engaged: submissions, comment translation and assignment, approvals, and expiry." },
+  {
+    icon: Building2,
+    t: "Zoning & jurisdiction",
+    d: "Classification, the governing authority (city / county / ETJ), and which department reviews what.",
+  },
+  {
+    icon: ScanSearch,
+    t: "Feasibility",
+    d: "Allowed / conditional / not allowed, with each risk explained and its added time and cost.",
+  },
+  {
+    icon: FileCheck2,
+    t: "Permits & checklists",
+    d: "Grouped by category, mapped to agencies, each with a jurisdiction-specific submittal checklist.",
+  },
+  {
+    icon: RouteIcon,
+    t: "Roadmap",
+    d: "What must clear before what, and what can run in parallel — as a phased timeline.",
+  },
+  {
+    icon: Receipt,
+    t: "Fees & timeline",
+    d: "Per-permit fees, impact fees, and a realistic review schedule, with assumptions stated.",
+  },
+  {
+    icon: MessagesSquare,
+    t: "Review tracking",
+    d: "Once engaged: submissions, comment translation and assignment, approvals, and expiry.",
+  },
 ];
 
 function PermittingOverview() {
@@ -51,7 +95,10 @@ function PermittingOverview() {
       <section className="gradient-mesh relative isolate">
         <div className="blueprint-grid pointer-events-none absolute inset-0" aria-hidden />
         <span className="grain absolute inset-0" aria-hidden />
-        <span className="hero-blob left-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]" aria-hidden />
+        <span
+          className="hero-blob left-[-7rem] top-[-3rem] h-80 w-80 bg-[oklch(0.7_0.16_58)]"
+          aria-hidden
+        />
         <span
           className="hero-blob right-[-8rem] top-24 h-96 w-96 bg-[oklch(0.55_0.16_255)]"
           style={{ animationDelay: "-6s" }}
@@ -61,7 +108,8 @@ function PermittingOverview() {
           <div>
             <span className="badge-soft">Permitting &amp; Entitlement</span>
             <h1 className="mt-4 max-w-3xl font-serif text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
-              From one address to a <span className="text-gradient">complete permitting roadmap.</span>
+              From one address to a{" "}
+              <span className="text-gradient">complete permitting roadmap.</span>
             </h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
               Enter the property and your project scope. CorvusDP retrieves jurisdiction and zoning
@@ -153,7 +201,10 @@ function PermittingOverview() {
       <section className="container-page pb-20">
         <ScrollReveal>
           <div className="brand-gradient relative overflow-hidden rounded-2xl p-8 text-accent-foreground sm:p-12">
-            <span className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]" aria-hidden />
+            <span
+              className="band-sheen pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.5),transparent)]"
+              aria-hidden
+            />
             <h2 className="relative font-serif text-2xl font-semibold sm:text-3xl">
               Start with one address.
             </h2>

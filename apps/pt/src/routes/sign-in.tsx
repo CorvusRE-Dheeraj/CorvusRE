@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { rememberLeadLink } from "@/lib/lead-link";
 
 export const Route = createFileRoute("/sign-in")({
   head: () => ({
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/sign-in")({
     beta?: string;
     ref?: string;
     reason?: string;
+    lead?: string;
   } => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
     mode: search.mode === "signup" ? "signup" : undefined,
@@ -38,6 +40,7 @@ export const Route = createFileRoute("/sign-in")({
     beta: typeof search.beta === "string" ? search.beta : undefined,
     ref: typeof search.ref === "string" ? search.ref : undefined,
     reason: typeof search.reason === "string" ? search.reason : undefined,
+    lead: typeof search.lead === "string" ? search.lead : undefined,
   }),
   component: SignIn,
 });
@@ -66,6 +69,11 @@ function SignIn() {
   const isSelf = cleaned === "/sign-in" || cleaned.startsWith("/sign-in?");
   const returnTo =
     cleaned && cleaned.startsWith("/") && !cleaned.startsWith("//") && !isSelf ? cleaned : "/";
+
+  // A CRM registration link: remember which lead this is (claimed after sign-up).
+  useEffect(() => {
+    rememberLeadLink(searchParams.lead);
+  }, [searchParams.lead]);
 
   // Already signed in (e.g. an open tab, or a session that resolved while
   // this page was loading) — go straight to where they were headed.

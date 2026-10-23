@@ -1,7 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { STATIONS, ROUTES, locateTrain, parallelTrackStop, wagonCargo, lineProgress } from "./train-track";
+import {
+  STATIONS,
+  ROUTES,
+  locateTrain,
+  parallelTrackStop,
+  wagonCargo,
+  lineProgress,
+} from "./train-track";
 
-const permit = (name: string, status: string, extra: { expiry_date?: string; review_round?: number } = {}) => ({
+const permit = (
+  name: string,
+  status: string,
+  extra: { expiry_date?: string; review_round?: number } = {},
+) => ({
   name,
   status,
   expiry_date: extra.expiry_date ?? null,
@@ -88,7 +99,10 @@ describe("locateTrain", () => {
   });
 
   it("goes back under review after a resubmission", () => {
-    const loc = locateTrain({ ...base, permits: [permit("Building Permit", "resubmitted", { review_round: 2 })] });
+    const loc = locateTrain({
+      ...base,
+      permits: [permit("Building Permit", "resubmitted", { review_round: 2 })],
+    });
     expect(loc.station).toBe(19);
     expect(loc.reason).toContain("round 2");
   });
@@ -184,7 +198,9 @@ describe("wagonCargo", () => {
   const checklist = [item("pre_app", true), item("pre_app", false), item("submission", false)];
 
   it("has no wagons before an analysis exists", () => {
-    expect(wagonCargo({ trainAt: 1, analysis: null, permits: [], checklist: [], comments: [] })).toEqual([]);
+    expect(
+      wagonCargo({ trainAt: 1, analysis: null, permits: [], checklist: [], comments: [] }),
+    ).toEqual([]);
   });
 
   it("adds one wagon per completed route only, never the current one", () => {
@@ -204,7 +220,13 @@ describe("wagonCargo", () => {
   });
 
   it("fills crates with the project's real data", () => {
-    const [intake, reqs, preApp] = wagonCargo({ trainAt: 18, analysis, permits, checklist, comments: [] });
+    const [intake, reqs, preApp] = wagonCargo({
+      trainAt: 18,
+      analysis,
+      permits,
+      checklist,
+      comments: [],
+    });
     expect(intake.crates).toEqual(["City of Denton", "Zoning C-2", "2 permits found"]);
     expect(reqs.crates).toEqual(["1 checklist item", "3 utilities checked", "1 site warning"]);
     expect(preApp.crates).toEqual(["Pre-app 1/2", "Fees $13k–$1.3M", "Package 0/1"]);

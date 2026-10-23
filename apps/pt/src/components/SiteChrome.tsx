@@ -1,17 +1,20 @@
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { ScheduleAppointment } from "@/components/ScheduleAppointment";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { WelcomeTour } from "@/components/WelcomeTour";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { checkIsAdmin } from "@/lib/admin";
+import { getStaffRole } from "@/lib/marketing";
 import { shouldShowShell } from "@/components/AppShell";
 import { getMyFeedbackResponse, isFormV2Complete } from "@/lib/beta-feedback";
 import { openFeedbackWidget } from "@/lib/feedback-widget-events";
 import { getMyBilling } from "@/lib/billing";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HelpMenu } from "@/components/HelpMenu";
+import { SUPPORTED_COUNTY_NAMES } from "@/lib/cad-record-url";
+import { TEXAS_COUNTY_NAMES } from "@/lib/county-coverage";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +51,10 @@ export function SiteNav() {
   const { user, session } = useAuth();
   const signedIn = !!user;
   const [isAdmin, setIsAdmin] = useState(false);
+  // Marketing Admins (and Super Admins) get a Marketing link.
+  const [isMarketing, setIsMarketing] = useState(false);
+  const [isSupport, setIsSupport] = useState(false);
+  const [isOperations, setIsOperations] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
   // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
@@ -86,6 +93,7 @@ export function SiteNav() {
   useEffect(() => {
     if (!user) {
       setIsAdmin(false);
+      setIsMarketing(false);
       return;
     }
     // Swallow failures instead of leaving an unhandled rejection — this runs
@@ -94,11 +102,19 @@ export function SiteNav() {
     // request) would otherwise throw site-wide. Non-critical either way:
     // it only gates showing the Admin nav link, so falling back to "not
     // admin" is always the safe default.
-    checkIsAdmin(user.id)
-      .then(setIsAdmin)
+    getStaffRole(user.id)
+      .then((r) => {
+        setIsAdmin(r.isSuperAdmin);
+        setIsMarketing(r.isSuperAdmin || r.isMarketingAdmin);
+        setIsSupport(r.isSuperAdmin || r.isSupportAdmin);
+        setIsOperations(r.isSuperAdmin || r.isOperationsAdmin);
+      })
       .catch((err) => {
         console.error("Could not check admin status:", err);
         setIsAdmin(false);
+        setIsMarketing(false);
+        setIsSupport(false);
+        setIsOperations(false);
       });
   }, [user]);
 
@@ -258,12 +274,15 @@ export function SiteNav() {
       }`}
     >
       <div className="container-page flex h-16 items-center justify-between gap-4">
-        <Link to="/" className="flex items-center gap-2">
-          <LogoMark />
-          <span className="font-serif text-lg font-semibold tracking-tight">
-            Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
-          </span>
-        </Link>
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          <Link to="/" aria-label="CorvusPT home" className="flex items-center gap-2">
+            <LogoMark />
+            <span className="hidden font-serif text-lg font-semibold tracking-tight sm:inline">
+              Corvus<span className="text-emerald-700 dark:text-emerald-400">PT</span>
+            </span>
+          </Link>
+          <ScheduleAppointment trigger="header" buttonLabel="Book a demo" />
+        </div>
 
         <nav
           aria-label="Main"
@@ -368,13 +387,40 @@ export function SiteNav() {
                       Beta Feedback
                     </Link>
                   )}
+                  {isSupport && (
+                    <Link
+                      to="/support"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Customer Support
+                    </Link>
+                  )}
+                  {isOperations && (
+                    <Link
+                      to="/operations"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Operations
+                    </Link>
+                  )}
+                  {isMarketing && (
+                    <Link
+                      to="/marketing"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Marketing
+                    </Link>
+                  )}
                   {isAdmin && (
                     <Link
                       to="/admin"
                       onClick={() => setProfileOpen(false)}
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
-                      Admin
+                      Super Admin
                     </Link>
                   )}
                   <button
@@ -477,23 +523,9 @@ export function SiteNav() {
 // footer (logo blurb + Platform/Services/Company link columns) was removed
 // site-wide as redundant with the top nav, but this bottom line stays as the
 // one place stating real county coverage.
-// Matches supabase/functions/cad-lookup/index.ts's countyQueriesInOrder — the
-// real counties with a live data source, not an aspirational "all 254" claim.
-// Update this list if that array ever changes (the count is derived from it).
-const SERVED_COUNTIES = [
-  "Collin",
-  "Montgomery",
-  "Denton",
-  "Harris",
-  "Tarrant",
-  "Fort Bend",
-  "Williamson",
-  "Grayson",
-  "Travis",
-  "Bexar",
-  "Dallas",
-  "Kaufman",
-];
+// Every Texas county is served (statewide parcel fallback in cad-lookup);
+// the chips are the counties with full, county-integrated detail.
+const SERVED_COUNTIES = [...SUPPORTED_COUNTY_NAMES].sort();
 
 export function SiteFooter() {
   return (
@@ -540,12 +572,13 @@ export function SiteFooter() {
         <div className="mt-3 border-t border-white/15 pt-3">
           <p className="flex items-center gap-2 text-xs font-semibold text-white">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
-            Serving {SERVED_COUNTIES.length} Texas counties
+            Serving all {TEXAS_COUNTY_NAMES.length} Texas counties
             <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
               Beta
             </span>
           </p>
-          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Counties served">
+          <p className="mt-1.5 text-[11px] text-white/75">Full detail in:</p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Counties with full detail">
             {SERVED_COUNTIES.map((county) => (
               <li
                 key={county}

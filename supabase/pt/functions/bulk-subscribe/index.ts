@@ -165,6 +165,12 @@ Deno.serve(async (req: Request) => {
       .select("id, address, total_value, subscription_status, stripe_subscription_id")
       .eq("user_id", user.id)
       .in("id", ids);
+    // Marks "subscription started" for the Marketing CRM journey.
+    await adminClient
+      .from("properties")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .in("id", ids);
     const propById = new Map(
       (propRows ?? []).map((p) => [p.id as string, p as Record<string, unknown>]),
     );
