@@ -244,6 +244,7 @@ const SYSTEM =
   "- Skip general background, marketing, navigation, contact info and evergreen how-to text.\n" +
   '- If the page has nothing that qualifies, return {"updates": []}. An empty result is correct and expected.\n' +
   '- Every update MUST include "quote": a short (under 200 characters) EXACT verbatim excerpt copied from the page text that supports it.\n' +
+  '- In every field EXCEPT quote, write citations in plain words for property owners: "Section 9.4223" / "Sections 9.4202 and 9.4209", never the § sign.\n' +
   '- If a field is not stated in the page, use null (for effectiveDate) or "Not stated" (other text fields). Never invent dates.\n' +
   `- status must be one of: ${STATUSES.join(", ")}. Use enacted_law only for law the page says has been enacted; adopted_rule for a rule the page says is adopted/effective; proposed_rule for a proposed rule; pending_legislation / failed_legislation for bills; otherwise notice_guidance.\n` +
   `- tags: choose any that apply from: ${TAGS.join(", ")}.\n` +
@@ -423,8 +424,12 @@ const AREA_LABEL: Record<string, string> = {
   tax_rate: "Tax rates",
   other: "Other",
 };
+// HTML-escaped, with legal section signs spelled out ("§9.4223" → "Section 9.4223")
 const esc = (s: string | null) =>
-  (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  (s ?? "")
+    .replace(/§§\s*/g, "Sections ")
+    .replace(/§\s*/g, "Section ")
+    .replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 // Tell the team: an in-app notification for each Super Admin and one email to
 // the staff inbox (same address as the other staff notifications).
