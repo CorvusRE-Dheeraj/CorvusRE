@@ -113,10 +113,13 @@ function fromRow(row: PacketRow): EngagementPacket {
 }
 
 // The signed-in user's most recent signing, current or not (RLS scopes it).
+// A copy voided by an approved agreement change doesn't count — the customer
+// is asked to sign again.
 export async function getMyLatestPacket(): Promise<EngagementPacket | null> {
   const { data, error } = await supabase
     .from("engagement_packets")
     .select(PACKET_COLUMNS)
+    .is("voided_at", null)
     .order("signed_at", { ascending: false })
     .limit(1)
     .maybeSingle();

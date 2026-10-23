@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { AlertTriangle, ArrowRight, Check, Clock, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Clock, MapPin, Users } from "lucide-react";
+import { readableAddress } from "@/lib/tidy-address";
 import type { NextAction, Pipeline, StageId, Urgency } from "@/lib/case-pipeline";
 import { daysBetween } from "@/lib/case-pipeline";
 
@@ -291,20 +292,39 @@ export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; t
         Next required actions
       </span>
       <div className="grid gap-3 sm:grid-cols-3">
-        {shown.map((i) => (
-          <button
-            key={i.key}
-            type="button"
-            onClick={i.onOpen}
-            className={`flex min-w-0 flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-colors hover:bg-secondary/40 ${URGENCY_STYLE[i.urgency].box}`}
-          >
-            <span className="text-base font-bold leading-snug">{i.title}</span>
-            <span className="w-full truncate text-[11px] text-muted-foreground">
-              {i.address}
-              {dueShort(i.dueDate) ? ` · ${dueShort(i.dueDate)}` : ""}
-            </span>
-          </button>
-        ))}
+        {shown.map((i) => {
+          // county records are ALL CAPS — show the street readably, city underneath
+          const addr = readableAddress(i.address);
+          const due = dueShort(i.dueDate);
+          return (
+            <button
+              key={i.key}
+              type="button"
+              onClick={i.onOpen}
+              className={`flex min-w-0 flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition-colors hover:bg-secondary/40 ${URGENCY_STYLE[i.urgency].box}`}
+            >
+              <span className="text-base font-bold leading-snug">{i.title}</span>
+              <span className="flex w-full min-w-0 items-start gap-1.5" title={i.address}>
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {addr.street}
+                  </span>
+                  {addr.place && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {addr.place}
+                    </span>
+                  )}
+                </span>
+              </span>
+              {due && (
+                <span className="rounded-full bg-background/70 px-2 py-0.5 text-xs font-medium">
+                  {due}
+                </span>
+              )}
+            </button>
+          );
+        })}
         {overflow && !showAll && (
           <button
             type="button"

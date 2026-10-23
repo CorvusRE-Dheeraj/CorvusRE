@@ -20,6 +20,16 @@ import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminCountyMailbox } from "@/components/AdminCountyMailbox";
 import { AdminAppointments } from "@/components/AdminAppointments";
 import { LoadingLine } from "@/components/LoadingLine";
+import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
+import {
+  HandoffInbox,
+  OwnerHandoff,
+  RecordHistory,
+  RequestApprovalButton,
+  type StaffContext,
+} from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
+import { useLiveRefresh } from "@/lib/staff-records";
 
 export const Route = createFileRoute("/operations")({
   head: () => ({ meta: [{ title: "Operations — CorvusPT" }] }),
@@ -38,6 +48,7 @@ function Operations() {
   const nav = useNavigate();
   const { user, loading } = useAuth();
   const [role, setRole] = useState<StaffRole | null>(null);
+  const staffCtx = useStaffContext();
   const [tab, setTab] = useState<Tab>(() =>
     typeof window !== "undefined" &&
     /[?&](mailbox_(connected|error)=|tab=mail\b)/.test(window.location.search)
@@ -74,10 +85,24 @@ function Operations() {
           <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
         )}
       </div>
-      <h1 className="mt-2 font-serif text-3xl font-semibold">Operations</h1>
-      <p className="text-sm text-muted-foreground">
-        Protest cases, the county mailbox and appointments.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="mt-2 font-serif text-3xl font-semibold">Operations</h1>
+          <p className="text-sm text-muted-foreground">
+            Protest cases, the county mailbox and appointments.
+          </p>
+        </div>
+        <RequestApprovalButton ctx={staffCtx} />
+      </div>
+      <HandoffInbox ctx={staffCtx} department="operations" />
+      <details className="card-elev mt-4 p-4">
+        <summary className="cursor-pointer text-sm font-semibold">
+          Support tickets handed to you
+        </summary>
+        <div className="mt-3">
+          <AdminSupportEscalations mineOnly />
+        </div>
+      </details>
       <div className="mt-6 border-b border-border" role="tablist" aria-label="Operations">
         <div className="flex flex-wrap gap-1">
           {(
@@ -100,15 +125,16 @@ function Operations() {
           ))}
         </div>
       </div>
-      {tab === "cases" && <Cases />}
+      {tab === "cases" && <Cases ctx={staffCtx} />}
       {tab === "mail" && <AdminCountyMailbox />}
       {tab === "appointments" && <AdminAppointments />}
     </div>
   );
 }
 
-function Cases() {
+function Cases({ ctx }: { ctx: StaffContext }) {
   const [protests, setProtests] = useState<AdminProtestRecord[] | null>(null);
+  const [owner, setOwner] = useState<"all" | "mine" | "none">("all");
   const [contacts, setContacts] = useState<Map<string, Contact>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -154,6 +180,8 @@ function Cases() {
   useEffect(() => {
     void load();
   }, []);
+  // a case handed over, opened or updated by a colleague appears without a reload
+  useLiveRefresh(["protests", "record_transfers"], () => void load());
 
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -164,6 +192,9 @@ function Cases() {
           : status === "all"
             ? true
             : p.status === status,
+      )
+      .filter((p) =>
+        owner === "mine" ? p.ownerId === ctx.me : owner === "none" ? !p.ownerId : true,
       )
       .filter((p) => {
         if (!term) return true;
@@ -180,7 +211,7 @@ function Cases() {
           .some((v) => String(v).toLowerCase().includes(term));
       })
       .sort((a, b) => (a.protestDeadline ?? "9999").localeCompare(b.protestDeadline ?? "9999"));
-  }, [protests, contacts, q, status]);
+  }, [protests, contacts, q, status, owner, ctx.me]);
 
   const counts = useMemo(() => {
     const m = new Map<ProtestStatus, number>();
@@ -255,6 +286,26 @@ function Cases() {
             </option>
           ))}
         </select>
+        <select
+          value={owner}
+          onChange={(e) => setOwner(e.target.value as typeof owner)}
+          aria-label="Case owner"
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+        >
+          <option value="all">Every owner</option>
+          <option value="mine">
+            Mine (
+            {
+              (protests ?? []).filter((p) => p.ownerId === ctx.me && !CLOSED.includes(p.status))
+                .length
+            }
+            )
+          </option>
+          <option value="none">
+            Needs an owner (
+            {(protests ?? []).filter((p) => !p.ownerId && !CLOSED.includes(p.status)).length})
+          </option>
+        </select>
         <button type="button" onClick={() => void load()} className="btn-outline text-sm">
           Refresh
         </button>
@@ -281,6 +332,17 @@ function Cases() {
                       {late ? " (passed)" : ""}
                     </span>
                   )}
+                </div>
+                <div className="mb-1.5">
+                  <OwnerHandoff
+                    ctx={ctx}
+                    entityType="case"
+                    entityId={p.id}
+                    ownerId={p.ownerId ?? null}
+                    label={`${p.propertyAddress ?? "Case"} (${p.protestFilingYear ?? p.taxYear ?? ""})`}
+                    onChanged={() => void load()}
+                    compact
+                  />
                 </div>
                 <ProtestRow
                   record={p}
@@ -319,6 +381,16 @@ function Cases() {
                   onOpenCase={() => setCaseRecord(p)}
                   delayMs={Math.min(i * 30, 240)}
                 />
+                {expanded === p.id && (
+                  <div className="card-elev mt-2 p-4">
+                    <RecordHistory
+                      entityId={p.id}
+                      profileId={p.userId}
+                      title="Case & customer history"
+                      limit={20}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

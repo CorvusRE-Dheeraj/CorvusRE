@@ -32,6 +32,8 @@ export type SupportEscalation = {
   transcript: TranscriptTurn[];
   status: SupportEscalationStatus;
   createdAt: string;
+  /** the one person responsible (auto-assigned; changed by a handoff) */
+  assignedTo?: string | null;
 };
 
 type Row = {
@@ -42,6 +44,7 @@ type Row = {
   transcript: TranscriptTurn[] | null;
   status: SupportEscalationStatus;
   created_at: string;
+  assigned_to?: string | null;
 };
 
 const fromRow = (r: Row): SupportEscalation => ({
@@ -52,13 +55,15 @@ const fromRow = (r: Row): SupportEscalation => ({
   transcript: r.transcript ?? [],
   status: r.status,
   createdAt: r.created_at,
+  assignedTo: r.assigned_to ?? null,
 });
 
-// Admin-only (RLS) — every escalation, newest first.
+// Support / Super Admins see every escalation; anyone else only the ones
+// handed to them (RLS) — newest first.
 export async function listSupportEscalations(): Promise<SupportEscalation[]> {
   const { data, error } = await supabase
     .from("support_escalations")
-    .select("id, user_id, contact_method, summary, transcript, status, created_at")
+    .select("id, user_id, contact_method, summary, transcript, status, created_at, assigned_to")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as Row[]).map(fromRow);

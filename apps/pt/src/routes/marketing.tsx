@@ -22,6 +22,9 @@ import { AiWorkspace } from "@/components/marketing/AiWorkspace";
 import { Followups } from "@/components/marketing/Followups";
 import { Analytics } from "@/components/marketing/Analytics";
 import type { Focus, MarketingTab } from "@/components/marketing/shared";
+import { HandoffInbox, RequestApprovalButton } from "@/components/staff/StaffRecords";
+import { useStaffContext } from "@/hooks/use-staff-context";
+import { useLiveRefresh } from "@/lib/staff-records";
 
 // Marketing Admin workspace. Open to Marketing Admins and Super Admins; the
 // marketing_* tables are the only data it touches (database-enforced — a
@@ -72,6 +75,7 @@ function MarketingPage() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [bell, setBell] = useState(false);
+  const staffCtx = useStaffContext();
 
   useEffect(() => {
     if (loading) return;
@@ -131,6 +135,14 @@ function MarketingPage() {
       ).length,
     } as Partial<Record<MarketingTab, number>>;
   }, [data]);
+
+  // changes made elsewhere (a handoff accepted by Support, a lead converting,
+  // a follow-up reassigned) show up here without a reload
+  useLiveRefresh(
+    ["marketing_leads", "marketing_followups", "marketing_notifications", "record_transfers"],
+    () => void reload(),
+    !!role,
+  );
 
   const unread = data?.notifications.filter((n) => !n.readAt) ?? [];
   if (!role) return null;
@@ -228,6 +240,7 @@ function MarketingPage() {
               )}
             </div>
           )}
+          <RequestApprovalButton ctx={staffCtx} />
           {role.isSuperAdmin && (
             <Link to="/admin" className="btn-outline text-sm">
               Admin
@@ -250,6 +263,7 @@ function MarketingPage() {
           Synced with signups and accounts at {lastSync.toLocaleTimeString()}
         </p>
       )}
+      <HandoffInbox ctx={staffCtx} department="marketing" />
 
       <nav className="mt-5 border-b border-border" aria-label="Marketing sections">
         <div className="flex flex-wrap gap-1">

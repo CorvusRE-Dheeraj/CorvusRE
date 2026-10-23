@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ExternalLink,
+  FileSearch,
   FileText,
   Gavel,
   Handshake,
@@ -15,6 +16,7 @@ import {
   Percent,
   Scale,
   TrendingUp,
+  UserCheck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +44,9 @@ export const TAG_ICON: Record<TaxUpdateTag, Icon> = {
   valuation: TrendingUp,
   tax_rate: Percent,
   deadlines: CalendarClock,
+  evidence: FileSearch,
+  hearings: Gavel,
+  representation: UserCheck,
 };
 
 const STATUS_TONE: Record<TaxUpdate["status"], string> = {
@@ -76,6 +81,9 @@ const TAG_TILE: Record<TaxUpdateTag, string> = {
   valuation: "from-emerald-500 to-green-600",
   tax_rate: "from-amber-500 to-yellow-600",
   deadlines: "from-rose-500 to-pink-600",
+  evidence: "from-sky-500 to-blue-600",
+  hearings: "from-violet-500 to-purple-600",
+  representation: "from-teal-500 to-emerald-600",
 };
 const DEFAULT_TILE = "from-slate-500 to-slate-700";
 

@@ -25,7 +25,10 @@ export type TaxUpdateTag =
   | "court"
   | "valuation"
   | "tax_rate"
-  | "deadlines";
+  | "deadlines"
+  | "evidence"
+  | "hearings"
+  | "representation";
 
 export type TaxUpdate = {
   id: string;
@@ -44,7 +47,7 @@ export type TaxUpdate = {
   sourceUrl: string;
   sourceCheckedAt: string;
   quote: string;
-  // New since the last weekly check, vs. information that is simply posted now.
+  // New this week (sources are checked daily), vs. information that is simply posted now.
   isNew: boolean;
 };
 
@@ -94,6 +97,9 @@ export const TAG_LABEL: Record<TaxUpdateTag, string> = {
   valuation: "Valuation",
   tax_rate: "Tax Rate",
   deadlines: "Deadlines",
+  evidence: "Evidence",
+  hearings: "Hearings",
+  representation: "Representation",
 };
 
 export const ALL_TAGS = Object.keys(TAG_LABEL) as TaxUpdateTag[];
@@ -105,11 +111,12 @@ export const STANDING_DEADLINES: { label: string; detail: string }[] = [
   {
     label: "Protest deadline",
     detail:
-      "Generally May 15, or 30 days after the notice of appraised value was delivered, whichever is later (Tax Code §41.44).",
+      "Generally May 15, or 30 days after the notice of appraised value was delivered, whichever is later (Tax Code Section 41.44).",
   },
   {
     label: "ARB hearing notice",
-    detail: "The ARB must give at least 15 days' written notice of a hearing (Tax Code §41.46).",
+    detail:
+      "The ARB must give at least 15 days' written notice of a hearing (Tax Code Section 41.46).",
   },
   {
     label: "Binding arbitration",
@@ -118,11 +125,11 @@ export const STANDING_DEADLINES: { label: string; detail: string }[] = [
   {
     label: "District court appeal",
     detail:
-      "Petition for review within 60 days after receiving the ARB's final order (Tax Code §42.21).",
+      "Petition for review within 60 days after receiving the ARB's final order (Tax Code Section 42.21).",
   },
   {
     label: "Taxes delinquent",
-    detail: "Property taxes are delinquent if unpaid after January 31 (Tax Code §31.02).",
+    detail: "Property taxes are delinquent if unpaid after January 31 (Tax Code Section 31.02).",
   },
 ];
 export const STANDING_SOURCE = {
@@ -141,12 +148,31 @@ type ReportRow = {
   generated_at: string;
 };
 
+/**
+ * Legal citations use the section sign ("§9.4223", "§§9.4202, 9.4209") —
+ * shown to owners in plain words: "Section 9.4223", "Sections 9.4202, 9.4209".
+ */
+export function plainCitations(text: string): string {
+  return text.replace(/§§\s*/g, "Sections ").replace(/§\s*/g, "Section ");
+}
+export function plainUpdate(u: TaxUpdate): TaxUpdate {
+  return {
+    ...u,
+    title: plainCitations(u.title),
+    whatChanged: plainCitations(u.whatChanged),
+    affects: plainCitations(u.affects),
+    whyItMatters: plainCitations(u.whyItMatters),
+    actionNeeded: plainCitations(u.actionNeeded),
+    quote: plainCitations(u.quote),
+  };
+}
+
 const fromRow = (r: ReportRow): TaxReport => ({
   id: r.id,
   weekStart: r.week_start,
   title: r.title,
   summary: r.summary,
-  updates: r.updates ?? [],
+  updates: (r.updates ?? []).map(plainUpdate),
   sources: r.sources ?? [],
   generatedAt: r.generated_at,
 });
@@ -177,7 +203,7 @@ export async function listCriticalUpdatesForYear(year: number): Promise<TaxUpdat
     .eq("tax_year", year)
     .order("first_seen_week", { ascending: true });
   if (error) throw error;
-  return (data as CriticalItemRow[]).map((r) => r.update);
+  return (data as CriticalItemRow[]).map((r) => plainUpdate(r.update));
 }
 
 // ── Generated reports (per person) ───────────────────────────────────────
@@ -433,28 +459,33 @@ export const KEY_DATES: { month: number; day: number; label: string; cite: strin
     month: 1,
     day: 1,
     label: "Appraisal date — values are set as of today",
-    cite: "Tax Code §23.01",
+    cite: "Tax Code Section 23.01",
   },
   {
     month: 1,
     day: 31,
     label: "Property taxes due — delinquent after today",
-    cite: "Tax Code §31.02",
+    cite: "Tax Code Section 31.02",
   },
   {
     month: 4,
     day: 15,
     label: "Business personal property renditions due",
-    cite: "Tax Code §22.23",
+    cite: "Tax Code Section 22.23",
   },
-  { month: 4, day: 30, label: "Exemption applications generally due", cite: "Tax Code §11.43" },
+  {
+    month: 4,
+    day: 30,
+    label: "Exemption applications generally due",
+    cite: "Tax Code Section 11.43",
+  },
   {
     month: 5,
     day: 15,
     label: "Protest deadline (or 30 days after your notice)",
-    cite: "Tax Code §41.44",
+    cite: "Tax Code Section 41.44",
   },
-  { month: 10, day: 1, label: "Tax bills mailed around now", cite: "Tax Code §31.01" },
+  { month: 10, day: 1, label: "Tax bills mailed around now", cite: "Tax Code Section 31.01" },
 ];
 
 export type UpcomingKeyDate = { date: string; label: string; cite: string; daysAway: number };

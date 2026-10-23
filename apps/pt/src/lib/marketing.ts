@@ -127,6 +127,9 @@ export type Lead = {
   podioItemId: number | null;
   podioAppId: number | null;
   assignedTo: string | null;
+  /** set while the customer is being handed off / is with Support (no marketing outreach) */
+  outreachPausedAt?: string | null;
+  outreachPausedReason?: string | null;
   priority: "high" | "medium" | "low" | null;
   priorityReason: string | null;
   nextAction: string | null;
@@ -486,6 +489,8 @@ export const toLead = (r: any): Lead => ({
   podioItemId: r.podio_item_id == null ? null : Number(r.podio_item_id),
   podioAppId: r.podio_app_id == null ? null : Number(r.podio_app_id),
   assignedTo: r.assigned_to ?? null,
+  outreachPausedAt: r.outreach_paused_at ?? null,
+  outreachPausedReason: r.outreach_paused_reason ?? null,
   priority: r.priority ?? null,
   priorityReason: r.priority_reason ?? null,
   nextAction: r.next_action ?? null,
