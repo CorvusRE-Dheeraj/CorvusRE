@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
 import { getStaffRole } from "@/lib/marketing";
 import { supabase } from "@/lib/supabase";
+import { plainCitations } from "@/lib/tax-updates";
 
 // CorvusPT Regulatory Watch — staff only. generate-tax-updates checks the
 // official Texas sources daily; every NEW change it judges material for
@@ -63,7 +64,19 @@ export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100)
-      .then(({ data }) => setAlerts((data ?? []) as TaxAlert[]));
+      .then(({ data }) =>
+        setAlerts(
+          ((data ?? []) as TaxAlert[]).map((a) => ({
+            ...a,
+            title: plainCitations(a.title),
+            what_changed: plainCitations(a.what_changed),
+            owner_impact: a.owner_impact && plainCitations(a.owner_impact),
+            corvus_impact: a.corvus_impact && plainCitations(a.corvus_impact),
+            recommended_action: a.recommended_action && plainCitations(a.recommended_action),
+            quote: plainCitations(a.quote),
+          })),
+        ),
+      );
   }, []);
 
   useEffect(() => {

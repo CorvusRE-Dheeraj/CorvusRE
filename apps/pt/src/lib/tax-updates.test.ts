@@ -213,3 +213,12 @@ describe("toBullets", () => {
     expect(toBullets("")).toEqual([]);
   });
 });
+
+describe("plainCitations", () => {
+  it("spells out the section sign", async () => {
+    const { plainCitations } = await import("./tax-updates");
+    expect(plainCitations("34 TAC §§9.4202, 9.4209")).toBe("34 TAC Sections 9.4202, 9.4209");
+    expect(plainCitations("amendment to §9.4223(a)")).toBe("amendment to Section 9.4223(a)");
+    expect(plainCitations("Tax Code § 41.44")).toBe("Tax Code Section 41.44");
+  });
+});
