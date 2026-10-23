@@ -90,6 +90,7 @@ type Source = {
   kind: string;
   county: string | null;
   last_text: string | null;
+  note?: string | null;
 };
 
 type Update = {
@@ -127,6 +128,8 @@ function htmlToText(html: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
+    .replace(/&sect;/g, "§")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
     .replace(/&ldquo;|&rdquo;/g, '"')
     .replace(/[ \t]+/g, " ")
@@ -134,8 +137,79 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+// ── Texas Register (weekly issues) ───────────────────────────────────────
+const TEXREG = "https://www.sos.state.tx.us/texreg/archive/";
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "October232026" → "2026-10-23" */
+function issueDate(folder: string): string | null {
+  const m = folder.match(/^([A-Za-z]+)(\d{1,2})(\d{4})$/);
+  const mi = m ? MONTHS.indexOf(m[1]) : -1;
+  return m && mi >= 0 ? `${m[3]}-${String(mi + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+}
+function issueIsRecent(note: string | null | undefined): boolean {
+  const d = note?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  return !!d && Date.now() - Date.parse(d) <= 7 * 864e5;
+}
+
+/**
+ * Adds the two newest issues' Title 34 (Comptroller) adopted + proposed rule
+ * pages as sources, and retires issues older than three weeks.
+ */
+async function syncTexasRegister(admin: SupabaseClient) {
+  const res = await fetch(`${TEXREG}index.shtml`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; CorvusPT-TaxUpdates/1.0)" } });
+  if (!res.ok) throw new Error(`Texas Register index HTTP ${res.status}`);
+  const html = await res.text();
+  // The index lags a few days behind the newest issue, so also try the last
+  // two Fridays (the Register is published on Fridays) — a missing page is
+  // simply reported as "no property-tax rules".
+  const fridays = [0, 7].map((back) => {
+    const d = new Date(Date.now() - 5 * 3600e3); // Texas time, roughly
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 2) % 7) - back);
+    return `${MONTHS[d.getUTCMonth()]}${d.getUTCDate()}${d.getUTCFullYear()}`;
+  });
+  const listed = [...html.matchAll(/archive\/([A-Za-z]+\d{5,6})\/index\.html/g)].map((m) => m[1]);
+  const folders = [...new Set([...fridays, ...listed])]
+    .filter((f) => issueDate(f))
+    .sort((a, b) => issueDate(b)!.localeCompare(issueDate(a)!))
+    .slice(0, 2);
+  const rows = folders.flatMap((f) => {
+    const date = issueDate(f);
+    if (!date) return [];
+    const label = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+    return (["Adopted", "Proposed"] as const).map((k) => ({
+      name: `Texas Register ${label} — ${k.toLowerCase()} property-tax rules`,
+      url: `${TEXREG}${f}/${k}%20Rules/34.PUBLIC%20FINANCE.html`,
+      kind: "texreg",
+      county: null,
+      enabled: true,
+      note: `issue ${date}`,
+    }));
+  });
+  if (rows.length) {
+    const { error } = await admin.from("tax_update_sources").upsert(rows, { onConflict: "url", ignoreDuplicates: true });
+    if (error) throw error;
+  }
+  // stop reading old issues (their content is already in the reports)
+  const cutoff = new Date(Date.now() - 21 * 864e5).toISOString().slice(0, 10);
+  const { data: old } = await admin.from("tax_update_sources").select("id, note").eq("kind", "texreg").eq("enabled", true);
+  const stale = (old ?? []).filter((r) => (r.note?.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? "9999") < cutoff).map((r) => r.id);
+  if (stale.length) await admin.from("tax_update_sources").update({ enabled: false }).in("id", stale);
+}
+
+/** Only the Comptroller's Chapter 9 (Property Tax Administration) part of a Title 34 page. */
+function chapter9(text: string): string {
+  // headings are split across lines: "CHAPTER\n9.\nPROPERTY TAX ADMINISTRATION"
+  const start = text.search(/CHAPTER\s+9\.\s*PROPERTY TAX ADMINISTRATION/i);
+  if (start < 0) return "";
+  const rest = text.slice(start + 10);
+  const next = rest.search(/\bCHAPTER\s+(?!9\.)\d+\.\s+[A-Z]/);
+  return (next < 0 ? text.slice(start) : text.slice(start, start + 10 + next)).slice(0, 30_000);
+}
+
 async function fetchPage(
   url: string,
+  maxChars = PAGE_CHARS,
 ): Promise<{ text: string } | { error: string }> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -153,7 +227,7 @@ async function fetchPage(
     const text = htmlToText(await res.text());
     if (text.length < 400)
       return { error: "Page returned almost no readable text" };
-    return { text: text.slice(0, PAGE_CHARS) };
+    return { text: text.slice(0, maxChars) };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "fetch failed" };
   } finally {
@@ -455,24 +529,42 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
+    // This week's Texas Register issues (adopted + proposed Comptroller
+    // property-tax rules) join the fixed sources — rule adoptions appear there
+    // before the Comptroller's own rules page is updated.
+    await syncTexasRegister(admin).catch((e) => console.error("Texas Register sync failed:", e));
+
     const { data: sourceRows, error: srcErr } = await admin
       .from("tax_update_sources")
-      .select("id, name, url, kind, county, last_text")
+      .select("id, name, url, kind, county, last_text, note")
       .eq("enabled", true);
     if (srcErr) throw srcErr;
     const sources = (sourceRows ?? []) as Source[];
 
     const checkedAt = new Date().toISOString();
     const results = await inBatches(sources, CONCURRENCY, async (source) => {
-      const page = await fetchPage(source.url);
-      if ("error" in page) {
-        return { source, ok: false, note: page.error, updates: [] as Update[], watch: [] as Watch[] };
+      const register = source.kind === "texreg";
+      const fetched = await fetchPage(source.url, register ? 60_000 : PAGE_CHARS);
+      // an issue with no Title 34 rules that week simply has no such page
+      if (register && "error" in fetched && /HTTP 404/.test(fetched.error)) {
+        return { source, ok: true, note: "No property-tax rules in this issue", updates: [] as Update[], watch: [] as Watch[] };
+      }
+      if ("error" in fetched) {
+        return { source, ok: false, note: fetched.error, updates: [] as Update[], watch: [] as Watch[] };
+      }
+      const page = register ? { text: chapter9(fetched.text) } : fetched;
+      if (register && page.text.length < 200) {
+        await admin.from("tax_update_sources").update({ last_text: page.text, last_checked_at: checkedAt }).eq("id", source.id);
+        return { source, ok: true, note: "No property-tax rules in this issue", updates: [] as Update[], watch: [] as Watch[] };
       }
       try {
         // First check of a source: everything on the page is "currently posted".
-        // Later checks: only text that changed since last week is examined, and
-        // anything found there is "new this week".
+        // Later checks: only text that changed since the last check is
+        // examined, and anything found there is "new this week". A Texas
+        // Register issue is new in itself: its first read counts as new when
+        // the issue came out in the last week.
         const baseline = source.last_text == null;
+        const freshIssue = register && issueIsRecent(source.note);
         const examine = baseline
           ? page.text
           : newLines(source.last_text ?? "", page.text);
@@ -481,7 +573,7 @@ Deno.serve(async (req: Request) => {
         if (examine.length >= 60) {
           const raw = await extract(apiKey, source, examine);
           const ok = raw
-            .map((r) => validate(r, source, page.text, checkedAt, !baseline))
+            .map((r) => validate(r, source, page.text, checkedAt, !baseline || freshIssue))
             .filter((x): x is { u: Update; w: Watch } => x !== null);
           updates = ok.map((x) => x.u);
           watch = ok.map((x) => x.w);
@@ -493,7 +585,7 @@ Deno.serve(async (req: Request) => {
         return {
           source,
           ok: true,
-          note: baseline
+          note: baseline && !freshIssue
             ? `${updates.length} currently posted (first check)`
             : `${updates.length} new`,
           updates,
