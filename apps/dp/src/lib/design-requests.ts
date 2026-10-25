@@ -38,6 +38,8 @@ export type DesignRequestRow = {
   site_inputs?: import("./survey-reading").SiteInputs | null;
   schematic?: import("./schematic").Schematic | null;
   site_analysis?: import("./site-analysis").SiteAnalysisRaw | null;
+  /** set when staff mark the request "completed" — it then lives in the Archive */
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -173,6 +175,7 @@ export async function getActiveDesignRequest(userId: string): Promise<DesignRequ
     .from("design_requests")
     .select("*")
     .eq("user_id", userId)
+    .is("completed_at", null)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -185,7 +188,19 @@ export async function listDesignRequests(userId: string): Promise<DesignRequestR
     .from("design_requests")
     .select("*")
     .eq("user_id", userId)
+    .is("completed_at", null)
     .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as DesignRequestRow[]) ?? [];
+}
+
+export async function listArchivedDesignRequests(userId: string): Promise<DesignRequestRow[]> {
+  const { data, error } = await supabase
+    .from("design_requests")
+    .select("*")
+    .eq("user_id", userId)
+    .not("completed_at", "is", null)
+    .order("completed_at", { ascending: false });
   if (error) throw error;
   return (data as DesignRequestRow[]) ?? [];
 }
