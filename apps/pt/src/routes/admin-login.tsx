@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getStaffRole } from "@/lib/marketing";
 import { useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { setActiveDoor } from "@/lib/door-switch";
 
 // Deliberately not linked from SiteChrome's nav — a separate login surface from the
 // regular customer /sign-in flow. Admin accounts are provisioned manually (see the
@@ -36,6 +37,8 @@ function AdminLogin() {
         password,
       });
       if (signInError) throw signInError;
+      // a real sign-in here makes CorvusPT the active door (see lib/door-switch.ts)
+      setActiveDoor("corvuspt");
 
       const role = await getStaffRole(data.user.id);
       if (

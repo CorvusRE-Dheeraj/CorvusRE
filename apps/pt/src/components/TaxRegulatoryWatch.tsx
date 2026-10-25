@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, CheckCircle2, ExternalLink, ShieldAlert } from "lucide-react";
+import { BellRing, CheckCircle2, Copy, ExternalLink, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
@@ -10,8 +10,9 @@ import { plainCitations } from "@/lib/tax-updates";
 // CorvusPT Regulatory Watch — staff only. generate-tax-updates checks the
 // official Texas sources daily; every NEW change it judges material for
 // commercial owners (deadlines, protest procedures, evidence, hearings,
-// representation) lands here with what it means for CorvusPT and the
-// recommended action. Customers never see this panel (RLS: staff only).
+// representation) lands here: what changed, what applied before, why it
+// matters and a recommended action for owners. Customers never see this panel
+// (RLS: staff only).
 
 type TaxAlert = {
   id: string;
@@ -28,6 +29,10 @@ type TaxAlert = {
   source_name: string;
   source_url: string;
   quote: string;
+  previously_applied: string | null;
+  marketing_sentence: string | null;
+  verification_note: string | null;
+  related_sources: { name: string; url: string }[] | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_note: string | null;
@@ -45,7 +50,7 @@ const AREA_LABEL: Record<string, string> = {
 };
 const STATUS_LABEL: Record<string, string> = {
   enacted_law: "Enacted law",
-  adopted_rule: "Adopted rule",
+  adopted_rule: "Adopted administrative rule",
   proposed_rule: "Proposed rule",
   pending_legislation: "Pending bill",
   notice_guidance: "Notice / guidance",
@@ -71,9 +76,10 @@ export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null
             title: plainCitations(a.title),
             what_changed: plainCitations(a.what_changed),
             owner_impact: a.owner_impact && plainCitations(a.owner_impact),
-            corvus_impact: a.corvus_impact && plainCitations(a.corvus_impact),
             recommended_action: a.recommended_action && plainCitations(a.recommended_action),
             quote: plainCitations(a.quote),
+            previously_applied: a.previously_applied && plainCitations(a.previously_applied),
+            marketing_sentence: a.marketing_sentence && plainCitations(a.marketing_sentence),
           })),
         ),
       );
@@ -180,23 +186,73 @@ function AlertCard({ a, onReview, busy }: { a: TaxAlert; onReview?: () => void; 
         </span>
       </div>
       <h3 className="mt-1.5 font-semibold">{a.title}</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">Status:</span>{" "}
+        {STATUS_LABEL[a.status] ?? a.status} ·{" "}
+        <span className="font-semibold text-foreground">Effective:</span>{" "}
+        {a.effective_date ? longDate(a.effective_date) : "not stated on the source"}
+      </p>
       <dl className="mt-2 grid gap-1.5">
-        <Row label="What changed">{a.what_changed}</Row>
-        <Row label="Effective date">{a.effective_date ?? "Not stated on the source"}</Row>
-        {a.owner_impact && <Row label="Owner impact">{a.owner_impact}</Row>}
-        <Row label="CorvusPT implications">{a.corvus_impact ?? "None"}</Row>
-        <Row label="Recommended action">{a.recommended_action ?? "No action"}</Row>
-        <Row label="Official source">
-          <a
-            href={a.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-accent hover:underline"
-          >
-            {a.source_name} <ExternalLink className="h-3 w-3" />
-          </a>
-          <span className="mt-0.5 block text-xs italic text-muted-foreground">“{a.quote}”</span>
+        <Row label="1. What changed">{a.what_changed}</Row>
+        <Row label="2. What previously applied">
+          {(a.previously_applied ?? "Not stated on the official source.").replace(
+            /^background:\s*/i,
+            "",
+          )}
+          {/^background:/i.test(a.previously_applied ?? "") && (
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Background from Corvus AI — not from the official page; verify.
+            </span>
+          )}
         </Row>
+        <Row label="3. Why it matters to commercial owners">{a.owner_impact ?? "Not stated"}</Row>
+        <Row label="4. Recommended action for owners">
+          {a.recommended_action ?? "Check the official source."}
+        </Row>
+        <Row label="5. Official sources">
+          <ul className="grid gap-0.5">
+            {(a.related_sources?.length
+              ? a.related_sources
+              : [{ name: a.source_name, url: a.source_url }]
+            ).map((s) => (
+              <li key={s.url}>
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-accent hover:underline"
+                >
+                  {s.name} <ExternalLink className="h-3 w-3" />
+                </a>
+              </li>
+            ))}
+          </ul>
+          <span className="mt-1 block text-xs italic text-muted-foreground">
+            “{a.quote}” — {a.source_name}
+          </span>
+        </Row>
+        {a.marketing_sentence && (
+          <Row label="6. Marketing-ready sentence">
+            <span className="block rounded-md bg-secondary/60 p-2">{a.marketing_sentence}</span>
+            <button
+              type="button"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(a.marketing_sentence!)
+                  .then(() => toast.success("Copied — review before you post it."))
+                  .catch(() => toast.error("Couldn't copy."))
+              }
+            >
+              <Copy className="h-3 w-3" /> Copy
+            </button>
+          </Row>
+        )}
+        {a.verification_note && (
+          <Row label="Verification note">
+            <span className="text-muted-foreground">{a.verification_note}</span>
+          </Row>
+        )}
       </dl>
       {a.reviewed_at ? (
         <p className="mt-2 flex items-center gap-1 text-xs text-success">
@@ -228,4 +284,16 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd>{children}</dd>
     </div>
   );
+}
+
+/** "2026-10-25" → "October 25, 2026"; anything else as written on the source. */
+function longDate(d: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d)
+    ? new Date(`${d}T12:00:00Z`).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : d;
 }

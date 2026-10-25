@@ -41,6 +41,39 @@ const PENDING_REF_KEY = "corvusre.pendingRef";
 // exists, same pattern as applyPendingReferral.
 const PENDING_BETA_KEY = "corvusre.pendingBeta";
 
+// Which door this browser last actually signed in to. Moving to the OTHER
+// door asks for the password again (the door sends the visitor here with
+// ?switch=1) instead of passing the shared session straight through. Set
+// only by a real sign-in on this page — see each door's lib/door-switch.ts.
+const ACTIVE_DOOR_KEY = "corvusre.activeDoor";
+// survives the Google round trip: "this session was just signed in for real"
+const REAUTH_KEY = "corvusre.reauthPending";
+type Door = "corvuspt" | "corvusdp";
+const DOOR_NAME: Record<Door, string> = {
+  corvuspt: "CorvusPT",
+  corvusdp: "CorvusDP",
+};
+function doorOf(path: string | null): Door | null {
+  const m = path?.match(/^\/(corvuspt|corvusdp)(\/|$|\?)/);
+  return m ? (m[1] as Door) : null;
+}
+function getActiveDoor(): Door | null {
+  try {
+    const d = localStorage.getItem(ACTIVE_DOOR_KEY);
+    return d === "corvuspt" || d === "corvusdp" ? d : null;
+  } catch {
+    return null;
+  }
+}
+function setActiveDoor(d: Door | null) {
+  if (!d) return;
+  try {
+    localStorage.setItem(ACTIVE_DOOR_KEY, d);
+  } catch {
+    // storage blocked — the door just asks again next time
+  }
+}
+
 // A referral code has to survive a Google OAuth round trip (the query string
 // doesn"t), and signUp() metadata can"t carry it for an OAuth signup at all --
 // so it"s parked in localStorage and applied server-side (apply-referral,
@@ -133,6 +166,21 @@ export function App() {
   // toggle), so a failed submit on either must NOT fall back to "error"
   // (that's the generic sign-in/up form's own status) and lose the screen.
   const [submitting, setSubmitting] = useState(false);
+  // Moving from one door to the other: the door this visitor is headed to,
+  // when it isn't the one they last signed in to.
+  const [switchingTo] = useState<Door | null>(() => {
+    const target = doorOf(safeRedirectTarget());
+    const active = getActiveDoor();
+    const asked =
+      new URLSearchParams(window.location.search).get("switch") === "1";
+    return target && (asked || (active !== null && active !== target))
+      ? target
+      : null;
+  });
+  const [cameFrom] = useState<Door | null>(() => {
+    const active = getActiveDoor();
+    return active && active !== doorOf(safeRedirectTarget()) ? active : null;
+  });
 
   // Where to go once a real session exists (fresh sign-in, or one already
   // found on mount): a specific door if one was requested (a door sent the
@@ -142,10 +190,12 @@ export function App() {
   // generic Sign In link doesn't name a door, and blindly defaulting that
   // to "/" used to make an already-signed-in visitor's click look like
   // nothing had happened at all).
-  async function proceed(justSignedUp = false) {
+  async function proceed(justSignedUp = false, freshSignIn = false) {
     await applyPendingReferral();
     await applyPendingBeta();
     let target = safeRedirectTarget();
+    // a real sign-in makes the door it's for the active one
+    if (freshSignIn) setActiveDoor(doorOf(target));
     // A brand-new account that came from a door's marketing home page belongs on that door's
     // dashboard, not back on the page that made them sign up.
     const doorHome = target?.match(/^\/(corvuspt|corvusdp)\/?$/);
@@ -187,6 +237,25 @@ export function App() {
     });
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
+        // back from Google (or a confirmation link) — that WAS a real sign-in
+        let reauthed = window.location.hash.includes("access_token");
+        try {
+          if (sessionStorage.getItem(REAUTH_KEY)) reauthed = true;
+          sessionStorage.removeItem(REAUTH_KEY);
+        } catch {
+          // storage blocked — fall back to the URL-hash signal
+        }
+        if (reauthed) {
+          proceed(false, true);
+          return;
+        }
+        // switching doors: ask for the password again, even though signed in
+        if (switchingTo) {
+          setEmail(data.session.user.email ?? "");
+          setMode("sign-in");
+          setStatus("idle");
+          return;
+        }
         proceed();
         return;
       }
@@ -259,7 +328,7 @@ export function App() {
         setStatus("error");
         return;
       }
-      proceed();
+      proceed(false, true);
       return;
     }
 
@@ -297,7 +366,7 @@ export function App() {
       setStatus("check-email");
       return;
     }
-    proceed(true);
+    proceed(true, true);
   }
 
   // One OAuth path for every social provider -- Supabase calls Microsoft "azure".
@@ -318,6 +387,11 @@ export function App() {
     // URL this is, query params survive intact. Lands back on THIS page
     // (see the effect above), not directly on a door.
     const target = safeRedirectTarget();
+    try {
+      sessionStorage.setItem(REAUTH_KEY, "1");
+    } catch {
+      // storage blocked — the returning URL hash still marks it as a real sign-in
+    }
     const redirectTo = `${window.location.origin}${window.location.pathname}${
       target ? `?redirect=${encodeURIComponent(target)}` : ""
     }`;
@@ -509,7 +583,29 @@ export function App() {
         <Logo />
         <h1>{mode === "sign-in" ? "Sign in" : "Create your account"}</h1>
         <p className="sub">One account works across every CorvusRE door.</p>
-        {reason && <p className="notice">{reason}</p>}
+        {switchingTo ? (
+          <p className="notice">
+            You&apos;re moving to {DOOR_NAME[switchingTo]}. For your security,
+            please sign in again
+            {email ? (
+              <>
+                {" "}
+                as <strong>{email}</strong>
+              </>
+            ) : null}
+            .
+            {cameFrom && (
+              <>
+                {" "}
+                <a href={`/${cameFrom}/dashboard`}>
+                  Back to {DOOR_NAME[cameFrom]}
+                </a>
+              </>
+            )}
+          </p>
+        ) : (
+          reason && <p className="notice">{reason}</p>
+        )}
 
         <button
           type="button"

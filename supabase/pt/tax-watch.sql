@@ -63,3 +63,12 @@ begin
   select jobid into j from cron.job where jobname = 'generate-tax-updates';
   if j is not null then perform cron.alter_job(j, schedule := '0 12 * * *'); end if;
 end $$;
+
+-- 2026-10-25: alerts carry the full brief — what previously applied (from the
+-- official page only), every relevant official source, a marketing-ready
+-- sentence (to review before use) and a verification note
+alter table public.tax_update_alerts add column if not exists previously_applied text;
+alter table public.tax_update_alerts add column if not exists marketing_sentence text;
+alter table public.tax_update_alerts add column if not exists verification_note text;
+alter table public.tax_update_alerts add column if not exists related_sources jsonb not null default '[]';
+alter table public.tax_update_alerts add column if not exists enriched_at timestamptz;

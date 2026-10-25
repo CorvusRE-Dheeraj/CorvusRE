@@ -7,6 +7,7 @@ import { resetDpIntake } from "@/lib/dp-intake";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 import { stableUser } from "@/lib/auth-user";
 import { tryBridgeFromIdentity } from "@/lib/login-bridge";
+import { mustSignInAgain, sendToSwitchSignIn } from "@/lib/door-switch";
 
 type AuthState = {
   user: User | null;
@@ -58,8 +59,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signingOutRef = useRef(false);
 
   useEffect(() => {
+    // Signed in for CorvusPT, now opening CorvusDP: sign in again (see
+    // lib/door-switch.ts) — neither a leftover DP session nor the silent
+    // login bridge carries the visitor across. Stays "loading" meanwhile.
+    let switching = false;
     supabase.auth.getSession().then(async ({ data }) => {
       if (data.session) {
+        if (mustSignInAgain("corvusdp")) {
+          switching = true;
+          sendToSwitchSignIn("corvusdp");
+          return;
+        }
         setState({ user: data.session.user, session: data.session, loading: false });
         return;
       }
@@ -67,7 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // try the CorvusRE login bridge (see lib/login-bridge.ts): if this
       // browser already has a CorvusPT (identity) session, this silently
       // establishes a real CorvusDP one too, auto-provisioning a fresh
-      // account on a first-ever visit.
+      // account on a first-ever visit. Not when that session was signed in
+      // for CorvusPT — then the visitor signs in again first.
+      const { data: identity } = await identitySupabase.auth.getSession();
+      if (identity.session && mustSignInAgain("corvusdp")) {
+        switching = true;
+        sendToSwitchSignIn("corvusdp");
+        return;
+      }
       const bridged = await tryBridgeFromIdentity();
       if (!bridged) {
         setState({ user: null, session: null, loading: false });
@@ -76,7 +93,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // event, which the listener below picks up and sets state from.
     });
 
+    // Coming back to an open CorvusDP tab after signing in to CorvusPT.
+    function onVisible() {
+      if (document.visibilityState !== "visible" || switching) return;
+      void supabase.auth.getSession().then(({ data }) => {
+        if (data.session && mustSignInAgain("corvusdp")) {
+          switching = true;
+          sendToSwitchSignIn("corvusdp");
+        }
+      });
+    }
+    document.addEventListener("visibilitychange", onVisible);
+
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (switching) return;
       // The anonymous analysis flow's sessionStorage state isn't scoped to an
       // account — signing out is the one clear signal that whatever was in
       // progress no longer applies to whoever signs in next in this tab.
@@ -127,7 +157,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const userId = state.user?.id ?? null;

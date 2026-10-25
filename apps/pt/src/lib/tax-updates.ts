@@ -47,6 +47,10 @@ export type TaxUpdate = {
   sourceUrl: string;
   sourceCheckedAt: string;
   quote: string;
+  /** What applied before — from the official page, or "Background: …" (AI general knowledge, to verify). */
+  previouslyApplied?: string;
+  /** Every relevant official page (built from known official URLs, never by the AI). */
+  sources?: { name: string; url: string }[];
   // New this week (sources are checked daily), vs. information that is simply posted now.
   isNew: boolean;
 };
@@ -164,6 +168,7 @@ export function plainUpdate(u: TaxUpdate): TaxUpdate {
     whyItMatters: plainCitations(u.whyItMatters),
     actionNeeded: plainCitations(u.actionNeeded),
     quote: plainCitations(u.quote),
+    previouslyApplied: u.previouslyApplied && plainCitations(u.previouslyApplied),
   };
 }
 
