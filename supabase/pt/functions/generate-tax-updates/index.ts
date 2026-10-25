@@ -407,13 +407,122 @@ type AlertRow = {
   id: string;
   title: string;
   area: string;
+  status: string;
   what_changed: string;
   effective_date: string | null;
+  owner_impact: string | null;
   corvus_impact: string | null;
   recommended_action: string | null;
   source_name: string;
   source_url: string;
+  quote: string;
+  previously_applied?: string | null;
+  marketing_sentence?: string | null;
+  verification_note?: string | null;
+  related_sources?: { name: string; url: string }[];
 };
+const ALERT_COLS =
+  "id, title, area, status, what_changed, effective_date, owner_impact, corvus_impact, recommended_action, source_name, source_url, quote, previously_applied, marketing_sentence, verification_note, related_sources";
+
+const STATUS_TEXT: Record<string, string> = {
+  enacted_law: "Enacted law",
+  adopted_rule: "Adopted administrative rule",
+  proposed_rule: "Proposed rule",
+  pending_legislation: "Pending legislation",
+  notice_guidance: "Official notice / guidance",
+};
+
+/** Written by code from the status — never by the model. */
+function verificationNote(a: AlertRow): string {
+  const base = `The supporting quote was found word-for-word on ${a.source_name}.`;
+  switch (a.status) {
+    case "adopted_rule":
+      return `${base} This is an adopted rule — read the final rule text before changing CorvusPT's legal eligibility, deadline or dismissal logic.`;
+    case "proposed_rule":
+      return `${base} This is only a proposal and may change or be withdrawn before adoption — don't change CorvusPT's rules yet.`;
+    case "enacted_law":
+      return `${base} Enacted law — confirm the effective date and watch for the Comptroller's implementing rules.`;
+    case "pending_legislation":
+      return `${base} A pending bill is not law — no platform change until it passes.`;
+    default:
+      return `${base} Official notice or guidance — check whether a rule or law change stands behind it before changing CorvusPT.`;
+  }
+}
+
+/** Every relevant official page — built from known official URLs, never by the model. */
+async function relatedSources(admin: SupabaseClient, a: AlertRow): Promise<{ name: string; url: string }[]> {
+  const out = [{ name: a.source_name, url: a.source_url }];
+  const add = (name: string, url: string) => {
+    if (!out.some((x) => x.url === url)) out.push({ name, url });
+  };
+  const issue = a.source_url.match(/texreg\/archive\/([A-Za-z]+\d{5,6})\//)?.[1];
+  if (issue) add(`Texas Register — ${issue.replace(/(\d{1,2})(\d{4})$/, " $1, $2")} issue`, `${TEXREG}${issue}/index.html`);
+  if (["adopted_rule", "proposed_rule"].includes(a.status)) {
+    add("Texas Comptroller — Property tax rules (proposed & adopted)", "https://comptroller.texas.gov/taxes/property-tax/rules/");
+    const { data } = await admin.from("tax_update_sources").select("name, url").ilike("name", "%Administrative Code%").limit(1).maybeSingle();
+    if (data) add(data.name, data.url);
+  }
+  if (a.area === "hearings" || /arbitration|ARB\b/i.test(`${a.title} ${a.what_changed}`)) {
+    add("Texas Comptroller — Protests & appeals (incl. arbitration)", "https://comptroller.texas.gov/taxes/property-tax/protests/");
+  }
+  if (a.area === "representation" || /\bform\b|AP-\d+|50-\d{3}/i.test(`${a.title} ${a.what_changed}`)) {
+    add("Texas Comptroller — Property tax forms", "https://comptroller.texas.gov/taxes/property-tax/forms/");
+  }
+  if (a.status === "enacted_law" || a.status === "pending_legislation") add("Texas Legislature Online", "https://capitol.texas.gov/");
+  return out;
+}
+
+/**
+ * Completes an alert's brief: "what previously applied" (ONLY if the official
+ * page itself says so) and a marketing-ready sentence (for staff to review),
+ * plus the code-written verification note and official source list.
+ */
+async function enrich(admin: SupabaseClient, apiKey: string, rows: AlertRow[]): Promise<AlertRow[]> {
+  const out: AlertRow[] = [];
+  for (const a of rows) {
+    let previously = "Not stated on the official source.";
+    let marketing: string | null = null;
+    try {
+      const page = await fetchPage(a.source_url, /texreg/.test(a.source_url) ? 60_000 : PAGE_CHARS);
+      const text = "error" in page ? "" : /texreg/.test(a.source_url) ? chapter9(page.text) : page.text;
+      const res = await fetch(geminiUrl(GEMINI_MODEL_FAST, apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{
+              text:
+                "You complete a regulatory alert for CorvusPT (a Texas commercial property-tax protest platform) using ONLY the official page text given. Never use outside knowledge.\n" +
+                '- previouslyApplied: one or two sentences on what the rule/law was BEFORE this change, but ONLY if the page text states it (e.g. the earlier proposal, the prior wording, the statute it implements). If the page doesn\'t say, return exactly "Not stated on the official source."\n' +
+                '- marketingSentence: ONE accurate sentence (under 30 words) CorvusPT marketing could post for commercial property owners, starting "TEXAS PROPERTY TAX UPDATE:". Everyday words — no rule or section numbers, no legal jargon (say "appeal", not "mandatory dismissal for lack of jurisdiction"). Name the effective date if known. No promises of savings, no legal advice. Example style: "TEXAS PROPERTY TAX UPDATE: New binding arbitration rules take effect October 25, 2026 — commercial owners and qualifying tenants should know their appeal rights."\n' +
+                'Return ONLY JSON: {"previouslyApplied": "...", "marketingSentence": "..."}',
+            }],
+          },
+          contents: [{ role: "user", parts: [{ text: `ALERT: ${a.title}\nWHAT CHANGED: ${a.what_changed}\nEFFECTIVE: ${a.effective_date ?? "not stated"}\nSTATUS: ${STATUS_TEXT[a.status] ?? a.status}\n\nOFFICIAL PAGE TEXT:\n${text.slice(0, 30_000)}` }] }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0 },
+        }),
+      });
+      if (res.ok) {
+        const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+        const parsed = JSON.parse(j.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}") as { previouslyApplied?: string; marketingSentence?: string };
+        if (parsed.previouslyApplied?.trim()) previously = parsed.previouslyApplied.trim().slice(0, 600);
+        if (parsed.marketingSentence?.trim()) marketing = parsed.marketingSentence.trim().replace(/§§\s*/g, "Sections ").replace(/§\s*/g, "Section ").slice(0, 300);
+      }
+    } catch (err) {
+      console.error("alert enrich failed:", err);
+    }
+    const patch = {
+      previously_applied: previously,
+      marketing_sentence: marketing,
+      verification_note: verificationNote(a),
+      related_sources: await relatedSources(admin, a),
+      enriched_at: new Date().toISOString(),
+    };
+    await admin.from("tax_update_alerts").update(patch).eq("id", a.id);
+    out.push({ ...a, ...patch });
+  }
+  return out;
+}
 const AREA_LABEL: Record<string, string> = {
   deadlines: "Filing deadlines",
   protest_procedures: "Protest procedures",
@@ -456,11 +565,14 @@ async function announce(admin: SupabaseClient, rows: AlertRow[]) {
         (a) =>
           `<div style="font-family:sans-serif;border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0">` +
           `<p style="margin:0;font-weight:bold">${esc(a.title)}</p>` +
-          `<p style="margin:4px 0;color:#555">${esc(AREA_LABEL[a.area] ?? a.area)}${a.effective_date ? ` · effective ${esc(a.effective_date)}` : " · effective date not stated"}</p>` +
-          `<p style="margin:6px 0"><b>What changed:</b> ${esc(a.what_changed)}</p>` +
-          `<p style="margin:6px 0"><b>CorvusPT implications:</b> ${esc(a.corvus_impact)}</p>` +
-          `<p style="margin:6px 0"><b>Recommended action:</b> ${esc(a.recommended_action)}</p>` +
-          `<p style="margin:6px 0"><b>Official source:</b> <a href="${esc(a.source_url)}">${esc(a.source_name)}</a></p></div>`,
+          `<p style="margin:4px 0;color:#555"><b>Status:</b> ${esc(STATUS_TEXT[a.status] ?? a.status)} · ${esc(AREA_LABEL[a.area] ?? a.area)}${a.effective_date ? ` · effective ${esc(a.effective_date)}` : " · effective date not stated"}</p>` +
+          `<p style="margin:6px 0"><b>1. What changed:</b> ${esc(a.what_changed)}</p>` +
+          `<p style="margin:6px 0"><b>2. What previously applied:</b> ${esc(a.previously_applied ?? "Not stated on the official source.")}</p>` +
+          `<p style="margin:6px 0"><b>3. Why it matters to commercial property owners:</b> ${esc(a.owner_impact)}</p>` +
+          `<p style="margin:6px 0"><b>4. Implications for CorvusPT:</b> ${esc(a.corvus_impact)} <b>Recommended action:</b> ${esc(a.recommended_action)}</p>` +
+          `<p style="margin:6px 0"><b>5. Official sources:</b><br>${(a.related_sources?.length ? a.related_sources : [{ name: a.source_name, url: a.source_url }]).map((s) => `<a href="${esc(s.url)}">${esc(s.name)}</a>`).join("<br>")}</p>` +
+          (a.marketing_sentence ? `<p style="margin:6px 0"><b>6. Marketing-ready sentence</b> (review before use): ${esc(a.marketing_sentence)}</p>` : "") +
+          `<p style="margin:6px 0;color:#555"><b>Verification note:</b> ${esc(a.verification_note ?? verificationNote(a))}</p></div>`,
       )
       .join("") +
     `<p style="font-family:sans-serif;color:#777;font-size:12px">Found by CorvusPT's daily check of official Texas sources. Review and mark each one in CorvusPT → Texas Tax Updates.</p>`;
@@ -750,11 +862,16 @@ Deno.serve(async (req: Request) => {
           })),
           { onConflict: "dedup_key", ignoreDuplicates: true },
         )
-        .select("id, title, area, what_changed, effective_date, corvus_impact, recommended_action, source_name, source_url");
+        .select(ALERT_COLS);
       if (alertErr) console.error("tax_update_alerts upsert failed:", alertErr);
       alerted = (inserted ?? []) as typeof alerted;
-      if (inserted && inserted.length > 0) await announce(admin, inserted as AlertRow[]);
+      if (inserted && inserted.length > 0) {
+        await announce(admin, await enrich(admin, apiKey, inserted as AlertRow[]));
+      }
     }
+    // catch up older alerts that don't have the full brief yet (no re-announce)
+    const { data: bare } = await admin.from("tax_update_alerts").select(ALERT_COLS).is("enriched_at", null).limit(10);
+    if (bare && bare.length > 0) await enrich(admin, apiKey, bare as AlertRow[]);
 
     return new Response(
       JSON.stringify({
