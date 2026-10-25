@@ -10,8 +10,9 @@ import { plainCitations } from "@/lib/tax-updates";
 // CorvusPT Regulatory Watch — staff only. generate-tax-updates checks the
 // official Texas sources daily; every NEW change it judges material for
 // commercial owners (deadlines, protest procedures, evidence, hearings,
-// representation) lands here with what it means for CorvusPT and the
-// recommended action. Customers never see this panel (RLS: staff only).
+// representation) lands here: what changed, what applied before, why it
+// matters and a recommended action for owners. Customers never see this panel
+// (RLS: staff only).
 
 type TaxAlert = {
   id: string;
@@ -75,7 +76,6 @@ export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null
             title: plainCitations(a.title),
             what_changed: plainCitations(a.what_changed),
             owner_impact: a.owner_impact && plainCitations(a.owner_impact),
-            corvus_impact: a.corvus_impact && plainCitations(a.corvus_impact),
             recommended_action: a.recommended_action && plainCitations(a.recommended_action),
             quote: plainCitations(a.quote),
             previously_applied: a.previously_applied && plainCitations(a.previously_applied),
@@ -195,15 +195,19 @@ function AlertCard({ a, onReview, busy }: { a: TaxAlert; onReview?: () => void; 
       <dl className="mt-2 grid gap-1.5">
         <Row label="1. What changed">{a.what_changed}</Row>
         <Row label="2. What previously applied">
-          {a.previously_applied ?? "Not stated on the official source."}
+          {(a.previously_applied ?? "Not stated on the official source.").replace(
+            /^background:\s*/i,
+            "",
+          )}
+          {/^background:/i.test(a.previously_applied ?? "") && (
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Background from Corvus AI — not from the official page; verify.
+            </span>
+          )}
         </Row>
         <Row label="3. Why it matters to commercial owners">{a.owner_impact ?? "Not stated"}</Row>
-        <Row label="4. Implications for CorvusPT">
-          {a.corvus_impact ?? "None"}
-          <span className="mt-1 block">
-            <span className="font-semibold">Recommended action:</span>{" "}
-            {a.recommended_action ?? "No action"}
-          </span>
+        <Row label="4. Recommended action for owners">
+          {a.recommended_action ?? "Check the official source."}
         </Row>
         <Row label="5. Official sources">
           <ul className="grid gap-0.5">

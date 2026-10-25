@@ -10,6 +10,7 @@ import {
   FileText,
   Gavel,
   Handshake,
+  History,
   Landmark,
   Lightbulb,
   MapPin,
@@ -136,11 +137,14 @@ export function TaxUpdateCard({
   affected,
   myContext,
   index = 0,
+  sourcesClickable = false,
 }: {
   update: TaxUpdate;
   affected: PropertyRecord[];
   myContext: string;
   index?: number;
+  /** Official source links open only for paying customers (and staff). */
+  sourcesClickable?: boolean;
 }) {
   const [answer, setAnswer] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
@@ -253,7 +257,7 @@ export function TaxUpdateCard({
           aria-expanded={open}
           className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-accent hover:underline"
         >
-          {open ? "Show less" : "Read more — why it matters, what to do, source"}
+          {open ? "Show less" : "Read more — what applied before, why it matters, sources"}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
         <div
@@ -261,9 +265,10 @@ export function TaxUpdateCard({
         >
           <div className="overflow-hidden">
             <div className="mb-3 grid gap-3">
+              <PreviouslyApplied text={update.previouslyApplied} />
               <Points
                 icon={Lightbulb}
-                label="Why it matters"
+                label="Why it matters to commercial property owners"
                 tone="text-amber-700"
                 text={update.whyItMatters}
               />
@@ -280,18 +285,39 @@ export function TaxUpdateCard({
                 {update.affects}
               </div>
               <div className="italic text-muted-foreground">“{update.quote}”</div>
-              <a
-                href={update.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-1 text-accent hover:underline"
-              >
-                {update.sourceName}
-                <ExternalLink className="h-3 w-3" />
+              <div>
+                <span className="font-semibold">Official sources</span>
                 <span className="ml-1 text-muted-foreground">
-                  checked {new Date(update.sourceCheckedAt).toLocaleDateString()}
+                  · checked {new Date(update.sourceCheckedAt).toLocaleDateString()}
                 </span>
-              </a>
+                <ul className="mt-1 grid gap-0.5">
+                  {(update.sources?.length
+                    ? update.sources
+                    : [{ name: update.sourceName, url: update.sourceUrl }]
+                  ).map((s) => (
+                    <li key={s.url}>
+                      {sourcesClickable ? (
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-6 items-center gap-1 text-accent hover:underline"
+                        >
+                          {s.name}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span>{s.name}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {!sourcesClickable && (
+                  <p className="mt-1 text-muted-foreground">
+                    Links to the official sources are included with a CorvusPT subscription.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -309,5 +335,36 @@ export function TaxUpdateCard({
         </div>
       </div>
     </article>
+  );
+}
+
+// "What previously applied" — from the official page, or (when it starts with
+// "Background:") Corvus AI's general knowledge, labelled so owners verify it.
+function PreviouslyApplied({ text }: { text?: string }) {
+  if (!text || /^not stated/i.test(text.trim())) {
+    return (
+      <Points
+        icon={History}
+        label="What previously applied"
+        tone="text-slate-700"
+        text="Not stated on the official source."
+      />
+    );
+  }
+  const background = /^background:\s*/i.test(text);
+  return (
+    <div>
+      <Points
+        icon={History}
+        label="What previously applied"
+        tone="text-slate-700"
+        text={text.replace(/^background:\s*/i, "")}
+      />
+      {background && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Background from Corvus AI — not from the official page; check the official sources.
+        </p>
+      )}
+    </div>
   );
 }

@@ -52,6 +52,9 @@ import {
 } from "@/lib/tax-updates";
 import { EmptyState } from "@/components/EmptyState";
 import { TaxRegulatoryWatch } from "@/components/TaxRegulatoryWatch";
+import { getMyBilling } from "@/lib/billing";
+import { getStaffRole } from "@/lib/marketing";
+import { isPaidStatus } from "@/lib/subscription-status";
 
 export const Route = createFileRoute("/dashboard/_layout/tax-updates")({
   head: () => ({ meta: [{ title: "Texas Tax Law & Updates — CorvusPT" }] }),
@@ -109,6 +112,8 @@ function TaxUpdates() {
   // deadlines) — separate from `reports`, which is only the newest 5 WEEKS.
   // See tax_update_critical_items: this never gets pruned within the year.
   const [criticalItems, setCriticalItems] = useState<TaxUpdate[]>([]);
+  // Official source links open only for paying customers (and staff).
+  const [paidPlan, setPaidPlan] = useState(false);
 
   function load() {
     return listTaxReports()
@@ -120,6 +125,18 @@ function TaxUpdates() {
 
   useEffect(() => {
     if (!user) return;
+    Promise.all([getMyBilling(user.id), getStaffRole(user.id)])
+      .then(([b, r]) =>
+        setPaidPlan(
+          b.plan === "owner_managed" ||
+            b.plan === "corvusrf_managed" ||
+            r.isSuperAdmin ||
+            r.isMarketingAdmin ||
+            r.isSupportAdmin ||
+            r.isOperationsAdmin,
+        ),
+      )
+      .catch(() => setPaidPlan(false));
     void load().finally(() => setLoading(false));
     listSavedReports()
       .then(setSaved)
@@ -140,6 +157,7 @@ function TaxUpdates() {
   }, [user]);
 
   const report = reports[0] ?? null;
+  const paid = paidPlan || contexts.some((c) => isPaidStatus(c.property.subscriptionStatus));
   // The whole tax year's verified updates, not just the latest week's.
   const yearUpdates = useMemo(
     () => taxYearUpdates(reports, criticalItems, currentTaxYear),
@@ -491,6 +509,7 @@ function TaxUpdates() {
                         update={u}
                         affected={propertiesAffected(u, contexts)}
                         myContext={myContext}
+                        sourcesClickable={paid}
                       />
                     ))}
                   </div>
@@ -566,6 +585,7 @@ function TaxUpdates() {
                       update={u}
                       affected={propertiesAffected(u, contexts)}
                       myContext={myContext}
+                      sourcesClickable={paid}
                     />
                   ))}
                 </div>
