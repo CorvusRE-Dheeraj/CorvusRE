@@ -17,6 +17,7 @@ import { invokeEdgeFunction } from "@/lib/edge-functions";
 import { stableUser } from "@/lib/auth-user";
 import { listMyWorkspaces, type Workspace } from "@/lib/account-members";
 import { setActiveWorkspace } from "@/lib/active-account";
+import { mustSignInAgain, sendToSwitchSignIn } from "@/lib/door-switch";
 
 type AuthState = {
   user: User | null;
@@ -115,11 +116,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signingOutRef = useRef(false);
 
   useEffect(() => {
+    // Signed in for CorvusDP, now opening CorvusPT: sign in again (see
+    // lib/door-switch.ts). Stays "loading" while the browser leaves.
+    let switching = false;
     supabase.auth.getSession().then(({ data }) => {
+      if (data.session && mustSignInAgain("corvuspt")) {
+        switching = true;
+        sendToSwitchSignIn("corvuspt");
+        return;
+      }
       setState({ user: data.session?.user ?? null, session: data.session, loading: false });
     });
+    // Coming back to an open CorvusPT tab after signing in to CorvusDP.
+    function onVisible() {
+      if (document.visibilityState !== "visible" || switching) return;
+      void supabase.auth.getSession().then(({ data }) => {
+        if (data.session && mustSignInAgain("corvuspt")) {
+          switching = true;
+          sendToSwitchSignIn("corvuspt");
+        }
+      });
+    }
+    document.addEventListener("visibilitychange", onVisible);
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (switching) return;
       // The intake flow's sessionStorage state (address, CAD match, etc.) isn't
       // scoped to an account — it's just "whatever this browser tab was in the
       // middle of." Left uncleared across a sign-out, the JourneyTracker on a
@@ -182,7 +203,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   // Keyed on the user's id (not the `user`/`state` object itself, which gets
