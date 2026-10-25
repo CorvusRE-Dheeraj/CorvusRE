@@ -25,6 +25,7 @@ import {
 } from "../_shared/county-mailbox-sync.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 import { loginUrl } from "../_shared/app-url.ts";
+import { handleCallback as handleLinkedInCallback } from "../_shared/handlers/linkedin.ts";
 
 const STAFF_EMAIL = "properties@srclandbuilding.com";
 
@@ -164,6 +165,8 @@ Deno.serve(async (req: Request) => {
   const action = new URL(req.url).searchParams.get("action");
   if (action === "track" && req.method === "GET") return handleTrack(req);
   if (action === "sms" && req.method === "POST") return handleSms(req);
+  // LinkedIn OAuth return (Marketing → LinkedIn → Connect)
+  if (action === "linkedin-callback" && req.method === "GET") return handleLinkedInCallback(req);
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
   const body = await req.text();
   const ok = await verifySvix(

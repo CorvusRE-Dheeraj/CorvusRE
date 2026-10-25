@@ -25,6 +25,7 @@ import type { Focus, MarketingTab } from "@/components/marketing/shared";
 import { HandoffInbox, RequestApprovalButton } from "@/components/staff/StaffRecords";
 import { useStaffContext } from "@/hooks/use-staff-context";
 import { useLiveRefresh } from "@/lib/staff-records";
+import { LinkedIn } from "@/components/marketing/LinkedIn";
 
 // Marketing Admin workspace. Open to Marketing Admins and Super Admins; the
 // marketing_* tables are the only data it touches (database-enforced — a
@@ -45,6 +46,11 @@ const TABS: { key: MarketingTab; label: string; purpose: string }[] = [
     key: "campaigns",
     label: "Campaigns",
     purpose: "Create, approve, schedule and track email campaigns",
+  },
+  {
+    key: "linkedin",
+    label: "LinkedIn",
+    purpose: "Daily AI-written LinkedIn posts: review, approve, schedule and publish",
   },
   { key: "ai", label: "AI Marketing", purpose: "Give Corvus AI instructions and review its work" },
   {
@@ -69,7 +75,9 @@ function MarketingPage() {
   const [tab, setTab] = useState<MarketingTab>(() =>
     typeof window !== "undefined" && /[?&]podio=/.test(window.location.search)
       ? "leads"
-      : "dashboard",
+      : typeof window !== "undefined" && /[?&](tab=linkedin|linkedin=)/.test(window.location.search)
+        ? "linkedin"
+        : "dashboard",
   );
   const [focus, setFocus] = useState<Focus>({});
   const [syncing, setSyncing] = useState(false);
@@ -295,6 +303,8 @@ function MarketingPage() {
           <LeadsCrm data={data} focus={focus} go={go} reload={reload} onAiRun={onAiRun} />
         ) : tab === "campaigns" ? (
           <Campaigns data={data} focus={focus} reload={reload} />
+        ) : tab === "linkedin" ? (
+          <LinkedIn />
         ) : tab === "ai" ? (
           <AiWorkspace data={data} go={go} reload={reload} onAiRun={onAiRun} />
         ) : tab === "followups" ? (

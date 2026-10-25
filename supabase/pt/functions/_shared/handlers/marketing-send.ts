@@ -18,6 +18,7 @@ import { emailShell, escapeHtml } from "../email-shell.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
 import { instrument, linkify } from "../marketing-tracking.ts";
 import { e164, sendSms, smsConfigured } from "../telnyx.ts";
+import { runLinkedInDaily } from "./linkedin.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -510,6 +511,8 @@ export async function handle(req: Request): Promise<Response> {
       const reportsMade = await db.rpc("marketing_generate_reports");
       const reports = await summarizeReports(db).catch((e) => ({ error: String(e) }));
       const digest = await sendDigests(db, resendKey).catch((e) => ({ error: String(e) }));
+      // LinkedIn: draft the upcoming posting days, publish approved posts that are due
+      const linkedin = await runLinkedInDaily(db).catch((e) => ({ error: String(e) }));
       return json({
         processed: results.length,
         results,
@@ -520,6 +523,7 @@ export async function handle(req: Request): Promise<Response> {
         analysis: analysis.data ?? analysis.error?.message,
         reports: { created: reportsMade.data ?? reportsMade.error?.message, ...reports },
         digest,
+        linkedin,
       });
     }
     return json({ error: "Nothing to send." }, 400);
