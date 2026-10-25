@@ -8,6 +8,7 @@ import { handle as adminUpdateFranchiseStatus } from "../_shared/handlers/admin-
 import { handle as marketingSend } from "../_shared/handlers/marketing-send.ts";
 import { handle as marketingProspects } from "../_shared/handlers/marketing-prospects.ts";
 import { handle as staffApprovals } from "../_shared/handlers/staff-approvals.ts";
+import { handle as linkedin } from "../_shared/handlers/linkedin.ts";
 
 const ACTIONS: Record<string, (req: Request) => Promise<Response>> = {
   "admin-update-admin-status": adminUpdateAdminStatus,
@@ -17,6 +18,7 @@ const ACTIONS: Record<string, (req: Request) => Promise<Response>> = {
   // Marketing CRM county prospecting (commercial parcels from the CAD layers).
   "marketing-prospects": marketingProspects,
   "staff-approvals": staffApprovals,
+  linkedin,
 };
 
 Deno.serve((req: Request) => {

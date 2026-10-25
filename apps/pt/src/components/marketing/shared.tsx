@@ -8,7 +8,8 @@ import { STAGE_LABEL } from "@/lib/marketing";
 import { RequestApprovalButton } from "@/components/staff/StaffRecords";
 import { useStaffContext } from "@/hooks/use-staff-context";
 
-export type MarketingTab = "dashboard" | "leads" | "campaigns" | "ai" | "followups" | "analytics";
+export type MarketingTab =
+  "dashboard" | "leads" | "campaigns" | "linkedin" | "ai" | "followups" | "analytics";
 export type Focus = {
   leadId?: string;
   campaignId?: string;

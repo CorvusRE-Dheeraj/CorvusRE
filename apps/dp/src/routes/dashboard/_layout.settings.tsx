@@ -9,9 +9,18 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
   type NotificationPrefs,
 } from "@/lib/profile";
-import { listProjects, setActiveProject, deleteProject, type ProjectRow } from "@/lib/projects";
+import {
+  listProjects,
+  listArchivedProjects,
+  setActiveProject,
+  deleteProject,
+  markProjectCompleted,
+  reopenProject,
+  type ProjectRow,
+} from "@/lib/projects";
 import {
   listDesignRequests,
+  listArchivedDesignRequests,
   setActiveDesignRequest,
   deleteDesignRequest,
   type DesignRequestRow,
@@ -53,6 +62,34 @@ function Settings() {
     queryFn: () => listDesignRequests(user!.id),
     enabled: !!user?.id,
   });
+  const archivedProjects = useQuery({
+    queryKey: ["archived-projects", user?.id],
+    queryFn: () => listArchivedProjects(user!.id),
+    enabled: !!user?.id,
+  });
+  const archivedDesign = useQuery({
+    queryKey: ["archived-design-requests", user?.id],
+    queryFn: () => listArchivedDesignRequests(user!.id),
+    enabled: !!user?.id,
+  });
+
+  function refreshProjects() {
+    for (const key of ["all-projects", "archived-projects", "active-project", "project-bundle"]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  }
+  const archived = [
+    ...(archivedProjects.data ?? []).map((p) => ({
+      kind: "project" as const,
+      at: p.completed_at ?? "",
+      p,
+    })),
+    ...(archivedDesign.data ?? []).map((d) => ({
+      kind: "design" as const,
+      at: d.completed_at ?? "",
+      d,
+    })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
 
   useEffect(() => {
     if (!user) return;
@@ -175,16 +212,7 @@ function Settings() {
         ) : (
           <ul className="grid gap-2">
             {(projects.data ?? []).map((p, i) => (
-              <ProjectRowItem
-                key={p.id}
-                project={p}
-                active={i === 0}
-                onChanged={() => {
-                  queryClient.invalidateQueries({ queryKey: ["all-projects"] });
-                  queryClient.invalidateQueries({ queryKey: ["active-project"] });
-                  queryClient.invalidateQueries({ queryKey: ["project-bundle"] });
-                }}
-              />
+              <ProjectRowItem key={p.id} project={p} active={i === 0} onChanged={refreshProjects} />
             ))}
           </ul>
         )}
@@ -219,7 +247,137 @@ function Settings() {
           </ul>
         )}
       </Section>
+
+      <Section
+        title="Archive"
+        subtitle="Completed projects and design requests. Reopen a project to put it back on the dashboard."
+      >
+        {archivedProjects.isLoading || archivedDesign.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : archived.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing archived yet.</p>
+        ) : (
+          <ul className="grid gap-2">
+            {archived.map((a) =>
+              a.kind === "project" ? (
+                <ArchivedProjectItem key={a.p.id} project={a.p} onChanged={refreshProjects} />
+              ) : (
+                <ArchivedDesignItem
+                  key={a.d.id}
+                  request={a.d}
+                  onChanged={() =>
+                    queryClient.invalidateQueries({ queryKey: ["archived-design-requests"] })
+                  }
+                />
+              ),
+            )}
+          </ul>
+        )}
+      </Section>
     </div>
+  );
+}
+
+function ConfirmDelete({ busy, onConfirm }: { busy: boolean; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  return confirming ? (
+    <>
+      <button
+        className="text-xs font-semibold text-destructive underline underline-offset-2 disabled:opacity-50"
+        disabled={busy}
+        onClick={onConfirm}
+      >
+        {busy ? "Deleting…" : "Confirm delete"}
+      </button>
+      <button
+        className="text-xs text-muted-foreground underline underline-offset-2"
+        onClick={() => setConfirming(false)}
+      >
+        Cancel
+      </button>
+    </>
+  ) : (
+    <button
+      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+      onClick={() => setConfirming(true)}
+    >
+      Delete
+    </button>
+  );
+}
+
+function ArchivedProjectItem({
+  project: p,
+  onChanged,
+}: {
+  project: ProjectRow;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+      onChanged();
+    }
+  }
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
+      <div>
+        <div className="font-medium">{p.name ?? p.address ?? "Property"}</div>
+        <div className="text-xs text-muted-foreground">
+          Permitting · {p.jurisdiction ?? "—"} · Completed{" "}
+          {p.completed_at ? dateShort(p.completed_at) : ""}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Pill tone="green">Completed</Pill>
+        <button
+          className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+          disabled={busy}
+          onClick={() => run(() => reopenProject(p.id))}
+        >
+          Reopen
+        </button>
+        <ConfirmDelete busy={busy} onConfirm={() => run(() => deleteProject(p.id))} />
+      </div>
+    </li>
+  );
+}
+
+function ArchivedDesignItem({
+  request: d,
+  onChanged,
+}: {
+  request: DesignRequestRow;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function remove() {
+    setBusy(true);
+    try {
+      await deleteDesignRequest(d.id);
+    } finally {
+      setBusy(false);
+      onChanged();
+    }
+  }
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
+      <div>
+        <div className="font-medium">{d.address ?? d.city ?? "Design request"}</div>
+        <div className="text-xs text-muted-foreground">
+          Design · {scopeLabel((d.scope ?? undefined) as never)} · Completed{" "}
+          {d.completed_at ? dateShort(d.completed_at) : ""}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Pill tone="green">Completed</Pill>
+        <ConfirmDelete busy={busy} onConfirm={remove} />
+      </div>
+    </li>
   );
 }
 
@@ -329,6 +487,18 @@ function ProjectRowItem({
     onChanged();
   }
 
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
+  async function complete() {
+    setBusy(true);
+    try {
+      await markProjectCompleted(p.id);
+    } finally {
+      setBusy(false);
+      setConfirmingComplete(false);
+      onChanged();
+    }
+  }
+
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
       <div>
@@ -349,6 +519,30 @@ function ProjectRowItem({
             onClick={switchTo}
           >
             Switch to this
+          </button>
+        )}
+        {confirmingComplete ? (
+          <>
+            <button
+              className="text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50"
+              disabled={busy}
+              onClick={complete}
+            >
+              {busy ? "Archiving…" : "Confirm — move to Archive"}
+            </button>
+            <button
+              className="text-xs text-muted-foreground underline underline-offset-2"
+              onClick={() => setConfirmingComplete(false)}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            className="text-xs font-semibold text-accent underline underline-offset-2"
+            onClick={() => setConfirmingComplete(true)}
+          >
+            Mark completed
           </button>
         )}
         {confirmingDelete ? (

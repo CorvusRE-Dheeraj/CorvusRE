@@ -26,6 +26,8 @@ export type ProjectRow = {
   feasibility_status: string | null;
   complexity_level: string | null;
   stage: string;
+  /** set when the project is marked completed — it then lives in the Archive */
+  completed_at?: string | null;
   analysis: PermittingAnalysis | null;
   /** grading / floodplain / access data (site-analysis edge function) */
   site_analysis?: import("./site-analysis").SiteAnalysisRaw | null;
@@ -189,6 +191,7 @@ export async function getActiveProject(userId: string): Promise<ProjectRow | nul
     .from("projects")
     .select("*")
     .eq("user_id", userId)
+    .is("completed_at", null)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -196,14 +199,46 @@ export async function getActiveProject(userId: string): Promise<ProjectRow | nul
   return (data as ProjectRow) ?? null;
 }
 
+// Active projects only — completed ones are in the Archive (listArchivedProjects).
 export async function listProjects(userId: string): Promise<ProjectRow[]> {
   const { data, error } = await supabase
     .from("projects")
     .select("*")
     .eq("user_id", userId)
+    .is("completed_at", null)
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return (data as ProjectRow[]) ?? [];
+}
+
+export async function listArchivedProjects(userId: string): Promise<ProjectRow[]> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("user_id", userId)
+    .not("completed_at", "is", null)
+    .order("completed_at", { ascending: false });
+  if (error) throw error;
+  return (data as ProjectRow[]) ?? [];
+}
+
+// Marking a project completed moves it to the Archive (the stamp_completed_at
+// trigger sets completed_at); the dashboard falls back to the next active one.
+export async function markProjectCompleted(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({ stage: "completed" })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
+// Back to the active list — and onto the dashboard (most recently touched).
+export async function reopenProject(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({ stage: "permitting", updated_at: new Date().toISOString() })
+    .eq("id", projectId);
+  if (error) throw error;
 }
 
 // getActiveProject() always returns whichever project this user touched
@@ -323,6 +358,7 @@ export async function findProjectByAddress(
     .select("*")
     .eq("user_id", userId)
     .ilike("address", address.trim())
+    .is("completed_at", null) // a completed project there doesn't block a new one
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
