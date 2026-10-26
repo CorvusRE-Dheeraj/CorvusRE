@@ -929,9 +929,11 @@ export const EXPIRY_WATCH_DAYS = 90;
  */
 export function locateTrain(input: {
   hasAnalysis: boolean;
-  permits: Pick<PermitRow, "name" | "status" | "expiry_date" | "review_round">[];
+  permits: (Pick<PermitRow, "name" | "status" | "expiry_date" | "review_round"> & {
+    permit_key?: string;
+  })[];
   checklist: Pick<ChecklistRow, "kind" | "required" | "done">[];
-  comments: Pick<ReviewCommentRow, "status" | "responsible">[];
+  comments: (Pick<ReviewCommentRow, "status" | "responsible"> & { permit_key?: string | null })[];
   today?: Date;
 }): TrainLocation {
   const { hasAnalysis, permits, checklist, comments } = input;
@@ -988,8 +990,11 @@ export function locateTrain(input: {
         reason: `${who} was resubmitted${behind.review_round > 1 ? ` (review round ${behind.review_round})` : ""} and is back under city review.`,
       };
     case "comments": {
-      const open = comments.filter(OPEN_COMMENT);
-      if (comments.length === 0) {
+      // Only this permit's comments (plus untagged, project-wide ones) — another
+      // permit's comments must not move this permit's train.
+      const mine = comments.filter((c) => !c.permit_key || c.permit_key === behind.permit_key);
+      const open = mine.filter(OPEN_COMMENT);
+      if (mine.length === 0) {
         return {
           station: 20,
           reason: `The city returned comments on ${who} — log them on Reviews to break them down.`,
@@ -1117,6 +1122,7 @@ export function wagonCargo(input: {
     ["under_review", "comments", "resubmitted"].includes(p.status),
   ).length;
   const approved = permits.filter((p) => p.status === "approved").length;
+  const allApproved = permits.length > 0 && approved === permits.length;
   const openComments = comments.filter(OPEN_COMMENT).length;
 
   const cargo: Record<LineColor, string[]> = {
@@ -1146,7 +1152,9 @@ export function wagonCargo(input: {
     route: r.name,
     color: r.color,
     crates: cargo[r.color],
-    loading: trainAt <= r.stations[r.stations.length - 1],
+    // the route the train is on is still loading — unless every permit is
+    // approved: the journey is complete and nothing more is coming
+    loading: !allApproved && trainAt <= r.stations[r.stations.length - 1],
   }));
 }
 
