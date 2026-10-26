@@ -16,3 +16,32 @@ export function preflight(req: Request): Response | null {
 export function jsonError(message: string, status = 500): Response {
   return new Response(JSON.stringify({ error: message }), { status, headers: corsHeaders });
 }
+
+// Bad input is the caller's mistake, not a server failure: 400, not 500.
+export class BadRequestError extends Error {
+  status = 400;
+}
+
+/** The request body as a JSON object — malformed or non-object JSON is a 400. */
+// deno-lint-ignore no-explicit-any
+export async function readJson(req: Request): Promise<Record<string, any>> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await req.text());
+  } catch {
+    throw new BadRequestError("The request body must be valid JSON.");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new BadRequestError("The request body must be a JSON object.");
+  }
+  // deno-lint-ignore no-explicit-any
+  return body as Record<string, any>;
+}
+
+export function errorStatus(err: unknown): number {
+  return err instanceof BadRequestError ? 400 : 500;
+}
+
+export function errorResponse(err: unknown): Response {
+  return jsonError(err instanceof Error ? err.message : "unknown error", errorStatus(err));
+}

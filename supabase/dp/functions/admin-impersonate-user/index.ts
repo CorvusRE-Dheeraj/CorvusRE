@@ -11,6 +11,7 @@
 // caller does that client-side via logAdminAction(), same as every other
 // admin action in CorvusDP's admin.tsx already does.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { readJson, errorStatus } from "../_shared/cors.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { userId, redirectPath } = await req.json();
+    const { userId, redirectPath } = await readJson(req);
     if (!userId) {
       return new Response(JSON.stringify({ error: "userId required" }), {
         status: 400,
@@ -103,7 +104,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
-      { status: 500, headers: corsHeaders },
+      { status: errorStatus(err), headers: corsHeaders },
     );
   }
 });

@@ -10,16 +10,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderEmailShell, esc } from "../_shared/email-layout.ts";
 import { sendEmail, appUrl } from "../_shared/resend.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
-import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { corsHeaders, preflight, jsonError, readJson, BadRequestError, errorResponse } from "../_shared/cors.ts";
 
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
 
   try {
-    const { toEmail } = await req.json();
+    const { toEmail } = await readJson(req);
     if (!toEmail || typeof toEmail !== "string" || !toEmail.includes("@")) {
-      throw new Error("A valid email address is required.");
+      throw new BadRequestError("A valid email address is required.");
     }
 
     const callerClient = createClient(
@@ -92,6 +92,6 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
     console.error("send-referral-invite failed:", err);
-    return jsonError(err instanceof Error ? err.message : "unknown error");
+    return errorResponse(err);
   }
 });

@@ -9,7 +9,7 @@
 // draft before saving — this fills the form, it doesn't write the record.
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { callGemini, parseJsonLoose, str, aiErrorResponse } from "../_shared/gemini.ts";
-import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { corsHeaders, preflight, readJson, BadRequestError } from "../_shared/cors.ts";
 import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
@@ -33,12 +33,12 @@ Deno.serve(async (req: Request) => {
   if (limited) return limited;
 
   try {
-    const input = await req.json();
+    const input = await readJson(req);
     const { comment, permitName, jurisdiction } = input ?? {};
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
     if (!comment || typeof comment !== "string" || !comment.trim()) {
-      throw new Error("A review comment is required.");
+      throw new BadRequestError("A review comment is required.");
     }
 
     const lines = [`Real review comment from the reviewing agency:\n"${comment.trim()}"`];

@@ -103,6 +103,12 @@ export function aiErrorResponse(
   corsHeaders: Record<string, string>,
 ): Response {
   const status = (err as { status?: number })?.status;
+  if (status === 400) {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 400,
+      headers: corsHeaders,
+    });
+  }
   if (status === 429) {
     return new Response(
       JSON.stringify({ error: "AI is rate-limited. Please retry in a moment." }),
