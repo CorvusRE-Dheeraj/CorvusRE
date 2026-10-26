@@ -4,6 +4,9 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 const KEY = "corvuspt.tourSeen";
 export const OPEN_TOUR_EVENT = "corvuspt:open-tour";
+// fired when the tour closes (finished or skipped) — the LinkedIn follow
+// prompt waits for it
+export const TOUR_FINISHED_EVENT = "corvuspt:tour-finished";
 
 // Starts the tour once, but only when no other dialog (terms, profile details) is in the way —
 // it waits and re-checks so the required sign-up steps always come first. Returns a cancel fn.
@@ -139,6 +142,7 @@ export function WelcomeTour() {
     } catch {
       // harmless
     }
+    window.dispatchEvent(new Event(TOUR_FINISHED_EVENT));
   }, []);
 
   const step = STEPS[i];
