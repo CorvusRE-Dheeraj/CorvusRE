@@ -13,9 +13,12 @@ test("pricing page renders the three lanes, and savings protection", async ({ pa
     page.getByRole("heading", { name: "Three lanes. Pick the one that fits." }),
   ).toBeVisible();
 
-  // Lane 1 — free review.
+  // Lane 1 — free review: screens the whole portfolio (same wording as every
+  // other public page — lib/service-lanes.ts), not "one property".
   await expect(page.getByRole("heading", { name: "Free Property Review" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Start Free Review" })).toBeVisible();
+  await expect(page.getByText("No card required · screen your whole portfolio")).toBeVisible();
+  await expect(page.getByText(/one property/)).toHaveCount(0);
 
   // Lane 2 — owner-managed, fixed annual price for $1M–$5M.
   await expect(page.getByRole("heading", { name: "Owner-Managed CorvusPT" })).toBeVisible();
@@ -24,14 +27,15 @@ test("pricing page renders the three lanes, and savings protection", async ({ pa
   await expect(page.getByText("Includes CorvusPT Savings Protection")).toBeVisible();
   await expect(page.getByRole("link", { name: "Add a Property to Subscribe" })).toBeVisible();
 
-  // Lane 3 — expert/managed help: upcoming (locked), fixed and custom for $5M+.
+  // Lane 3 — expert/managed help: available (not "upcoming"), fixed and custom for $5M+.
   await expect(page.getByRole("heading", { name: "Expert/Managed Help" })).toBeVisible();
-  await expect(page.getByText("Upcoming", { exact: true })).toBeVisible();
+  await expect(page.getByText("Upcoming", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Success-based", { exact: false })).toHaveCount(0);
   await expect(
     page.getByText("Tailored based on property value, portfolio size, and requirements."),
   ).toBeVisible();
-  await expect(page.getByRole("main").getByRole("button", { name: "Coming soon" })).toBeDisabled();
+  await expect(page.getByRole("main").getByText("Coming soon")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("link", { name: "Talk to Our Team" })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Franchise owners: 50% off" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "CorvusPT Savings Protection" })).toBeVisible();

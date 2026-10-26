@@ -14,8 +14,9 @@ import {
   isLaunchDiscountActive,
   type PlanValue,
 } from "@/lib/billing";
-import { ShieldCheck, CalendarCheck, FileCheck2, Scale, BadgePercent, Lock } from "lucide-react";
+import { ShieldCheck, CalendarCheck, FileCheck2, Scale, BadgePercent } from "lucide-react";
 import { LaneComparisonTable } from "@/components/ServiceLanes";
+import { SERVICE_LANES } from "@/lib/service-lanes";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -24,7 +25,7 @@ export const Route = createFileRoute("/pricing")({
       {
         name: "description",
         content:
-          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help (coming soon), where our team files and represents you.",
+          "CorvusPT pricing in three lanes: a free property review; Owner-Managed CorvusPT at $299/month billed annually, where you file with AI; and Expert/Managed Help, where our team files and represents you.",
       },
       { property: "og:title", content: "CorvusPT Pricing" },
       {
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/pricing")({
 const FREE_FEATURES = [
   "Your county's official record, matched by AI",
   "Potential savings estimate",
+  "Portfolio screening: high-priority, moderate and not-worth-it cases",
   "A first look at the AI Protest Report",
 ];
 const OWNER_FEATURES = [
@@ -50,6 +52,10 @@ const OWNER_FEATURES = [
   "Your county's filing steps, forms and deadlines",
   "AI hearing-prep guide for your hearing",
 ];
+
+// Lane wording shared with every other public page (lib/service-lanes.ts).
+const FREE_LANE = SERVICE_LANES.find((l) => l.id === "free_review")!;
+const MANAGED_LANE = SERVICE_LANES.find((l) => l.id === "expert_managed")!;
 
 // Every number on this page reads off @/lib/billing — the same values
 // create-checkout-session mirrors and actually charges.
@@ -174,10 +180,10 @@ function Page() {
             <div className="badge-soft self-start">Lane 1</div>
             <h2 className="mt-3 font-serif text-2xl">Free Property Review</h2>
             <div className="mt-2 text-4xl font-semibold">Free</div>
-            <p className="mt-1 text-sm text-muted-foreground">No card required · one property</p>
+            <p className="mt-1 text-sm text-muted-foreground">{FREE_LANE.priceNote}</p>
             <p className="mt-4 text-sm">
-              Find out whether your property is over-assessed before you pay anything. Nothing is
-              filed.
+              Find out which of your properties are over-assessed before you pay anything. Nothing
+              is filed.
             </p>
             <ul className="mt-4 space-y-2 text-sm">
               {FREE_FEATURES.map((f) => (
@@ -256,18 +262,14 @@ function Page() {
             </p>
           </ScrollReveal>
 
-          {/* Expert/Managed Help — upcoming (locked). $5M+ is quoted by the
-              team, not through Stripe checkout — so no rate is printed. */}
+          {/* Expert/Managed Help — available (customers subscribe from a
+              property's AI Report, and staff file for them). $5M+ is quoted by
+              the team, not through Stripe checkout — so no rate is printed. */}
           <ScrollReveal
             delay={240}
-            className="card-elev p-6 flex flex-col h-full ring-2 ring-violet-500/30 opacity-80"
+            className="card-elev p-6 flex flex-col h-full ring-2 ring-violet-500/30"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="badge-soft">Lane 3 · We file</div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                <Lock className="h-3 w-3" aria-hidden="true" /> Upcoming
-              </span>
-            </div>
+            <div className="badge-soft self-start">Lane 3 · We file</div>
             <h2 className="mt-3 font-serif text-2xl">Expert/Managed Help</h2>
             <p className="mt-2 text-sm">
               <span className="font-semibold">
@@ -297,13 +299,9 @@ function Page() {
               </div>
             </div>
             <div className="mt-6 flex-1" />
-            <button
-              type="button"
-              disabled
-              className="w-full btn-outline inline-flex items-center justify-center gap-1.5 cursor-not-allowed opacity-70"
-            >
-              <Lock className="h-4 w-4" aria-hidden="true" /> Coming soon
-            </button>
+            <Link to={MANAGED_LANE.cta.to} className="w-full btn-outline text-center">
+              {MANAGED_LANE.cta.label}
+            </Link>
           </ScrollReveal>
         </div>
 
@@ -404,7 +402,7 @@ function Page() {
             <Link to="/" className="font-medium text-accent underline underline-offset-2">
               Start a free review
             </Link>{" "}
-            — no card required, one property.
+            — no card required, screen your whole portfolio.
           </div>
         )}
       </div>
