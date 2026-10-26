@@ -25,6 +25,7 @@ import Stripe from "npm:stripe@17";
 import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
 import { runReferralRewards } from "../_shared/referral-reward.ts";
 import { syncProfilePlan } from "../_shared/profile-plan.ts";
+import { PAID_SUBSCRIPTION_STATUSES } from "../_shared/subscription-status.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -38,6 +39,13 @@ const corsHeaders = {
 // be acknowledged to Stripe with 200, so Stripe never retried and the plan
 // change was silently lost; throwing lands in the handler's 500 below, which
 // Stripe retries. Every write here is idempotent, so a retry is safe.
+class StripeUnavailable extends Error {
+  constructor(cause: unknown) {
+    super("Stripe unavailable");
+    this.cause = cause;
+  }
+}
+
 function ok<T extends { error: unknown }>(res: T): T {
   if (res.error) throw res.error;
   return res;
@@ -100,14 +108,35 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Live events need the live key for any outbound call; test events the test
-  // key. If a live event arrives before STRIPE_SECRET_KEY_LIVE is set, fall
-  // back to the test key — the DB writes below still work; only outbound
-  // Stripe calls in that one handler would fail, and are already best-effort.
-  const stripe =
-    event.livemode && liveSecretKey
-      ? new Stripe(liveSecretKey, { apiVersion: "2024-06-20" })
-      : verifier;
+  // Live events need the live key — every subscription is re-read from Stripe
+  // below, and the test key can't see live data. Until it's configured, 503 so
+  // Stripe retries the event later instead of it being processed wrongly.
+  if (event.livemode && !liveSecretKey) {
+    console.error("Live Stripe event received but STRIPE_SECRET_KEY_LIVE is not set");
+    return new Response(JSON.stringify({ error: "Live Stripe key not configured" }), {
+      status: 503,
+      headers: corsHeaders,
+    });
+  }
+  const stripe = event.livemode
+    ? new Stripe(liveSecretKey!, { apiVersion: "2024-06-20" })
+    : verifier;
+
+  // Events can arrive late or out of order, so the subscription inside an
+  // event may already be stale (e.g. an old "active" landing after the
+  // cancellation). Status and cancellation fields always come from the live
+  // subscription; if Stripe can't be reached, 503 so the event is retried.
+  async function liveSubscription(id: string): Promise<Stripe.Subscription> {
+    try {
+      return await stripe.subscriptions.retrieve(id);
+    } catch (err) {
+      throw new StripeUnavailable(err);
+    }
+  }
+  const cancelFields = (sub: Stripe.Subscription) => ({
+    cancel_at_period_end: sub.cancel_at_period_end,
+    cancel_at: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
+  });
 
   const adminClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -115,7 +144,15 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded" ||
+      event.type === "checkout.session.async_payment_failed"
+    ) {
+      // A bank (delayed) payment completes checkout before the money arrives
+      // (payment_status "unpaid"), then sends async_payment_succeeded or
+      // _failed. All three write the live subscription's real status; the
+      // purchase email and referral reward only go out once it's paid.
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.client_reference_id;
       const propertyId = session.metadata?.propertyId;
@@ -127,15 +164,17 @@ Deno.serve(async (req: Request) => {
       const subjectId = isBpp ? bppAccountId : propertyId;
       const table = isBpp ? "bpp_accounts" : "properties";
       if (userId && subjectId && typeof session.subscription === "string") {
+        const sub = await liveSubscription(session.subscription);
+        const paid =
+          PAID_SUBSCRIPTION_STATUSES.includes(sub.status) && session.payment_status !== "unpaid";
         ok(await adminClient
           .from(table)
           .update({
             stripe_subscription_id: session.subscription,
-            subscription_status: "active",
+            subscription_status: sub.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: false,
-            cancel_at: null,
+            ...cancelFields(sub),
           })
           .eq("id", subjectId)
           .eq("user_id", userId));
@@ -157,6 +196,9 @@ Deno.serve(async (req: Request) => {
           : ((subjectRow?.address as string | null) ?? "");
 
         await syncProfilePlan(adminClient, userId);
+        if (!paid) {
+          return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
+        }
         await runReferralRewards(stripe, adminClient, userId);
         await sendPurchaseConfirmationEmail(stripe, adminClient, {
           userId,
@@ -176,7 +218,7 @@ Deno.serve(async (req: Request) => {
       // bulk-subscribe's own direct write was lost. Matched by
       // metadata.propertyId (bulk-subscribe and create-checkout-session both
       // set it), falling back to the subscription id.
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = await liveSubscription((event.data.object as Stripe.Subscription).id);
       const propertyId = subscription.metadata?.propertyId;
       const tier =
         subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
@@ -194,10 +236,7 @@ Deno.serve(async (req: Request) => {
             subscription_status: subscription.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            cancel_at: subscription.cancel_at
-              ? new Date(subscription.cancel_at * 1000).toISOString()
-              : null,
+            ...cancelFields(subscription),
           })
           .eq("id", property.id));
         await syncProfilePlan(adminClient, property.user_id as string);
@@ -211,7 +250,7 @@ Deno.serve(async (req: Request) => {
         }
       }
     } else if (event.type === "customer.subscription.updated") {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = await liveSubscription((event.data.object as Stripe.Subscription).id);
       // Checked in order — properties first (the far more common case), then
       // bpp_accounts, since a subscription id only ever matches one table.
       const { data: property } = ok(await adminClient
@@ -248,10 +287,7 @@ Deno.serve(async (req: Request) => {
             subscription_status: subscription.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            cancel_at: subscription.cancel_at
-              ? new Date(subscription.cancel_at * 1000).toISOString()
-              : null,
+            ...cancelFields(subscription),
           })
           .eq("id", subject.id));
         await syncProfilePlan(adminClient, subject.userId);
@@ -318,6 +354,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
+    if (err instanceof StripeUnavailable) {
+      console.error("Could not re-read the subscription from Stripe", err.cause);
+      return new Response(JSON.stringify({ error: "Stripe unavailable, retry" }), {
+        status: 503,
+        headers: corsHeaders,
+      });
+    }
     console.error("Webhook handler failed", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
