@@ -22,12 +22,34 @@ export type DeadlineEvent = {
   key: string;
   date: string; // ISO date (YYYY-MM-DD)
   title: string;
+  /** Short form for an email subject / SMS: "Protest deadline — 1800 Market Place Blvd". */
+  subject: string;
+  /** A note on the user's calendar (their own or a system one), not a deadline. */
+  isReminder?: boolean;
   amount: number | null;
   resolved: boolean;
   // Start time as written on the county notice ("9:00 AM") for hearings / informal
   // reviews that have one; drives the one-hour-before alert. Absent = date-only.
   time?: string | null;
 };
+
+// "1800 MARKET PLACE BLVD, IRVING, TX 75063-3903" -> "1800 Market Place Blvd"
+export function streetOnly(address: string): string {
+  const street = address.split(",")[0].trim();
+  return street === street.toUpperCase()
+    ? street.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
+    : street;
+}
+
+const short = (what: string, address: string) => `${what} — ${streetOnly(address)}`;
+
+// "Property base data updated for <address> — total assessed value …" ->
+// "Property base data updated": the headline of a note, without its details.
+function noteHeadline(note: string): string {
+  let head = note.split(/ — |: /)[0].replace(/ for .*\d.*$/, "").trim();
+  if (head.length > 60) head = head.slice(0, 57).replace(/\s+\S*$/, "") + "…";
+  return head;
+}
 
 function toIsoDate(value: string): string {
   return value.length >= 10 ? value.slice(0, 10) : value;
@@ -94,6 +116,7 @@ export async function buildDeadlineEvents(
         key: `protest-deadline:${id}`,
         date,
         title: `Protest deadline — ${address}`,
+        subject: short("Protest deadline", address),
         amount: null,
         resolved: isPast(date, todayIso),
       });
@@ -104,6 +127,7 @@ export async function buildDeadlineEvents(
         key: `tax-due:property:${id}`,
         date,
         title: `Tax bill due — ${address}`,
+        subject: short("Tax bill due", address),
         amount: p.tax_amount_due as number | null,
         resolved: !!p.paid_at,
       });
@@ -124,6 +148,7 @@ export async function buildDeadlineEvents(
         key: `informal-review:${id}`,
         date,
         title: `Informal review — ${address}`,
+        subject: short("Informal review", address),
         time: (pr.informal_review_time as string | null) ?? null,
         amount: null,
         resolved: isPast(date, todayIso),
@@ -139,6 +164,7 @@ export async function buildDeadlineEvents(
         date,
         time: (pr.hearing_time as string | null) ?? null,
         title: parts.join(" "),
+        subject: short("ARB hearing", address),
         amount: null,
         resolved: isPast(date, todayIso),
       });
@@ -155,6 +181,7 @@ export async function buildDeadlineEvents(
         key: `tax-due:bill:${id}`,
         date: toIsoDate(bill.due_date as string),
         title: `Tax bill due${yearLabel} — ${address}`,
+        subject: short(`Tax bill due${yearLabel}`, address),
         amount: bill.amount_due as number | null,
         resolved: !!bill.paid_at,
       });
@@ -165,6 +192,7 @@ export async function buildDeadlineEvents(
         key: `tax-penalty:${id}`,
         date,
         title: `Penalty date${yearLabel} — ${address}`,
+        subject: short(`Penalty date${yearLabel}`, address),
         amount: null,
         resolved: !!bill.paid_at || isPast(date, todayIso),
       });
@@ -174,6 +202,7 @@ export async function buildDeadlineEvents(
         key: `refund:${id}`,
         date: toIsoDate(bill.refund_expected_at as string),
         title: `Refund expected${yearLabel} — ${address}`,
+        subject: short(`Refund expected${yearLabel}`, address),
         amount: bill.refund_amount as number | null,
         resolved: !!bill.refund_received_at,
       });
@@ -193,6 +222,7 @@ export async function buildDeadlineEvents(
         key: `bpp-protest-deadline:${id}`,
         date,
         title: `BPP protest deadline — ${businessName}`,
+        subject: `BPP protest deadline — ${businessName}`,
         amount: null,
         resolved: isPast(date, todayIso),
       });
@@ -203,10 +233,15 @@ export async function buildDeadlineEvents(
     const id = r.id as string;
     const propertyId = r.property_id as string | null;
     const label = propertyId ? (propertyById.get(propertyId)?.address as string) : null;
+    const note = (r.note as string) ?? "";
     events.push({
       key: `reminder:${id}`,
       date: toIsoDate(r.remind_on as string),
-      title: label ? `Reminder — ${r.note as string} (${label})` : `Reminder — ${r.note as string}`,
+      // a system note already names the property — don't repeat the address
+      title:
+        label && !note.toLowerCase().includes(label.toLowerCase()) ? `${note} (${label})` : note,
+      subject: label ? short(noteHeadline(note), label) : noteHeadline(note),
+      isReminder: true,
       amount: null,
       resolved: !!r.done,
     });

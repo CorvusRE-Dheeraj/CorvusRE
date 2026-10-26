@@ -62,6 +62,16 @@ const OFFSET_LABEL: Record<number, string> = {
 type DueItem = DeadlineEvent & { offsetDays: number };
 type Channel = "email" | "sms";
 
+// "Protest deadline — 1800 Market Place Blvd" due today ->
+// "Protest deadline today — 1800 Market Place Blvd"; a reminder note keeps
+// its headline and only says when if it isn't today.
+function shortSubject(d: DueItem): string {
+  const when = OFFSET_LABEL[d.offsetDays];
+  if (d.isReminder) return d.offsetDays === 0 ? d.subject : `${d.subject} (${when})`;
+  const [what, ...where] = d.subject.split(" — ");
+  return where.length ? `${what} ${when} — ${where.join(" — ")}` : `${what} ${when}`;
+}
+
 function daysUntil(date: string, today: Date): number {
   const eventDate = new Date(`${date}T00:00:00Z`);
   return Math.round((eventDate.getTime() - today.getTime()) / 86_400_000);
@@ -186,10 +196,12 @@ Deno.serve(async (req: Request) => {
           }
           const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe-deadline-reminders?token=${unsubscribeToken}`;
 
-          const subject =
-            toSend.length === 1
-              ? `Reminder: ${toSend[0].title} is ${OFFSET_LABEL[toSend[0].offsetDays]}`
-              : `You have ${toSend.length} upcoming deadlines`;
+          // Short subjects: "Protest deadline today — 1800 Market Place Blvd",
+          // "Property base data updated — 1800 Market Place Blvd". The full
+          // text is in the body.
+          const one = toSend.length === 1 ? toSend[0] : null;
+          const allReminders = toSend.every((d) => d.isReminder);
+          const subject = one ? shortSubject(one) : `You have ${toSend.length} upcoming ${allReminders ? "reminders" : "deadlines"}`;
           const text = toSend
             .map((d) => `- ${d.title} — ${OFFSET_LABEL[d.offsetDays]} (${d.date})`)
             .join("\n");
@@ -201,12 +213,16 @@ Deno.serve(async (req: Request) => {
             .join("");
           const html = emailShell({
             eyebrow: "Reminder",
-            heading: toSend.length === 1 ? "Deadline coming up" : "Deadlines coming up",
-            intro:
-              toSend.length === 1
-                ? `<strong>${escapeHtml(toSend[0].title)}</strong> is ${OFFSET_LABEL[toSend[0].offsetDays]}.`
-                : `You have ${toSend.length} deadlines coming up:`,
-            bodyRows: rows,
+            heading: allReminders
+              ? one ? "Reminder" : "Reminders"
+              : one ? "Deadline coming up" : "Deadlines coming up",
+            intro: one
+              ? one.isReminder
+                ? escapeHtml(one.title)
+                : `<strong>${escapeHtml(one.title)}</strong> is ${OFFSET_LABEL[one.offsetDays]} — ${escapeHtml(one.date)}${one.amount != null ? ` — $${one.amount.toLocaleString()}` : ""}.`
+              : `You have ${toSend.length} ${allReminders ? "reminders" : "deadlines"} coming up:`,
+            // one item is fully in the intro — the card would only repeat it
+            bodyRows: one ? undefined : rows,
             ctaLabel: "Open Calendar",
             ctaHref: `${appUrl}/dashboard/calendar`,
             unsubscribeUrl,
@@ -227,7 +243,7 @@ Deno.serve(async (req: Request) => {
           }
           const body =
             toSend.length === 1
-              ? `CorvusPT reminder: ${toSend[0].title} is ${OFFSET_LABEL[toSend[0].offsetDays]}.`
+              ? `CorvusPT: ${shortSubject(toSend[0])}. Details: ${appUrl}/dashboard/calendar`
               : `CorvusPT: ${toSend.length} deadlines coming up — ` +
                 toSend.map((d) => `${d.title} (${OFFSET_LABEL[d.offsetDays]})`).join("; ") +
                 `. Details: ${appUrl}/dashboard/calendar`;
