@@ -24,6 +24,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
 import { runReferralRewards } from "../_shared/referral-reward.ts";
+import { syncProfilePlan } from "../_shared/profile-plan.ts";
+import { PAID_SUBSCRIPTION_STATUSES, hasLiveSubscription } from "../_shared/subscription-status.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -33,48 +35,20 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-// profiles.plan is a coarse, account-level signal only now (see its own
-// comment in src/lib/billing.ts) — "the tier of this customer's most
-// recently created active subscription, property or BPP account,"
-// recomputed here after every subscription change. Never touched for a
-// 'beta' account: that's an unconditional, non-Stripe grant (see
-// handle_new_user() in schema.sql) that must never be overwritten by
-// ordinary subscription activity.
-async function syncProfilePlan(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<void> {
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profile?.plan === "beta") return;
+// supabase-js returns errors instead of throwing. A write that failed used to
+// be acknowledged to Stripe with 200, so Stripe never retried and the plan
+// change was silently lost; throwing lands in the handler's 500 below, which
+// Stripe retries. Every write here is idempotent, so a retry is safe.
+class StripeUnavailable extends Error {
+  constructor(cause: unknown) {
+    super("Stripe unavailable");
+    this.cause = cause;
+  }
+}
 
-  const [{ data: activeProps }, { data: activeBpp }] = await Promise.all([
-    adminClient
-      .from("properties")
-      .select("plan_tier, created_at")
-      .eq("user_id", userId)
-      .eq("subscription_status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1),
-    adminClient
-      .from("bpp_accounts")
-      .select("plan_tier, created_at")
-      .eq("user_id", userId)
-      .eq("subscription_status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ]);
-  const candidates = [...(activeProps ?? []), ...(activeBpp ?? [])].sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at)),
-  );
-  const mostRecentTier = candidates[0]?.plan_tier as string | null | undefined;
-  await adminClient
-    .from("profiles")
-    .update({ plan: mostRecentTier ?? "free_ai_review" })
-    .eq("id", userId);
+function ok<T extends { error: unknown }>(res: T): T {
+  if (res.error) throw res.error;
+  return res;
 }
 
 // Referral rewards (one month free for the referrer) live in
@@ -134,14 +108,35 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Live events need the live key for any outbound call; test events the test
-  // key. If a live event arrives before STRIPE_SECRET_KEY_LIVE is set, fall
-  // back to the test key — the DB writes below still work; only outbound
-  // Stripe calls in that one handler would fail, and are already best-effort.
-  const stripe =
-    event.livemode && liveSecretKey
-      ? new Stripe(liveSecretKey, { apiVersion: "2024-06-20" })
-      : verifier;
+  // Live events need the live key — every subscription is re-read from Stripe
+  // below, and the test key can't see live data. Until it's configured, 503 so
+  // Stripe retries the event later instead of it being processed wrongly.
+  if (event.livemode && !liveSecretKey) {
+    console.error("Live Stripe event received but STRIPE_SECRET_KEY_LIVE is not set");
+    return new Response(JSON.stringify({ error: "Live Stripe key not configured" }), {
+      status: 503,
+      headers: corsHeaders,
+    });
+  }
+  const stripe = event.livemode
+    ? new Stripe(liveSecretKey!, { apiVersion: "2024-06-20" })
+    : verifier;
+
+  // Events can arrive late or out of order, so the subscription inside an
+  // event may already be stale (e.g. an old "active" landing after the
+  // cancellation). Status and cancellation fields always come from the live
+  // subscription; if Stripe can't be reached, 503 so the event is retried.
+  async function liveSubscription(id: string): Promise<Stripe.Subscription> {
+    try {
+      return await stripe.subscriptions.retrieve(id);
+    } catch (err) {
+      throw new StripeUnavailable(err);
+    }
+  }
+  const cancelFields = (sub: Stripe.Subscription) => ({
+    cancel_at_period_end: sub.cancel_at_period_end,
+    cancel_at: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
+  });
 
   const adminClient = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -149,7 +144,15 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded" ||
+      event.type === "checkout.session.async_payment_failed"
+    ) {
+      // A bank (delayed) payment completes checkout before the money arrives
+      // (payment_status "unpaid"), then sends async_payment_succeeded or
+      // _failed. All three write the live subscription's real status; the
+      // purchase email and referral reward only go out once it's paid.
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.client_reference_id;
       const propertyId = session.metadata?.propertyId;
@@ -161,36 +164,41 @@ Deno.serve(async (req: Request) => {
       const subjectId = isBpp ? bppAccountId : propertyId;
       const table = isBpp ? "bpp_accounts" : "properties";
       if (userId && subjectId && typeof session.subscription === "string") {
-        await adminClient
+        const sub = await liveSubscription(session.subscription);
+        const paid =
+          PAID_SUBSCRIPTION_STATUSES.includes(sub.status) && session.payment_status !== "unpaid";
+        ok(await adminClient
           .from(table)
           .update({
             stripe_subscription_id: session.subscription,
-            subscription_status: "active",
+            subscription_status: sub.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: false,
-            cancel_at: null,
+            ...cancelFields(sub),
           })
           .eq("id", subjectId)
-          .eq("user_id", userId);
+          .eq("user_id", userId));
 
         if (typeof session.customer === "string") {
-          await adminClient
+          ok(await adminClient
             .from("profiles")
             .update({ stripe_customer_id: session.customer })
-            .eq("id", userId);
+            .eq("id", userId));
         }
 
-        const { data: subjectRow } = await adminClient
+        const { data: subjectRow } = ok(await adminClient
           .from(table)
           .select(isBpp ? "business_name" : "address")
           .eq("id", subjectId)
-          .maybeSingle();
+          .maybeSingle());
         const subjectLabel = isBpp
           ? ((subjectRow?.business_name as string | null) ?? "")
           : ((subjectRow?.address as string | null) ?? "");
 
         await syncProfilePlan(adminClient, userId);
+        if (!paid) {
+          return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
+        }
         await runReferralRewards(stripe, adminClient, userId);
         await sendPurchaseConfirmationEmail(stripe, adminClient, {
           userId,
@@ -210,30 +218,50 @@ Deno.serve(async (req: Request) => {
       // bulk-subscribe's own direct write was lost. Matched by
       // metadata.propertyId (bulk-subscribe and create-checkout-session both
       // set it), falling back to the subscription id.
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = await liveSubscription((event.data.object as Stripe.Subscription).id);
       const propertyId = subscription.metadata?.propertyId;
       const tier =
         subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
       const bracket = subscription.metadata?.bracket ?? null;
-      let query = adminClient.from("properties").select("id, user_id");
+      let query = adminClient.from("properties").select("id, user_id, stripe_subscription_id, subscription_status");
       query = propertyId
         ? query.eq("id", propertyId)
         : query.eq("stripe_subscription_id", subscription.id);
-      const { data: property } = await query.maybeSingle();
+      const { data: property } = ok(await query.maybeSingle());
+      // Never attach a subscription to a property someone else's subscription
+      // already holds, or whose owner is a different Stripe customer — the
+      // row must be unclaimed (no live subscription, or already this one), and
+      // owned by this subscription's customer.
+      let claimable = false;
       if (property) {
-        await adminClient
+        const { data: owner } = ok(
+          await adminClient
+            .from("profiles")
+            .select("stripe_customer_id")
+            .eq("id", property.user_id as string)
+            .maybeSingle(),
+        );
+        const unclaimed =
+          !property.stripe_subscription_id ||
+          property.stripe_subscription_id === subscription.id ||
+          !hasLiveSubscription(property.subscription_status as string | null); // old one is over
+        const sameCustomer = !owner?.stripe_customer_id || owner.stripe_customer_id === subscription.customer;
+        claimable = unclaimed && sameCustomer;
+        if (!claimable) {
+          console.error("subscription.created: refusing to attach", subscription.id, "to property", property.id);
+        }
+      }
+      if (property && claimable) {
+        ok(await adminClient
           .from("properties")
           .update({
             stripe_subscription_id: subscription.id,
             subscription_status: subscription.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            cancel_at: subscription.cancel_at
-              ? new Date(subscription.cancel_at * 1000).toISOString()
-              : null,
+            ...cancelFields(subscription),
           })
-          .eq("id", property.id);
+          .eq("id", property.id));
         await syncProfilePlan(adminClient, property.user_id as string);
         // Only for a subscription that's actually valid/paying — a
         // bulk-subscribe sub can be created 'incomplete' (payment pending or
@@ -245,21 +273,21 @@ Deno.serve(async (req: Request) => {
         }
       }
     } else if (event.type === "customer.subscription.updated") {
-      const subscription = event.data.object as Stripe.Subscription;
+      const subscription = await liveSubscription((event.data.object as Stripe.Subscription).id);
       // Checked in order — properties first (the far more common case), then
       // bpp_accounts, since a subscription id only ever matches one table.
-      const { data: property } = await adminClient
+      const { data: property } = ok(await adminClient
         .from("properties")
         .select("id, user_id")
         .eq("stripe_subscription_id", subscription.id)
-        .maybeSingle();
+        .maybeSingle());
       const { data: bppAccount } = property
         ? { data: null }
-        : await adminClient
+        : ok(await adminClient
             .from("bpp_accounts")
             .select("id, user_id")
             .eq("stripe_subscription_id", subscription.id)
-            .maybeSingle();
+            .maybeSingle());
       const subject = property
         ? { table: "properties" as const, id: property.id as string, userId: property.user_id as string }
         : bppAccount
@@ -276,18 +304,15 @@ Deno.serve(async (req: Request) => {
         const tier =
           subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
         const bracket = subscription.metadata?.bracket ?? null;
-        await adminClient
+        ok(await adminClient
           .from(subject.table)
           .update({
             subscription_status: subscription.status,
             plan_tier: tier,
             value_bracket: bracket,
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            cancel_at: subscription.cancel_at
-              ? new Date(subscription.cancel_at * 1000).toISOString()
-              : null,
+            ...cancelFields(subscription),
           })
-          .eq("id", subject.id);
+          .eq("id", subject.id));
         await syncProfilePlan(adminClient, subject.userId);
         // Catches an API-created (bulk-subscribe) subscription that was
         // created 'incomplete' and has now cleared to active — the 'created'
@@ -299,27 +324,27 @@ Deno.serve(async (req: Request) => {
       }
     } else if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object as Stripe.Subscription;
-      const { data: property } = await adminClient
+      const { data: property } = ok(await adminClient
         .from("properties")
         .select("id, user_id, plan_tier, value_bracket, address")
         .eq("stripe_subscription_id", subscription.id)
-        .maybeSingle();
+        .maybeSingle());
       const { data: bppAccount } = property
         ? { data: null }
-        : await adminClient
+        : ok(await adminClient
             .from("bpp_accounts")
             .select("id, user_id, plan_tier, value_bracket, business_name")
             .eq("stripe_subscription_id", subscription.id)
-            .maybeSingle();
+            .maybeSingle());
       if (property) {
-        await adminClient
+        ok(await adminClient
           .from("properties")
           .update({
             subscription_status: "canceled",
             cancel_at_period_end: false,
             cancel_at: null,
           })
-          .eq("id", property.id);
+          .eq("id", property.id));
         await syncProfilePlan(adminClient, property.user_id as string);
         await sendCancellationEmail(adminClient, {
           userId: property.user_id as string,
@@ -329,14 +354,14 @@ Deno.serve(async (req: Request) => {
           bracket: property.value_bracket as Bracket | null,
         });
       } else if (bppAccount) {
-        await adminClient
+        ok(await adminClient
           .from("bpp_accounts")
           .update({
             subscription_status: "canceled",
             cancel_at_period_end: false,
             cancel_at: null,
           })
-          .eq("id", bppAccount.id);
+          .eq("id", bppAccount.id));
         await syncProfilePlan(adminClient, bppAccount.user_id as string);
         await sendCancellationEmail(adminClient, {
           userId: bppAccount.user_id as string,
@@ -352,6 +377,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
+    if (err instanceof StripeUnavailable) {
+      console.error("Could not re-read the subscription from Stripe", err.cause);
+      return new Response(JSON.stringify({ error: "Stripe unavailable, retry" }), {
+        status: 503,
+        headers: corsHeaders,
+      });
+    }
     console.error("Webhook handler failed", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),

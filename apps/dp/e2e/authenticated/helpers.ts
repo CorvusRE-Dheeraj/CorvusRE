@@ -73,7 +73,12 @@ export async function revertPermitStatus(
   email: string,
   password: string,
   permitId: string,
-  original: { status: string; submitted_at: string | null; approved_at: string | null; review_round: number },
+  original: {
+    status: string;
+    submitted_at: string | null;
+    approved_at: string | null;
+    review_round: number;
+  },
 ) {
   const url = process.env.VITE_SUPABASE_URL;
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY;

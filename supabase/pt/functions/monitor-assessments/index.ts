@@ -12,6 +12,7 @@
 //
 // Only pg_cron (service-role key as Bearer) may run it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import {
   isServiceRoleRequest,
   serviceRoleOnlyResponse,
@@ -76,7 +77,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+  const appUrl = appBaseUrl();
   const admin = createClient(supabaseUrl, serviceKey);
   const body = await req.json().catch(() => ({}));
   const dryRun = body?.dryRun === true; // detect only — no writes, no email

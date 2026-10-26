@@ -11,6 +11,7 @@
 // updates immediately; the webhook's customer.subscription.created handler is
 // the idempotent catch-up and the referral-reward path.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { syncProfilePlan } from "../_shared/profile-plan.ts";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import {
@@ -31,31 +32,6 @@ const corsHeaders = {
 };
 
 const MAX_ITEMS = 50;
-
-// Same rule as stripe-webhook's syncProfilePlan (never touches a beta account).
-async function syncProfilePlan(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<void> {
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profile?.plan === "beta") return;
-  const { data: activeProps } = await adminClient
-    .from("properties")
-    .select("plan_tier")
-    .eq("user_id", userId)
-    .eq("subscription_status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const mostRecentTier = activeProps?.[0]?.plan_tier as string | null | undefined;
-  await adminClient
-    .from("profiles")
-    .update({ plan: mostRecentTier ?? "free_ai_review" })
-    .eq("id", userId);
-}
 
 type Item = { propertyId: string; tier: Tier };
 type Result = {
@@ -311,7 +287,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (anyActive) await syncProfilePlan(adminClient, user.id);
+    // best-effort: the subscriptions themselves are already saved
+    if (anyActive) await syncProfilePlan(adminClient, user.id).catch((e) => console.error("syncProfilePlan:", e));
 
     return new Response(JSON.stringify({ results }), { status: 200, headers: corsHeaders });
   } catch (err) {

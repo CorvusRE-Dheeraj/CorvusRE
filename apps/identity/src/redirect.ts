@@ -1,8 +1,9 @@
 // A "redirect" search param is how a door sends someone here and gets them
 // back afterward (e.g. /auth/?redirect=/corvusdp/dashboard). Only ever
 // follow a same-origin, absolute path -- never an attacker-supplied
-// external URL ("//evil.com" parses as protocol-relative, so it's excluded
-// alongside anything not starting with a single leading "/").
+// external URL. "//evil.com" parses as protocol-relative, and browsers read
+// a backslash as a slash, so "/\evil.com" is the same thing -- the target is
+// resolved the way the browser would and must stay on this origin.
 //
 // Returns null when there's no real, specific target -- e.g. the hub's own
 // generic "Sign In" link, which isn't tied to any one door -- so callers can
@@ -12,6 +13,16 @@
 // looks exactly like nothing happened.
 export function safeRedirectTarget(): string | null {
   const raw = new URLSearchParams(window.location.search).get("redirect");
-  if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
-  return null;
+  return isSafeRedirect(raw, window.location.origin) ? raw : null;
+}
+
+export function isSafeRedirect(raw: string | null, origin: string): raw is string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return false;
+  // control characters (tabs/newlines are stripped by URL parsing)
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return false;
+  try {
+    return new URL(raw, origin).origin === origin;
+  } catch {
+    return false;
+  }
 }

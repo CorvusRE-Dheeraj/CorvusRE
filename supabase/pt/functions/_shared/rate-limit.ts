@@ -46,10 +46,30 @@ export async function rateLimit(
   limit: number,
   headers: Record<string, string> = {},
 ): Promise<Response | null> {
+  return hit(`${fn}:${(await sha256(callerIp(req))).slice(0, 32)}`, limit, headers);
+}
+
+/**
+ * Same limit, counted per signed-in account instead of per IP — for actions a
+ * user could repeat from many addresses (e.g. sending emails).
+ */
+export function rateLimitUser(
+  userId: string,
+  fn: string,
+  limit: number,
+  headers: Record<string, string> = {},
+): Promise<Response | null> {
+  return hit(`${fn}:user:${userId}`, limit, headers);
+}
+
+async function hit(
+  bucket: string,
+  limit: number,
+  headers: Record<string, string>,
+): Promise<Response | null> {
   const db = client();
   if (!db) return null;
   try {
-    const bucket = `${fn}:${(await sha256(callerIp(req))).slice(0, 32)}`;
     const { data, error } = await db.rpc("hit_rate_limit", {
       p_bucket: bucket,
       p_limit: limit,

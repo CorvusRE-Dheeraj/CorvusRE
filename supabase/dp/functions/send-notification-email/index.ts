@@ -11,7 +11,7 @@
 // double-email the same event.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendNotificationEmail } from "../_shared/notification-email.ts";
-import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { corsHeaders, preflight, jsonError, readJson, BadRequestError, errorResponse } from "../_shared/cors.ts";
 import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
 
 type NotificationPrefs = {
@@ -24,9 +24,9 @@ Deno.serve(async (req: Request) => {
   if (pf) return pf;
 
   try {
-    const { notificationId } = await req.json();
+    const { notificationId } = await readJson(req);
     if (!notificationId || typeof notificationId !== "string") {
-      throw new Error("notificationId is required");
+      throw new BadRequestError("notificationId is required");
     }
 
     const callerClient = createClient(
@@ -115,6 +115,6 @@ Deno.serve(async (req: Request) => {
     );
   } catch (err) {
     console.error("send-notification-email failed:", err);
-    return jsonError(err instanceof Error ? err.message : "unknown error");
+    return errorResponse(err);
   }
 });

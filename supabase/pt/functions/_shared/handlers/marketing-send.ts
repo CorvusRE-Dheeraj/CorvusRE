@@ -14,6 +14,7 @@
 // who unsubscribed or are marked Do Not Contact are never emailed. Each send is written to the lead's
 // history (marketing_activities) so Leads, Follow-ups and Analytics agree.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest } from "../service-role-only.ts";
 import { emailShell, escapeHtml } from "../email-shell.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
 import { instrument, linkify } from "../marketing-tracking.ts";
@@ -406,17 +407,6 @@ async function sendDigests(db: SupabaseClient, resendKey: string) {
   return { digests };
 }
 
-function jwtRole(token: string): string | null {
-  try {
-    const part = token.split(".")[1];
-    if (!part) return null;
-    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "="));
-    return (JSON.parse(json) as { role?: string }).role ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -428,11 +418,9 @@ export async function handle(req: Request): Promise<Response> {
 
     const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
     let actor: string | null = null;
-    // The router runs with verify_jwt on, so the gateway has already checked
-    // this token's signature; a service-role token (the cron job) is trusted.
-    // (Comparing it to SUPABASE_SERVICE_ROLE_KEY fails when the runtime holds
-    // the key in the newer sb_secret_ format.)
-    const isCron = bearer === serviceKey || jwtRole(bearer) === "service_role";
+    // The cron job: an exact match against the real keys (incl. CRON_SECRET),
+    // never a token's own role claim — same guard as the other cron functions.
+    const isCron = isServiceRoleRequest(req);
     if (!isCron) {
       const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
         global: { headers: { Authorization: `Bearer ${bearer}` } },

@@ -17,7 +17,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderEmailShell, esc } from "../_shared/email-layout.ts";
 import { sendEmail, appUrl } from "../_shared/resend.ts";
-import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
+import { corsHeaders, preflight, jsonError, readJson, BadRequestError, errorResponse } from "../_shared/cors.ts";
 
 const STAFF_EMAILS = ["pm2@srclandbuilding.com", "pm1@srclandbuilding.com"];
 
@@ -55,7 +55,7 @@ async function handleConsultation(
   designRequestId: unknown,
 ): Promise<Response> {
   if (typeof designRequestId !== "string" || !designRequestId) {
-    throw new Error("designRequestId is required.");
+    throw new BadRequestError("designRequestId is required.");
   }
   const url = Deno.env.get("SUPABASE_URL")!;
   const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -78,7 +78,7 @@ async function handleConsultation(
     .maybeSingle();
   if (!dr || dr.user_id !== user.id)
     return jsonError("Design request not found.", 404);
-  if (!dr.consultation_phone) throw new Error("A phone number is required.");
+  if (!dr.consultation_phone) throw new BadRequestError("A phone number is required.");
 
   const { data: profile } = await admin
     .from("profiles")
@@ -157,12 +157,12 @@ Deno.serve(async (req: Request) => {
   if (pf) return pf;
 
   try {
-    const body = await req.json();
+    const body = await readJson(req);
     if (body?.kind === "consultation")
       return await handleConsultation(req, body.designRequestId);
     const { kind, name, email, company, phone, message, meta } = body;
     if (!kind || typeof kind !== "string" || !KIND_LABEL[kind]) {
-      throw new Error("A valid inquiry kind is required.");
+      throw new BadRequestError("A valid inquiry kind is required.");
     }
 
     const label = KIND_LABEL[kind];
@@ -214,6 +214,6 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     console.error("send-inquiry-email failed:", err);
-    return jsonError(err instanceof Error ? err.message : "unknown error");
+    return errorResponse(err);
   }
 });

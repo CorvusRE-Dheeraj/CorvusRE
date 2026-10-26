@@ -19,6 +19,7 @@ import { ProtestRow } from "@/components/admin/ProtestRow";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminCountyMailbox } from "@/components/AdminCountyMailbox";
 import { AdminAppointments } from "@/components/AdminAppointments";
+import { VerificationQueue } from "@/components/VerificationQueue";
 import { LoadingLine } from "@/components/LoadingLine";
 import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
 import {
@@ -36,7 +37,7 @@ export const Route = createFileRoute("/operations")({
   component: Operations,
 });
 
-type Tab = "cases" | "mail" | "appointments";
+type Tab = "cases" | "verification" | "mail" | "appointments";
 type Contact = { id: string; email: string | null; name: string | null };
 const CLOSED: ProtestStatus[] = ["resolved"];
 
@@ -55,8 +56,11 @@ function Operations() {
       ? "mail"
       : typeof window !== "undefined" && /[?&]tab=appointments\b/.test(window.location.search)
         ? "appointments"
-        : "cases",
+        : typeof window !== "undefined" && /[?&]tab=verification\b/.test(window.location.search)
+          ? "verification"
+          : "cases",
   );
+  const [toReview, setToReview] = useState(0);
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -108,6 +112,7 @@ function Operations() {
           {(
             [
               ["cases", "Cases"],
+              ["verification", toReview ? `Verification (${toReview})` : "Verification"],
               ["mail", "County Mail"],
               ["appointments", "Appointments"],
             ] as const
@@ -126,6 +131,7 @@ function Operations() {
         </div>
       </div>
       {tab === "cases" && <Cases ctx={staffCtx} />}
+      {tab === "verification" && <VerificationQueue onCount={setToReview} />}
       {tab === "mail" && <AdminCountyMailbox />}
       {tab === "appointments" && <AdminAppointments />}
     </div>

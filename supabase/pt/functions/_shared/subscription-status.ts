@@ -4,6 +4,9 @@
 /** A subscription already exists in Stripe — never start a second checkout for it. */
 export const LIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due", "incomplete", "unpaid"];
 
+/** Counts as paid (the customer keeps their plan) — PAID_STATUSES in the app. */
+export const PAID_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
+
 export function hasLiveSubscription(status: string | null | undefined): boolean {
   return !!status && LIVE_SUBSCRIPTION_STATUSES.includes(status);
 }

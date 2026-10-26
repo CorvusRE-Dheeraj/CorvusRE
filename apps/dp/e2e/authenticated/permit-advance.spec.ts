@@ -56,7 +56,9 @@ test("advancing a permit updates its status", async ({ page }) => {
     await signIn(page, email, password);
     await page.goto("/dashboard/permits", { waitUntil: "domcontentloaded" });
 
-    const row = page.locator("tr", { has: page.getByRole("button", { name: "Advance →" }) }).first();
+    const row = page
+      .locator("tr", { has: page.getByRole("button", { name: "Advance →" }) })
+      .first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     const statusBefore = await row.locator("td").nth(3).innerText();
 

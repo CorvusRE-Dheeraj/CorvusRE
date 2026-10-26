@@ -82,6 +82,19 @@ describe("locateTrain", () => {
     expect(loc.reason).toContain("Grading Permit");
   });
 
+  it("ignores another permit's review comments", () => {
+    const permits = [
+      { ...permit("Site Development Permit", "comments"), permit_key: "site" },
+      { ...permit("Building Permit", "approved"), permit_key: "building" },
+    ];
+    const other = { status: "open", responsible: "", permit_key: "building" };
+    expect(locateTrain({ ...base, permits, comments: [other] }).station).toBe(20);
+    const mine = { status: "open", responsible: "", permit_key: "site" };
+    expect(locateTrain({ ...base, permits, comments: [other, mine] }).station).toBe(21);
+    const projectWide = { status: "open", responsible: "", permit_key: null };
+    expect(locateTrain({ ...base, permits, comments: [projectWide] }).station).toBe(21);
+  });
+
   it("walks the comment loop from the real review comments", () => {
     const permits = [permit("Site Development Permit", "comments")];
     expect(locateTrain({ ...base, permits, comments: [] }).station).toBe(20);
@@ -169,6 +182,15 @@ describe("wagonCargo", () => {
     expect(intake.crates).toEqual(["City of Denton", "Zoning C-2", "2 permits found"]);
     expect(reqs.crates).toEqual(["1 checklist item", "3 utilities checked", "1 site warning"]);
     expect(preApp.crates).toEqual(["Pre-app 1/2", "Fees $13k–$1.3M", "Package 0/1"]);
+  });
+
+  it("stops loading once every permit is approved", () => {
+    const done = [{ status: "approved" }, { status: "approved" }];
+    const wagons = wagonCargo({ trainAt: 27, analysis, permits: done, checklist, comments: [] });
+    expect(wagons.some((w) => w.loading)).toBe(false);
+    const oneLeft = [{ status: "approved" }, { status: "under_review" }];
+    const moving = wagonCargo({ trainAt: 19, analysis, permits: oneLeft, checklist, comments: [] });
+    expect(moving.at(-1)!.loading).toBe(true);
   });
 
   it("counts filed permits once the train reaches submission", () => {

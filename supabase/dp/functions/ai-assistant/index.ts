@@ -9,7 +9,7 @@
 // queries the database itself). Plain chat reply, not structured JSON.
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl, aiErrorResponse } from "../_shared/gemini.ts";
-import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { corsHeaders, preflight, readJson, BadRequestError } from "../_shared/cors.ts";
 import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
@@ -39,14 +39,14 @@ Deno.serve(async (req: Request) => {
   if (limited) return limited;
 
   try {
-    const { messages, context } = (await req.json()) as {
+    const { messages, context } = (await readJson(req)) as {
       messages?: ChatMessage[];
       context?: Record<string, unknown>;
     };
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
     if (!Array.isArray(messages) || messages.length === 0) {
-      throw new Error("At least one message is required.");
+      throw new BadRequestError("At least one message is required.");
     }
 
     const trimmed = messages

@@ -19,7 +19,7 @@ import {
   arr,
   aiErrorResponse,
 } from "../_shared/gemini.ts";
-import { corsHeaders, preflight } from "../_shared/cors.ts";
+import { corsHeaders, preflight, readJson } from "../_shared/cors.ts";
 import { rateLimit } from "../_shared/rate-limit.ts";
 import { logAiCall } from "../_shared/ai-log.ts";
 
@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
   if (limited) return limited;
 
   try {
-    const input = await req.json();
+    const input = await readJson(req);
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 

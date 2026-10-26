@@ -35,6 +35,7 @@
 //      returned — "magiclink" for an existing user, "signup" for a brand
 //      new one, confirmed live).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { readJson, errorStatus } from "../_shared/cors.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,7 +53,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { ptAccessToken, referralCode } = await req.json();
+    const { ptAccessToken, referralCode } = await readJson(req);
     if (!ptAccessToken || typeof ptAccessToken !== "string") {
       return new Response(JSON.stringify({ error: "ptAccessToken required" }), {
         status: 400,
@@ -123,7 +124,7 @@ Deno.serve(async (req: Request) => {
     console.error("mint-door-session failed:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
-      { status: 500, headers: corsHeaders },
+      { status: errorStatus(err), headers: corsHeaders },
     );
   }
 });

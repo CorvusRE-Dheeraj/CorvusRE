@@ -1,9 +1,7 @@
 // Guard for the cron-only entry points.
 //
-// Five functions here are background jobs, scheduled by pg_cron, which POST
-// to them with the project's service-role key as Bearer auth (see the
-// cron.job rows for google-calendar-sync, refresh-property-base-data,
-// send-evidence-reminders, send-deadline-reminders and auto-refile-cases).
+// The background jobs here are scheduled by pg_cron, which POSTs to them with
+// the project's service-role key as Bearer auth (see the cron.job rows).
 // They are deployed JWT-verified, and the original comments treated that as
 // sufficient —
 // but Supabase's verify_jwt only proves the caller presented SOME valid
@@ -16,44 +14,34 @@
 // refresh-property-base-data and got back
 // {"checked":13,"changed":1} for other users' properties.
 //
-// Two accepted forms, because this project has both key generations in play:
-//
-//  1. An exact match against the secret key the platform injects into this
-//     function's own environment (SUPABASE_SERVICE_ROLE_KEY / SB_SECRET_KEY,
-//     currently the sb_secret_… form).
-//  2. A JWT whose `role` claim is service_role — which is what the cron.job
-//     rows actually send today (the project's LEGACY service-role JWT, a
-//     different string from the injected sb_secret_… key; verified against
-//     the live project, an exact-match-only check 403s the real cron
-//     caller). Reading the claim without re-verifying the signature is safe
-//     here precisely because all four of these functions are deployed
-//     JWT-verified: the platform gateway has already rejected anything not
-//     signed with this project's JWT secret before the request reaches this
-//     code. If one of them is ever redeployed with --no-verify-jwt, this
-//     second branch must go with it.
-//
-// Either way, an ordinary signed-in user's access token carries
-// role: "authenticated" and matches neither — which is the whole point.
+// Accepted: an exact match against a real secret — never a token's own
+// claims. SUPABASE_SERVICE_ROLE_KEY / SB_SECRET_KEY are injected by the
+// platform (the sb_secret_… form, used by function-to-function calls);
+// CRON_SECRET holds the project's legacy service-role JWT, which is what the
+// cron.job rows send. This used to also accept any JWT whose payload said
+// role: service_role, relying on verify_jwt to have checked the signature —
+// safe only while every caller stays deployed JWT-verified; one redeploy with
+// --no-verify-jwt would have let anyone forge it. Compared in constant time.
 export function isServiceRoleRequest(req: Request): boolean {
   const header = req.headers.get("Authorization") ?? "";
   const token = header.replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;
 
-  const keys = [Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"), Deno.env.get("SB_SECRET_KEY")].filter(
-    (k): k is string => typeof k === "string" && k.length > 0,
-  );
-  if (keys.some((k) => k === token)) return true;
+  const keys = [
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+    Deno.env.get("SB_SECRET_KEY"),
+    Deno.env.get("CRON_SECRET"),
+  ].filter((k): k is string => typeof k === "string" && k.length > 0);
+  // every key is compared (no early exit) so timing reveals nothing
+  return keys.reduce((hit, k) => safeEqual(token, k) || hit, false);
+}
 
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return false;
-    const json = JSON.parse(
-      atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
-    ) as { role?: unknown };
-    return json.role === "service_role";
-  } catch {
-    return false;
-  }
+function safeEqual(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
 }
 
 export function serviceRoleOnlyResponse(corsHeaders: Record<string, string>): Response {

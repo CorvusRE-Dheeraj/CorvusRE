@@ -21,6 +21,8 @@
 //    informal-review-guidance's requestedValueGuidance.
 import { PROSE_STYLE, STRUCTURED_BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { requireUser, isFilledObject } from "../_shared/require-user.ts";
+import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
@@ -49,9 +51,22 @@ ${STRUCTURED_BULLET_STYLE}`;
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // signed-in only, and capped per account — each call is a paid AI request
+  const who = await requireUser(req, corsHeaders);
+  if (who instanceof Response) return who;
+  const limited = await rateLimitUser(who.id, "hearing-prep-guide", 30, corsHeaders);
+  if (limited) return limited;
+
   try {
     const { caseContext, hearingNotice, countyReference, evidence, comps, attendanceType } =
       await req.json();
+
+    if (!isFilledObject(caseContext)) {
+      return new Response(JSON.stringify({ error: "caseContext is required." }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");

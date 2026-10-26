@@ -1,7 +1,8 @@
 // Deploy via CLI: `supabase functions deploy sync-my-subscriptions`.
 // Requires STRIPE_SECRET_KEY.
 //
-// Pull-based reconciliation of the signed-in user's property subscriptions.
+// Pull-based reconciliation of the signed-in user's property and business
+// (BPP) account subscriptions.
 // stripe-webhook (checkout.session.completed / customer.subscription.updated /
 // .deleted) is the push path that keeps properties.subscription_status et al.
 // in sync, but a missed, delayed, or (in a sandbox) unconfigured webhook
@@ -11,6 +12,7 @@
 // exact same columns the webhook does, so simply loading the app self-heals.
 // Only writes rows that actually differ; returns how many changed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { syncProfilePlan } from "../_shared/profile-plan.ts";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 
@@ -33,34 +35,6 @@ type Row = {
   cancel_at_period_end: boolean;
   cancel_at: string | null;
 };
-
-// Same rule as stripe-webhook's syncProfilePlan — profiles.plan is just "the
-// tier of this customer's most recently created active property subscription."
-// Never touches a beta account.
-async function syncProfilePlan(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<void> {
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profile?.plan === "beta") return;
-
-  const { data: activeProps } = await adminClient
-    .from("properties")
-    .select("plan_tier")
-    .eq("user_id", userId)
-    .eq("subscription_status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const mostRecentTier = activeProps?.[0]?.plan_tier as string | null | undefined;
-  await adminClient
-    .from("profiles")
-    .update({ plan: mostRecentTier ?? "free_ai_review" })
-    .eq("id", userId);
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -100,25 +74,42 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ updated: 0 }), { status: 200, headers: corsHeaders });
     }
 
-    const { data: propsData } = await adminClient
-      .from("properties")
-      .select(
-        "id, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at",
-      )
-      .eq("user_id", user.id);
-    const rows = (propsData ?? []) as Row[];
-    if (rows.length === 0) {
+    // Both kinds of subscription: properties and business (BPP) accounts.
+    const cols =
+      "id, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at";
+    const [propsRes, bppRes] = await Promise.all([
+      adminClient.from("properties").select(cols).eq("user_id", user.id),
+      adminClient.from("bpp_accounts").select(cols).eq("user_id", user.id),
+    ]);
+    if (propsRes.error) throw propsRes.error;
+    if (bppRes.error) throw bppRes.error;
+    const subjects = [
+      ...((propsRes.data ?? []) as Row[]).map((row) => ({ table: "properties" as const, row })),
+      ...((bppRes.data ?? []) as Row[]).map((row) => ({ table: "bpp_accounts" as const, row })),
+    ];
+    if (subjects.length === 0) {
       return new Response(JSON.stringify({ updated: 0 }), { status: 200, headers: corsHeaders });
     }
 
+    // Every page, not just the first 100 — a subscription on a later page
+    // would otherwise look missing and get marked canceled. If the cap is hit
+    // the list isn't known to be complete, so nothing is canceled this run.
+    const MAX_SUBSCRIPTIONS = 1000;
     const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
-    let list: Stripe.ApiList<Stripe.Subscription>;
+    const subs: Stripe.Subscription[] = [];
+    let complete = true;
     try {
-      list = await stripe.subscriptions.list({
+      for await (const sub of stripe.subscriptions.list({
         customer: profile.stripe_customer_id,
         status: "all",
         limit: 100,
-      });
+      })) {
+        if (subs.length >= MAX_SUBSCRIPTIONS) {
+          complete = false;
+          break;
+        }
+        subs.push(sub);
+      }
     } catch (e) {
       // Stored customer id belongs to the other Stripe environment (an admin
       // flipped their test/live override) — nothing to reconcile here.
@@ -128,7 +119,7 @@ Deno.serve(async (req: Request) => {
       throw e;
     }
 
-    // Best Stripe subscription for a given property: a LIVE one beats a dead
+    // Best Stripe subscription for a given row: a LIVE one beats a dead
     // one; between two of the same liveness, the more recently created wins.
     const pickBest = (a: Stripe.Subscription, b: Stripe.Subscription): Stripe.Subscription => {
       const aLive = LIVE.has(a.status);
@@ -137,13 +128,20 @@ Deno.serve(async (req: Request) => {
       return a.created >= b.created ? a : b;
     };
 
+    // A BPP subscription (metadata.subjectType "bpp_account") only ever
+    // matches a BPP account and a property one only a property — never mixed.
+    const belongsTo = (sub: Stripe.Subscription, table: string, row: Row) => {
+      const isBpp = sub.metadata?.subjectType === "bpp_account";
+      if (isBpp !== (table === "bpp_accounts")) return false;
+      const metaId = isBpp ? sub.metadata?.bppAccountId : sub.metadata?.propertyId;
+      return metaId === row.id || sub.id === row.stripe_subscription_id;
+    };
+
     let updated = 0;
-    for (const row of rows) {
-      const matches = list.data.filter(
-        (s) => s.metadata?.propertyId === row.id || s.id === row.stripe_subscription_id,
-      );
-      // No Stripe subscription ever associated with this property and none on
-      // the row either — genuinely never subscribed, leave it alone.
+    for (const { table, row } of subjects) {
+      const matches = subs.filter((sub) => belongsTo(sub, table, row));
+      // No Stripe subscription ever associated with this row and none on the
+      // row either — genuinely never subscribed, leave it alone.
       if (matches.length === 0 && !row.stripe_subscription_id) continue;
 
       const best = matches.length > 0 ? matches.reduce(pickBest) : null;
@@ -160,7 +158,9 @@ Deno.serve(async (req: Request) => {
         };
       } else {
         // Only dead subscriptions (or none) match, but the row still points at
-        // one — reflect that it's over. Tier/bracket are left as historical.
+        // one — reflect that it's over, unless the list may be incomplete.
+        // Tier/bracket are left as historical.
+        if (!complete) continue;
         desired = {
           subscription_status: "canceled",
           cancel_at_period_end: false,
@@ -173,15 +173,20 @@ Deno.serve(async (req: Request) => {
       );
       if (!changed) continue;
 
-      await adminClient
-        .from("properties")
+      const { error } = await adminClient
+        .from(table)
         .update(desired)
         .eq("id", row.id)
         .eq("user_id", user.id);
+      if (error) {
+        console.error(`sync-my-subscriptions: ${table} ${row.id}:`, error);
+        continue; // only writes that landed are counted
+      }
       updated += 1;
     }
 
-    if (updated > 0) await syncProfilePlan(adminClient, user.id);
+    // best-effort: the rows themselves are already reconciled
+    if (updated > 0) await syncProfilePlan(adminClient, user.id).catch((e) => console.error("syncProfilePlan:", e));
 
     return new Response(JSON.stringify({ updated }), { status: 200, headers: corsHeaders });
   } catch (err) {

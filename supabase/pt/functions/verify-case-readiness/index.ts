@@ -10,6 +10,8 @@
 // is what actually blocks filing. Same "no auth check, rate-limited AI helper"
 // pattern as hearing-prep-guide.
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
+import { requireUser, isFilledObject } from "../_shared/require-user.ts";
+import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 
 const corsHeaders = {
@@ -31,8 +33,21 @@ Rules:
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // signed-in only, and capped per account — each call is a paid AI request
+  const who = await requireUser(req, corsHeaders);
+  if (who instanceof Response) return who;
+  const limited = await rateLimitUser(who.id, "verify-case-readiness", 30, corsHeaders);
+  if (limited) return limited;
+
   try {
     const { caseFacts, countyReference } = await req.json();
+
+    if (!isFilledObject(caseFacts)) {
+      return new Response(JSON.stringify({ error: "caseFacts is required." }), {
+        status: 400,
+        headers: corsHeaders,
+      });
+    }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");

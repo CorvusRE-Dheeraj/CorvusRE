@@ -36,6 +36,7 @@
 // until a phone number is on file, and is labeled "coming soon" until this
 // function can actually reach a provider.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 import { buildDeadlineEvents, type DeadlineEvent } from "../_shared/deadline-events.ts";
@@ -87,7 +88,7 @@ Deno.serve(async (req: Request) => {
   const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
-  const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+  const appUrl = appBaseUrl();
   const admin = createClient(supabaseUrl, serviceKey);
 
   const { data: profiles, error } = await admin

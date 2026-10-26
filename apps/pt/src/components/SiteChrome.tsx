@@ -2,6 +2,8 @@ import { NotificationsBell } from "@/components/NotificationsBell";
 import { ScheduleAppointment } from "@/components/ScheduleAppointment";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { WelcomeTour } from "@/components/WelcomeTour";
+import { LinkedInFollowPrompt, LinkedInIcon } from "@/components/LinkedInFollowPrompt";
+import { LINKEDIN_PAGE_URL } from "@/lib/linkedin-follow";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
@@ -322,6 +324,7 @@ export function SiteNav() {
             <HelpMenu />
           </div>
           <WelcomeTour />
+          <LinkedInFollowPrompt />
           <ConfirmHost />
           <ThemeToggle />
           {signedIn ? (
@@ -566,6 +569,15 @@ export function SiteFooter() {
             >
               Privacy Policy
             </Link>
+            <a
+              href={LINKEDIN_PAGE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              <LinkedInIcon className="h-3.5 w-3.5" />
+              Follow us
+            </a>
           </nav>
         </div>
 

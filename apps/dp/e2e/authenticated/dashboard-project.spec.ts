@@ -32,7 +32,9 @@ test("dashboard renders the seeded permitting project", async ({ page }) => {
 
   // Permits page renders the same project's required-permits table.
   await page.goto("/dashboard/permits", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Required permits & reviewing agencies" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "Required permits & reviewing agencies" }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 });

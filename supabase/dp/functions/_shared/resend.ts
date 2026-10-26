@@ -30,6 +30,9 @@ export async function sendEmail(opts: {
   }
 }
 
+// An empty or malformed APP_URL counts as unset.
 export function appUrl(): string {
-  return Deno.env.get("APP_URL") ?? "https://corvusre.com/corvusdp";
+  const set = (Deno.env.get("APP_URL") ?? "").trim();
+  const base = /^https?:\/\/[^/\s]+/.test(set) ? set : "https://corvusre.com/corvusdp";
+  return base.replace(/\/+$/, "");
 }

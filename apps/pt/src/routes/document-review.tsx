@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { requestVerification } from "@/lib/property-verification";
 import { toast } from "sonner";
 import {
   readIntake,
@@ -221,30 +222,38 @@ function DocumentReview() {
     if (user && next.address) {
       setSaving(true);
       try {
-        const saved = await addProperty(user.id, {
-          address: next.address,
-          cad: next.cad,
-          accountNumber: next.accountNumber,
-          ownerName: next.ownerName,
-          landValue: next.landValue,
-          improvementValue: next.improvementValue,
-          totalValue: next.totalValue,
-          taxYear: next.taxYear,
-          protestDeadline: eff.protestDeadline ?? undefined,
-          paymentDueDate: eff.paymentDueDate ?? undefined,
-          taxAmountDue: eff.taxAmountDue ?? undefined,
-          valueHistory: next.valueHistory,
-        });
-        toast.success("Property added to your dashboard.");
+        const file = takePendingFile();
+        const saved = await addProperty(
+          user.id,
+          {
+            address: next.address,
+            cad: next.cad,
+            accountNumber: next.accountNumber,
+            ownerName: next.ownerName,
+            landValue: next.landValue,
+            improvementValue: next.improvementValue,
+            totalValue: next.totalValue,
+            taxYear: next.taxYear,
+            protestDeadline: eff.protestDeadline ?? undefined,
+            paymentDueDate: eff.paymentDueDate ?? undefined,
+            taxAmountDue: eff.taxAmountDue ?? undefined,
+            valueHistory: next.valueHistory,
+          },
+          // with a document, its upload runs the county check including the file
+          { verify: !file },
+        );
+        toast.success(
+          "Property added to your dashboard. We're checking it against the county record.",
+        );
 
         let documentId: string | undefined;
-        const file = takePendingFile();
         if (file) {
           try {
             const doc = await uploadDocument(user.id, saved.id, file, eff.documentType);
             documentId = doc.id;
           } catch (err) {
             console.error(err);
+            requestVerification(saved.id);
             toast.error("Property saved, but the document itself couldn't be stored.");
           }
         }

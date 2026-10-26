@@ -56,9 +56,13 @@
     // Forward it straight into the real, already-built page that actually
     // reads the code (CorvusPT's own /join?ref=... route) instead of leaving
     // a friend looking at a dead link.
+    //
+    // Only the known app prefix is forwarded: a path like
+    // "//other-site.com/join/CODE" used to become the protocol-relative
+    // "//other-site.com/join?ref=CODE" — a redirect off this site.
     (function () {
-      var m = location.pathname.match(/^(.*\/)join\/([A-Za-z0-9]{4,32})\/?$/);
-      if (m) location.replace(m[1] + "join?ref=" + encodeURIComponent(m[2]));
+      var m = location.pathname.match(/^\/(corvuspt)\/join\/([A-Za-z0-9]{4,32})\/?$/);
+      if (m) location.replace("/" + m[1] + "/join?ref=" + encodeURIComponent(m[2]));
     })();
   </script>
 </body>

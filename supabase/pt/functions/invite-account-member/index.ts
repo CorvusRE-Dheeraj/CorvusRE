@@ -6,6 +6,7 @@
 //
 // POST { email, role: "property_manager" | "cpa", propertyIds: string[] | null, resend?: boolean }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
@@ -110,7 +111,7 @@ Deno.serve(async (req: Request) => {
       me.user.email ||
       "A CorvusPT owner";
     const company = profile?.company_name ? ` (${profile.company_name})` : "";
-    const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+    const appUrl = appBaseUrl();
     const link = `${appUrl}/accept-invite?token=${row.invite_token}`;
     const scope =
       propertyIds && propertyIds.length
