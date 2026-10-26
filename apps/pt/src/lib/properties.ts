@@ -1,5 +1,6 @@
 import { tidyAddress } from "./tidy-address";
 import { supabase } from "./supabase";
+import { requestVerification, type PropertyVerificationStatus } from "./property-verification";
 import { computeAndStoreHealthScore } from "./property-scores";
 import type { CadValueHistoryEntry } from "./cad-lookup";
 import type { IntakeState } from "./intake-store";
@@ -66,6 +67,10 @@ export type PropertyRecord = {
   // comment on these two columns. Optional, same reason as the six above.
   autoRefile?: boolean;
   autoRefileAuthorizedAt?: string | null;
+  // The county-record check (see property-verification.ts). Optional, same
+  // reason as the subscription fields above.
+  verificationStatus?: PropertyVerificationStatus;
+  verificationNote?: string | null;
 };
 
 type PropertyRow = {
@@ -97,6 +102,8 @@ type PropertyRow = {
   cancel_at: string | null;
   auto_refile: boolean;
   auto_refile_authorized_at: string | null;
+  verification_status: PropertyVerificationStatus;
+  verification_note: string | null;
 };
 
 function fromRow(row: PropertyRow): PropertyRecord {
@@ -131,11 +138,13 @@ function fromRow(row: PropertyRow): PropertyRecord {
     cancelAt: row.cancel_at,
     autoRefile: row.auto_refile,
     autoRefileAuthorizedAt: row.auto_refile_authorized_at,
+    verificationStatus: row.verification_status,
+    verificationNote: row.verification_note,
   };
 }
 
 const SELECT_COLUMNS =
-  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, value_year, upcoming_value_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
+  "id, address, cad, account_number, owner_name, property_type, land_value, improvement_value, total_value, tax_year, value_year, upcoming_value_year, protest_deadline, payment_due_date, tax_amount_due, paid_at, estimated_savings, savings_basis, created_at, value_history, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, verification_status, verification_note";
 
 export async function listProperties(userId: string): Promise<PropertyRecord[]> {
   const { data, error } = await supabase
@@ -262,6 +271,9 @@ export async function addProperty(
     savingsBasis?: "comps" | "formula";
     valueHistory?: CadValueHistoryEntry[] | null;
   },
+  // false when a document for it is uploaded right after — that upload runs
+  // the check with the document included
+  opts: { verify?: boolean } = {},
 ): Promise<PropertyRecord> {
   const existing = await findExistingProperty(userId, property);
   if (existing) return existing;
@@ -295,6 +307,7 @@ export async function addProperty(
     .single();
   if (error) throw error;
   const created = fromRow(data as PropertyRow);
+  if (opts.verify !== false) requestVerification(created.id);
   computeAndStoreHealthScore(created);
   notifyPropertiesChanged();
   return created;
@@ -351,6 +364,8 @@ export async function updatePropertyIdentity(
     .select(SELECT_COLUMNS)
     .single();
   if (error) throw error;
+  // an edit to what was checked puts the property back to "being checked"
+  requestVerification(id);
   return fromRow(data as PropertyRow);
 }
 

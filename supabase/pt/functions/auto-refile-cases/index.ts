@@ -102,13 +102,15 @@ Deno.serve(async (req: Request) => {
     // ── Properties ──
     const { data: properties, error: propErr } = await admin
       .from("properties")
-      .select("id, user_id, address, total_value, subscription_status")
+      .select("id, user_id, address, total_value, subscription_status, verification_status")
       .eq("auto_refile", true);
     if (propErr) throw propErr;
 
     for (const property of properties ?? []) {
       try {
         if (property.subscription_status !== "active") continue;
+        // only a property that matches the county record (or staff approved)
+        if (property.verification_status !== "verified") continue;
 
         const { data: propProtests } = await admin
           .from("protests")

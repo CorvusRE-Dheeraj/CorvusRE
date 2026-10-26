@@ -1,5 +1,6 @@
 import type { ValueSignal } from "./evidence-value";
 import { storageSafeName } from "./storage-key";
+import { needsDocumentCheck, requestVerification } from "./property-verification";
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import type { FormType } from "./protest-form-submissions";
@@ -217,6 +218,10 @@ export async function uploadDocument(
     .single();
   if (error) throw error;
   notifyDocumentsChanged();
+  // every uploaded file is checked (county record + AI/editing signs); the
+  // property stays held until it passes or staff approve it
+  if (needsDocumentCheck(documentType) && !editedFrom)
+    requestVerification(propertyId, (data as DocumentRow).id);
   return fromRow(data as DocumentRow);
 }
 

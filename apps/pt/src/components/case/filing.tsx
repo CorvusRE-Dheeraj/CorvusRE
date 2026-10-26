@@ -1,5 +1,6 @@
 // Prepare & File: the filing popup — notice, forms, evidence package and delivery (split out of CaseDetailModal.tsx).
 import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
+import { VerificationNotice } from "@/components/VerificationNotice";
 import { PortalCopySheet } from "@/components/PortalCopySheet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -1793,6 +1794,7 @@ export function DocumentsSection({
         Comptroller forms, pre-filled; review every field, then sign. Completed forms save to your
         Documents.
       </p>
+      <VerificationNotice status={property.verificationStatus} note={property.verificationNote} />
 
       <FilingStepBar
         steps={filingSteps}

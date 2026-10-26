@@ -1,5 +1,6 @@
 import { VerdictChip, verdictFor } from "@/components/ProtestVerdictCard";
 import { confirmDialog } from "@/components/ConfirmHost";
+import { VerificationBadge } from "@/components/VerificationNotice";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TaxUpdatesBanner } from "@/components/RelevantTaxUpdates";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -11,6 +12,7 @@ import {
   deleteProperty,
   buildAiReportIntakePatch,
   type PropertyRecord,
+  PROPERTIES_CHANGED_EVENT,
 } from "@/lib/properties";
 import {
   getMyBilling,
@@ -366,6 +368,16 @@ function Properties() {
         }
       })
       .catch((err) => console.error("Subscription reconcile failed:", err));
+  }, [user]);
+
+  // A county-record check finishing (or any other property change) refreshes
+  // the list, so "Being checked" turns into its result without a reload.
+  useEffect(() => {
+    if (!user) return;
+    const uid = user.id;
+    const refresh = () => listProperties(uid).then(setProperties).catch(console.error);
+    window.addEventListener(PROPERTIES_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(PROPERTIES_CHANGED_EVENT, refresh);
   }, [user]);
 
   // Real race, not a bug: Stripe redirects the browser to successPath the
@@ -1182,7 +1194,10 @@ function Properties() {
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="font-medium">{p.address}</div>
+                        <div className="flex flex-wrap items-center gap-2 font-medium">
+                          {p.address}
+                          <VerificationBadge status={p.verificationStatus} />
+                        </div>
                         <NextActionLine next={pipelineFor(p).next} />
                       </td>
                       {visibleColumnOptions.map((c) => (
@@ -1260,7 +1275,10 @@ function Properties() {
                             className="mt-1.5 h-4 w-4 shrink-0"
                           />
                         )}
-                        <h2 className="font-serif text-xl font-semibold">{p.address}</h2>
+                        <h2 className="flex flex-wrap items-center gap-2 font-serif text-xl font-semibold">
+                          {p.address}
+                          <VerificationBadge status={p.verificationStatus} />
+                        </h2>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate text-xs text-muted-foreground">
