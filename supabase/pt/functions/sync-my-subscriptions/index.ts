@@ -11,6 +11,7 @@
 // exact same columns the webhook does, so simply loading the app self-heals.
 // Only writes rows that actually differ; returns how many changed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { syncProfilePlan } from "../_shared/profile-plan.ts";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 
@@ -33,34 +34,6 @@ type Row = {
   cancel_at_period_end: boolean;
   cancel_at: string | null;
 };
-
-// Same rule as stripe-webhook's syncProfilePlan — profiles.plan is just "the
-// tier of this customer's most recently created active property subscription."
-// Never touches a beta account.
-async function syncProfilePlan(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<void> {
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profile?.plan === "beta") return;
-
-  const { data: activeProps } = await adminClient
-    .from("properties")
-    .select("plan_tier")
-    .eq("user_id", userId)
-    .eq("subscription_status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const mostRecentTier = activeProps?.[0]?.plan_tier as string | null | undefined;
-  await adminClient
-    .from("profiles")
-    .update({ plan: mostRecentTier ?? "free_ai_review" })
-    .eq("id", userId);
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -181,7 +154,8 @@ Deno.serve(async (req: Request) => {
       updated += 1;
     }
 
-    if (updated > 0) await syncProfilePlan(adminClient, user.id);
+    // best-effort: the rows themselves are already reconciled
+    if (updated > 0) await syncProfilePlan(adminClient, user.id).catch((e) => console.error("syncProfilePlan:", e));
 
     return new Response(JSON.stringify({ updated }), { status: 200, headers: corsHeaders });
   } catch (err) {

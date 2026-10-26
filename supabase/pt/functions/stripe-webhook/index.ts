@@ -24,6 +24,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
 import { runReferralRewards } from "../_shared/referral-reward.ts";
+import { syncProfilePlan } from "../_shared/profile-plan.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -33,13 +34,6 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-// profiles.plan is a coarse, account-level signal only now (see its own
-// comment in src/lib/billing.ts) — "the tier of this customer's most
-// recently created active subscription, property or BPP account,"
-// recomputed here after every subscription change. Never touched for a
-// 'beta' account: that's an unconditional, non-Stripe grant (see
-// handle_new_user() in schema.sql) that must never be overwritten by
-// ordinary subscription activity.
 // supabase-js returns errors instead of throwing. A write that failed used to
 // be acknowledged to Stripe with 200, so Stripe never retried and the plan
 // change was silently lost; throwing lands in the handler's 500 below, which
@@ -47,43 +41,6 @@ const corsHeaders = {
 function ok<T extends { error: unknown }>(res: T): T {
   if (res.error) throw res.error;
   return res;
-}
-
-async function syncProfilePlan(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-): Promise<void> {
-  const { data: profile } = ok(await adminClient
-    .from("profiles")
-    .select("plan")
-    .eq("id", userId)
-    .maybeSingle());
-  if (profile?.plan === "beta") return;
-
-  const [{ data: activeProps }, { data: activeBpp }] = (await Promise.all([
-    adminClient
-      .from("properties")
-      .select("plan_tier, created_at")
-      .eq("user_id", userId)
-      .eq("subscription_status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1),
-    adminClient
-      .from("bpp_accounts")
-      .select("plan_tier, created_at")
-      .eq("user_id", userId)
-      .eq("subscription_status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ])).map(ok);
-  const candidates = [...(activeProps ?? []), ...(activeBpp ?? [])].sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at)),
-  );
-  const mostRecentTier = candidates[0]?.plan_tier as string | null | undefined;
-  ok(await adminClient
-    .from("profiles")
-    .update({ plan: mostRecentTier ?? "free_ai_review" })
-    .eq("id", userId));
 }
 
 // Referral rewards (one month free for the referrer) live in
