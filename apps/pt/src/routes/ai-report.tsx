@@ -342,6 +342,13 @@ function Report() {
   const { user } = useAuth();
   const { openModule: deepLinkModuleId, propertyId: deepLinkPropertyId } = Route.useSearch();
   const [state, setState] = useState<IntakeState>({ previewsUsed: [] });
+  // The printed report's "Generated" date is set in the browser after load:
+  // computing it while rendering baked the build date into the prerendered
+  // page and didn't match on hydration. Central time, like the rest of the app.
+  const [generatedOn, setGeneratedOn] = useState("");
+  useEffect(() => {
+    setGeneratedOn(new Date().toLocaleDateString("en-US", { timeZone: "America/Chicago" }));
+  }, []);
   const [analyzing, setAnalyzing] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showWall, setShowWall] = useState(false);
@@ -3480,7 +3487,8 @@ function Report() {
         <section className="hidden print:block mt-8">
           <h2 className="font-serif text-2xl font-semibold">AI Property Tax Report</h2>
           <p className="text-sm text-muted-foreground">
-            {state.address} · {state.cad} · Generated {new Date().toLocaleDateString()}
+            {state.address} · {state.cad}
+            {generatedOn && ` · Generated ${generatedOn}`}
           </p>
           {(() => {
             const printable = MODULES.filter(
