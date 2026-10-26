@@ -9,6 +9,9 @@
 // their OWN real referral link, never someone else's (which a client-
 // supplied code/name would otherwise let them spoof).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
+import { escapeHtml } from "../_shared/email-shell.ts";
+import { rateLimitUser } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +19,9 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-function emailHtml(referrerName: string, referralUrl: string): string {
+function emailHtml(rawName: string, referralUrl: string): string {
+  // the name is whatever the user typed into their profile — never raw HTML
+  const referrerName = escapeHtml(rawName);
   const intro = referrerName
     ? `${referrerName} thinks CorvusPT could help you lower your property taxes — and referred you directly.`
     : `A friend thinks CorvusPT could help you lower your property taxes — and referred you directly.`;
@@ -134,30 +139,17 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { toEmail, origin } = await req.json();
+    const { toEmail } = await req.json();
     if (typeof toEmail !== "string" || !toEmail.includes("@")) {
       return new Response(JSON.stringify({ error: "A valid email address is required." }), {
         status: 400,
         headers: corsHeaders,
       });
     }
-    // origin is the caller's full origin+base prefix — e.g.
-    // "https://corvusre.com/corvuspt/" (window.location.origin +
-    // import.meta.env.BASE_URL from the client; see sendReferralInvite in
-    // src/lib/referrals.ts) — same convention create-checkout-session's own
-    // successPath/cancelPath already use. Only ever used as a URL prefix
-    // below; the real security boundary is the referral CODE, always
-    // resolved server-side from the caller's own row, never taken from the
-    // client. Falls back to the real production URL, not a placeholder —
-    // this app has no server, so a wrong fallback here would silently ship
-    // a dead link in any request that omits it.
-    const safeOrigin = (() => {
-      const fallback = "https://corvusre.com/corvuspt/";
-      if (typeof origin !== "string" || !/^https?:\/\/[^/\s]+(\/[^\s]*)?$/.test(origin)) {
-        return fallback;
-      }
-      return origin.endsWith("/") ? origin : `${origin}/`;
-    })();
+    // The link always points at our own site — never at an address the caller
+    // sends (that let any signed-in user mail a link to any website from
+    // info@corvusre.com).
+    const safeOrigin = `${appBaseUrl()}/`;
 
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -174,6 +166,10 @@ Deno.serve(async (req: Request) => {
         headers: corsHeaders,
       });
     }
+
+    // Each invite is a real email from info@corvusre.com — cap it per account.
+    const limited = await rateLimitUser(user.id, "send-referral-invite", 10, corsHeaders);
+    if (limited) return limited;
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,

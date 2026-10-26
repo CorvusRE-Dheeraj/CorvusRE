@@ -8,7 +8,8 @@
 // send an invite carrying their OWN real referral link.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderEmailShell, esc } from "../_shared/email-layout.ts";
-import { sendEmail } from "../_shared/resend.ts";
+import { sendEmail, appUrl } from "../_shared/resend.ts";
+import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
 
 Deno.serve(async (req: Request) => {
@@ -16,7 +17,7 @@ Deno.serve(async (req: Request) => {
   if (pf) return pf;
 
   try {
-    const { toEmail, origin } = await req.json();
+    const { toEmail } = await req.json();
     if (!toEmail || typeof toEmail !== "string" || !toEmail.includes("@")) {
       throw new Error("A valid email address is required.");
     }
@@ -32,6 +33,10 @@ Deno.serve(async (req: Request) => {
     } = await callerClient.auth.getUser();
     if (userErr || !user) return jsonError("unauthenticated", 401);
 
+    // Each invite is a real email from our address — cap it per account.
+    const limited = await rateLimitUser(user.id, "send-referral-invite", 10, corsHeaders);
+    if (limited) return limited;
+
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -44,7 +49,9 @@ Deno.serve(async (req: Request) => {
     if (pErr) throw pErr;
     if (!profile?.referral_code) throw new Error("No referral code on file for this account.");
 
-    const base = origin && typeof origin === "string" ? origin : "https://corvusre.com/corvusdp/";
+    // Always our own site — never an address the caller sends (that let any
+    // signed-in user email a link to any website from our address).
+    const base = `${appUrl()}/`;
     const referralUrl = `${base}sign-in?ref=${encodeURIComponent(profile.referral_code as string)}`;
     const referrerName = (profile.first_name as string | null) ?? "";
     const email = (toEmail as string).trim().toLowerCase();
@@ -61,7 +68,7 @@ Deno.serve(async (req: Request) => {
 
     const html = renderEmailShell({
       eyebrow: "You were referred",
-      heading: referrerName ? `${referrerName} sent you to CorvusDP` : "You've been invited to CorvusDP",
+      heading: referrerName ? `${esc(referrerName)} sent you to CorvusDP` : "You've been invited to CorvusDP",
       bodyHtml,
       ctaLabel: "Get started",
       ctaUrl: referralUrl,
