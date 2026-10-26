@@ -23,6 +23,7 @@
 // bouncing between several tabs in one sitting only triggers a send once
 // the 2-day gap since the last one has actually elapsed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
 const corsHeaders = {
@@ -126,7 +127,7 @@ Deno.serve(async (req: Request) => {
     const to = profile.email as string | null;
     if (!to) throw new Error("No email on file for this user");
 
-    const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+    const appUrl = appBaseUrl();
     const firstName = (profile.first_name as string | null) ?? "";
     const nextSendNumber = sendCount + 1;
     const html = emailShell({

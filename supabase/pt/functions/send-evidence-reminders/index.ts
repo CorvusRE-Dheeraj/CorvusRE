@@ -31,6 +31,7 @@
 // account-level control exposed under Settings → Notification Preferences,
 // so "manage in the email" and "manage in the app" are the same switch.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
@@ -158,7 +159,7 @@ Deno.serve(async (req: Request) => {
         `Open CorvusPT, go to View Case, and use Generate Evidence Package to finish each one.` +
         `\n\nManage email preferences (or unsubscribe from these reminders): ${unsubscribeUrl}`;
 
-      const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+      const appUrl = appBaseUrl();
       const intro =
         items.length === 1
           ? `Your evidence for <strong>${escapeHtml(items[0].label)}</strong> hasn't been marked submitted yet.`

@@ -24,6 +24,7 @@
 // created (best-effort — a failed email never rolls back the real protest
 // row, which has already been created and is real work either way).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appBaseUrl } from "../_shared/app-url.ts";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 
@@ -43,7 +44,7 @@ async function sendConfirmation(
 ): Promise<void> {
   if (!resendKey) return;
   try {
-    const appUrl = Deno.env.get("APP_URL") ?? "https://corvuspt.com";
+    const appUrl = appBaseUrl();
     const html = emailShell({
       eyebrow: "Auto re-file",
       heading: `Your ${taxYear} protest is started`,
