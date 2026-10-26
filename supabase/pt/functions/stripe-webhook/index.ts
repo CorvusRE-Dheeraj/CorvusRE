@@ -25,7 +25,7 @@ import Stripe from "npm:stripe@17";
 import type { Bracket, BppBracket, Tier } from "../_shared/pricing.ts";
 import { runReferralRewards } from "../_shared/referral-reward.ts";
 import { syncProfilePlan } from "../_shared/profile-plan.ts";
-import { PAID_SUBSCRIPTION_STATUSES } from "../_shared/subscription-status.ts";
+import { PAID_SUBSCRIPTION_STATUSES, hasLiveSubscription } from "../_shared/subscription-status.ts";
 import { sendPurchaseConfirmationEmail, sendCancellationEmail } from "../_shared/purchase-email.ts";
 
 const corsHeaders = {
@@ -223,12 +223,35 @@ Deno.serve(async (req: Request) => {
       const tier =
         subscription.metadata?.tier === "corvusrf_managed" ? "corvusrf_managed" : "owner_managed";
       const bracket = subscription.metadata?.bracket ?? null;
-      let query = adminClient.from("properties").select("id, user_id");
+      let query = adminClient.from("properties").select("id, user_id, stripe_subscription_id, subscription_status");
       query = propertyId
         ? query.eq("id", propertyId)
         : query.eq("stripe_subscription_id", subscription.id);
       const { data: property } = ok(await query.maybeSingle());
+      // Never attach a subscription to a property someone else's subscription
+      // already holds, or whose owner is a different Stripe customer — the
+      // row must be unclaimed (no live subscription, or already this one), and
+      // owned by this subscription's customer.
+      let claimable = false;
       if (property) {
+        const { data: owner } = ok(
+          await adminClient
+            .from("profiles")
+            .select("stripe_customer_id")
+            .eq("id", property.user_id as string)
+            .maybeSingle(),
+        );
+        const unclaimed =
+          !property.stripe_subscription_id ||
+          property.stripe_subscription_id === subscription.id ||
+          !hasLiveSubscription(property.subscription_status as string | null); // old one is over
+        const sameCustomer = !owner?.stripe_customer_id || owner.stripe_customer_id === subscription.customer;
+        claimable = unclaimed && sameCustomer;
+        if (!claimable) {
+          console.error("subscription.created: refusing to attach", subscription.id, "to property", property.id);
+        }
+      }
+      if (property && claimable) {
         ok(await adminClient
           .from("properties")
           .update({
