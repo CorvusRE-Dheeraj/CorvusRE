@@ -12,6 +12,7 @@
 // renewals) is skipped — marked as sent anyway so it isn't re-checked every
 // day — rather than mailing an empty summary.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { sendWeeklyDigestEmail, type DigestStats } from "../_shared/digest-email.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
 import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
@@ -23,6 +24,8 @@ const RENEWAL_WINDOW_DAYS = 30;
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // pg_cron only — never a public trigger for emails to every customer
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   try {
     const admin = createClient(

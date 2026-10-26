@@ -13,6 +13,7 @@
 // re-selecting it forever) — only a genuine send failure leaves it null so
 // tomorrow's run retries it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { sendRenewalReminderEmail } from "../_shared/renewal-email.ts";
 import { corsHeaders, preflight, jsonError } from "../_shared/cors.ts";
 import { getOrCreateUnsubscribeToken, unsubscribeUrl } from "../_shared/unsubscribe-token.ts";
@@ -25,6 +26,8 @@ type NotificationPrefs = { email?: boolean };
 Deno.serve(async (req: Request) => {
   const pf = preflight(req);
   if (pf) return pf;
+  // pg_cron only — never a public trigger for emails to every customer
+  if (!isServiceRoleRequest(req)) return serviceRoleOnlyResponse(corsHeaders);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
