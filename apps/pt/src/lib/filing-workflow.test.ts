@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   requiredFilingSteps,
   describeFilingRequirements,
+  firstIncompleteFilingStep,
+  nextFilingStepAfter,
+  type FilingStepStatusInput,
   type FilingStepInput,
 } from "./filing-workflow";
 
@@ -87,5 +90,33 @@ describe("describeFilingRequirements", () => {
       "Evidence Affidavit",
       "Evidence",
     ]);
+  });
+});
+
+describe("nextFilingStepAfter", () => {
+  const steps = requiredFilingSteps(input());
+  const status = (over: Partial<FilingStepStatusInput> = {}): FilingStepStatusInput => ({
+    preFilingBlocked: false,
+    noticeSignedAt: null,
+    agentFormSignedAt: null,
+    evidenceDeclarationSignedAt: null,
+    evidenceSubmittedConfirmedAt: null,
+    ...over,
+  });
+
+  it("shows the optional Agent step after the protest is signed, before Evidence", () => {
+    const s = status({ noticeSignedAt: "2026-10-27T00:00:00Z" });
+    // the first REQUIRED step left is Evidence — the old jump target
+    expect(firstIncompleteFilingStep(steps, s, ["agent"])).toBe("evidence");
+    expect(nextFilingStepAfter(steps, "file", s, ["agent"])).toBe("agent");
+  });
+
+  it("goes on to Evidence once the Agent form is signed", () => {
+    const s = status({
+      noticeSignedAt: "2026-10-27T00:00:00Z",
+      agentFormSignedAt: "2026-10-27T01:00:00Z",
+    });
+    expect(nextFilingStepAfter(steps, "file", s, ["agent"])).toBe("evidence");
+    expect(nextFilingStepAfter(steps, "agent", s, ["agent"])).toBe("evidence");
   });
 });
