@@ -184,6 +184,8 @@ export function CadEvidenceRequest({
               <Copy className="h-4 w-4" aria-hidden="true" /> Copy letter
             </button>
             <a
+              target="_blank"
+              rel="noopener noreferrer"
               href={`mailto:${to ?? ""}?cc=${encodeURIComponent(CORVUSPT_COUNTY_EMAIL)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(letter)}`}
               className="btn-outline inline-flex items-center gap-1.5 text-sm"
             >

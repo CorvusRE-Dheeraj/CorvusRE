@@ -798,7 +798,12 @@ export function InformalReviewSection({
 
           {mailto ? (
             <div>
-              <a href={mailto} className="btn-accent text-xs py-1.5 inline-flex">
+              <a
+                href={mailto}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-accent text-xs py-1.5 inline-flex"
+              >
                 Draft Email to {guidance.contactEmail}
               </a>
               <p className="mt-1 text-[11px] text-muted-foreground">

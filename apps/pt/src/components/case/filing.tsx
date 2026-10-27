@@ -1036,7 +1036,12 @@ function FilingSubmissionFlow({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {mailtoHref && (
-                    <a href={mailtoHref} className="btn-outline text-xs py-1.5">
+                    <a
+                      href={mailtoHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-outline text-xs py-1.5"
+                    >
                       Open in Mail App →
                     </a>
                   )}

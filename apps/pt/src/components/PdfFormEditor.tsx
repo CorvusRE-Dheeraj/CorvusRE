@@ -429,7 +429,12 @@ function SignedFilingGuidance({
               </p>
             )}
             {mailto && (
-              <a href={mailto} className="btn-outline mt-2 inline-flex text-xs py-1.5">
+              <a
+                href={mailto}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-outline mt-2 inline-flex text-xs py-1.5"
+              >
                 Draft Email
               </a>
             )}
@@ -496,7 +501,12 @@ function SignedFilingGuidance({
               </a>
             )}
             {mailto && (
-              <a href={mailto} className="btn-outline text-xs py-1.5">
+              <a
+                href={mailto}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-outline text-xs py-1.5"
+              >
                 Draft Email
               </a>
             )}
