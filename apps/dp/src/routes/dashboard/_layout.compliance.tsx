@@ -281,7 +281,7 @@ function DrawingSet({
   return (
     <Section
       title="Drawing set"
-      subtitle="Architectural, civil, structural, MEP, fire protection, survey and supporting documents. PDFs (multi-page sets welcome) and DXF; DWG is stored but needs a DXF or PDF export to be checked."
+      subtitle="Architectural, civil, structural, MEP, fire protection, survey and supporting documents. PDFs (multi-page sets welcome), DXF and DWG — CAD files are read for their real geometry, units and dimensions."
     >
       <form onSubmit={upload} className="grid gap-3 sm:grid-cols-[200px_1fr_auto] sm:items-end">
         <Field label="Discipline">
@@ -387,9 +387,13 @@ function DocRow({
   } else if (isPdf) {
     status = <Pill tone="gray">Not read yet</Pill>;
   } else if (cad?.format === "dxf") {
-    status = <Pill tone="green">DXF · {cad.entityCount} entities</Pill>;
+    status = (
+      <Pill tone="green">
+        {cad.source === "dwg" ? "DWG" : "DXF"} · {cad.entityCount} entities
+      </Pill>
+    );
   } else {
-    status = <Pill tone="amber">DWG — export DXF/PDF</Pill>;
+    status = <Pill tone="amber">DWG not readable — export DXF/PDF</Pill>;
   }
 
   return (

@@ -365,7 +365,7 @@ function cadBrief(d: Doc): string | null {
   if (!c) return null;
   if (c.format === "dwg") return `"${d.name}" is a DWG file that could not be read (needs a DXF/PDF export).`;
   const dims = (Array.isArray(c.dimensions) ? c.dimensions : []) as Record<string, unknown>[];
-  return `"${d.name}" (DXF geometry, parsed exactly): ${JSON.stringify({
+  return `"${d.name}" (${c.source === "dwg" ? "DWG" : "DXF"} geometry, parsed exactly): ${JSON.stringify({
     units: c.units,
     layers: c.layers,
     texts: (Array.isArray(c.texts) ? c.texts : []).slice(0, 200),

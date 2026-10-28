@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBinaryDxf, lengthTextToFeet, parseDxf } from "./dxf";
+import { fromDwgEntities, isBinaryDxf, lengthTextToFeet, parseDxf, summarizeCad } from "./dxf";
 
 const dxf = (units: number, entities: string[][]) =>
   [
@@ -90,5 +90,75 @@ describe("parseDxf", () => {
   it("spots binary DXF", () => {
     expect(isBinaryDxf("AutoCAD Binary DXF\r\n")).toBe(true);
     expect(isBinaryDxf("  0\nSECTION")).toBe(false);
+  });
+});
+
+// Shapes exactly as LibreDWG (@mlightcad/libredwg-web 0.7.17) returns them for
+// example_2018.dwg from the LibreDWG test suite, trimmed to the fields we read.
+describe("DWG entities (LibreDWG)", () => {
+  const sample = [
+    {
+      type: "LINE",
+      layer: "Tavolo 3",
+      startPoint: { x: 370.86, y: 730.63, z: 0 },
+      endPoint: { x: 450.04, y: 619.22, z: 0 },
+    },
+    {
+      type: "TEXT",
+      layer: "Tavolo 3",
+      startPoint: { x: 5881.25, y: 1296.9 },
+      endPoint: { x: 0, y: 0 },
+      text: "teksto simpla",
+    },
+    {
+      type: "MTEXT",
+      layer: "Tavolo 3",
+      insertionPoint: { x: 6909.32, y: 4954.12, z: 0 },
+      text: "Teksto granda.\\PAlia linio.",
+    },
+    {
+      type: "DIMENSION",
+      layer: "Tavolo 3",
+      insertionPoint: { x: 0, y: 0 },
+      name: "*D3",
+      text: "",
+      measurement: 1504.6794770244742,
+    },
+    { type: "DIMENSION", layer: "Dims", name: "*D9", text: "1200", measurement: 1504.68 },
+    {
+      type: "INSERT",
+      layer: "Tavolo 3",
+      insertionPoint: { x: 3642.14, y: 6066.05, z: 0 },
+      name: "bloko",
+    },
+    {
+      type: "LWPOLYLINE",
+      layer: "Rooms",
+      flag: 1,
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 4000, y: 0 },
+        { x: 4000, y: 3000 },
+        { x: 0, y: 3000 },
+      ],
+    },
+    { type: "HATCH", layer: "Tavolo 2" },
+  ];
+
+  it("summarises like a DXF: units, text, dimensions (blank text = live measurement), areas, blocks", () => {
+    const s = summarizeCad(4, fromDwgEntities(sample));
+    expect(s.units.name).toBe("Millimeters");
+    expect(s.entityCount).toBe(8);
+    expect(s.texts.map((t) => t.text)).toEqual(["teksto simpla", "Teksto granda. Alia linio."]);
+    expect(s.dimensions).toEqual([
+      { layer: "Tavolo 3", measured: 1504.6795, text: null, overridden: false },
+      { layer: "Dims", measured: 1504.68, text: "1200", overridden: true },
+    ]);
+    expect(s.closedAreas).toEqual([{ layer: "Rooms", area: 12_000_000 }]);
+    expect(s.blocks).toEqual([{ name: "bloko", count: 1 }]);
+    expect(s.layers[0]).toEqual({ name: "Tavolo 3", count: 5 });
+    // a dimension's 0,0 insertion point doesn't stretch the extents
+    expect(s.extents?.minX).toBe(0);
+    expect(s.extents?.maxY).toBe(6066.05);
   });
 });

@@ -5,6 +5,7 @@ import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import { storageSafeName } from "./storage-key";
 import { parseDxf, isBinaryDxf, type DxfSummary } from "./dxf";
+import { readDwgFile } from "./dwg";
 
 export type Discipline =
   "architectural" | "civil" | "structural" | "mep" | "fire" | "survey" | "landscape" | "other";
@@ -291,13 +292,20 @@ export async function uploadDrawing(input: {
       );
     cadSummary = parseDxf(text);
   }
-  if (kind === "dwg")
-    cadSummary = {
-      format: "dwg",
-      warnings: [
-        "DWG files are stored but can't be read yet — export the sheets as DXF or PDF so they can be checked.",
-      ],
-    };
+  if (kind === "dwg") {
+    // read in the browser (LibreDWG worker); if it can't, the file is still
+    // stored and the page asks for a DXF/PDF export instead
+    try {
+      cadSummary = await readDwgFile(bytes);
+    } catch (err) {
+      cadSummary = {
+        format: "dwg",
+        warnings: [
+          `${err instanceof Error ? err.message.replace(/\.$/, "") : "This DWG couldn't be read"} — export the sheets as DXF or PDF so they can be checked.`,
+        ],
+      };
+    }
+  }
   const path = `${input.userId}/${input.projectId}/${Date.now()}-${storageSafeName(file.name)}`;
   const { error: upErr } = await supabase.storage.from("project-docs").upload(path, file, {
     contentType: kind === "pdf" ? "application/pdf" : "application/octet-stream",

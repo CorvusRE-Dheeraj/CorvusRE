@@ -6,7 +6,9 @@
 // (group 1), closed outlines whose areas can be computed, and text kept apart
 // from lines. That lets the check tell annotation from geometry and catch a
 // dimension whose printed text was typed over and no longer matches what is
-// drawn. Binary DXF and DWG are not read here.
+// drawn. DWG goes through LibreDWG in public/dwg-worker.js (see dwg.ts) and
+// lands in the same summary via fromDwgEntities → summarizeCad. Binary DXF
+// is not read.
 
 export type DxfUnits = { code: number; name: string; toFeet: number | null };
 
@@ -19,6 +21,7 @@ export type DxfDimension = {
 
 export type DxfSummary = {
   format: "dxf";
+  source?: "dwg"; // geometry read from a DWG rather than a DXF
   units: DxfUnits;
   entityCount: number;
   layers: { name: string; count: number }[];
@@ -125,7 +128,6 @@ export function parseDxf(source: string): DxfSummary {
     pairs.push([code, lines[i + 1].trim()]);
   }
 
-  const warnings: string[] = [];
   let unitsCode = 0;
   const entities: Entity[] = [];
   let section = "";
@@ -157,6 +159,113 @@ export function parseDxf(source: string): DxfSummary {
     }
   }
 
+  const get = (e: Entity, c: number) => e.codes.find(([k]) => k === c)?.[1];
+  const num = (v: string | undefined) => Number(v);
+  const cad: CadEntity[] = entities.map((e) => {
+    const base = { type: e.type, layer: get(e, 8) ?? "0" };
+    switch (e.type) {
+      case "LINE":
+        return {
+          ...base,
+          points: [
+            [num(get(e, 10)), num(get(e, 20))],
+            [num(get(e, 11)), num(get(e, 21))],
+          ],
+        };
+      case "LWPOLYLINE": {
+        const xs = e.codes.filter(([k]) => k === 10).map(([, v]) => Number(v));
+        const ys = e.codes.filter(([k]) => k === 20).map(([, v]) => Number(v));
+        return {
+          ...base,
+          points: xs.map((x, j) => [x, ys[j]] as [number, number]),
+          closed: (num(get(e, 70)) & 1) === 1,
+        };
+      }
+      case "CIRCLE":
+      case "ARC":
+        return { ...base, points: [[num(get(e, 10)), num(get(e, 20))]] };
+      case "INSERT":
+        return { ...base, points: [[num(get(e, 10)), num(get(e, 20))]], block: get(e, 2) ?? "?" };
+      case "TEXT":
+      case "MTEXT":
+        return {
+          ...base,
+          points: [[num(get(e, 10)), num(get(e, 20))]],
+          text: e.codes
+            .filter(([k]) => k === 3 || k === 1)
+            .map(([, v]) => v)
+            .join(""),
+        };
+      case "DIMENSION":
+        return { ...base, measured: num(get(e, 42)), dimText: get(e, 1) ?? null };
+      default:
+        return base;
+    }
+  });
+  return summarizeCad(unitsCode, cad);
+}
+
+// One drawing entity, whichever file it came from (DXF group codes here, a
+// DWG read by LibreDWG in public/dwg-worker.js) — only what the summary uses.
+export type CadEntity = {
+  type: string;
+  layer: string;
+  points?: [number, number][];
+  closed?: boolean;
+  text?: string;
+  measured?: number;
+  dimText?: string | null;
+  block?: string;
+};
+
+// What LibreDWG's DwgDatabase gives for an entity (the fields we read).
+type DwgPoint = { x: number; y: number };
+export type DwgEntityLike = {
+  type: string;
+  layer?: string;
+  startPoint?: DwgPoint;
+  endPoint?: DwgPoint;
+  vertices?: DwgPoint[];
+  flag?: number;
+  center?: DwgPoint;
+  insertionPoint?: DwgPoint;
+  name?: string;
+  text?: string;
+  measurement?: number;
+};
+
+export function fromDwgEntities(entities: DwgEntityLike[]): CadEntity[] {
+  const pt = (p?: DwgPoint): [number, number][] => (p ? [[p.x, p.y]] : []);
+  return entities.map((e) => {
+    const base = { type: e.type, layer: e.layer || "0" };
+    switch (e.type) {
+      case "LINE":
+        return { ...base, points: [...pt(e.startPoint), ...pt(e.endPoint)] };
+      case "LWPOLYLINE":
+        return {
+          ...base,
+          points: (e.vertices ?? []).map((v) => [v.x, v.y] as [number, number]),
+          closed: ((e.flag ?? 0) & 1) === 1,
+        };
+      case "CIRCLE":
+      case "ARC":
+        return { ...base, points: pt(e.center) };
+      case "INSERT":
+        return { ...base, points: pt(e.insertionPoint), block: e.name ?? "?" };
+      case "TEXT":
+      case "MTEXT":
+        return { ...base, points: pt(e.startPoint ?? e.insertionPoint), text: e.text ?? "" };
+      case "DIMENSION":
+        // LibreDWG gives "" when the dimension shows its own measurement
+        return { ...base, measured: e.measurement, dimText: e.text || null };
+      default:
+        return base;
+    }
+  });
+}
+
+export function summarizeCad(unitsCode: number, entities: CadEntity[]): DxfSummary {
+  const warnings: string[] = [];
   const [unitName, toFeet] = UNITS[unitsCode] ?? ["Unknown", null];
   const units: DxfUnits = { code: unitsCode, name: unitName, toFeet };
   if (toFeet == null)
@@ -173,7 +282,7 @@ export function parseDxf(source: string): DxfSummary {
     minY = Infinity,
     maxX = -Infinity,
     maxY = -Infinity;
-  const extend = (x: number, y: number) => {
+  const extend = ([x, y]: [number, number]) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);
@@ -182,58 +291,34 @@ export function parseDxf(source: string): DxfSummary {
   };
 
   for (const e of entities) {
-    const get = (c: number) => e.codes.find(([k]) => k === c)?.[1];
-    const layer = get(8) ?? "0";
-    layerCount.set(layer, (layerCount.get(layer) ?? 0) + 1);
-    switch (e.type) {
-      case "LINE":
-        extend(Number(get(10)), Number(get(20)));
-        extend(Number(get(11)), Number(get(21)));
-        break;
-      case "LWPOLYLINE": {
-        const xs = e.codes.filter(([k]) => k === 10).map(([, v]) => Number(v));
-        const ys = e.codes.filter(([k]) => k === 20).map(([, v]) => Number(v));
-        const pts = xs.map((x, j) => [x, ys[j]] as [number, number]);
-        pts.forEach(([x, y]) => extend(x, y));
-        const closed = (Number(get(70)) & 1) === 1;
-        if (closed && pts.length >= 3 && closedAreas.length < MAX_AREAS)
-          closedAreas.push({ layer, area: Math.round(polygonArea(pts) * 100) / 100 });
-        break;
-      }
-      case "CIRCLE":
-      case "ARC":
-      case "INSERT":
-        extend(Number(get(10)), Number(get(20)));
-        if (e.type === "INSERT") {
-          const name = get(2) ?? "?";
-          blockCount.set(name, (blockCount.get(name) ?? 0) + 1);
-        }
-        break;
-      case "TEXT":
-      case "MTEXT": {
-        extend(Number(get(10)), Number(get(20)));
-        const body = e.codes
-          .filter(([k]) => k === 3 || k === 1)
-          .map(([, v]) => v)
-          .join("");
-        const text = cleanText(body);
-        if (text && texts.length < MAX_TEXTS) texts.push({ layer, text: text.slice(0, 200) });
-        break;
-      }
-      case "DIMENSION": {
-        const measured = Number(get(42));
-        if (!Number.isFinite(measured) || dimensions.length >= MAX_DIMS) break;
-        const raw = get(1);
-        const text = raw && raw !== "<>" ? cleanText(raw) : null;
-        const match = text ? textMatches(raw!, measured, units) : true;
-        dimensions.push({
-          layer,
-          measured: Math.round(measured * 10000) / 10000,
-          text,
-          overridden: match === false,
-        });
-        break;
-      }
+    layerCount.set(e.layer, (layerCount.get(e.layer) ?? 0) + 1);
+    e.points?.forEach(extend);
+    if (
+      e.type === "LWPOLYLINE" &&
+      e.closed &&
+      e.points &&
+      e.points.length >= 3 &&
+      closedAreas.length < MAX_AREAS
+    )
+      closedAreas.push({ layer: e.layer, area: Math.round(polygonArea(e.points) * 100) / 100 });
+    if (e.type === "INSERT" && e.block) blockCount.set(e.block, (blockCount.get(e.block) ?? 0) + 1);
+    if ((e.type === "TEXT" || e.type === "MTEXT") && e.text) {
+      const text = cleanText(e.text);
+      if (text && texts.length < MAX_TEXTS)
+        texts.push({ layer: e.layer, text: text.slice(0, 200) });
+    }
+    if (e.type === "DIMENSION") {
+      const measured = Number(e.measured);
+      if (!Number.isFinite(measured) || dimensions.length >= MAX_DIMS) continue;
+      const raw = e.dimText;
+      const text = raw && raw !== "<>" ? cleanText(raw) : null;
+      const match = text ? textMatches(raw!, measured, units) : true;
+      dimensions.push({
+        layer: e.layer,
+        measured: Math.round(measured * 10000) / 10000,
+        text,
+        overridden: match === false,
+      });
     }
   }
 
