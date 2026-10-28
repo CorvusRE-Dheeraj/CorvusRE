@@ -1,57 +1,92 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, useState, type CSSProperties } from "react";
-import { Check, ChevronDown, LocateFixed, Search } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, Check, LocateFixed, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyProject, Loading, Pill, humanize, permitStatusTone } from "@/components/dp-ui";
+import { useAuth } from "@/lib/auth";
+import { EmptyProject, Loading } from "@/components/dp-ui";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AvailabilityDot,
   ROUTE_STYLE,
   StationDetail,
   TrainIcon,
-  openStationWindow,
   useTrainTrack,
 } from "@/components/train-track";
 import { MiniTrain, TrainJourney } from "@/components/train-journey";
-import { RouteTrack, type TrackSide } from "@/components/route-track";
+import {
+  HistoryView,
+  PermitLanes,
+  PermitView,
+  RoundView,
+  StagePill,
+  type PermitTrack,
+  type TrackView,
+} from "@/components/permit-tracks";
 import {
   AVAILABILITY_LABEL,
-  PARALLEL_STOPS,
   ROUTES,
   getStation,
-  parallelTrackStop,
   wagonCargo,
   type Availability,
-  type RouteColor,
   type Station,
-  type TrainLocation,
   type Wagon,
 } from "@/lib/train-track";
-import type { PermitRow } from "@/lib/projects";
+import { LANE_COLORS, fmtDate, permitRounds, permitStage, stageName } from "@/lib/permit-history";
+import { TRACK_PORTFOLIO_KEY, getTrackPortfolio, type TrackPortfolio } from "@/lib/track-portfolio";
+import { setActiveProject } from "@/lib/projects";
 
 export const Route = createFileRoute("/dashboard/_layout/track-map")({
   head: () => ({ meta: [{ title: "Permitting Train-Track Map — CorvusDP" }] }),
   component: TrackMap,
 });
 
-type Filter = "all" | "stations" | "modules";
+type Filter = "all" | "process" | "ai";
+
+function buildTracks(p: TrackPortfolio | undefined): PermitTrack[] {
+  if (!p) return [];
+  return p.projects.flatMap((project) =>
+    p.permits
+      .filter((permit) => permit.project_id === project.id)
+      .map((permit) => {
+        const rounds = permitRounds(permit, p.submissions, p.comments);
+        return { project, permit, rounds, stage: permitStage(permit, rounds) };
+      }),
+  );
+}
+
+// a loop station clicked for one permit opens that permit's record at that step
+const LOOP_STAGE: Record<number, string> = {
+  18: "submitted",
+  19: "review",
+  20: "comments",
+  21: "assign",
+  22: "engineer",
+  23: "compliance",
+  27: "approved",
+  28: "approved",
+};
 
 function TrackMap() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { user } = useAuth();
   const { loading, hasProject, project, bundle, comments, location } = useTrainTrack();
+  const portfolio = useQuery({
+    queryKey: [TRACK_PORTFOLIO_KEY, user?.id],
+    queryFn: () => getTrackPortfolio(user!.id),
+    enabled: !!user,
+  });
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  // Only used when the browser blocks the popup window.
-  const [fallback, setFallback] = useState<{ n: number; view: "station" | "module" } | null>(null);
+  const [stack, setStack] = useState<TrackView[]>([]);
+  const tracks = useMemo(() => buildTracks(portfolio.data), [portfolio.data]);
 
   if (loading) return <Loading />;
   if (!hasProject || !project) return <EmptyProject />;
 
-  const open = (n: number, view: "station" | "module" = "station") => {
-    if (!openStationWindow(n, view)) setFallback({ n, view });
-  };
-
-  const here = location ? getStation(location.station) : undefined;
+  const projectTracks = tracks.filter((t) => t.project.id === project.id);
+  const projects = portfolio.data?.projects ?? [project];
   const wagons = location
     ? wagonCargo({
         trainAt: location.station,
@@ -61,16 +96,57 @@ function TrackMap() {
         comments,
       })
     : [];
-  const q = query.trim().toLowerCase();
-  const matches = (s: Station, text: string) =>
-    !q || text.toLowerCase().includes(q) || String(s.n) === q;
+  // the train sits in a permit's loop when the project is held up in review
+  const trainLoopPermit =
+    location && location.station >= 19 && location.station <= 24
+      ? projectTracks.find((t) => t.stage === location.station)?.permit.id
+      : undefined;
 
-  const jumpToTrain = () => {
-    document.getElementById("track-train")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const open = (v: TrackView) => setStack((s) => [...s, v]);
+  const openStation = (n: number, ai = false, permitId?: string) => {
+    if (ai) return open({ type: "station", n, ai: true });
+    if (n === 24 || n === 25)
+      return open({
+        type: "history",
+        projectId: project.id,
+        permitKey: permitId
+          ? (projectTracks.find((t) => t.permit.id === permitId)?.permit.permit_key ?? "all")
+          : "all",
+      });
+    if (permitId)
+      return open({
+        type: "permit",
+        permitId,
+        stage: LOOP_STAGE[n] ?? "review",
+        tab: [20, 21, 22, 23].includes(n) ? "comments" : "overview",
+      });
+    open({ type: "station", n });
   };
+  const openHistory = (projectId = project.id) =>
+    open({ type: "history", projectId, permitKey: "all" });
+
+  async function selectProject(id: string) {
+    if (id === project?.id) return;
+    await setActiveProject(id);
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["active-project"] }),
+      qc.invalidateQueries({ queryKey: ["projects"] }),
+      qc.invalidateQueries({ queryKey: [TRACK_PORTFOLIO_KEY] }),
+    ]);
+  }
+
+  const q = query.trim().toLowerCase();
+  const stationMatch = (s: Station) =>
+    !q || `${s.title} ${s.purpose} ${s.module}`.toLowerCase().includes(q) || String(s.n) === q;
+  const searchHits = q
+    ? ROUTES.flatMap((r) => r.stations).filter((n) => stationMatch(getStation(n)!)).length
+    : 0;
+
+  const rowProps = { filter, match: stationMatch, wagons, onOpen: openStation };
 
   return (
-    <div className="grid grid-cols-1 gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
+      {/* ── header (existing train graphics) ───────────────────────────── */}
       <header className="card-elev p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
@@ -78,30 +154,54 @@ function TrackMap() {
               <TrainIcon className="h-9 w-14" />
             </div>
             <div className="min-w-0">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-accent">
+                CorvusDP / Design + Permitting
+              </div>
               <h1 className="font-serif text-2xl font-semibold leading-tight">
                 Permitting Train-Track Map
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Every permitting step as a station. Click one to open its purpose, inputs, AI
-                actions, outputs and next step in a separate window.
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                One project, independent permit tracks. Click a station to see submission dates,
+                review comments and the time spent with the city or the design team.
               </p>
             </div>
           </div>
-          {here && location && <CurrentLocation station={here} location={location} onOpen={open} />}
+          {location && (
+            <div className="w-full max-w-sm rounded-2xl border-2 border-green-500 bg-green-50 p-4">
+              <div className="text-xs font-bold uppercase tracking-wide text-green-700">
+                Your train is at
+              </div>
+              <div className="mt-1 font-semibold text-green-950">
+                Station {location.station} · {getStation(location.station)?.title}
+              </div>
+              <p className="mt-1 text-sm text-green-900">{location.reason}</p>
+              <button
+                type="button"
+                className="btn-accent mt-3"
+                onClick={() => openStation(location.station)}
+              >
+                Open station
+              </button>
+            </div>
+          )}
         </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-xs font-semibold">
-          {ROUTES.map((r) => (
-            <span key={r.name} className="flex items-center gap-2">
-              <span
-                className={cn("h-3 w-3 rounded-full", ROUTE_STYLE[r.color].solid)}
-                aria-hidden
-              />
-              {r.name}
-            </span>
-          ))}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-xs text-muted-foreground">
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+          <span>
+            <b className="mr-1 text-base text-blue-700">→</b> Sequential steps within one permit
+          </span>
+          <span>
+            <b className="mr-1 text-base text-violet-700">∥</b> Independent parallel tracks
+          </span>
+          <span>
+            <b className="mr-1 text-base text-red-700">↻</b> Repeat this permit's review cycle
+          </span>
+          <span>
+            <b className="mr-1 text-base text-green-700">●</b> Current stage
+          </span>
+          <span>
+            <b className="mr-1 rounded bg-amber-400 px-1 text-[10px] text-amber-950">AI</b> Embedded
+            module details
+          </span>
           {(Object.keys(AVAILABILITY_LABEL) as Availability[]).map((a) => (
             <span key={a} className="flex items-center gap-1.5">
               <AvailabilityDot availability={a} />
@@ -111,19 +211,127 @@ function TrackMap() {
         </div>
       </header>
 
-      {location && <TrainJourney location={location} wagons={wagons} onOpenStation={open} />}
+      {location && (
+        <TrainJourney location={location} wagons={wagons} onOpenStation={(n) => openStation(n)} />
+      )}
 
+      {/* ── every project, then the selected one ──────────────────────── */}
+      <section className="card-elev p-5" aria-labelledby="portfolio-h">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="portfolio-h" className="font-serif text-lg font-semibold">
+              Your projects
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Every project stays in view. Pick one to see its own permits and submission history.
+            </p>
+          </div>
+          <span className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs">
+            {projects.length} project{projects.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {projects.map((p) => {
+            const mine = tracks.filter((t) => t.project.id === p.id);
+            const selected = p.id === project.id;
+            return (
+              <article
+                key={p.id}
+                className={cn(
+                  "flex min-w-0 flex-col rounded-xl border bg-card p-3.5",
+                  selected ? "border-2 border-accent bg-accent/5" : "border-border",
+                )}
+              >
+                <h3 className="truncate font-semibold" title={p.name ?? ""}>
+                  {p.name ?? p.address}
+                </h3>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  {p.city ?? "—"} · {mine.length} permit track{mine.length === 1 ? "" : "s"}
+                </p>
+                <div className={cn("mb-3 grid gap-1 text-xs", !selected && "max-sm:hidden")}>
+                  {mine.length ? (
+                    mine.map((t) => (
+                      <div key={t.permit.id} className="flex flex-wrap justify-between gap-x-2">
+                        <b className="font-medium">{t.permit.name}</b>
+                        <span className="text-muted-foreground">{stageName(t.stage)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground">No permits identified yet</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  className={cn("mt-auto w-full text-xs", selected ? "btn-accent" : "btn-outline")}
+                  onClick={() => selectProject(p.id)}
+                >
+                  {selected ? "Viewing this project" : "View this project"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-800 px-4 py-3.5 text-white">
+        <label className="grid min-w-0 gap-1 max-sm:w-full">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-300">
+            Selected project
+          </span>
+          <select
+            className="min-w-0 rounded-md border border-slate-600 bg-white px-2 py-1.5 text-sm text-slate-900 sm:min-w-[260px]"
+            value={project.id}
+            onChange={(e) => selectProject(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name ?? p.address}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="min-w-0 text-xs text-slate-200">
+          {projectTracks.map((t) => (
+            <div key={t.permit.id}>
+              {t.permit.name} <strong className="text-white">· {stageName(t.stage)}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+            onClick={() =>
+              document
+                .getElementById("submission-section")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          >
+            Open permit tracks
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+            onClick={() => openHistory()}
+          >
+            Resubmission Manager
+          </button>
+        </div>
+      </div>
+
+      {/* ── map tools ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className="inline-flex rounded-full border border-border bg-card p-1"
+          className="inline-flex flex-wrap rounded-full border border-border bg-card p-1"
           role="group"
-          aria-label="Show"
+          aria-label="Map content"
         >
           {(
             [
-              ["all", "Show all"],
-              ["stations", "Process stations"],
-              ["modules", "AI modules"],
+              ["all", "All stations + AI"],
+              ["process", "Process stations"],
+              ["ai", "AI modules"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -142,146 +350,245 @@ function TrackMap() {
             </button>
           ))}
         </div>
-        <button type="button" className="btn-outline" onClick={jumpToTrain}>
+        <button
+          type="button"
+          className="btn-outline"
+          onClick={() =>
+            document
+              .getElementById("track-train")
+              ?.scrollIntoView({ behavior: "smooth", block: "center" })
+          }
+        >
           <LocateFixed className="h-4 w-4" aria-hidden /> Find my train
         </button>
         <label className="relative ml-auto w-full sm:w-72">
-          <span className="sr-only">Search stations or AI modules</span>
+          <span className="sr-only">Find a station or AI module</span>
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden
           />
           <input
+            type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search station or AI module…"
+            placeholder="Find a station or AI module…"
             className="w-full rounded-full border border-input bg-background py-2 pl-9 pr-3 text-sm"
           />
         </label>
+        <span className="w-full text-right text-xs text-muted-foreground" aria-live="polite">
+          {q
+            ? searchHits
+              ? `${searchHits} matching station${searchHits === 1 ? "" : "s"}`
+              : "No matching stations"
+            : ""}
+        </span>
       </div>
 
-      {ROUTES.map((route) => {
-        const stations = route.stations.map((n) => getStation(n)!);
-        const shownStations = stations.filter((s) =>
-          matches(s, `${s.title} ${s.purpose} ${s.module}`),
-        );
-        const shownModules = stations.filter((s) => matches(s, s.module));
-        const showStations = filter !== "modules" && shownStations.length > 0;
-        const showModules = filter !== "stations" && shownModules.length > 0;
-        return { route, shownStations, shownModules, showStations, showModules };
-      })
-        .filter((r) => r.showStations || r.showModules)
-        .map(({ route, shownStations, shownModules, showStations, showModules }, i, all) => {
-          const style = ROUTE_STYLE[route.color];
-          const last = i === all.length - 1;
-          // The line snakes down the page: out on the right, in on the right,
-          // out on the left, in on the left, …
-          const sideOf = (k: number): TrackSide => (k % 2 === 0 ? "right" : "left");
-          const entrySide = i > 0 ? sideOf(i - 1) : null;
+      {/* ── routes 1–3 ───────────────────────────────────────────────── */}
+      {ROUTES.slice(0, 3).map((route, i) => (
+        <Fragment key={route.name}>
+          <RouteSection
+            color={route.color}
+            title={route.name}
+            subtitle={`${["Validated project inputs", "Local requirements + constraints", "Pre-application + package preparation"][i]} · Click a numbered station or its AI module.`}
+            tag="Process group"
+          >
+            <StationRow
+              nums={route.stations}
+              current={(n) => location?.station === n}
+              trainAt={location?.station}
+              {...rowProps}
+            />
+          </RouteSection>
+          {i < 2 ? (
+            <FlowLink
+              symbol="→"
+              title="Connected process outputs."
+              text="Each step's outputs feed the next; support work can continue alongside."
+            />
+          ) : (
+            <FlowLink
+              symbol="∥"
+              title="Permit-specific handoff."
+              text="Each complete permit package starts its own submission and review."
+            />
+          )}
+        </Fragment>
+      ))}
 
-          return (
-            <Fragment key={route.name}>
-              {entrySide && <RouteConnector color={route.color} side={entrySide} />}
-              <section className="relative rounded-2xl border border-border bg-card px-4 pb-5 pt-8 sm:px-5">
-                {/* The line itself, curving into the right edge and on to the next route. */}
-                {showStations && <RouteTrack entry={entrySide} exit={last ? null : sideOf(i)} />}
-                <h2
-                  className={cn(
-                    "absolute -top-3.5 left-4 rounded-full px-4 py-1.5 text-sm font-bold text-white shadow-sm",
-                    style.solid,
-                  )}
-                >
-                  {route.name}
-                </h2>
+      {/* ── submission + parallel permit tracks ───────────────────────── */}
+      <RouteSection
+        id="submission-section"
+        color="teal"
+        title="Submission Management + Parallel Permit Tracks"
+        subtitle={`${project.name ?? project.address} · ${projectTracks.length} permit${projectTracks.length === 1 ? "" : "s"} · every step below is clickable`}
+        tag="∥ Independent permit records"
+      >
+        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="w-full shrink-0 lg:w-[300px]">
+            <StationRow
+              nums={[18]}
+              current={(n) => location?.station === n}
+              trainAt={location?.station}
+              {...rowProps}
+              single
+            />
+          </div>
+          <div className="min-w-0 flex-1 text-sm text-muted-foreground">
+            Open <strong className="text-foreground">Submission Management</strong> to see every
+            permit's latest filing. Open the{" "}
+            <strong className="text-foreground">Resubmission Manager</strong> to compare every round
+            and keep time at the city apart from time with engineers.
+            <div className="mt-3">
+              <button type="button" className="btn-accent" onClick={() => openHistory()}>
+                View all submissions / resubmissions
+              </button>
+            </div>
+          </div>
+        </div>
+        {portfolio.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading permits…</p>
+        ) : (
+          <PermitLanes tracks={projectTracks} onView={open} />
+        )}
+      </RouteSection>
 
-                {showStations && (
-                  // One row per route on wide screens (like a single line of
-                  // track); narrower screens wrap, and the rail through each slot
-                  // keeps every row reading as track (RouteTrack). Min 4 columns so the
-                  // one-station Submission route doesn't stretch into a banner.
-                  <ol
-                    data-track-rows
-                    className="grid gap-x-4 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))] xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
-                    style={{ "--cols": Math.max(route.stations.length, 4) } as CSSProperties}
-                  >
-                    {shownStations.map((s) => (
-                      <StationSlot
-                        key={s.n}
-                        station={s}
-                        state={
-                          !location
-                            ? "ahead"
-                            : s.n === location.station
-                              ? "current"
-                              : s.n < location.station
-                                ? "passed"
-                                : "ahead"
-                        }
-                        onOpen={open}
-                        wagons={wagons}
-                      />
-                    ))}
-                  </ol>
+      <FlowLink
+        symbol="∥"
+        title="Separate loops, shared visibility."
+        text="The dashboard adds up results; it never merges the permits' review clocks."
+      />
+
+      {/* ── review loop, one per permit ───────────────────────────────── */}
+      <RouteSection
+        color="green"
+        title="Review + Comment / Resubmission Loops"
+        subtitle="Each permit has its own reviewer, comment assignments, engineer response and versioned submissions."
+        tag="↻ Repeats per permit"
+      >
+        {projectTracks.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Permits appear here once the analysis identifies them.
+          </p>
+        )}
+        <div className="grid gap-4">
+          {projectTracks.map((t, i) => {
+            const r = t.rounds.at(-1);
+            return (
+              <article
+                key={t.permit.id}
+                id={`loop-${t.permit.id}`}
+                className={cn(
+                  "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4",
+                  LANE_COLORS[i % LANE_COLORS.length],
                 )}
-
-                {route.color === "teal" && filter !== "modules" && !q && (
-                  <ParallelTracks permits={bundle?.permits ?? []} />
-                )}
-
-                {showModules && (
-                  <div className={cn("flex flex-wrap gap-2", showStations && "mt-4")}>
-                    {shownModules.map((s) => (
-                      <button
-                        key={s.n}
-                        type="button"
-                        onClick={() => open(s.n, "module")}
-                        className="inline-flex items-center gap-2 rounded-full border-2 border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                      >
-                        <span className="rounded-md bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">
-                          AI
-                        </span>
-                        {s.module}
-                        <AvailabilityDot availability={s.availability} />
-                      </button>
-                    ))}
+              >
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold">
+                      {t.permit.name} · Review + Comment / Resubmission Loop
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {r
+                        ? `Latest: submission ${r.round}, filed ${fmtDate(r.submitted_at)}`
+                        : "Not submitted yet"}{" "}
+                      · this permit's records only
+                    </p>
                   </div>
-                )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StagePill stage={t.stage} />
+                    <button
+                      type="button"
+                      className="btn-outline px-2.5 py-1 text-xs"
+                      onClick={() =>
+                        open({
+                          type: "history",
+                          projectId: project.id,
+                          permitKey: t.permit.permit_key,
+                        })
+                      }
+                    >
+                      Resubmission Manager
+                    </button>
+                  </div>
+                </div>
+                <StationRow
+                  nums={[19, 20, 21, 22, 23, 24]}
+                  current={(n) => t.stage === n}
+                  trainAt={trainLoopPermit === t.permit.id ? location?.station : undefined}
+                  permitId={t.permit.id}
+                  {...rowProps}
+                />
+                <p className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-800">
+                  <span className="text-lg leading-none" aria-hidden>
+                    ↻
+                  </span>
+                  Resubmit this permit → its next city review starts. Repeats only when the city
+                  asks for revisions.
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  City approval exits the loop directly — no extra resubmission, and the other
+                  permits don't have to finish first.
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      </RouteSection>
 
-                {route.color === "green" && !q && (
-                  <p className="mt-4 rounded-full border-2 border-dashed border-red-300 bg-red-50 px-4 py-2 text-center text-sm font-semibold text-red-800">
-                    Loop: comments assigned to design team → compliance check → resubmit to city
-                  </p>
-                )}
-                {route.color === "gray" && !q && (
-                  <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
-                    Outcome: faster submissions · clearer accountability · central permit review
-                    visibility · reduced permit aging risk
-                  </p>
-                )}
-              </section>
-            </Fragment>
-          );
-        })}
+      <FlowLink
+        symbol="→"
+        title="Approval per permit."
+        text="Approval, clearance and expiry records stay specific to each permit."
+      />
 
-      <Dialog open={!!fallback} onOpenChange={(o) => !o && setFallback(null)}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogTitle className="sr-only">Station details</DialogTitle>
-          {fallback && (
-            <>
-              <p className="text-xs text-muted-foreground">
-                Your browser blocked the separate window, so the station is shown here instead.
-              </p>
-              <StationDetail
-                station={getStation(fallback.n)!}
-                view={fallback.view}
-                location={location}
-                onOpenStation={(n, view) => setFallback({ n, view })}
-                onGoToPage={(page) => {
-                  setFallback(null);
-                  void navigate({ to: page });
-                }}
-              />
-            </>
+      {/* ── approval / clearance / expiry ─────────────────────────────── */}
+      <RouteSection
+        color="gray"
+        title={ROUTES[5].name}
+        subtitle="Submission aging and expediting run during review; clearance follows the required approvals."
+        tag="Monitoring + closeout"
+      >
+        <StationRow
+          nums={ROUTES[5].stations}
+          current={(n) => location?.station === n}
+          trainAt={location?.station}
+          {...rowProps}
+        />
+        <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
+          Outcome: faster submissions · clearer accountability · central permit review visibility ·
+          reduced permit aging risk
+        </p>
+      </RouteSection>
+
+      {/* ── popups ────────────────────────────────────────────────────── */}
+      <Dialog open={stack.length > 0} onOpenChange={(o) => !o && setStack([])}>
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-5xl overflow-y-auto p-4 sm:p-6">
+          <DialogTitle className="sr-only">Train-track details</DialogTitle>
+          {stack.length > 1 && (
+            <button
+              type="button"
+              className="btn-outline w-fit px-2.5 py-1 text-xs"
+              onClick={() => setStack((s) => s.slice(0, -1))}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Back
+            </button>
+          )}
+          {stack.length > 0 && (
+            <ViewBody
+              view={stack[stack.length - 1]}
+              tracks={tracks}
+              projectTracks={projectTracks}
+              projects={projects}
+              location={location}
+              onView={open}
+              onReplace={(v) => setStack((s) => [...s.slice(0, -1), v])}
+              onStation={openStation}
+              onGoToPage={(page) => {
+                setStack([]);
+                void navigate({ to: page });
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
@@ -289,174 +596,271 @@ function TrackMap() {
   );
 }
 
-function CurrentLocation({
-  station,
+function ViewBody({
+  view,
+  tracks,
+  projectTracks,
+  projects,
   location,
-  onOpen,
+  onView,
+  onReplace,
+  onStation,
+  onGoToPage,
 }: {
-  station: Station;
-  location: TrainLocation;
-  onOpen: (n: number) => void;
+  view: TrackView;
+  tracks: PermitTrack[];
+  projectTracks: PermitTrack[];
+  projects: TrackPortfolio["projects"];
+  location: ReturnType<typeof useTrainTrack>["location"];
+  onView: (v: TrackView) => void;
+  onReplace: (v: TrackView) => void;
+  onStation: (n: number, ai?: boolean, permitId?: string) => void;
+  onGoToPage: (page: string) => void;
 }) {
-  return (
-    <div className="w-full max-w-sm rounded-2xl border-2 border-green-500 bg-green-50 p-4">
-      <div className="text-xs font-bold uppercase tracking-wide text-green-700">
-        Your train is at
-      </div>
-      <div className="mt-1 font-semibold text-green-950">
-        Station {station.n} · {station.title}
-      </div>
-      <p className="mt-1 text-sm text-green-900">{location.reason}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className="btn-accent" onClick={() => onOpen(station.n)}>
-          Open station
-        </button>
-        <Link to={station.page} className="btn-outline">
-          Work on it
-        </Link>
-      </div>
-    </div>
-  );
-}
+  if (view.type === "history")
+    return (
+      <HistoryView
+        view={view}
+        tracks={tracks}
+        projects={projects}
+        onView={onView}
+        onChange={onReplace}
+      />
+    );
+  const track =
+    "permitId" in view && view.permitId
+      ? tracks.find((t) => t.permit.id === view.permitId)
+      : undefined;
+  if (view.type === "permit")
+    return track ? (
+      <PermitView view={view} track={track} onView={onView} onChange={onReplace} />
+    ) : null;
+  if (view.type === "round")
+    return track ? <RoundView track={track} roundNo={view.round} onView={onView} /> : null;
 
-// Bridges the gap between one route section and the next so the whole page
-// reads as one continuous line, not a separate disconnected track per route
-// card. Coloured to the route it leads into.
-function RouteConnector({ color, side }: { color: RouteColor; side: TrackSide }) {
+  const station = getStation(view.n)!;
+  const perPermit = [19, 20, 21, 22, 23, 25, 26, 27, 28, 29].includes(station.n) && !view.ai;
   return (
-    <div
-      className={cn("relative -my-5 flex h-10", side === "right" ? "justify-end" : "justify-start")}
-      aria-hidden
-    >
-      {/* Centred on the cards' border line on that side, like the bends inside them. */}
-      <span
-        className={cn("track-link relative h-full", side === "right" ? "-mr-[7px]" : "-ml-[7px]")}
-      >
-        <ChevronDown
-          className={cn(
-            "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-card",
-            ROUTE_STYLE[color].text,
-          )}
-        />
-      </span>
-    </div>
-  );
-}
-
-function StationSlot({
-  station,
-  state,
-  onOpen,
-  wagons,
-}: {
-  station: Station;
-  state: "passed" | "current" | "ahead";
-  onOpen: (n: number) => void;
-  wagons: Wagon[];
-}) {
-  const style = ROUTE_STYLE[station.color];
-  return (
-    <li className="relative pt-11">
-      <span
-        className={cn(
-          "absolute left-2 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full border-[3px] border-white text-xs font-bold text-white shadow",
-          state === "passed" ? "bg-green-700" : style.solid,
-        )}
-        aria-hidden
-      >
-        {state === "passed" ? <Check className="h-4 w-4" /> : station.n}
-      </span>
-      {state === "current" && (
-        // Front of the train at the card's right edge (clear of the bend), wagons trailing
-        // back along the rail; wheels on the rail (whose top is 1.1rem down the slot).
-        <span id="track-train" className="absolute bottom-[calc(100%-1.45rem)] right-0 z-20">
-          <MiniTrain wagons={wagons} />
-        </span>
+    <div className="grid gap-4">
+      <StationDetail
+        station={station}
+        view={view.ai ? "module" : "station"}
+        location={location}
+        onOpenStation={(n, v) => onStation(n, v === "module")}
+        onGoToPage={onGoToPage}
+      />
+      {station.n === 18 && !view.ai && <PermitLanes tracks={projectTracks} onView={onView} />}
+      {perPermit && projectTracks.length > 0 && (
+        <div className="max-w-full overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                {["Permit", "Current stage", "Latest submission", "Expected city return", ""].map(
+                  (h) => (
+                    <th key={h} className="px-3 py-2 font-semibold">
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {projectTracks.map((t) => {
+                const r = t.rounds.at(-1);
+                return (
+                  <tr key={t.permit.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-semibold">{t.permit.name}</td>
+                    <td className="px-3 py-2">
+                      <StagePill stage={t.stage} />
+                    </td>
+                    <td className="px-3 py-2">{r ? fmtDate(r.submitted_at) : "Not submitted"}</td>
+                    <td className="px-3 py-2">
+                      {r ? fmtDate(r.expected_at, "Not estimated") : "Not estimated"}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        className="btn-outline px-2 py-0.5 text-xs"
+                        onClick={() => onStation(station.n, false, t.permit.id)}
+                      >
+                        Open permit
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
-      <button
-        type="button"
-        onClick={() => onOpen(station.n)}
-        aria-label={`Station ${station.n}: ${station.title}${state === "current" ? " — your project is here" : ""}. Opens details in a new window.`}
-        className={cn(
-          "flex h-full w-full flex-col rounded-2xl border-2 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md",
-          style.border,
-          state === "current" && "bg-green-50 ring-4 ring-green-500/25",
-          // Done stations get a quiet tint, not reduced opacity (which fails contrast).
-          state === "passed" && "bg-secondary/50",
-        )}
-      >
-        <span className="text-[13px] font-semibold leading-snug">{station.title}</span>
-        <span className="mt-1 line-clamp-3 text-xs text-muted-foreground">{station.purpose}</span>
-        <span className="mt-auto flex items-center gap-1.5 pt-3">
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate rounded-full border bg-card px-2 py-1 text-center text-[10px] font-bold",
-              style.border,
-              style.text,
-            )}
-          >
-            {station.module}
-          </span>
-          <AvailabilityDot availability={station.availability} />
-        </span>
-      </button>
-    </li>
+    </div>
   );
 }
 
-// Each permit is its own parallel line once it's filed. Stops come straight
-// from the permit's real status.
-function ParallelTracks({ permits }: { permits: PermitRow[] }) {
-  if (permits.length === 0) return null;
+function RouteSection({
+  id,
+  color,
+  title,
+  subtitle,
+  tag,
+  children,
+}: {
+  id?: string;
+  color: keyof typeof ROUTE_STYLE;
+  title: string;
+  subtitle: string;
+  tag: string;
+  children: ReactNode;
+}) {
+  const style = ROUTE_STYLE[color];
   return (
-    <div className="mt-5 rounded-2xl border border-border bg-muted/30 p-4">
-      <h3 className="text-sm font-semibold">Parallel permit tracks</h3>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        Each permit runs on its own line after it's filed.
-      </p>
-      <div className="mt-3 grid grid-cols-1 gap-3">
-        {permits.map((p) => {
-          const stop = parallelTrackStop(p.status);
+    <section
+      id={id}
+      className={cn(
+        "min-w-0 scroll-mt-4 rounded-2xl border border-l-4 border-border bg-card p-4 sm:p-5",
+        style.border,
+      )}
+    >
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className={cn("text-base font-bold", style.text)}>{title}</h2>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        <span className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
+          {tag}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function FlowLink({ symbol, title, text }: { symbol: string; title: string; text: string }) {
+  return (
+    <div className="-my-2 flex items-center justify-center gap-2.5 px-4 text-center text-xs text-muted-foreground">
+      <b className="text-xl text-blue-700" aria-hidden>
+        {symbol}
+      </b>
+      <span>
+        <strong className="text-foreground">{title}</strong> {text}
+      </span>
+    </div>
+  );
+}
+
+// One row of track: station cards joined by → connectors, each with its AI
+// module underneath. Scrolls sideways on narrow screens; fills the row on wide.
+function StationRow({
+  nums,
+  current,
+  trainAt,
+  permitId,
+  filter,
+  match,
+  wagons,
+  onOpen,
+  single,
+}: {
+  nums: number[];
+  current: (n: number) => boolean;
+  trainAt?: number;
+  permitId?: string;
+  filter: Filter;
+  match: (s: Station) => boolean;
+  wagons: Wagon[];
+  onOpen: (n: number, ai?: boolean, permitId?: string) => void;
+  single?: boolean;
+}) {
+  return (
+    <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-1">
+      <ol className={cn("flex items-stretch", single ? "w-full" : "min-w-max xl:min-w-0")}>
+        {nums.map((n, i) => {
+          const s = getStation(n)!;
+          const dim = !match(s);
+          const isCurrent = current(n);
+          const style = ROUTE_STYLE[s.color];
           return (
-            <div
-              key={p.id}
-              className="grid grid-cols-1 items-center gap-2 md:grid-cols-[220px_minmax(0,1fr)]"
-            >
-              <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-medium" title={p.name}>
-                  {p.name}
-                </span>
-                <Pill tone={permitStatusTone(p.status)}>{humanize(p.status)}</Pill>
-              </div>
-              {stop < 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Not filed yet — still being prepared.
-                </p>
-              ) : (
-                <ol className="relative grid grid-cols-4 gap-2">
-                  <span
-                    className="absolute left-2 right-2 top-1/2 h-1 -translate-y-1/2 rounded-full bg-slate-200"
-                    aria-hidden
-                  />
-                  {PARALLEL_STOPS.map((label, i) => (
-                    <li
-                      key={label}
-                      className={cn(
-                        "relative rounded-full border-2 px-2 py-1 text-center text-[11px] font-semibold",
-                        i < stop && "border-green-600 bg-green-50 text-green-800",
-                        i === stop && "border-teal-600 bg-teal-600 text-white",
-                        i > stop && "border-slate-200 bg-card text-muted-foreground",
-                      )}
-                    >
-                      {label}
-                    </li>
-                  ))}
-                </ol>
+            <Fragment key={n}>
+              {i > 0 && (
+                <li
+                  className="flex w-7 shrink-0 items-start justify-center pt-[4.5rem] text-slate-400 xl:w-4"
+                  aria-hidden
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </li>
               )}
-            </div>
+              <li
+                className={cn(
+                  "relative flex flex-col gap-1.5",
+                  single ? "w-full" : "w-[196px] shrink-0 xl:w-auto xl:min-w-[128px] xl:flex-1",
+                  dim && "opacity-25",
+                )}
+              >
+                {filter !== "ai" && (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(n, false, permitId)}
+                    aria-label={`Station ${n}: ${s.title}${isCurrent ? " — current stage" : ""}`}
+                    className={cn(
+                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md",
+                      style.border,
+                      isCurrent && "border-green-600 bg-green-50 ring-4 ring-green-500/20",
+                    )}
+                  >
+                    <span className="mb-2 flex items-center justify-between gap-2">
+                      <span
+                        className={cn(
+                          "grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white shadow",
+                          isCurrent ? "bg-green-700" : style.solid,
+                        )}
+                      >
+                        {n}
+                      </span>
+                      <small
+                        className={cn(
+                          "text-[10px] font-semibold",
+                          isCurrent ? "text-green-700" : "text-muted-foreground",
+                        )}
+                      >
+                        {isCurrent ? "CURRENT" : "Open details"}
+                      </small>
+                    </span>
+                    {trainAt === n && (
+                      <span id="track-train" className="absolute -top-5 right-1 z-10">
+                        <MiniTrain wagons={wagons} />
+                      </span>
+                    )}
+                    <span className="text-[13px] font-semibold leading-snug">
+                      {n === 22 ? "Engineer response + comment timeline" : s.title}
+                    </span>
+                    <span className="mt-1 line-clamp-3 text-[11px] text-muted-foreground">
+                      {s.purpose}
+                    </span>
+                    {isCurrent && (
+                      <span className="mt-auto flex items-center gap-1 pt-2 text-[11px] font-semibold text-green-700">
+                        <Check className="h-3 w-3" aria-hidden /> You're here
+                      </span>
+                    )}
+                  </button>
+                )}
+                {filter !== "process" && (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(n, true)}
+                    className="flex min-h-[44px] w-full items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-amber-900 hover:bg-amber-100"
+                  >
+                    <span className="shrink-0 rounded bg-amber-400 px-1 py-0.5 text-[9px] font-bold text-amber-950">
+                      AI
+                    </span>
+                    <span className="min-w-0 flex-1">{s.module.replace(/^AI /, "")}</span>
+                    <AvailabilityDot availability={s.availability} />
+                  </button>
+                )}
+              </li>
+            </Fragment>
           );
         })}
-      </div>
+      </ol>
     </div>
   );
 }
