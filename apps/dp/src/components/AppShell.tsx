@@ -25,6 +25,7 @@ import {
   Menu,
   TrainTrack,
   KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { listProjects, setActiveProject, deleteProject } from "@/lib/projects";
@@ -76,6 +77,7 @@ const PERMITTING_SUBGROUPS: NavSubgroup[] = [
       { to: "/dashboard/constraints", label: "Site Data", icon: Layers },
       { to: "/dashboard/checklist", label: "Checklist", icon: ListChecks },
       { to: "/dashboard/prepare", label: "Prepare", icon: ClipboardCheck },
+      { to: "/dashboard/compliance", label: "Compliance Check", icon: ShieldCheck },
       { to: "/dashboard/fees", label: "Fees", icon: Receipt },
     ],
   },

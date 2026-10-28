@@ -32,6 +32,7 @@ import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_la
 import { Route as DashboardLayoutApprovalsRouteImport } from './routes/dashboard/_layout.approvals'
 import { Route as DashboardLayoutChecklistRouteImport } from './routes/dashboard/_layout.checklist'
 import { Route as DashboardLayoutCityRouteImport } from './routes/dashboard/_layout.city'
+import { Route as DashboardLayoutComplianceRouteImport } from './routes/dashboard/_layout.compliance'
 import { Route as DashboardLayoutConstraintsRouteImport } from './routes/dashboard/_layout.constraints'
 import { Route as DashboardLayoutDailyLogRouteImport } from './routes/dashboard/_layout.daily-log'
 import { Route as DashboardLayoutDesignRouteImport } from './routes/dashboard/_layout.design'
@@ -175,6 +176,12 @@ const DashboardLayoutCityRoute = DashboardLayoutCityRouteImport.update({
   path: '/city',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutComplianceRoute =
+  DashboardLayoutComplianceRouteImport.update({
+    id: '/compliance',
+    path: '/compliance',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 const DashboardLayoutConstraintsRoute =
   DashboardLayoutConstraintsRouteImport.update({
     id: '/constraints',
@@ -337,6 +344,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
+  '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
   '/dashboard/constraints': typeof DashboardLayoutConstraintsRoute
   '/dashboard/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/design': typeof DashboardLayoutDesignRoute
@@ -386,6 +394,7 @@ export interface FileRoutesByTo {
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
+  '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
   '/dashboard/constraints': typeof DashboardLayoutConstraintsRoute
   '/dashboard/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/design': typeof DashboardLayoutDesignRoute
@@ -437,6 +446,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/approvals': typeof DashboardLayoutApprovalsRoute
   '/dashboard/_layout/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/_layout/city': typeof DashboardLayoutCityRoute
+  '/dashboard/_layout/compliance': typeof DashboardLayoutComplianceRoute
   '/dashboard/_layout/constraints': typeof DashboardLayoutConstraintsRoute
   '/dashboard/_layout/daily-log': typeof DashboardLayoutDailyLogRoute
   '/dashboard/_layout/design': typeof DashboardLayoutDesignRoute
@@ -489,6 +499,7 @@ export interface FileRouteTypes {
     | '/dashboard/approvals'
     | '/dashboard/checklist'
     | '/dashboard/city'
+    | '/dashboard/compliance'
     | '/dashboard/constraints'
     | '/dashboard/daily-log'
     | '/dashboard/design'
@@ -538,6 +549,7 @@ export interface FileRouteTypes {
     | '/dashboard/approvals'
     | '/dashboard/checklist'
     | '/dashboard/city'
+    | '/dashboard/compliance'
     | '/dashboard/constraints'
     | '/dashboard/daily-log'
     | '/dashboard/design'
@@ -588,6 +600,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/approvals'
     | '/dashboard/_layout/checklist'
     | '/dashboard/_layout/city'
+    | '/dashboard/_layout/compliance'
     | '/dashboard/_layout/constraints'
     | '/dashboard/_layout/daily-log'
     | '/dashboard/_layout/design'
@@ -801,6 +814,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutCityRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/compliance': {
+      id: '/dashboard/_layout/compliance'
+      path: '/compliance'
+      fullPath: '/dashboard/compliance'
+      preLoaderRoute: typeof DashboardLayoutComplianceRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/constraints': {
       id: '/dashboard/_layout/constraints'
       path: '/constraints'
@@ -983,6 +1003,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutApprovalsRoute: typeof DashboardLayoutApprovalsRoute
   DashboardLayoutChecklistRoute: typeof DashboardLayoutChecklistRoute
   DashboardLayoutCityRoute: typeof DashboardLayoutCityRoute
+  DashboardLayoutComplianceRoute: typeof DashboardLayoutComplianceRoute
   DashboardLayoutConstraintsRoute: typeof DashboardLayoutConstraintsRoute
   DashboardLayoutDailyLogRoute: typeof DashboardLayoutDailyLogRoute
   DashboardLayoutDesignRoute: typeof DashboardLayoutDesignRoute
@@ -1015,6 +1036,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutApprovalsRoute: DashboardLayoutApprovalsRoute,
   DashboardLayoutChecklistRoute: DashboardLayoutChecklistRoute,
   DashboardLayoutCityRoute: DashboardLayoutCityRoute,
+  DashboardLayoutComplianceRoute: DashboardLayoutComplianceRoute,
   DashboardLayoutConstraintsRoute: DashboardLayoutConstraintsRoute,
   DashboardLayoutDailyLogRoute: DashboardLayoutDailyLogRoute,
   DashboardLayoutDesignRoute: DashboardLayoutDesignRoute,
