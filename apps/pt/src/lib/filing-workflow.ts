@@ -137,6 +137,22 @@ export function firstIncompleteFilingStep(
   return required.find((id) => !isFilingStepDone(id, s)) ?? steps[0];
 }
 
+// Where to go after finishing `current`: the next step in order that isn't
+// done — optional ones included, so finishing the Notice of Protest shows the
+// (optional) Agent / Representative step before Evidence instead of skipping
+// past it. Optional steps still never block: the step bar and Continue let
+// the customer move on. Falls back to firstIncompleteFilingStep at the end.
+export function nextFilingStepAfter(
+  steps: FilingStepId[],
+  current: FilingStepId,
+  s: FilingStepStatusInput,
+  optional: FilingStepId[] = [],
+): FilingStepId {
+  const idx = steps.indexOf(current);
+  const next = idx >= 0 ? steps.slice(idx + 1).find((id) => !isFilingStepDone(id, s)) : undefined;
+  return next ?? firstIncompleteFilingStep(steps, s, optional);
+}
+
 // "What has to go with the protest vs. what can follow" — shown once the
 // Notice of Protest is signed, so the customer can file it (Go to County
 // CAD) without waiting on evidence or the other forms. Texas doesn't require

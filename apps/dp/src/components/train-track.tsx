@@ -405,6 +405,7 @@ const PAGE_LABEL: Record<string, string> = {
   "/dashboard/notifications": "Go to Alerts",
   "/dashboard/fees": "Go to Fees",
   "/dashboard/prepare": "Go to Prepare",
+  "/dashboard/compliance": "Go to Compliance Check",
   "/dashboard/reviews": "Go to Reviews",
   "/dashboard/timeline": "Go to Timeline",
   "/dashboard/approvals": "Go to Approvals",

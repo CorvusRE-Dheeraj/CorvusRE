@@ -740,6 +740,8 @@ export function CourtAppealWorkflow({
               {data.attorney?.email && (
                 <a
                   className="text-xs text-accent hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   href={`mailto:${data.attorney.email}?subject=${encodeURIComponent(`Property tax appeal - ${property.address}`)}&body=${encodeURIComponent(`Hello ${data.attorney.name},\n\nAttached is the case package for ${property.address}. Court appeal deadline: ${review.deadline ?? "TBD"}.\n\n(Attach the downloaded Attorney-Package PDF.)`)}`}
                 >
                   Email the attorney →

@@ -11,7 +11,9 @@ export async function logAiCall(
     | "review_comment_translation"
     | "assistant_chat"
     | "survey_reading"
-    | "schematic_plan",
+    | "schematic_plan"
+    | "drawing_reading"
+    | "compliance_check",
   input: unknown,
   output: unknown,
   userId?: string | null,

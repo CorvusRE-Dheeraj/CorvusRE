@@ -20,9 +20,11 @@ const CATEGORIES = [
   "Architectural",
   "Structural",
   "MEP",
+  "Fire Protection",
   "Studies",
   "Forms",
   "Approvals",
+  "Supporting",
   "General",
 ];
 

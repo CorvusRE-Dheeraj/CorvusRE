@@ -1217,10 +1217,20 @@ function goToGuidanceAnchor(anchor: string) {
     window.open(anchor, "_blank", "noopener,noreferrer");
     return;
   }
-  // tel:/mailto: — window.open() on these triggers a popup blocker or opens
-  // a blank tab in most browsers; a plain location assignment is what
-  // actually hands off to the phone/mail app reliably.
-  if (anchor.startsWith("tel:") || anchor.startsWith("mailto:")) {
+  // mailto: in a new tab — when the browser hands email links to webmail
+  // (Gmail, Outlook on the web), the same tab would navigate away from the
+  // case and lose the customer's progress. A clicked link (not
+  // window.open) isn't popup-blocked.
+  if (anchor.startsWith("mailto:")) {
+    const a = document.createElement("a");
+    a.href = anchor;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.click();
+    return;
+  }
+  // tel: hands off to the phone app; nothing navigates away
+  if (anchor.startsWith("tel:")) {
     window.location.href = anchor;
     return;
   }

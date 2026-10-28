@@ -90,6 +90,7 @@ import { searchPropertiesByOwner } from "@/lib/cad-owner-search";
 import { draftProtestReason } from "@/lib/protest-reason";
 import {
   requiredFilingSteps,
+  nextFilingStepAfter,
   optionalFilingSteps,
   FILING_STEP_META,
   isFilingStepDone,
@@ -1035,7 +1036,12 @@ function FilingSubmissionFlow({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {mailtoHref && (
-                    <a href={mailtoHref} className="btn-outline text-xs py-1.5">
+                    <a
+                      href={mailtoHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-outline text-xs py-1.5"
+                    >
                       Open in Mail App →
                     </a>
                   )}
@@ -1468,7 +1474,8 @@ export function DocumentsSection({
     } else if (preFilingBlocked && activeStep !== "prefiling") {
       setActiveStep("prefiling");
     } else if (prev !== firstIncomplete && activeStep === prev) {
-      setActiveStep(firstIncomplete);
+      // the next step in order — the optional Agent step shows before Evidence
+      setActiveStep(nextFilingStepAfter(filingSteps, activeStep, filingStepStatus, optionalSteps));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filingSteps.join(","), preFilingBlocked, firstIncomplete]);
@@ -2017,7 +2024,9 @@ export function DocumentsSection({
                       : "Fix the flagged items above to continue."
                     : !next
                       ? "Finish the checklist above, then submit your evidence before your hearing."
-                      : "Not finished yet. Complete it above, or skip ahead."}
+                      : optionalSteps.includes(activeStep)
+                        ? "Optional — only if someone will represent you. Otherwise, go on to the next step."
+                        : "Not finished yet. Complete it above, or skip ahead."}
               </div>
             </div>
             {next ? (
