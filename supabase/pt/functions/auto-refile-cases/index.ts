@@ -51,7 +51,7 @@ async function sendConfirmation(
       intro:
         `As you authorized, CorvusPT automatically started a new ${taxYear} protest for ` +
         `<strong>${escapeHtml(label)}</strong> — your prior case resolved and this one picks up where it left off.`,
-      ctaLabel: "Go to View Case",
+      ctaLabel: "Go to View Protest Case",
       ctaHref: `${appUrl}/dashboard/properties`,
       footnote:
         "Review and sign the Notice of Protest once it's ready. You can turn off auto re-file for this case any time from its Case Progress section.",
@@ -66,7 +66,7 @@ async function sendConfirmation(
         text:
           `As you authorized, CorvusPT automatically started a new ${taxYear} protest for ${label} ` +
           `— your prior case resolved and this one picks up where it left off.\n\n` +
-          `Open CorvusPT and go to View Case to review and sign the Notice of Protest once it's ` +
+          `Open CorvusPT and go to View Protest Case to review and sign the Notice of Protest once it's ` +
           `ready. You can turn off auto re-file for this case any time from its Case Progress section.`,
         html,
       }),

@@ -334,7 +334,7 @@ export function buildCaseReport(i: CaseReportInputs): ProtestCaseReport {
     note: g
       ? g.disclaimer
       : p?.hearingDate
-        ? "Open the Hearing Preparation guide in View Case to generate the full script for this section."
+        ? "Open the Hearing Preparation guide in View Protest Case to generate the full script for this section."
         : "The hearing script appears here once a hearing is scheduled.",
   };
 

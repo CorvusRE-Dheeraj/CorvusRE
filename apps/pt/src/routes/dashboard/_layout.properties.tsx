@@ -1219,7 +1219,7 @@ function Properties() {
                               search={{ propertyId: p.id }}
                               className="btn-outline whitespace-nowrap px-2.5 py-1 text-xs"
                             >
-                              View Case
+                              View Protest Case
                             </Link>
                           )}
                           <PropertyActionsMenu
@@ -1335,7 +1335,7 @@ function Properties() {
                         title="Subscribe to this property to view its case."
                         className="btn-outline cursor-not-allowed opacity-60"
                       >
-                        View Case
+                        View Protest Case
                       </button>
                     )}
                     <PropertyActionsMenu
@@ -1599,7 +1599,7 @@ function PropertyActionsMenu({
         {existingProtest && isPaid && (
           <DropdownMenuItem asChild>
             <Link to="/dashboard/case" search={{ propertyId: p.id }}>
-              <Gavel className="mr-2 h-4 w-4" /> View Case
+              <Gavel className="mr-2 h-4 w-4" /> View Protest Case
             </Link>
           </DropdownMenuItem>
         )}

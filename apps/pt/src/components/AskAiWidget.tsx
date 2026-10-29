@@ -80,7 +80,7 @@ const SUPPORT_TOPICS: { match: RegExp; image: string; alt: string; caption: stri
     match:
       /\bcase\s+status\b|\bview\s+(my\s+)?case\b|\bwhere.{0,15}\bmy\s+(case|protest)\b|\btrack\b.*\b(case|protest)\b/i,
     image: "view-case.png",
-    alt: "The View Case button on a property's row",
+    alt: "The View Protest Case button on a property's row",
     caption: "Here's where to check it:",
   },
 ];

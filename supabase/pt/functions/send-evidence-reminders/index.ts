@@ -156,7 +156,7 @@ Deno.serve(async (req: Request) => {
           ? `Your evidence for ${items[0].label} hasn't been marked submitted yet.`
           : `Evidence hasn't been marked submitted yet for ${items.length} of your cases:`) +
         `\n\n${lines}\n\n` +
-        `Open CorvusPT, go to View Case, and use Generate Evidence Package to finish each one.` +
+        `Open CorvusPT, go to View Protest Case, and use Generate Evidence Package to finish each one.` +
         `\n\nManage email preferences (or unsubscribe from these reminders): ${unsubscribeUrl}`;
 
       const appUrl = appBaseUrl();
@@ -175,7 +175,7 @@ Deno.serve(async (req: Request) => {
         heading: "Evidence still needed",
         intro,
         bodyRows: rows,
-        ctaLabel: "Go to View Case",
+        ctaLabel: "Go to View Protest Case",
         ctaHref: `${appUrl}/dashboard/properties`,
         footnote: "Use Generate Evidence Package on each case to finish it.",
         unsubscribeUrl,
