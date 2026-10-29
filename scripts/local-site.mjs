@@ -25,8 +25,8 @@ const PORT = Number(process.env.PORT) || 8080;
 const PT_DIST = path.join(root, "apps/pt/dist/client");
 const AUTH_DIST = path.join(root, "apps/identity/dist/local");
 // CorvusDP built for /corvusdp/ like the deployed site, copied aside so a plain
-// `vite build` of apps/dp (base "/") doesn't overwrite it.
-const DP_DIST = path.join(root, "apps/dp/dist/local");
+// `vite build` of apps/dp (base "/", which empties apps/dp/dist) doesn't wipe it.
+const DP_DIST = path.join(root, ".local/corvusdp");
 // The not-yet-live door pages live at their own public URLs (apps/<dir> ->
 // /<url>/), and share coming-soon.css from the landing app -- serve
 // them locally too so those links don't 404.

@@ -52,3 +52,6 @@ blob-report/
 *.njsproj
 *.sln
 *.sw?
+
+# npm run local: the CorvusDP build it serves at /corvusdp/
+.local
