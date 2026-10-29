@@ -647,6 +647,7 @@ export function CaseDetailView({
                   protestId={protest.id}
                   caseData={caseData}
                   onReload={load}
+                  onGoToPhase={handleTabClick}
                 />
                 {/* Journey tracker is otherwise root-level, Properties-page-only
                   (see SignedInJourney in routes/__root.tsx) — kept here too
@@ -1436,14 +1437,27 @@ export function CasePlanSection({
   protestId,
   caseData,
   onReload,
+  onGoToPhase,
 }: {
   userId: string;
   property: PropertyRecord;
   protestId: string;
   caseData: ProtestCase | null;
   onReload: () => void;
+  // Customer modal only: jump to the Informal Review or Formal Hearing tab.
+  onGoToPhase?: (tab: "informal" | "hearing") => void;
 }) {
   const [generating, setGenerating] = useState(false);
+  const phaseButtons = onGoToPhase && (
+    <>
+      <button onClick={() => onGoToPhase("informal")} className="btn-outline w-fit text-sm">
+        Go to Informal
+      </button>
+      <button onClick={() => onGoToPhase("hearing")} className="btn-outline w-fit text-sm">
+        Go to Formal
+      </button>
+    </>
+  );
 
   async function handleGenerate() {
     setGenerating(true);
@@ -1463,13 +1477,16 @@ export function CasePlanSection({
     return (
       <div className="mt-4 grid gap-3">
         <p className="text-sm text-muted-foreground">No case plan yet.</p>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="btn-accent w-fit text-sm disabled:opacity-60"
-        >
-          {generating ? "Generating…" : "Generate Case Plan"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="btn-accent w-fit text-sm disabled:opacity-60"
+          >
+            {generating ? "Generating…" : "Generate Case Plan"}
+          </button>
+          {phaseButtons}
+        </div>
       </div>
     );
   }
@@ -1502,6 +1519,7 @@ export function CasePlanSection({
             </button>
           </div>
         )}
+        {phaseButtons && <div className="mt-3 flex flex-wrap gap-2">{phaseButtons}</div>}
       </section>
       {/* Evidence upload lives in exactly one place on this tab now — the
           Evidence card above (EvidenceStatusCard), which has the richer
