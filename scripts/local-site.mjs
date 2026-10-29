@@ -2,20 +2,21 @@
 //
 // Sign-in for CorvusPT/CorvusDP happens on the shared /auth/ app (apps/identity),
 // which `vite preview` for a single door never serves -- so a door's own
-// "Sign In" 404s locally. This builds CorvusPT (base "/") and the identity app
-// (base "/auth/"), then serves both from ONE server, the same shape as the
-// deployed site. Sign in with email + password; "Continue with Google" only
+// "Sign In" 404s locally. This builds CorvusPT (base "/"), CorvusDP (base
+// "/corvusdp/") and the identity app (base "/auth/"), then serves them from ONE
+// server, the same shape as the deployed site. Sign in with email + password; "Continue with Google" only
 // works on the real domain (Google's redirect allow-list).
 //
-//   npm run local                 build both, serve on http://localhost:8080
+//   npm run local                 build them, serve on http://localhost:8080
 //   npm run local -- --no-build   skip the builds, just serve the last ones
+//   npm run local -- --no-dp      build without CorvusDP (served at /corvusdp/)
 //   PORT=9000 npm run local       different port
 //
 // Needs apps/pt/.env (copy apps/pt/.env.example). It's a static build, so
 // re-run after changing code.
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +24,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 8080;
 const PT_DIST = path.join(root, "apps/pt/dist/client");
 const AUTH_DIST = path.join(root, "apps/identity/dist/local");
+// CorvusDP built for /corvusdp/ like the deployed site, copied aside so a plain
+// `vite build` of apps/dp (base "/", which empties apps/dp/dist) doesn't wipe it.
+const DP_DIST = path.join(root, ".local/corvusdp");
 // The not-yet-live door pages live at their own public URLs (apps/<dir> ->
 // /<url>/), and share coming-soon.css from the landing app -- serve
 // them locally too so those links don't 404.
@@ -61,6 +65,16 @@ if (!process.argv.includes("--no-build")) {
     ["run", "build", "-w", "apps/identity", "--", "--outDir", "dist/local", "--emptyOutDir"],
     { SITE_BASE: "/auth/" },
   );
+  if (!process.argv.includes("--no-dp")) {
+    if (!existsSync(path.join(root, "apps/dp/.env"))) {
+      console.warn("! apps/dp/.env is missing -- CorvusDP may not reach its database.");
+    }
+    run("Building CorvusDP (/corvusdp/)", ["run", "build", "-w", "apps/dp"], {
+      SITE_BASE: "/corvusdp/",
+    });
+    rmSync(DP_DIST, { recursive: true, force: true });
+    cpSync(path.join(root, "apps/dp/dist/client"), DP_DIST, { recursive: true });
+  }
 }
 
 const TYPES = {
@@ -122,9 +136,19 @@ createServer((req, res) => {
     }
   }
 
+  if (urlPath === "/corvusdp") {
+    res.writeHead(302, { Location: "/corvusdp/" + (query ? `?${query}` : "") });
+    return res.end();
+  }
+
   const isAuth = urlPath.startsWith("/auth/");
-  const base = isAuth ? AUTH_DIST : PT_DIST;
-  const rel = isAuth ? urlPath.slice("/auth".length) : urlPath;
+  const isDp = urlPath.startsWith("/corvusdp/");
+  const base = isAuth ? AUTH_DIST : isDp ? DP_DIST : PT_DIST;
+  const rel = isAuth
+    ? urlPath.slice("/auth".length)
+    : isDp
+      ? urlPath.slice("/corvusdp".length)
+      : urlPath;
   // Unknown extension-less paths fall back to the SPA shell, like the real host.
   const file = fileIn(base, rel) ?? (path.extname(rel) ? null : fileIn(base, "/index.html"));
 
@@ -137,4 +161,5 @@ createServer((req, res) => {
 }).listen(PORT, () => {
   console.log(`\nLocal site ready: http://localhost:${PORT}/`);
   console.log(`Sign-in page:     http://localhost:${PORT}/auth/`);
+  if (existsSync(DP_DIST)) console.log(`CorvusDP:         http://localhost:${PORT}/corvusdp/`);
 });

@@ -1266,3 +1266,13 @@ header .container-page {
     opacity: 1;
   }
 }
+
+/* Train-Track Map: while the continuous track is drawn over the map
+   (components/rail.tsx), the per-row rails and junction pieces it replaces
+   step aside. */
+[data-track-on] [data-rail] {
+  opacity: 0;
+}
+[data-track-on] [data-junction-art] {
+  display: none;
+}

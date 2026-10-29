@@ -121,6 +121,8 @@ export const LANE_COLORS = [
   "border-l-rose-500",
   "border-l-slate-500",
 ];
+// The same lane colours as hex — each permit's parallel track is drawn in its lane's colour.
+export const LANE_HEX = ["#2563eb", "#7c3aed", "#f97316", "#0d9488", "#f43f5e", "#64748b"];
 
 export const fmtDays = (v: number | null) => (v == null ? "Not recorded" : `${v.toFixed(1)} days`);
 

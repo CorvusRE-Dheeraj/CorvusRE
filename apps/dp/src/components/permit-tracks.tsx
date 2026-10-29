@@ -4,13 +4,16 @@
 // with time at the city kept apart from time with the design team).
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Download, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowRight, Check, Download, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { inputCls } from "@/components/dp-ui";
-import type { PermitRow, ProjectRow } from "@/lib/projects";
+import { Rail, TrackLabel } from "@/components/rail";
+import { updatePermit, type PermitRow, type ProjectRow } from "@/lib/projects";
 import {
   DAY_FMT,
   LANE_COLORS,
+  LANE_HEX,
   OUTCOME_LABEL,
   TIME_FMT,
   fmtDate,
@@ -48,6 +51,8 @@ export type TrackView =
       stage: string;
       tab: "overview" | "comments" | "history";
       round?: number;
+      // opened from "Mark as already approved": the approval form starts open
+      markApproved?: boolean;
     }
   | { type: "history"; projectId: string; permitKey: string }
   | { type: "round"; permitId: string; round: number };
@@ -188,7 +193,18 @@ const LANE_STEPS: [LaneStep, string][] = [
   ["approved", "Approved"],
 ];
 
-export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView: Nav }) {
+// With `loop`, each permit's card also holds its review loop (one continuous
+// parallel track from the lane into the loop on the Track Map), and the lane's
+// rail and the card are tagged for that track drawing (data-rail / data-corridor).
+export function PermitLanes({
+  tracks,
+  onView,
+  loop,
+}: {
+  tracks: PermitTrack[];
+  onView: Nav;
+  loop?: (t: PermitTrack, i: number) => ReactNode;
+}) {
   if (!tracks.length)
     return (
       <p className="text-sm text-muted-foreground">No permits identified for this project yet.</p>
@@ -218,8 +234,9 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
           <article
             key={t.permit.id}
             id={`permit-${t.permit.id}`}
+            data-corridor={loop ? i : undefined}
             className={cn(
-              "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4",
+              "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4 xl:p-5",
               LANE_COLORS[i % LANE_COLORS.length],
             )}
           >
@@ -233,6 +250,14 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
                 </p>
               </div>
               <StagePill stage={t.stage} />
+            </div>
+            <div className="mt-3">
+              <TrackLabel
+                kind="parallel"
+                label={t.permit.name}
+                color={LANE_HEX[i % LANE_HEX.length]}
+              />
+              <Rail color={LANE_HEX[i % LANE_HEX.length]} railId={loop ? `lane-${i}` : undefined} />
             </div>
             <div className="my-3 flex items-stretch overflow-x-auto pb-1">
               {LANE_STEPS.map(([key, label], k) => {
@@ -287,17 +312,36 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>∥ This permit keeps its own status, review dates and comments.</span>
               <span className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn-outline px-2.5 py-1 text-xs"
-                  onClick={() =>
-                    document
-                      .getElementById(`loop-${t.permit.id}`)
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }
-                >
-                  Open this permit's loop
-                </button>
+                {t.permit.status !== "approved" && (
+                  <button
+                    type="button"
+                    className="btn-outline px-2.5 py-1 text-xs"
+                    onClick={() =>
+                      onView({
+                        type: "permit",
+                        permitId: t.permit.id,
+                        stage: "approved",
+                        tab: "overview",
+                        markApproved: true,
+                      })
+                    }
+                  >
+                    Mark as already approved
+                  </button>
+                )}
+                {!loop && (
+                  <button
+                    type="button"
+                    className="btn-outline px-2.5 py-1 text-xs"
+                    onClick={() =>
+                      document
+                        .getElementById(`loop-${t.permit.id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                  >
+                    Open this permit's loop
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn-outline px-2.5 py-1 text-xs"
@@ -313,6 +357,7 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
                 </button>
               </span>
             </div>
+            {loop?.(t, i)}
           </article>
         );
       })}
@@ -367,6 +412,7 @@ export function PermitView({
           {rounds.length} submission{rounds.length === 1 ? "" : "s"}
         </span>
       </div>
+      <ApprovalPanel key={permit.id} permit={permit} startOpen={!!view.markApproved} />
       {r && (
         <label className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-medium">Viewing</span>
@@ -461,6 +507,151 @@ export function PermitView({
         </div>
       )}
     </div>
+  );
+}
+
+const dateInput = (v: string | null | undefined) => (v ? v.slice(0, 10) : "");
+const todayInput = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Record that a permit is already approved — e.g. approved before the project
+// came into CorvusDP, or outside the tracked submissions. Marks it approved on
+// the Permits page too; an open submission round is closed as approved.
+function ApprovalPanel({ permit, startOpen }: { permit: PermitRow; startOpen: boolean }) {
+  const qc = useQueryClient();
+  const approved = permit.status === "approved";
+  const [open, setOpen] = useState(startOpen && !approved);
+  const [date, setDate] = useState(dateInput(permit.approved_at) || todayInput());
+  const [number, setNumber] = useState(permit.permit_number ?? "");
+  const [expiry, setExpiry] = useState(permit.expiry_date ?? "");
+  const [doc, setDoc] = useState(permit.approval_doc_url ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    if (!date) return setError("Enter the date the permit was approved.");
+    if (date > todayInput()) return setError("The approval date can't be in the future.");
+    if (expiry && expiry < date) return setError("The expiry date is before the approval date.");
+    if (doc.trim() && !/^https:\/\/\S+$/i.test(doc.trim()))
+      return setError("The approval document link must start with https://");
+    setSaving(true);
+    try {
+      await updatePermit(permit.id, {
+        status: "approved",
+        approved_at: new Date(`${date}T12:00:00`).toISOString(),
+        permit_number: number.trim() || null,
+        expiry_date: expiry || null,
+        approval_doc_url: doc.trim() || null,
+      });
+      await qc.invalidateQueries();
+      setOpen(false);
+      toast.success(`${permit.name} marked approved.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save the approval.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return approved ? (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 text-xs text-green-900">
+        <span>
+          <strong>Approved</strong>
+          {permit.approved_at ? ` on ${fmtDate(permit.approved_at)}` : ""}
+          {permit.permit_number ? ` · permit ${permit.permit_number}` : ""}
+          {permit.expiry_date ? ` · expires ${fmtDate(permit.expiry_date)}` : ""}
+        </span>
+        <button
+          type="button"
+          className="btn-outline px-2.5 py-1 text-xs"
+          onClick={() => setOpen(true)}
+        >
+          <Pencil className="h-3 w-3" aria-hidden /> Edit approval details
+        </button>
+      </div>
+    ) : (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground">
+        <span>Already approved by the city? Record it here.</span>
+        <button
+          type="button"
+          className="btn-outline px-2.5 py-1 text-xs"
+          onClick={() => setOpen(true)}
+        >
+          <Check className="h-3 w-3" aria-hidden /> Mark as already approved
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border-2 border-green-300 bg-green-50/60 p-4">
+      <h3 className="text-sm font-semibold">
+        {approved ? "Edit approval details" : "Mark this permit as already approved"}
+      </h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        For a permit the city has already approved. It moves to Approval on the map and is marked
+        approved on the Permits page.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-xs font-medium">
+          Approval date
+          <input
+            type="date"
+            className={inputCls}
+            value={date}
+            max={todayInput()}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium">
+          Permit number <span className="font-normal text-muted-foreground">(optional)</span>
+          <input
+            className={inputCls}
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+            placeholder="e.g. BP-2026-01234"
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium">
+          Expiry date <span className="font-normal text-muted-foreground">(optional)</span>
+          <input
+            type="date"
+            className={inputCls}
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium">
+          Approval document link{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
+          <input
+            type="url"
+            className={inputCls}
+            value={doc}
+            onChange={(e) => setDoc(e.target.value)}
+            placeholder="https://…"
+          />
+        </label>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className="btn-accent" disabled={saving} onClick={save}>
+          {saving ? "Saving…" : approved ? "Save approval details" : "Mark approved"}
+        </button>
+        <button
+          type="button"
+          className="btn-outline"
+          disabled={saving}
+          onClick={() => setOpen(false)}
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
   );
 }
 

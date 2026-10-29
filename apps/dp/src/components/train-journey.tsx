@@ -335,15 +335,52 @@ function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arri
   );
 }
 
-/** The hero's train in miniature — the same locomotive and route wagons (the
- *  latest two), empty — for parking on the track map's rail. */
-export function MiniTrain({ wagons, scale = 0.5 }: { wagons: Wagon[]; scale?: number }) {
+/** The hero's train in miniature for parking on the track map's rail: the
+ *  same locomotive (scaled down) pulling a wagon for every route it has
+ *  reached. The wagons are drawn at full size so their route names stay
+ *  readable. `facing="left"` for a row the track runs through right to left. */
+export function MiniTrain({
+  wagons,
+  facing = "right",
+}: {
+  wagons: Wagon[];
+  facing?: "left" | "right";
+}) {
+  const left = facing === "left";
   return (
-    <div className="flex items-end" style={{ zoom: scale }} aria-hidden>
-      {wagons.slice(-2).map((w, i) => (
-        <WagonCar key={w.route} wagon={{ ...w, crates: [], loading: false }} index={i} arrived />
+    <div className={cn("flex items-end", left && "flex-row-reverse")} aria-hidden>
+      {wagons.map((w) => (
+        <MiniWagon key={w.route} color={w.color} left={left} />
       ))}
-      <Locomotive />
+      <div style={{ zoom: 0.45 }}>
+        <Locomotive left={left} />
+      </div>
+    </div>
+  );
+}
+
+function MiniWagon({ color, left }: { color: LineColor; left: boolean }) {
+  return (
+    <div className="relative mx-[3px] flex w-[78px] shrink-0 flex-col items-center">
+      <div
+        className={cn(
+          "relative flex h-[18px] w-full items-center justify-center rounded border-b-2 border-slate-800 px-1 text-[10px] font-semibold leading-none text-white shadow",
+          ROUTE_STYLE[color].solid,
+        )}
+      >
+        {SHORT[color]}
+        {/* coupling to the car in front */}
+        <span
+          className={cn(
+            "absolute top-1/2 h-1 w-2 -translate-y-1/2 rounded-sm bg-slate-800",
+            left ? "-left-[7px]" : "-right-[7px]",
+          )}
+        />
+      </div>
+      <div className="-mt-[3px] flex w-full justify-between px-2">
+        <Wheel size="h-2.5 w-2.5" />
+        <Wheel size="h-2.5 w-2.5" />
+      </div>
     </div>
   );
 }
@@ -357,14 +394,15 @@ function Wheel({ size = "h-5 w-5" }: { size?: string }) {
   );
 }
 
-function Locomotive() {
+function Locomotive({ left = false }: { left?: boolean }) {
   return (
     <div className="relative w-[150px] shrink-0">
       {[0, 0.7, 1.4].map((delay, i) => (
         <span
           key={delay}
           className={cn(
-            "journey-puff absolute left-[88px] top-[-16px] rounded-full bg-slate-200",
+            "journey-puff absolute top-[-16px] rounded-full bg-slate-200",
+            left ? "left-[48px]" : "left-[88px]",
             ["h-4 w-4", "h-5 w-5", "h-3 w-3"][i],
           )}
           style={{ animationDelay: `${delay}s` }}
@@ -377,20 +415,25 @@ function Locomotive() {
         role="img"
         aria-label="Your project's locomotive"
       >
-        {/* chimney + dome */}
-        <rect x="86" y="4" width="16" height="22" rx="3" fill="#1e293b" />
-        <rect x="82" y="1" width="24" height="7" rx="3" fill="#334155" />
-        <rect x="62" y="15" width="16" height="12" rx="6" fill="#b45309" />
-        {/* boiler */}
-        <rect x="46" y="22" width="94" height="32" rx="12" fill="#d97706" />
-        <rect x="46" y="33" width="94" height="5" fill="#fbbf24" />
-        <circle cx="139" cy="33" r="6" fill="#fef3c7" stroke="#92400e" strokeWidth="2" />
-        {/* cab */}
-        <rect x="4" y="8" width="50" height="46" rx="6" fill="#1e3a5f" />
-        <rect x="0" y="4" width="58" height="8" rx="3" fill="#0f172a" />
-        <rect x="13" y="17" width="30" height="16" rx="3" fill="#e0f2fe" />
+        <g transform={left ? "translate(150 0) scale(-1 1)" : undefined}>
+          {/* chimney + dome */}
+          <rect x="86" y="4" width="16" height="22" rx="3" fill="#1e293b" />
+          <rect x="82" y="1" width="24" height="7" rx="3" fill="#334155" />
+          <rect x="62" y="15" width="16" height="12" rx="6" fill="#b45309" />
+          {/* boiler */}
+          <rect x="46" y="22" width="94" height="32" rx="12" fill="#d97706" />
+          <rect x="46" y="33" width="94" height="5" fill="#fbbf24" />
+          <circle cx="139" cy="33" r="6" fill="#fef3c7" stroke="#92400e" strokeWidth="2" />
+          {/* cab */}
+          <rect x="4" y="8" width="50" height="46" rx="6" fill="#1e3a5f" />
+          <rect x="0" y="4" width="58" height="8" rx="3" fill="#0f172a" />
+          <rect x="13" y="17" width="30" height="16" rx="3" fill="#e0f2fe" />
+          {/* frame + cow-catcher */}
+          <rect x="2" y="52" width="138" height="6" rx="3" fill="#0f172a" />
+          <path d="M136 52 L150 64 L134 64 Z" fill="#334155" />
+        </g>
         <text
-          x="29"
+          x={left ? 121 : 29}
           y="47"
           textAnchor="middle"
           fontSize="9"
@@ -400,11 +443,13 @@ function Locomotive() {
         >
           CorvusDP
         </text>
-        {/* frame + cow-catcher */}
-        <rect x="2" y="52" width="138" height="6" rx="3" fill="#0f172a" />
-        <path d="M136 52 L150 64 L134 64 Z" fill="#334155" />
       </svg>
-      <div className="-mt-[12px] flex items-end justify-between pl-3 pr-8">
+      <div
+        className={cn(
+          "-mt-[12px] flex items-end justify-between",
+          left ? "flex-row-reverse pl-8 pr-3" : "pl-3 pr-8",
+        )}
+      >
         <Wheel size="h-7 w-7" />
         <Wheel size="h-9 w-9" />
         <Wheel size="h-9 w-9" />
