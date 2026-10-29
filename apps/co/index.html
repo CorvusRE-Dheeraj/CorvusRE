@@ -3,122 +3,121 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CorvusCO — Early Access | CorvusRE</title>
-  <meta name="description" content="CorvusCO is coming soon from CorvusRE. Join the early-access list." />
+  <title>CorvusCO — Coming Soon | CorvusRE</title>
+  <meta name="description" content="CorvusCO — Construction — is coming soon from CorvusRE." />
+  <meta name="theme-color" content="#070b1a" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/hub.css" />
-  <link rel="stylesheet" href="/door-page.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" />
-  <script>document.documentElement.classList.add("js");</script>
+  <link rel="stylesheet" href="/coming-soon.css?v=1" />
 </head>
-<body data-door="CorvusCO" data-area="Construction" style="--door-hue:35">
-  <header>
-    <div class="container-page bar">
-      <a href="/" class="brand">
-        <span class="logo-mark" aria-hidden="true">
+<!-- CorvusCO's "coming soon" page. apps/sbl, apps/co and apps/rf share one
+     layout; the look lives in apps/home/coming-soon.css. -->
+<body class="cs" style="--cs-tint:#db2777;--cs-glow:#fbcfe8">
+  <div class="cs-bg" aria-hidden="true">
+    <span class="cs-orb cs-orb-1"></span>
+    <span class="cs-orb cs-orb-2"></span>
+    <span class="cs-orb cs-orb-3"></span>
+    <span class="cs-grid"></span>
+    <svg class="cs-skyline" viewBox="0 0 1440 200" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 200V150h40v-30h30v30h20V90h50v60h25v-40h35v40h20V60h60v90h20v-55h40v55h30V120h25v30h30V40h70v110h20v-70h45v70h25v-35h30v35h30V75h55v75h20v-95h65v95h25v-50h40v50h30V100h35v50h20V30h75v120h25v-60h40v60h30v-40h35v40h20V85h55v65h25v-45h40v45h30V110h30v40h40V200z"/></svg>
+  </div>
+
+  <header class="cs-header">
+    <div class="cs-wrap cs-bar">
+      <a href="/" class="cs-brand">
+        <span class="cs-logo" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 20c3-6 5-9 8-9s5 3 8 9" stroke-linecap="round" />
             <circle cx="16" cy="7" r="2" fill="currentColor" />
           </svg>
         </span>
-        <span class="wordmark">CorvusRE</span>
+        CorvusRE
       </a>
+      <a href="/" class="cs-back">&larr; All products</a>
     </div>
   </header>
 
   <main>
-    <section class="door-hero">
-      <div class="container-page">
-        <span class="door-pill">Early access</span>
-        <h1>Take a project from plan to <span class="accent">final inspection</span> in one place.</h1>
-        <p class="door-lede">CorvusCO is on its way to CorvusRE. Tell us about the projects you run and we'll bring you in as it opens up.</p>
-        <ul class="door-words" aria-label="CorvusCO">
-          <li style="--i:0"><b>Co</b>nstruct</li>
-        </ul>
-        <div class="door-cta-row">
-          <a href="#early-access" class="door-btn door-btn-primary">Request early access</a>
-          <a href="/" class="door-btn">&larr; Back to CorvusRE</a>
+    <section class="cs-hero">
+      <div class="cs-wrap">
+        <span class="cs-pill cs-rise"><span class="cs-pill-dot" aria-hidden="true"></span>Coming soon</span>
+        <h1 class="cs-name cs-rise" style="--i:1">Corvus<span>CO</span></h1>
+        <ul class="cs-words cs-rise" style="--i:2" aria-label="Construct"><li><b>C</b>onstruct</li></ul>
+        <p class="cs-tagline cs-rise" style="--i:3">Take a project from approved plans to final inspection in one place — schedule, budget, crews and inspections together.</p>
+        <div class="cs-cta cs-rise" style="--i:4">
+          <a href="#features" class="cs-btn cs-btn-primary">See what's coming</a>
+          <a href="/" class="cs-btn">Back to CorvusRE</a>
         </div>
       </div>
     </section>
 
-    <section class="door-section">
-      <div class="container-page">
-        <h2 class="reveal">Built to keep a build on track</h2>
-        <p class="door-sub reveal" style="--i:1">What we're building first — your answers below shape the order.</p>
-        <div class="door-cards">
-          <article class="door-card reveal" style="--i:0">
-            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>
-            <h3>Plan</h3>
-            <p>Scope, budget and schedule together, tied to the permits and design work from CorvusDP.</p>
+    <section class="cs-section" id="features">
+      <div class="cs-wrap">
+        <h2>What's coming to CorvusCO</h2>
+        <p class="cs-sub">The platform is being built now. Here's what it will do.</p>
+        <div class="cs-features">
+          <article class="cs-feature cs-rise" style="--i:0">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+            <h3>Schedules &amp; milestones</h3>
+            <p>Plan every phase with milestones and the critical path, and see slippage the day it happens.</p>
           </article>
-          <article class="door-card reveal" style="--i:1">
-            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V8l12-4M6 8h8M14 8v6"/><rect x="12" y="14" width="4" height="3"/></svg></span>
-            <h3>Build</h3>
-            <p>Coordinate contractors, approvals and inspections without chasing email threads.</p>
+          <article class="cs-feature cs-rise" style="--i:1">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>
+            <h3>Budget &amp; cost tracking</h3>
+            <p>Estimates against actuals, change orders and draws, line by line.</p>
           </article>
-          <article class="door-card reveal" style="--i:2">
-            <span class="door-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18a8 8 0 1116 0"/><path d="M12 18l4-6"/></svg></span>
-            <h3>Track</h3>
-            <p>See cost and progress against plan so problems surface while they are still small.</p>
+          <article class="cs-feature cs-rise" style="--i:2">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l4 4"/><path d="M12.5 4.5l7 7-2 2-7-7z"/><path d="M11 9L3 17l2 2 8-8"/></svg></span>
+            <h3>Bids &amp; contractors</h3>
+            <p>Invite bids, compare them side by side and award work to the right subcontractor.</p>
+          </article>
+          <article class="cs-feature cs-rise" style="--i:3">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="14" r="3.5"/></svg></span>
+            <h3>Site progress &amp; daily logs</h3>
+            <p>Photos, weather, crews and notes logged from the job site on a phone.</p>
+          </article>
+          <article class="cs-feature cs-rise" style="--i:4">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span>
+            <h3>Inspections &amp; punch lists</h3>
+            <p>Book city inspections and close out the punch list all the way to the certificate of occupancy.</p>
+          </article>
+          <article class="cs-feature cs-rise" style="--i:5">
+            <span class="cs-soon">Coming soon</span>
+            <span class="cs-feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg></span>
+            <h3>Connected to CorvusD&amp;P</h3>
+            <p>Approved plans and permits flow straight from design and permitting into construction.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="door-section" id="early-access">
-      <div class="container-page">
-        <h2 class="reveal">Get early access</h2>
-        <p class="door-sub reveal" style="--i:1">CorvusRE is invite-only right now. Tell us a bit about you and we'll follow up.</p>
-        <div class="door-form-wrap reveal" style="--i:2">
-          <div id="betaFormView">
-            <form id="betaForm" novalidate>
-              <label class="beta-field">
-                <span>Full Name</span>
-                <input type="text" name="full_name" required autocomplete="name" />
-              </label>
-              <label class="beta-field">
-                <span>Work Email</span>
-                <input type="email" name="work_email" required autocomplete="email" />
-              </label>
-              <label class="beta-field">
-                <span>Company / Organization</span>
-                <input type="text" name="company" required autocomplete="organization" />
-              </label>
-              <fieldset class="beta-field beta-radio-group">
-                <legend>What area are you most interested in?</legend>
-                <label><input type="checkbox" name="area_of_interest" value="Property Tax Management" /><span>Property Tax Management</span></label>
-                <label><input type="checkbox" name="area_of_interest" value="Permitting, Design" /><span>Permitting, Design</span></label>
-                <label><input type="checkbox" name="area_of_interest" value="Buying, Selling &amp; Leasing" /><span>Buying, Selling &amp; Leasing</span></label>
-                <label><input type="checkbox" name="area_of_interest" value="Construction" /><span>Construction</span></label>
-                <label><input type="checkbox" name="area_of_interest" value="Real Estate Finance" /><span>Real Estate Finance</span></label>
-              </fieldset>
-              <label class="beta-field">
-                <span>What would you most like to use CorvusCO for? <em>(short answer)</em></span>
-                <textarea name="use_case" rows="3"></textarea>
-              </label>
-              <p class="beta-form-error" id="betaFormError" role="alert" hidden></p>
-              <button type="submit" class="beta-submit" id="betaSubmit">Request Early Access</button>
-            </form>
-            <p class="door-signin">Already have an account? <a href="/auth/">Sign in</a></p>
-          </div>
-          <div id="betaSuccessView" class="door-success" hidden>
-            <svg class="door-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24" /><path d="M15 27l8 8 15-17" /></svg>
-            <h2>Thanks — request received.</h2>
-            <p>We'll follow up at the email you provided as CorvusCO opens up.</p>
-          </div>
+    <section class="cs-section">
+      <div class="cs-wrap">
+        <h2>Live on CorvusRE today</h2>
+        <p class="cs-sub">While CorvusCO is on its way, these platforms are ready to use.</p>
+        <div class="cs-live">
+          <a href="/corvuspt/">
+            <span><strong>CorvusPT <span class="cs-live-tag">Live</span></strong><small>Property tax — protests, appeals and savings</small></span>
+            <span class="cs-arrow" aria-hidden="true">&rarr;</span>
+          </a>
+          <a href="/corvusdp/">
+            <span><strong>CorvusD&amp;P <span class="cs-live-tag">Live</span></strong><small>Design and permitting — from site to approval</small></span>
+            <span class="cs-arrow" aria-hidden="true">&rarr;</span>
+          </a>
         </div>
       </div>
     </section>
   </main>
 
-  <footer>
-    <div class="container-page">
-      &copy; <span id="year"></span> CorvusRE.
-    </div>
+  <footer class="cs-footer">
+    <div class="cs-wrap">&copy; <span id="year"></span> CorvusRE. CorvusCO is coming soon.</div>
   </footer>
-  <script src="/door-page.js"></script>
+  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
 </body>
 </html>
