@@ -13,7 +13,8 @@ export async function logAiCall(
     | "survey_reading"
     | "schematic_plan"
     | "drawing_reading"
-    | "compliance_check",
+    | "compliance_check"
+    | "document_matching",
   input: unknown,
   output: unknown,
   userId?: string | null,

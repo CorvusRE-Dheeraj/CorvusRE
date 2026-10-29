@@ -121,6 +121,7 @@ const json = (body: unknown, status = 200) =>
 type ReceivedEmail = {
   id: string;
   from: string;
+  to?: string[];
   subject: string | null;
   html: string | null;
   text: string | null;
@@ -148,6 +149,42 @@ async function resend<T>(path: string): Promise<T> {
       `Resend ${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`,
     );
   return (await res.json()) as T;
+}
+
+// CorvusDP project inboxes share this inbound domain: mail to
+// dp-<token>@inbox.corvusre.com is handed to DP's document-sources function
+// (its own Supabase project) with the attachments' download links.
+const DP_INBOX = /dp-[a-z0-9]{6,32}@/i;
+async function relayToDp(email: ReceivedEmail, attachments: ReceivedAttachment[]) {
+  const url =
+    Deno.env.get("DP_DOCUMENTS_URL") ??
+    "https://xzhilwwlfajxhklkiteb.supabase.co/functions/v1/document-sources";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-relay-secret": Deno.env.get("DP_RELAY_SECRET") ?? "",
+    },
+    body: JSON.stringify({
+      action: "inbound",
+      email: {
+        message_id: `resend:${email.id}`,
+        to: email.to ?? [],
+        from: email.headers?.from ?? email.from,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        created_at: email.created_at,
+        attachments: attachments.map((a) => ({
+          filename: a.filename,
+          content_type: a.content_type,
+          size: a.size,
+          download_url: a.download_url,
+        })),
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`DP relay: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
 const htmlToText = (html: string) =>
@@ -203,6 +240,13 @@ Deno.serve(async (req: Request) => {
     const list = await resend<{ data: ReceivedAttachment[] }>(
       `/emails/receiving/${emailId}/attachments`,
     ).catch(() => ({ data: [] as ReceivedAttachment[] }));
+
+    // To a CorvusDP project inbox: hand it to DP; only addressed to DP → done.
+    const recipients = email.to ?? [];
+    if (recipients.some((r) => DP_INBOX.test(r))) {
+      await relayToDp(email, list.data ?? []);
+      if (recipients.every((r) => DP_INBOX.test(r))) return json({ ok: true, outcome: "relayed to CorvusDP" });
+    }
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,

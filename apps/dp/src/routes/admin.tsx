@@ -85,6 +85,7 @@ const AI_KIND_LABEL: Record<string, string> = {
   survey_reading: "Survey reading",
   schematic_plan: "Schematic plan",
   drawing_reading: "Drawing reading",
+  document_matching: "Document matching",
   compliance_check: "Compliance check",
 };
 

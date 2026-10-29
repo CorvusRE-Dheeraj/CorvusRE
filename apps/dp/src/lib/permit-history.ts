@@ -22,6 +22,17 @@ export type SubmissionRow = {
   submitted_by: string | null;
   qa_passed_at: string | null;
   notes: string | null;
+  // the exact file versions this round sent (written when it was filed; see Documents)
+  manifest?:
+    | {
+        requirement_id: string;
+        requirement: string;
+        document_id: string;
+        doc_group: string;
+        name: string;
+        version_label: string | null;
+      }[]
+    | null;
 };
 
 export type RoundComment = Pick<

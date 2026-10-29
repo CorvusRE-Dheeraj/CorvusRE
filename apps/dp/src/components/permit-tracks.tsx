@@ -4,6 +4,7 @@
 // with time at the city kept apart from time with the design team).
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ArrowRight, Check, Download, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -799,6 +800,16 @@ function SubmissionEvidence({ track, r }: { track: PermitTrack; r: Round }) {
               ["Confirmation / receipt", r.confirmation ?? "—"],
               ["Method", r.method ?? "—"],
               ["Submitted by", r.submitted_by ?? "—"],
+              [
+                "Files sent",
+                <Link key="files" to="/dashboard/documents" className="text-accent hover:underline">
+                  {r.manifest?.length
+                    ? `${r.manifest.length} file${r.manifest.length === 1 ? "" : "s"} — open in Documents`
+                    : r.manifest
+                      ? "None selected when filed"
+                      : "Not recorded (filed before file lists were kept)"}
+                </Link>,
+              ],
               ...(r.notes ? ([["Notes", r.notes]] as [string, string][]) : []),
             ]}
           />
