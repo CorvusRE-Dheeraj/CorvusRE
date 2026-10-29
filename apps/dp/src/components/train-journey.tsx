@@ -286,25 +286,10 @@ function DepartureBoard(props: {
   );
 }
 
-function WagonCar({
-  wagon,
-  index,
-  arrived,
-  left = false,
-}: {
-  wagon: Wagon;
-  index: number;
-  arrived: boolean;
-  left?: boolean; // travelling left: coupled to the car on its left
-}) {
+function WagonCar({ wagon, index, arrived }: { wagon: Wagon; index: number; arrived: boolean }) {
   const style = ROUTE_STYLE[wagon.color];
   return (
-    <div
-      className={cn(
-        "relative flex w-[150px] shrink-0 flex-col items-center",
-        left ? "ml-2" : "mr-2",
-      )}
-    >
+    <div className="relative mr-2 flex w-[150px] shrink-0 flex-col items-center">
       {wagon.loading && (
         <span className="journey-loading mb-1 whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700 shadow">
           loading data<span>.</span>
@@ -338,10 +323,7 @@ function WagonCar({
         {SHORT[wagon.color]}
         {/* coupling to the next car */}
         <span
-          className={cn(
-            "absolute top-1/2 h-1.5 w-3 -translate-y-1/2 rounded-sm bg-slate-800",
-            left ? "-left-2.5" : "-right-2.5",
-          )}
+          className="absolute -right-2.5 top-1/2 h-1.5 w-3 -translate-y-1/2 rounded-sm bg-slate-800"
           aria-hidden
         />
       </div>
@@ -353,36 +335,52 @@ function WagonCar({
   );
 }
 
-/** The hero's train in miniature — the same locomotive and every route wagon
- *  so far (one per route it has reached), empty — for parking on the track
- *  map's rail. A longer train is drawn a little smaller. `facing="left"`
- *  for a row the track runs through right to left. */
+/** The hero's train in miniature for parking on the track map's rail: the
+ *  same locomotive (scaled down) pulling a wagon for every route it has
+ *  reached. The wagons are drawn at full size so their route names stay
+ *  readable. `facing="left"` for a row the track runs through right to left. */
 export function MiniTrain({
   wagons,
-  scale = wagons.length > 3 ? 0.38 : wagons.length > 2 ? 0.44 : 0.5,
   facing = "right",
 }: {
   wagons: Wagon[];
-  scale?: number;
   facing?: "left" | "right";
 }) {
   const left = facing === "left";
   return (
-    <div
-      className={cn("flex items-end", left && "flex-row-reverse")}
-      style={{ zoom: scale }}
-      aria-hidden
-    >
-      {wagons.map((w, i) => (
-        <WagonCar
-          key={w.route}
-          wagon={{ ...w, crates: [], loading: false }}
-          index={i}
-          arrived
-          left={left}
-        />
+    <div className={cn("flex items-end", left && "flex-row-reverse")} aria-hidden>
+      {wagons.map((w) => (
+        <MiniWagon key={w.route} color={w.color} left={left} />
       ))}
-      <Locomotive left={left} />
+      <div style={{ zoom: 0.45 }}>
+        <Locomotive left={left} />
+      </div>
+    </div>
+  );
+}
+
+function MiniWagon({ color, left }: { color: LineColor; left: boolean }) {
+  return (
+    <div className="relative mx-[3px] flex w-[78px] shrink-0 flex-col items-center">
+      <div
+        className={cn(
+          "relative flex h-[18px] w-full items-center justify-center rounded border-b-2 border-slate-800 px-1 text-[10px] font-semibold leading-none text-white shadow",
+          ROUTE_STYLE[color].solid,
+        )}
+      >
+        {SHORT[color]}
+        {/* coupling to the car in front */}
+        <span
+          className={cn(
+            "absolute top-1/2 h-1 w-2 -translate-y-1/2 rounded-sm bg-slate-800",
+            left ? "-left-[7px]" : "-right-[7px]",
+          )}
+        />
+      </div>
+      <div className="-mt-[3px] flex w-full justify-between px-2">
+        <Wheel size="h-2.5 w-2.5" />
+        <Wheel size="h-2.5 w-2.5" />
+      </div>
     </div>
   );
 }
