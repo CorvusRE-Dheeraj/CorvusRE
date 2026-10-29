@@ -5,16 +5,19 @@
 ```
 npm install
 cp apps/pt/.env.example apps/pt/.env   # then fill in the Supabase values
+cp apps/dp/.env.example apps/dp/.env   # CorvusDP's Supabase values
 npm run local
 ```
 
-Open http://localhost:8080/. `npm run local` builds CorvusPT and the shared
-sign-in app (`apps/identity`, served at `/auth/`) and serves both together, so
-"Sign In" works. Sign in with email + password — Google sign-in only works on
+Open http://localhost:8080/ (CorvusPT) or http://localhost:8080/corvusdp/
+(CorvusDP). `npm run local` builds CorvusPT, CorvusDP and the shared sign-in app
+(`apps/identity`, served at `/auth/`) and serves them together, so "Sign In"
+works for both. Sign in with email + password — Google sign-in only works on
 the deployed domain. It's a static build: re-run after changing code
-(`npm run local -- --no-build` reuses the last build; `PORT=9000` changes the port).
+(`npm run local -- --no-build` reuses the last build, `--no-dp` skips CorvusDP;
+`PORT=9000` changes the port).
 
-Don't use `vite preview` on `apps/pt` alone for anything that needs a login —
+Don't use `vite preview` on `apps/pt` or `apps/dp` alone for anything that needs a login —
 it doesn't serve `/auth/`, so sign-in 404s.
 
 ## Test accounts
