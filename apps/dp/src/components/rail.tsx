@@ -123,9 +123,17 @@ export function ContinuousTrack({
       if (!live) return;
       // only where every row of stations fits — a row that scrolls sideways
       // would slide its stations out from under the drawn track
+      // (the stations themselves — the train may hang past a row's ends)
       const fits = [...el.querySelectorAll<HTMLElement>("[data-rail]")].every((r) => {
         const s = r.closest<HTMLElement>(".overflow-x-auto");
-        return !s || s.scrollWidth <= s.clientWidth + 1;
+        const ol = s?.querySelector("ol");
+        if (!s || !ol) return true;
+        const box = s.getBoundingClientRect();
+        return [...ol.children].every((li) => {
+          if (getComputedStyle(li).position === "absolute") return true;
+          const b = li.getBoundingClientRect();
+          return b.left >= box.left - 1 && b.right <= box.right + 1;
+        });
       });
       if (!wide.matches || !fits) {
         el.removeAttribute("data-track-on");

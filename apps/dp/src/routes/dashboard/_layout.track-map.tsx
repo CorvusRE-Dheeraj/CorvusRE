@@ -408,7 +408,7 @@ function TrackMap() {
 
       {/* ── the map: one continuous track through every section ─────── */}
       <div
-        className="relative grid min-w-0 grid-cols-1 gap-5 xl:px-[var(--track-pad)]"
+        className="relative grid min-w-0 grid-cols-1 gap-5 xl:overflow-x-clip xl:px-[var(--track-pad)]"
         style={{ "--track-pad": `${trackPad}px` } as CSSProperties}
       >
         <ContinuousTrack
@@ -809,7 +809,8 @@ function StationRow({
   const railTop = trainAt != null && nums.includes(trainAt) ? 50 : 6;
   const cardTop = railTop + 26;
   return (
-    <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-1">
+    // wide screens: rows fit, so the train's wagons may hang past the row's ends
+    <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-1 xl:overflow-visible">
       <TrackLabel kind={track.kind} label={track.label} color={color} />
       <ol
         className={cn(
@@ -886,7 +887,7 @@ function StationRow({
                     onClick={() => onOpen(n, false, permitId)}
                     aria-label={`Station ${n}: ${s.title}${isCurrent ? " — current stage" : ""}`}
                     className={cn(
-                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md xl:px-2.5 xl:[overflow-wrap:anywhere]",
+                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md xl:px-2.5 xl:hyphens-auto xl:[overflow-wrap:anywhere]",
                       style.border,
                       isCurrent && "border-green-600 bg-green-50 ring-4 ring-green-500/20",
                     )}
@@ -926,13 +927,17 @@ function StationRow({
                   <button
                     type="button"
                     onClick={() => onOpen(n, true)}
-                    className="flex min-h-[44px] w-full items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-amber-900 hover:bg-amber-100 xl:px-2 xl:[overflow-wrap:anywhere]"
+                    className="flex min-h-[44px] w-full items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-amber-900 hover:bg-amber-100 xl:flex-wrap xl:gap-1 xl:px-2 xl:hyphens-auto"
                   >
                     <span className="shrink-0 rounded bg-amber-400 px-1 py-0.5 text-[9px] font-bold text-amber-950">
                       AI
                     </span>
-                    <span className="min-w-0 flex-1">{s.module.replace(/^AI /, "")}</span>
-                    <AvailabilityDot availability={s.availability} />
+                    <span className="min-w-0 flex-1 xl:order-last xl:basis-full">
+                      {s.module.replace(/^AI /, "")}
+                    </span>
+                    <span className="xl:ml-auto">
+                      <AvailabilityDot availability={s.availability} />
+                    </span>
                   </button>
                 )}
               </li>

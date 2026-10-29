@@ -353,12 +353,13 @@ function WagonCar({
   );
 }
 
-/** The hero's train in miniature — the same locomotive and route wagons (the
- *  latest two), empty — for parking on the track map's rail. `facing="left"`
+/** The hero's train in miniature — the same locomotive and every route wagon
+ *  so far (one per route it has reached), empty — for parking on the track
+ *  map's rail. A longer train is drawn a little smaller. `facing="left"`
  *  for a row the track runs through right to left. */
 export function MiniTrain({
   wagons,
-  scale = 0.5,
+  scale = wagons.length > 3 ? 0.38 : wagons.length > 2 ? 0.44 : 0.5,
   facing = "right",
 }: {
   wagons: Wagon[];
@@ -372,7 +373,7 @@ export function MiniTrain({
       style={{ zoom: scale }}
       aria-hidden
     >
-      {wagons.slice(-2).map((w, i) => (
+      {wagons.map((w, i) => (
         <WagonCar
           key={w.route}
           wagon={{ ...w, crates: [], loading: false }}
