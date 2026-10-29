@@ -133,10 +133,14 @@ export function casePipeline(input: PipelineInput): Pipeline {
   const hearingDate = day(p?.hearingDate);
   const decisionDate = day(p?.arbDecisionDate);
 
+  // The district only hands over hearing evidence for a protest it has on
+  // file, so receiving it proves the filing even if delivery and the county's
+  // confirmation were never recorded here.
+  const districtHasProtest = !!p?.cadEvidenceReceivedAt;
   const done: Record<StageId, boolean> = {
     readiness: !!p && (!!p.corvusGuidanceAckAt || rank >= 1 || !!notice?.signedAt),
-    file: rank >= 1 || !!notice?.submittedAt,
-    confirm: rank >= 1 || filing === "confirmed",
+    file: rank >= 1 || !!notice?.submittedAt || districtHasProtest,
+    confirm: rank >= 1 || filing === "confirmed" || districtHasProtest,
     cad_evidence: !!p?.cadEvidenceRequestedAt,
     informal:
       settled ||

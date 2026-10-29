@@ -83,6 +83,30 @@ describe("casePipeline", () => {
     expect(r.next.title).toBe("Confirm the county received your protest");
   });
 
+  it("treats the district's hearing evidence as proof the protest is on file", () => {
+    const p = protest({
+      corvusGuidanceAckAt: "x",
+      cadEvidenceRequestedAt: "2026-10-27T18:02:00Z",
+      cadEvidenceReceivedAt: "2026-10-27T18:57:00Z",
+    });
+    // Signed, delivery never recorded — and delivered but never confirmed.
+    for (const n of [
+      notice({ signedAt: "a" }),
+      notice({ signedAt: "a", submittedAt: "2026-10-29T15:00:00Z" }),
+    ]) {
+      const r = casePipeline({ ...base, protest: p, notice: n });
+      expect(r.stages.find((s) => s.id === "file")?.state).toBe("done");
+      expect(r.stages.find((s) => s.id === "confirm")?.state).toBe("done");
+      expect(r.next.stage).toBe("informal");
+      expect(r.next.title).toBe("Request an informal review with the appraiser");
+    }
+    // Only requested, not received: still needs filing.
+    const asked = protest({ corvusGuidanceAckAt: "x", cadEvidenceRequestedAt: "2026-10-27" });
+    expect(
+      casePipeline({ ...base, protest: asked, notice: notice({ signedAt: "a" }) }).next.stage,
+    ).toBe("file");
+  });
+
   it("reopens Confirm Filing when the county asks for more or rejects it", () => {
     const p = protest({ status: "filed", corvusGuidanceAckAt: "x" });
     const n = notice({
