@@ -117,6 +117,12 @@ export type ProtestRecord = {
   // updating; fromRow (the real path) always populates them.
   informalReviewTime?: string | null;
   informalReviewMode?: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown" | null;
+  // How to join it: the video link, the number to call, the address to go
+  // to. Typed by the owner, or the link/dial-in read off the county's email.
+  informalReviewLink?: string | null;
+  informalReviewPhone?: string | null;
+  informalReviewLocation?: string | null;
+  informalReviewLinkSource?: "owner" | "county_email" | null;
   // Case-record fields — see src/lib/case-record.ts. Optional (not just
   // nullable) so the many ProtestRecord fixtures/builders that predate them
   // don't all need updating; fromRow (the real path) always populates them.
@@ -166,6 +172,10 @@ type ProtestRow = {
   informal_review_date: string | null;
   informal_review_time: string | null;
   informal_review_mode: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown" | null;
+  informal_review_link: string | null;
+  informal_review_phone: string | null;
+  informal_review_location: string | null;
+  informal_review_link_source: "owner" | "county_email" | null;
   informal_appraiser_category: AppraiserCategory | null;
   attendance_type: AttendanceType | null;
   filing_confirmation_number: string | null;
@@ -179,7 +189,7 @@ type ProtestRow = {
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_review_link, informal_review_phone, informal_review_location, informal_review_link_source, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return {
@@ -211,6 +221,10 @@ function fromRow(row: ProtestRow): ProtestRecord {
     informalReviewDate: row.informal_review_date,
     informalReviewTime: row.informal_review_time,
     informalReviewMode: row.informal_review_mode,
+    informalReviewLink: row.informal_review_link,
+    informalReviewPhone: row.informal_review_phone,
+    informalReviewLocation: row.informal_review_location,
+    informalReviewLinkSource: row.informal_review_link_source,
     informalAppraiserCategory: row.informal_appraiser_category,
     attendanceType: row.attendance_type,
     filingConfirmationNumber: row.filing_confirmation_number,

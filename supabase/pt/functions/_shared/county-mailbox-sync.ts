@@ -16,6 +16,7 @@ import {
   gmailConfirmationCode,
   isGmailForwardingConfirmation,
   matchCountyMail,
+  meetingDetailsFromEmail,
   parseGmailMessage,
   safeFileName,
   senderDomain,
@@ -281,7 +282,45 @@ export async function fileCountyEmail(
     file_names: names,
     document_ids: documentIds,
   });
+  if (match.kind === "matched") {
+    await applyInformalMeeting(admin, match.propertyId, mail).catch((err) =>
+      console.error("Could not read meeting details from county email:", err),
+    );
+  }
   return match.kind === "matched" ? "filed" : "queued";
+}
+
+// The video link / dial-in the district emailed for an informal review goes
+// onto the property's open protest. What the owner typed themselves is kept.
+async function applyInformalMeeting(
+  admin: SupabaseClient,
+  propertyId: string,
+  mail: IncomingCountyEmail,
+): Promise<void> {
+  const m = meetingDetailsFromEmail(mail);
+  if (m.about !== "informal" || (!m.link && !m.dialIn)) return;
+  const { data: protest } = await admin
+    .from("protests")
+    .select("id, informal_review_link, informal_review_phone, informal_review_link_source, informal_review_mode")
+    .eq("property_id", propertyId)
+    .neq("status", "resolved")
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!protest) return;
+  const ownerSet = protest.informal_review_link_source === "owner";
+  const patch: Record<string, string> = {};
+  if (m.link && !(ownerSet && protest.informal_review_link)) {
+    patch.informal_review_link = m.link;
+    patch.informal_review_link_source = "county_email";
+    if (!protest.informal_review_mode) patch.informal_review_mode = "Videoconference";
+  }
+  if (m.dialIn && !(ownerSet && protest.informal_review_phone)) {
+    patch.informal_review_phone = m.dialIn;
+    if (!ownerSet) patch.informal_review_link_source = "county_email";
+  }
+  if (!Object.keys(patch).length) return;
+  await admin.from("protests").update(patch).eq("id", protest.id);
 }
 
 // Admin assigns a queued county email to a property: moves its files into the

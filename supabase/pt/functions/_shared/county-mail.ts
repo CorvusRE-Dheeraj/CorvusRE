@@ -220,3 +220,50 @@ export function isGmailForwardingConfirmation(from: string): boolean {
 export function gmailConfirmationCode(subject: string, text: string): string | null {
   return /\(#(\d{6,12})\)/.exec(subject)?.[1] ?? /confirmation code:\s*(\d{6,12})/i.exec(text)?.[1] ?? null;
 }
+
+// ── Meeting details in a county email ────────────────────────────────────────
+
+// The district emails the video-conference link (and often a dial-in) for an
+// informal review or hearing. Read them straight off the email — a link is
+// only taken from a known meeting service, never any URL in the message.
+const MEETING_HOSTS =
+  /^(?:[\w-]+\.)*(?:zoom\.us|zoomgov\.com|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com|gotomeeting\.com|meet\.goto\.com|bluejeans\.com|ringcentral\.com|whereby\.com)$/i;
+
+export type MeetingDetails = {
+  link: string | null;
+  dialIn: string | null;
+  // Which meeting the email is about — the informal review or the ARB hearing.
+  about: "informal" | "hearing" | null;
+};
+
+export function meetingDetailsFromEmail(mail: {
+  subject: string;
+  text: string;
+  html: string | null;
+}): MeetingDetails {
+  const body = `${mail.text}\n${mail.html ?? ""}`.replace(/&amp;/g, "&");
+  let link: string | null = null;
+  for (const m of body.matchAll(/https:\/\/[^\s"'<>()]+/gi)) {
+    const url = m[0].replace(/[.,;:!?\]]+$/, "");
+    try {
+      if (MEETING_HOSTS.test(new URL(url).hostname)) {
+        link = url;
+        break;
+      }
+    } catch {
+      // not a URL
+    }
+  }
+  const plain = `${mail.text} ${(mail.html ?? "").replace(/<[^>]+>/g, " ")}`.replace(/\s+/g, " ");
+  const dial =
+    /(?:dial[- ]?in|call[- ]?in|by phone|telephone|phone|conference line|dial)\D{0,40}?(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i.exec(
+      plain,
+    );
+  const words = `${mail.subject} ${plain}`;
+  const about = /informal/i.test(words)
+    ? "informal"
+    : /\b(ARB|appraisal review board|hearing)\b/i.test(words)
+      ? "hearing"
+      : null;
+  return { link, dialIn: dial ? dial[1].trim() : null, about };
+}

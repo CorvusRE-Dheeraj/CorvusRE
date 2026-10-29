@@ -18,7 +18,9 @@ import {
   resolveInformalSettlement,
   saveInformalAppraiserCategory,
 } from "@/lib/protest-case";
-import { getCountyProtestInfo } from "@/lib/county-protest-info";
+import { getCountyProtestInfo, informalReviewContact } from "@/lib/county-protest-info";
+import { LEGAL_CONTACT } from "@/lib/legal";
+import { CountyInformalContact, JoinInformalMeeting } from "@/components/case/informal-meeting";
 import {
   uploadDocument,
   getDocumentById,
@@ -178,6 +180,21 @@ export function InformalReviewSection({
   const [qaError, setQaError] = useState<string | null>(null);
 
   const countyInfo = getCountyProtestInfo(property.cad);
+  const contact = informalReviewContact(countyInfo);
+  // How to join, by mode — prefilled with what's on file, else the county's
+  // own number / office address.
+  const [linkInput, setLinkInput] = useState(protest.informalReviewLink ?? "");
+  const [phoneInput, setPhoneInput] = useState(
+    protest.informalReviewPhone ?? contact?.phones[0] ?? "",
+  );
+  const [locationInput, setLocationInput] = useState(
+    protest.informalReviewLocation ?? contact?.inPersonAddress ?? "",
+  );
+  // The county's email can fill these in while the tab is open.
+  useEffect(() => {
+    if (protest.informalReviewLink) setLinkInput(protest.informalReviewLink);
+    if (protest.informalReviewPhone) setPhoneInput(protest.informalReviewPhone);
+  }, [protest.informalReviewLink, protest.informalReviewPhone]);
 
   // The latest hearing/county notice already read for this case — grounds the
   // guidance below (see getInformalReviewGuidance's noticeContext arg). Same
@@ -209,7 +226,15 @@ export function InformalReviewSection({
           mode: protest.informalReviewMode ?? null,
         };
         await cancelInformalReviewMeeting(protest.id, previous);
-        onUpdate({ informalReviewDate: null, informalReviewTime: null, informalReviewMode: null });
+        onUpdate({
+          informalReviewDate: null,
+          informalReviewTime: null,
+          informalReviewMode: null,
+          informalReviewLink: null,
+          informalReviewPhone: null,
+          informalReviewLocation: null,
+          informalReviewLinkSource: null,
+        });
         const when = new Date(`${previous.date.slice(0, 10)}T12:00:00`).toLocaleDateString(
           "en-US",
           {
@@ -318,15 +343,41 @@ export function InformalReviewSection({
   async function handleSaveSchedule(e: FormEvent) {
     e.preventDefault();
     if (!dateInput) return;
+    const link = modeInput === "Videoconference" ? linkInput.trim() || null : null;
+    if (link && !/^https:\/\/\S+$/i.test(link)) {
+      toast.error("Paste the full meeting link, starting with https://");
+      return;
+    }
+    const phone =
+      modeInput === "Phone" || modeInput === "Videoconference" ? phoneInput.trim() || null : null;
+    const location = modeInput === "In Person" ? locationInput.trim() || null : null;
+    // Still the county email's link/dial-in if the owner didn't change them.
+    const linkSource =
+      protest.informalReviewLinkSource === "county_email" &&
+      link === (protest.informalReviewLink ?? null) &&
+      (phone ?? null) === (protest.informalReviewPhone ?? null)
+        ? "county_email"
+        : "owner";
     setSavingSchedule(true);
     try {
       const displayTime = timeInput ? formatInputTime(timeInput) : null;
-      await scheduleInformalReview(protest.id, dateInput, { time: displayTime, mode: modeInput });
+      await scheduleInformalReview(protest.id, dateInput, {
+        time: displayTime,
+        mode: modeInput,
+        link,
+        phone,
+        location,
+        linkSource,
+      });
       onUpdate({
         informalStatus: "scheduled",
         informalReviewDate: dateInput,
         informalReviewTime: displayTime,
         informalReviewMode: modeInput,
+        informalReviewLink: link,
+        informalReviewPhone: phone,
+        informalReviewLocation: location,
+        informalReviewLinkSource: linkSource,
       });
       toast.success("Informal review scheduled — added to your calendar.");
     } catch (err) {
@@ -563,6 +614,15 @@ export function InformalReviewSection({
           </button>
         </div>
       )}
+      {contact &&
+        property.cad &&
+        !["completed", "accepted", "rejected"].includes(protest.informalStatus) && (
+          <CountyInformalContact
+            cad={property.cad}
+            contact={contact}
+            howToRequest={countyInfo?.informalReview?.howToRequest ?? null}
+          />
+        )}
       {/* Schedule — available until the informal review is completed (or skipped/rejected).
           Saving it sets the status to "scheduled" and feeds the in-platform
           calendar + Google/ICS sync (see scheduleInformalReview). */}
@@ -631,6 +691,42 @@ export function InformalReviewSection({
                 ))}
               </select>
             </label>
+            {modeInput === "Videoconference" && (
+              <label className="grid w-full min-w-0 gap-1 text-xs sm:w-auto sm:min-w-[260px] sm:flex-1">
+                Meeting link
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  placeholder="https://… (from the district's email)"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </label>
+            )}
+            {(modeInput === "Phone" || modeInput === "Videoconference") && (
+              <label className="grid gap-1 text-xs">
+                {modeInput === "Phone" ? "Phone number" : "Dial-in (optional)"}
+                <input
+                  type="tel"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  placeholder="(469) 742-9200"
+                  className="w-44 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </label>
+            )}
+            {modeInput === "In Person" && (
+              <label className="grid w-full min-w-0 gap-1 text-xs sm:w-auto sm:min-w-[260px] sm:flex-1">
+                Address
+                <input
+                  value={locationInput}
+                  onChange={(e) => setLocationInput(e.target.value)}
+                  placeholder="The district's office address"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </label>
+            )}
             <button
               type="submit"
               disabled={savingSchedule || !dateInput}
@@ -639,15 +735,24 @@ export function InformalReviewSection({
               {savingSchedule ? "Saving…" : "Save & add to calendar"}
             </button>
           </div>
-          {scheduled && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              On file: {protest.informalReviewDate}
-              {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
-              {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
-              <Link to="/dashboard/calendar" className="text-accent hover:underline">
-                View on calendar
-              </Link>
+          {modeInput === "Videoconference" && (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              Districts email the video link before the review. When that email reaches CorvusPT
+              (forward it to {LEGAL_CONTACT.email} if it came to you), Corvus AI adds the link here.
             </p>
+          )}
+          {scheduled && (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">
+                On file: {protest.informalReviewDate}
+                {protest.informalReviewTime ? ` at ${protest.informalReviewTime}` : ""}
+                {protest.informalReviewMode ? ` · ${protest.informalReviewMode}` : ""} ·{" "}
+                <Link to="/dashboard/calendar" className="text-accent hover:underline">
+                  View on calendar
+                </Link>
+              </p>
+              <JoinInformalMeeting protest={protest} />
+            </>
           )}
         </form>
       )}

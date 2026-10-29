@@ -39,7 +39,15 @@ export type CountyProtestInfo = {
     email: { available: boolean | null; address: string | null; notes: string | null };
   };
   arbContact: { phone: string | null; email: string | null; office: string | null } | null;
-  informalReview: { howToRequest: string; notes: string | null } | null;
+  informalReview: {
+    howToRequest: string;
+    notes: string | null;
+    // The district's own booking page and contact for informal reviews, when
+    // its informal-review page publishes them (otherwise the ARB contact).
+    bookingUrl?: string | null;
+    phones?: string[];
+    email?: string | null;
+  } | null;
   sourceUrl: string;
   verifiedAt: string;
   // How this entry was built: "researched" (hand-checked, below), "ai_retrieved"
@@ -259,12 +267,15 @@ export const COUNTY_PROTEST_INFO: Record<string, CountyProtestInfo> = {
     arbContact: { phone: "469.742.9200", email: null, office: null },
     informalReview: {
       howToRequest:
-        "Schedule an informal review using the QR code on your Appraisal Notice, or book online if you don't have the notice.",
+        "Schedule an informal review using the QR code on your Appraisal Notice, or book online if you don't have the notice. In-person reviews must be booked through the QR code on the notice; agents use their agent portal.",
       notes:
         "Phone inquiries are answered by mail, typically within 15 business days. An informal review does not preserve your right to a formal ARB hearing — only a timely filed protest does.",
+      bookingUrl: "https://waitwhile.com/book/ccad-appraisal",
+      phones: ["469.742.9200", "866.467.1110"],
+      email: null,
     },
     sourceUrl: "https://collincad.org/informalappraisalreview/",
-    verifiedAt: "2026-09-03",
+    verifiedAt: "2026-10-29",
   },
   "Montgomery Central Appraisal District": {
     cad: "Montgomery Central Appraisal District",
@@ -350,6 +361,47 @@ export const COUNTY_PROTEST_INFO: Record<string, CountyProtestInfo> = {
     verifiedAt: "2026-09-03",
   },
 };
+
+// Who to call / email / where to book an informal review: the district's
+// informal-review contact when published, else its ARB contact.
+export type InformalContact = {
+  phones: string[];
+  email: string | null;
+  bookingUrl: string | null;
+  inPersonAddress: string | null;
+  website: string | null;
+};
+
+export function informalReviewContact(info: CountyProtestInfo | null): InformalContact | null {
+  if (!info) return null;
+  const ir = info.informalReview;
+  const phones = ir?.phones?.length
+    ? ir.phones
+    : info.arbContact?.phone
+      ? [info.arbContact.phone]
+      : [];
+  const email = ir?.email !== undefined ? ir.email : (info.arbContact?.email ?? null);
+  const c: InformalContact = {
+    phones,
+    email,
+    bookingUrl: ir?.bookingUrl ?? null,
+    inPersonAddress: info.filingMethod.inPerson?.address ?? null,
+    website: info.website ?? null,
+  };
+  return c.phones.length || c.email || c.bookingUrl || c.inPersonAddress ? c : null;
+}
+
+// "469.742.9200" -> "tel:+14697429200"; null when it isn't a phone number.
+export function telHref(phone: string): string | null {
+  const d = phone.replace(/\D/g, "");
+  if (d.length === 10) return `tel:+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `tel:+${d}`;
+  return null;
+}
+
+export function mapsHref(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
 
 // Every Texas county, best source first: the hand-researched entries above; else
 // what AI read off the district's own website (cached — see county-procedures.ts,
