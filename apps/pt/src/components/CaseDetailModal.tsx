@@ -51,6 +51,7 @@ import {
   HearingNoticeSection,
   HearingPrepSection,
 } from "@/components/case/hearing";
+import { HearingJoinSection } from "@/components/case/meeting";
 import { EscalationEvaluationSection } from "@/components/case/escalation";
 
 // The case road's steps (case-pipeline.ts) open these tabs; Appeal Decision opens
@@ -201,7 +202,10 @@ function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): Case
     case "filed":
     case "under_review":
     case "offer_received":
-      return "informal";
+      // Unsatisfied with the informal review (or none offered): on to the formal hearing.
+      return ["rejected", "no_informal_available"].includes(protest.informalStatus)
+        ? "hearing"
+        : "informal";
     case "hearing_scheduled":
       return "hearing";
     case "decision_received":
@@ -730,12 +734,20 @@ export function CaseDetailView({
                 {/* The hearing notice is the first step of the formal hearing —
                     it leads the tab until the ARB has decided. */}
                 {!current.arbDecision && (
-                  <HearingNoticeSection
-                    userId={userId}
-                    protest={current}
-                    property={property}
-                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                  />
+                  <>
+                    <HearingNoticeSection
+                      userId={userId}
+                      protest={current}
+                      property={property}
+                      onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    />
+                    {/* Then how to attend — call, video or in person. */}
+                    <HearingJoinSection
+                      protest={current}
+                      property={property}
+                      onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    />
+                  </>
                 )}
                 {/* Once decided, the ARB result leads the tab. */}
                 <CaseOutcomeSection

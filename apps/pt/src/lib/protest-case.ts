@@ -350,6 +350,34 @@ export async function scheduleHearing(
   });
 }
 
+// How the owner joins the ARB hearing — the mode plus the video link, number
+// to call or address. Doesn't touch the date or the case status.
+export async function saveHearingJoin(
+  protestId: string,
+  join: {
+    mode: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown";
+    link: string | null;
+    phone: string | null;
+    location: string | null;
+    linkSource: "owner" | "county_email";
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      hearing_mode: join.mode,
+      hearing_link: join.link,
+      hearing_phone: join.phone,
+      hearing_location: join.location,
+      hearing_link_source: join.linkSource,
+    })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(protestId, "status_change", `ARB hearing attendance set to ${join.mode}.`, {
+    hearingMode: join.mode,
+  });
+}
+
 // Real, user-driven update to the informal-review sub-tracker (see the
 // schema.sql comment on protests.informal_status) — the user picks their
 // real, actual status directly (a dropdown in InformalReviewSection), not

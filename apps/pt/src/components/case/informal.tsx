@@ -19,8 +19,12 @@ import {
   saveInformalAppraiserCategory,
 } from "@/lib/protest-case";
 import { getCountyProtestInfo, informalReviewContact } from "@/lib/county-protest-info";
-import { LEGAL_CONTACT } from "@/lib/legal";
-import { CountyInformalContact, JoinInformalMeeting } from "@/components/case/informal-meeting";
+import {
+  CountyInformalContact,
+  EmailedLinkNote,
+  JoinInformalMeeting,
+  MeetingJoinFields,
+} from "@/components/case/meeting";
 import {
   uploadDocument,
   getDocumentById,
@@ -691,42 +695,16 @@ export function InformalReviewSection({
                 ))}
               </select>
             </label>
-            {modeInput === "Videoconference" && (
-              <label className="grid w-full min-w-0 gap-1 text-xs sm:w-auto sm:min-w-[260px] sm:flex-1">
-                Meeting link
-                <input
-                  type="url"
-                  inputMode="url"
-                  value={linkInput}
-                  onChange={(e) => setLinkInput(e.target.value)}
-                  placeholder="https://… (from the district's email)"
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                />
-              </label>
-            )}
-            {(modeInput === "Phone" || modeInput === "Videoconference") && (
-              <label className="grid gap-1 text-xs">
-                {modeInput === "Phone" ? "Phone number" : "Dial-in (optional)"}
-                <input
-                  type="tel"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  placeholder="(469) 742-9200"
-                  className="w-44 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                />
-              </label>
-            )}
-            {modeInput === "In Person" && (
-              <label className="grid w-full min-w-0 gap-1 text-xs sm:w-auto sm:min-w-[260px] sm:flex-1">
-                Address
-                <input
-                  value={locationInput}
-                  onChange={(e) => setLocationInput(e.target.value)}
-                  placeholder="The district's office address"
-                  className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                />
-              </label>
-            )}
+            <MeetingJoinFields
+              mode={modeInput}
+              link={linkInput}
+              phone={phoneInput}
+              location={locationInput}
+              onLink={setLinkInput}
+              onPhone={setPhoneInput}
+              onLocation={setLocationInput}
+              phonePlaceholder={contact?.phones[0] ?? "(469) 742-9200"}
+            />
             <button
               type="submit"
               disabled={savingSchedule || !dateInput}
@@ -735,12 +713,7 @@ export function InformalReviewSection({
               {savingSchedule ? "Saving…" : "Save & add to calendar"}
             </button>
           </div>
-          {modeInput === "Videoconference" && (
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Districts email the video link before the review. When that email reaches CorvusPT
-              (forward it to {LEGAL_CONTACT.email} if it came to you), Corvus AI adds the link here.
-            </p>
-          )}
+          {modeInput === "Videoconference" && <EmailedLinkNote />}
           {scheduled && (
             <>
               <p className="mt-2 text-xs text-muted-foreground">
