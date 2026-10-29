@@ -51,6 +51,7 @@ import {
   HearingNoticeSection,
   HearingPrepSection,
 } from "@/components/case/hearing";
+import { HearingJoinSection } from "@/components/case/meeting";
 import { EscalationEvaluationSection } from "@/components/case/escalation";
 
 // The case road's steps (case-pipeline.ts) open these tabs; Appeal Decision opens
@@ -201,7 +202,10 @@ function defaultCaseTab(protest: ProtestRecord, needsGuidanceAck: boolean): Case
     case "filed":
     case "under_review":
     case "offer_received":
-      return "informal";
+      // Unsatisfied with the informal review (or none offered): on to the formal hearing.
+      return ["rejected", "no_informal_available"].includes(protest.informalStatus)
+        ? "hearing"
+        : "informal";
     case "hearing_scheduled":
       return "hearing";
     case "decision_received":
@@ -647,6 +651,7 @@ export function CaseDetailView({
                   protestId={protest.id}
                   caseData={caseData}
                   onReload={load}
+                  onGoToPhase={handleTabClick}
                 />
                 {/* Journey tracker is otherwise root-level, Properties-page-only
                   (see SignedInJourney in routes/__root.tsx) — kept here too
@@ -726,6 +731,24 @@ export function CaseDetailView({
             {/* --- Formal Hearing --- */}
             {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
               <div className="space-y-5">
+                {/* The hearing notice is the first step of the formal hearing —
+                    it leads the tab until the ARB has decided. */}
+                {!current.arbDecision && (
+                  <>
+                    <HearingNoticeSection
+                      userId={userId}
+                      protest={current}
+                      property={property}
+                      onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    />
+                    {/* Then how to attend — call, video or in person. */}
+                    <HearingJoinSection
+                      protest={current}
+                      property={property}
+                      onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                    />
+                  </>
+                )}
                 {/* Once decided, the ARB result leads the tab. */}
                 <CaseOutcomeSection
                   userId={userId}
@@ -760,12 +783,14 @@ export function CaseDetailView({
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                   onOpenAppeal={() => setActiveTab(escalationTab)}
                 />
-                <HearingNoticeSection
-                  userId={userId}
-                  protest={current}
-                  property={property}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                />
+                {current.arbDecision && (
+                  <HearingNoticeSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                )}
                 <HearingPrepSection
                   protest={current}
                   property={property}
@@ -1436,14 +1461,27 @@ export function CasePlanSection({
   protestId,
   caseData,
   onReload,
+  onGoToPhase,
 }: {
   userId: string;
   property: PropertyRecord;
   protestId: string;
   caseData: ProtestCase | null;
   onReload: () => void;
+  // Customer modal only: jump to the Informal Review or Formal Hearing tab.
+  onGoToPhase?: (tab: "informal" | "hearing") => void;
 }) {
   const [generating, setGenerating] = useState(false);
+  const phaseButtons = onGoToPhase && (
+    <>
+      <button onClick={() => onGoToPhase("informal")} className="btn-outline w-fit text-sm">
+        Go to Informal
+      </button>
+      <button onClick={() => onGoToPhase("hearing")} className="btn-outline w-fit text-sm">
+        Go to Formal
+      </button>
+    </>
+  );
 
   async function handleGenerate() {
     setGenerating(true);
@@ -1463,13 +1501,16 @@ export function CasePlanSection({
     return (
       <div className="mt-4 grid gap-3">
         <p className="text-sm text-muted-foreground">No case plan yet.</p>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="btn-accent w-fit text-sm disabled:opacity-60"
-        >
-          {generating ? "Generating…" : "Generate Case Plan"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="btn-accent w-fit text-sm disabled:opacity-60"
+          >
+            {generating ? "Generating…" : "Generate Case Plan"}
+          </button>
+          {phaseButtons}
+        </div>
       </div>
     );
   }
@@ -1502,6 +1543,7 @@ export function CasePlanSection({
             </button>
           </div>
         )}
+        {phaseButtons && <div className="mt-3 flex flex-wrap gap-2">{phaseButtons}</div>}
       </section>
       {/* Evidence upload lives in exactly one place on this tab now — the
           Evidence card above (EvidenceStatusCard), which has the richer

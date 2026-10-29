@@ -63,7 +63,7 @@ export function CaseOutcomeBanner({
         </div>
       </div>
       <button type="button" onClick={onViewCase} className="btn-accent shrink-0 text-xs py-1.5">
-        View Case
+        View Protest Case
       </button>
     </div>
   );

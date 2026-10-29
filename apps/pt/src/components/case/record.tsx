@@ -128,10 +128,17 @@ export function FiledProtestStatusCard({
   // last step left is getting it to the county. Says so plainly instead of
   // "Not Filed Yet / Start Filing" (which reads as if nothing was done), while
   // still never claiming "Protest Filed" before the county confirms.
-  const signedNotDelivered = !started && !!submission?.signedAt;
-  const statusLabel = signedNotDelivered
-    ? "Signed — Not Yet Delivered"
-    : noticeFinalStatusLabel(status);
+  // The district sent its hearing evidence for this protest, so it has the
+  // protest on file even though the county's confirmation isn't recorded.
+  const onFileWithDistrict =
+    !!protest.cadEvidenceReceivedAt &&
+    !["confirmed", "rejected", "additional_requested"].includes(status);
+  const signedNotDelivered = !onFileWithDistrict && !started && !!submission?.signedAt;
+  const statusLabel = onFileWithDistrict
+    ? "On File — District Sent Its Evidence"
+    : signedNotDelivered
+      ? "Signed — Not Yet Delivered"
+      : noticeFinalStatusLabel(status);
 
   return (
     <div className="mt-4 card-elev p-4">
@@ -143,11 +150,13 @@ export function FiledProtestStatusCard({
               ? "bg-success/15 text-success"
               : status === "additional_requested" || status === "rejected"
                 ? "bg-destructive/10 text-destructive"
-                : status === "awaiting_confirmation"
-                  ? "bg-warning/15 text-warning-foreground"
-                  : signedNotDelivered
+                : onFileWithDistrict
+                  ? "bg-success/15 text-success"
+                  : status === "awaiting_confirmation"
                     ? "bg-warning/15 text-warning-foreground"
-                    : "bg-secondary text-muted-foreground"
+                    : signedNotDelivered
+                      ? "bg-warning/15 text-warning-foreground"
+                      : "bg-secondary text-muted-foreground"
           }`}
         >
           {statusLabel}
@@ -156,6 +165,12 @@ export function FiledProtestStatusCard({
 
       {loading ? (
         <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+      ) : onFileWithDistrict ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          The district sent its hearing evidence for this protest, so your Notice of Protest is on
+          file. Keep your proof of filing with the case — record the confirmation number or upload
+          the receipt when you have it.
+        </p>
       ) : signedNotDelivered ? (
         <p className="mt-2 text-xs text-muted-foreground">
           Your Notice of Protest is signed. The last step is delivering it to the county — choose
@@ -214,13 +229,15 @@ export function FiledProtestStatusCard({
       <button onClick={onOpen} className="btn-accent mt-3 text-xs py-1.5">
         {status === "confirmed"
           ? "View Filing"
-          : started
-            ? "Continue Filing"
-            : signedNotDelivered
-              ? "Deliver & Confirm Filing"
-              : blocked
-                ? "Review Pre-Filing Check"
-                : "Start Filing"}
+          : onFileWithDistrict
+            ? "Record Proof of Filing"
+            : started
+              ? "Continue Filing"
+              : signedNotDelivered
+                ? "Deliver & Confirm Filing"
+                : blocked
+                  ? "Review Pre-Filing Check"
+                  : "Start Filing"}
       </button>
     </div>
   );

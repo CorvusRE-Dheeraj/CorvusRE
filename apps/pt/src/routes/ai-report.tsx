@@ -3261,7 +3261,7 @@ function Report() {
                         search={{ propertyId: resolvedProperty.id }}
                         className="btn-accent text-sm py-1.5 font-semibold"
                       >
-                        View Case
+                        View Protest Case
                       </Link>
                     )}
                     {nextAction?.action &&

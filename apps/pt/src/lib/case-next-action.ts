@@ -146,11 +146,11 @@ function computePrepareFileAction(
   if (preFilingBlocked) {
     current = "file";
     summary = "Corvus AI needs you to confirm or correct a detail before this case can be filed.";
-    action = { label: "Resolve in View Case", kind: "internal", href: VIEW_CASE_HREF };
+    action = { label: "Resolve in View Protest Case", kind: "internal", href: VIEW_CASE_HREF };
   } else if (deliverToCounty) {
     current = "file";
     summary = allStepsDone
-      ? "Everything is prepared. Deliver your filing to the county, then confirm it in View Case."
+      ? "Everything is prepared. Deliver your filing to the county, then confirm it in View Protest Case."
       : "Your Notice of Protest is signed. Deliver it to the county to complete filing.";
     action = onlineUrl
       ? { label: "Go to County CAD", kind: "external", href: onlineUrl }

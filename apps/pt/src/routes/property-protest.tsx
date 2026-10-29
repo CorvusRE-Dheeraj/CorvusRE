@@ -201,10 +201,10 @@ function ProtestedPropertyCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link to="/dashboard/case" search={{ propertyId: property.id }} className="btn-outline">
-          View Case
+          View Protest Case
         </Link>
         <button type="button" onClick={goToModules} className="btn-outline">
-          Manage
+          AI Modules
         </button>
       </div>
     </div>

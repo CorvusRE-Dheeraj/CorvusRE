@@ -891,7 +891,7 @@ function Overview() {
                 ` — +${hearingReminders.length - 1} other hearing${hearingReminders.length - 1 === 1 ? "" : "s"} coming up`}
             </p>
             <Link to="/dashboard/properties" className="btn-outline text-sm mt-3 inline-flex">
-              View Case
+              View Protest Case
             </Link>
           </div>
         </div>

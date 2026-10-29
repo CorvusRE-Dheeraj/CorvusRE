@@ -181,7 +181,7 @@ describe("computeCaseNextAction — Pre-Filing Check blocked", () => {
   it("points at View Case instead of any filing step", () => {
     const result = computeCaseNextAction(inputs({ property: { ...property, ownerName: null } }));
     expect(result.action).toEqual({
-      label: "Resolve in View Case",
+      label: "Resolve in View Protest Case",
       kind: "internal",
       href: "/dashboard/case",
     });

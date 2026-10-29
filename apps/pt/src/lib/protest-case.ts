@@ -350,6 +350,34 @@ export async function scheduleHearing(
   });
 }
 
+// How the owner joins the ARB hearing — the mode plus the video link, number
+// to call or address. Doesn't touch the date or the case status.
+export async function saveHearingJoin(
+  protestId: string,
+  join: {
+    mode: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown";
+    link: string | null;
+    phone: string | null;
+    location: string | null;
+    linkSource: "owner" | "county_email";
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      hearing_mode: join.mode,
+      hearing_link: join.link,
+      hearing_phone: join.phone,
+      hearing_location: join.location,
+      hearing_link_source: join.linkSource,
+    })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(protestId, "status_change", `ARB hearing attendance set to ${join.mode}.`, {
+    hearingMode: join.mode,
+  });
+}
+
 // Real, user-driven update to the informal-review sub-tracker (see the
 // schema.sql comment on protests.informal_status) — the user picks their
 // real, actual status directly (a dropdown in InformalReviewSection), not
@@ -381,8 +409,15 @@ export async function scheduleInformalReview(
   detail?: {
     time?: string | null;
     mode?: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown" | null;
+    // How to join — see ProtestRecord.informalReviewLink. Omitted = unchanged.
+    link?: string | null;
+    phone?: string | null;
+    location?: string | null;
+    // "county_email" while the owner kept what the county's email gave.
+    linkSource?: "owner" | "county_email" | null;
   },
 ): Promise<void> {
+  const joinChanged = detail && ("link" in detail || "phone" in detail || "location" in detail);
   const { error } = await supabase
     .from("protests")
     .update({
@@ -392,6 +427,14 @@ export async function scheduleInformalReview(
         ? {
             informal_review_time: detail.time ?? null,
             informal_review_mode: detail.mode ?? null,
+          }
+        : {}),
+      ...(joinChanged
+        ? {
+            informal_review_link: detail.link ?? null,
+            informal_review_phone: detail.phone ?? null,
+            informal_review_location: detail.location ?? null,
+            informal_review_link_source: detail.linkSource ?? "owner",
           }
         : {}),
     })
@@ -412,7 +455,15 @@ export async function cancelInformalReviewMeeting(
 ): Promise<void> {
   const { error } = await supabase
     .from("protests")
-    .update({ informal_review_date: null, informal_review_time: null, informal_review_mode: null })
+    .update({
+      informal_review_date: null,
+      informal_review_time: null,
+      informal_review_mode: null,
+      informal_review_link: null,
+      informal_review_phone: null,
+      informal_review_location: null,
+      informal_review_link_source: null,
+    })
     .eq("id", protestId);
   if (error) throw error;
   void logCaseEvent(
