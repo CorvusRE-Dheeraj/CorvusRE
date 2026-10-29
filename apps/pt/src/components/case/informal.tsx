@@ -1005,6 +1005,16 @@ export function InformalReviewSection({
           <span className="text-[11px] text-muted-foreground">
             Uploading the signed settlement closes this protest.
           </span>
+          {/* Unsatisfied (or no informal offered): the next step is the formal hearing. */}
+          {["rejected", "no_informal_available"].includes(protest.informalStatus) && (
+            <button
+              type="button"
+              onClick={onOpenHearing}
+              className="btn-primary text-xs py-1.5 sm:ml-auto"
+            >
+              Go to Formal Hearing →
+            </button>
+          )}
         </div>
       )}
       {settleNeedsValue && settleFile && (
