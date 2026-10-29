@@ -41,7 +41,7 @@ import {
   stageName,
 } from "@/lib/permit-history";
 import { ContinuousTrack, Rail, TrackJunction, TrackLabel } from "@/components/rail";
-import { LINE_GAP, MAIN_RAIL, trackGutter } from "@/lib/track-path";
+import { MAIN_RAIL, trackGutter, trackSides } from "@/lib/track-path";
 import { TRACK_PORTFOLIO_KEY, getTrackPortfolio, type TrackPortfolio } from "@/lib/track-portfolio";
 import { setActiveProject } from "@/lib/projects";
 
@@ -99,6 +99,8 @@ function TrackMap() {
   const laneHex = projectTracks.map((_, i) => LANE_HEX[i % LANE_HEX.length]);
   // room beside the map for the track's bends, and what it's drawn over
   const trackPad = trackGutter(projectTracks.length);
+  // which way the line runs through each main row (and so how it's numbered)
+  const sides = trackSides(4);
   const trackVersion = [
     filter,
     query,
@@ -434,16 +436,10 @@ function TrackMap() {
                 current={(n) => location?.station === n}
                 trainAt={location?.station}
                 track={{ kind: "main", id: `route-${i + 1}` }}
+                reverse={sides.rows[i] === "right"}
                 {...rowProps}
               />
             </RouteSection>
-            {/* the main line crosses back here to the next row's first station */}
-            <div
-              data-gap={`gap-${i}`}
-              aria-hidden
-              className="-mb-3 hidden xl:block"
-              style={{ height: LINE_GAP * 2 }}
-            />
             <TrackJunction
               from={1}
               to={1}
@@ -490,13 +486,6 @@ function TrackMap() {
               View all submissions / resubmissions
             </button>
           </p>
-          {/* the permit tracks cross back here to the start of their lanes */}
-          <div
-            data-gap="split"
-            aria-hidden
-            className="mt-2 hidden xl:block"
-            style={{ height: LINE_GAP * (Math.max(projectTracks.length, 1) + 1) }}
-          />
           <div className="my-4">
             <TrackJunction
               from={1}
@@ -587,13 +576,6 @@ function TrackMap() {
           title="Approved permits rejoin the main line."
           text="Each permit leaves its loop on its own approval; approval, clearance and expiry records stay specific to each permit."
         />
-        {/* where the permit tracks cross back to rejoin the main line at Station 25 */}
-        <div
-          data-gap="merge"
-          aria-hidden
-          className="-my-2 hidden xl:block"
-          style={{ height: LINE_GAP * (Math.max(projectTracks.length, 1) + 1) }}
-        />
 
         {/* ── approval / clearance / expiry ─────────────────────────────── */}
         <RouteSection
@@ -607,6 +589,7 @@ function TrackMap() {
             current={(n) => location?.station === n}
             trainAt={location?.station}
             track={{ kind: "main", id: "route-6" }}
+            reverse={sides.closeout === "right"}
             {...rowProps}
           />
           <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
@@ -805,6 +788,7 @@ function StationRow({
   onOpen,
   single,
   track,
+  reverse = false,
 }: {
   nums: number[];
   current: (n: number) => boolean;
@@ -816,6 +800,9 @@ function StationRow({
   onOpen: (n: number, ai?: boolean, permitId?: string) => void;
   single?: boolean;
   track: { kind: "main" | "parallel" | "loop"; label?: string; color?: string; id?: string };
+  // the track runs through this row right to left (wide screens): stations laid
+  // out from the right, arrows pointing left, the train facing left
+  reverse?: boolean;
 }) {
   const color = track.color ?? MAIN_RAIL;
   // room above the rail for the train, only on the row it's on
@@ -824,7 +811,13 @@ function StationRow({
   return (
     <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-1">
       <TrackLabel kind={track.kind} label={track.label} color={color} />
-      <ol className={cn("relative flex items-stretch", single ? "w-full" : "min-w-max xl:min-w-0")}>
+      <ol
+        className={cn(
+          "relative flex items-stretch",
+          single ? "w-full" : "min-w-max xl:min-w-0",
+          reverse && "xl:flex-row-reverse",
+        )}
+      >
         <li aria-hidden className="pointer-events-none absolute inset-x-0" style={{ top: railTop }}>
           <Rail color={color} railId={track.id} />
         </li>
@@ -841,7 +834,8 @@ function StationRow({
                   style={{ paddingTop: cardTop + 66 }}
                   aria-hidden
                 >
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className={cn("h-4 w-4", reverse && "xl:hidden")} />
+                  {reverse && <ArrowLeft className="hidden h-4 w-4 xl:block" />}
                 </li>
               )}
               <li
@@ -869,10 +863,21 @@ function StationRow({
                 {trainAt === n && (
                   <span
                     id="track-train"
-                    className="absolute right-1 z-10"
+                    className={cn("absolute right-1 z-10", reverse && "xl:left-1 xl:right-auto")}
                     style={{ bottom: `calc(100% - ${railTop + 3}px)` }}
                   >
-                    <MiniTrain wagons={wagons} />
+                    {reverse ? (
+                      <>
+                        <span className="xl:hidden">
+                          <MiniTrain wagons={wagons} />
+                        </span>
+                        <span className="hidden xl:block">
+                          <MiniTrain wagons={wagons} facing="left" />
+                        </span>
+                      </>
+                    ) : (
+                      <MiniTrain wagons={wagons} />
+                    )}
                   </span>
                 )}
                 {filter !== "ai" && (
