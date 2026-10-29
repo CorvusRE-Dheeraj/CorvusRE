@@ -32,7 +32,15 @@ import {
   type Station,
   type Wagon,
 } from "@/lib/train-track";
-import { LANE_COLORS, fmtDate, permitRounds, permitStage, stageName } from "@/lib/permit-history";
+import {
+  LANE_COLORS,
+  LANE_HEX,
+  fmtDate,
+  permitRounds,
+  permitStage,
+  stageName,
+} from "@/lib/permit-history";
+import { MAIN_RAIL, Rail, TrackJunction, TrackLabel } from "@/components/rail";
 import { TRACK_PORTFOLIO_KEY, getTrackPortfolio, type TrackPortfolio } from "@/lib/track-portfolio";
 import { setActiveProject } from "@/lib/projects";
 
@@ -86,6 +94,8 @@ function TrackMap() {
   if (!hasProject || !project) return <EmptyProject />;
 
   const projectTracks = tracks.filter((t) => t.project.id === project.id);
+  // each permit's parallel track is drawn in its lane colour
+  const laneHex = projectTracks.map((_, i) => LANE_HEX[i % LANE_HEX.length]);
   const projects = portfolio.data?.projects ?? [project];
   const wagons = location
     ? wagonCargo({
@@ -186,14 +196,15 @@ function TrackMap() {
           )}
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-          <span>
-            <b className="mr-1 text-base text-blue-700">→</b> Sequential steps within one permit
+          <span className="flex items-center gap-1.5">
+            <Rail className="w-8" /> Continuous main line
           </span>
-          <span>
-            <b className="mr-1 text-base text-violet-700">∥</b> Independent parallel tracks
+          <span className="flex items-center gap-1.5">
+            <Rail color={LANE_HEX[0]} className="w-8" />
+            <Rail color={LANE_HEX[1]} className="w-8" /> Parallel track, one per permit
           </span>
-          <span>
-            <b className="mr-1 text-base text-red-700">↻</b> Repeat this permit's review cycle
+          <span className="flex items-center gap-1.5">
+            <Rail color="#dc2626" className="w-8" /> Return track — repeat this permit's review
           </span>
           <span>
             <b className="mr-1 text-base text-green-700">●</b> Current stage
@@ -397,20 +408,25 @@ function TrackMap() {
               nums={route.stations}
               current={(n) => location?.station === n}
               trainAt={location?.station}
+              track={{ kind: "main" }}
               {...rowProps}
             />
           </RouteSection>
           {i < 2 ? (
-            <FlowLink
-              symbol="→"
-              title="Connected process outputs."
+            <TrackJunction
+              from={1}
+              to={1}
+              colors={[]}
+              title="One continuous line."
               text="Each step's outputs feed the next; support work can continue alongside."
             />
           ) : (
-            <FlowLink
-              symbol="∥"
-              title="Permit-specific handoff."
-              text="Each complete permit package starts its own submission and review."
+            <TrackJunction
+              from={1}
+              to={1}
+              colors={[]}
+              title="The main line runs on to submission."
+              text="Each complete permit package then starts its own submission and review."
             />
           )}
         </Fragment>
@@ -424,27 +440,38 @@ function TrackMap() {
         subtitle={`${project.name ?? project.address} · ${projectTracks.length} permit${projectTracks.length === 1 ? "" : "s"} · every step below is clickable`}
         tag="∥ Independent permit records"
       >
-        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center">
-          <div className="w-full shrink-0 lg:w-[300px]">
-            <StationRow
-              nums={[18]}
-              current={(n) => location?.station === n}
-              trainAt={location?.station}
-              {...rowProps}
-              single
-            />
-          </div>
-          <div className="min-w-0 flex-1 text-sm text-muted-foreground">
-            Open <strong className="text-foreground">Submission Management</strong> to see every
-            permit's latest filing. Open the{" "}
-            <strong className="text-foreground">Resubmission Manager</strong> to compare every round
-            and keep time at the city apart from time with engineers.
-            <div className="mt-3">
-              <button type="button" className="btn-accent" onClick={() => openHistory()}>
-                View all submissions / resubmissions
-              </button>
-            </div>
-          </div>
+        {/* station 18 on the main line, centred over the point where it splits */}
+        <div className="mx-auto w-full max-w-[340px]">
+          <StationRow
+            nums={[18]}
+            current={(n) => location?.station === n}
+            trainAt={location?.station}
+            track={{ kind: "main" }}
+            {...rowProps}
+            single
+          />
+        </div>
+        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
+          Open <strong className="text-foreground">Submission Management</strong> to see every
+          permit's latest filing. Open the{" "}
+          <strong className="text-foreground">Resubmission Manager</strong> to compare every round
+          and keep time at the city apart from time with engineers.{" "}
+          <button
+            type="button"
+            className="font-semibold text-accent underline-offset-2 hover:underline"
+            onClick={() => openHistory()}
+          >
+            View all submissions / resubmissions
+          </button>
+        </p>
+        <div className="my-4">
+          <TrackJunction
+            from={1}
+            to={Math.max(projectTracks.length, 1)}
+            colors={laneHex}
+            title="The main line splits into parallel permit tracks."
+            text="Each permit runs on its own track from here — one permit's review never holds up another's."
+          />
         </div>
         {portfolio.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading permits…</p>
@@ -453,10 +480,12 @@ function TrackMap() {
         )}
       </RouteSection>
 
-      <FlowLink
-        symbol="∥"
-        title="Separate loops, shared visibility."
-        text="The dashboard adds up results; it never merges the permits' review clocks."
+      <TrackJunction
+        from={Math.max(projectTracks.length, 1)}
+        to={Math.max(projectTracks.length, 1)}
+        colors={laneHex}
+        title="The tracks stay parallel."
+        text="Each permit goes into its own review loop; the dashboard adds up results but never merges the permits' review clocks."
       />
 
       {/* ── review loop, one per permit ───────────────────────────────── */}
@@ -517,15 +546,21 @@ function TrackMap() {
                   current={(n) => t.stage === n}
                   trainAt={trainLoopPermit === t.permit.id ? location?.station : undefined}
                   permitId={t.permit.id}
+                  track={{ kind: "loop", label: t.permit.name, color: laneHex[i] }}
                   {...rowProps}
                 />
-                <p className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-3 py-2 text-center text-xs font-semibold text-red-800">
-                  <span className="text-lg leading-none" aria-hidden>
-                    ↻
-                  </span>
-                  Resubmit this permit → its next city review starts. Repeats only when the city
-                  asks for revisions.
-                </p>
+                {/* the return track: resubmitting runs back to the start of this loop */}
+                <div className="mt-3 rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-3 py-2">
+                  <div className="flex items-center gap-2" aria-hidden>
+                    <span className="text-lg font-bold leading-none text-red-700">←</span>
+                    <Rail color="#dc2626" className="flex-1" />
+                    <span className="text-lg font-bold leading-none text-red-700">↻</span>
+                  </div>
+                  <p className="mt-1.5 text-center text-xs font-semibold text-red-800">
+                    Return track: resubmit this permit and it runs back to Station 19 for its next
+                    city review. Repeats only when the city asks for revisions.
+                  </p>
+                </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   City approval exits the loop directly — no extra resubmission, and the other
                   permits don't have to finish first.
@@ -536,10 +571,12 @@ function TrackMap() {
         </div>
       </RouteSection>
 
-      <FlowLink
-        symbol="→"
-        title="Approval per permit."
-        text="Approval, clearance and expiry records stay specific to each permit."
+      <TrackJunction
+        from={Math.max(projectTracks.length, 1)}
+        to={1}
+        colors={laneHex}
+        title="Approved permits rejoin the main line."
+        text="Each permit leaves its loop on its own approval; approval, clearance and expiry records stay specific to each permit."
       />
 
       {/* ── approval / clearance / expiry ─────────────────────────────── */}
@@ -553,6 +590,7 @@ function TrackMap() {
           nums={ROUTES[5].stations}
           current={(n) => location?.station === n}
           trainAt={location?.station}
+          track={{ kind: "main" }}
           {...rowProps}
         />
         <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
@@ -735,21 +773,10 @@ function RouteSection({
   );
 }
 
-function FlowLink({ symbol, title, text }: { symbol: string; title: string; text: string }) {
-  return (
-    <div className="-my-2 flex items-center justify-center gap-2.5 px-4 text-center text-xs text-muted-foreground">
-      <b className="text-xl text-blue-700" aria-hidden>
-        {symbol}
-      </b>
-      <span>
-        <strong className="text-foreground">{title}</strong> {text}
-      </span>
-    </div>
-  );
-}
-
 // One row of track: station cards joined by → connectors, each with its AI
-// module underneath. Scrolls sideways on narrow screens; fills the row on wide.
+// module underneath, all standing on a piece of rail (the main line, or one
+// permit's parallel track) with a stop marker above each station. The train
+// rides on the rail at its station. Scrolls sideways on narrow screens.
 function StationRow({
   nums,
   current,
@@ -760,6 +787,7 @@ function StationRow({
   wagons,
   onOpen,
   single,
+  track,
 }: {
   nums: number[];
   current: (n: number) => boolean;
@@ -770,10 +798,19 @@ function StationRow({
   wagons: Wagon[];
   onOpen: (n: number, ai?: boolean, permitId?: string) => void;
   single?: boolean;
+  track: { kind: "main" | "parallel" | "loop"; label?: string; color?: string };
 }) {
+  const color = track.color ?? MAIN_RAIL;
+  // room above the rail for the train, only on the row it's on
+  const railTop = trainAt != null && nums.includes(trainAt) ? 50 : 6;
+  const cardTop = railTop + 26;
   return (
     <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-1">
-      <ol className={cn("flex items-stretch", single ? "w-full" : "min-w-max xl:min-w-0")}>
+      <TrackLabel kind={track.kind} label={track.label} color={color} />
+      <ol className={cn("relative flex items-stretch", single ? "w-full" : "min-w-max xl:min-w-0")}>
+        <li aria-hidden className="pointer-events-none absolute inset-x-0" style={{ top: railTop }}>
+          <Rail color={color} />
+        </li>
         {nums.map((n, i) => {
           const s = getStation(n)!;
           const dim = !match(s);
@@ -783,7 +820,8 @@ function StationRow({
             <Fragment key={n}>
               {i > 0 && (
                 <li
-                  className="flex w-7 shrink-0 items-start justify-center pt-[4.5rem] text-slate-400 xl:w-4"
+                  className="flex w-7 shrink-0 items-start justify-center text-slate-400 xl:w-4"
+                  style={{ paddingTop: cardTop + 66 }}
                   aria-hidden
                 >
                   <ArrowRight className="h-4 w-4" />
@@ -795,7 +833,31 @@ function StationRow({
                   single ? "w-full" : "w-[196px] shrink-0 xl:w-auto xl:min-w-[128px] xl:flex-1",
                   dim && "opacity-25",
                 )}
+                style={{ paddingTop: cardTop }}
               >
+                {/* the station's stop on the rail */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute left-1/2 h-[18px] w-[18px] -translate-x-1/2 rounded-full border-[3px] border-white shadow",
+                    isCurrent ? "bg-green-600" : style.solid,
+                  )}
+                  style={{ top: railTop - 2 }}
+                />
+                <span
+                  aria-hidden
+                  className="absolute left-1/2 w-[2px] -translate-x-1/2 bg-slate-300"
+                  style={{ top: railTop + 16, height: cardTop - railTop - 16 }}
+                />
+                {trainAt === n && (
+                  <span
+                    id="track-train"
+                    className="absolute right-1 z-10"
+                    style={{ bottom: `calc(100% - ${railTop + 3}px)` }}
+                  >
+                    <MiniTrain wagons={wagons} />
+                  </span>
+                )}
                 {filter !== "ai" && (
                   <button
                     type="button"
@@ -825,11 +887,6 @@ function StationRow({
                         {isCurrent ? "CURRENT" : "Open details"}
                       </small>
                     </span>
-                    {trainAt === n && (
-                      <span id="track-train" className="absolute -top-5 right-1 z-10">
-                        <MiniTrain wagons={wagons} />
-                      </span>
-                    )}
                     <span className="text-[13px] font-semibold leading-snug">
                       {n === 22 ? "Engineer response + comment timeline" : s.title}
                     </span>
