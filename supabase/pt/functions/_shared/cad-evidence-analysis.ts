@@ -204,11 +204,71 @@ const median = (xs: number[]) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-const sameType = (a: string, b: string) => {
+// Property types come as a county's broad class ("Commercial", "F1 Real,
+// Commercial") or as a specific use ("Preschool/Daycare", "Retail center").
+// A daycare IS commercial, so a broad class only conflicts with another broad
+// class; two specific uses are compared by use.
+const USES: [string, RegExp][] = [
+  [
+    "child care",
+    /day ?care|child ?care|pre-?school|nursery|learning cent|early (learning|childhood|education)|montessori|kinder/,
+  ],
+  ["school", /school|academy|educat|college|universit/],
+  ["medical", /medical|clinic|hospital|dental|surgery|veterinar|health ?care/],
+  ["office", /office/],
+  ["restaurant", /restaurant|fast food|food service|cafe/],
+  ["retail", /retail|shopping|store|strip|mall|showroom/],
+  ["hotel", /hotel|motel|lodging|inn\b/],
+  ["multifamily", /multi-?family|apartment|duplex|fourplex/],
+  ["self storage", /self[- ]?storage|mini[- ]?storage|mini[- ]?warehouse/],
+  ["industrial", /warehouse|industrial|manufactur|distribution|flex/],
+  ["auto", /auto|car wash|service station|gas station|convenience/],
+  ["religious", /church|religious|worship/],
+  ["single family", /single[- ]?family|residence|house|mobile home/],
+  ["vacant land", /vacant|unimproved|raw land/],
+];
+const CLASSES: [string, RegExp][] = [
+  ["commercial", /commercial|\bf1\b/],
+  ["industrial", /industrial|\bf2\b/],
+  ["residential", /residential|\ba1\b/],
+  ["land", /\bland\b|acreage|\bc1\b/],
+  ["agricultural", /agricultur|\bfarm|ranch|\bd1\b/],
+];
+const USE_CLASS: Record<string, string> = {
+  "single family": "residential",
+  industrial: "industrial",
+  "vacant land": "land",
+};
+const useOf = (t: string) =>
+  USES.find(([, re]) => re.test(t.toLowerCase()))?.[0] ?? null;
+const classOf = (t: string) => {
+  const use = useOf(t);
+  if (use)
+    return USE_CLASS[use] ?? (use === "multifamily" ? null : "commercial");
+  return CLASSES.find(([, re]) => re.test(t.toLowerCase()))?.[0] ?? null;
+};
+// True when the comp's type is compatible with the subject's; the subject may
+// be described by the owner's record and by the district's own packet.
+export const sameType = (comp: string, subjectTypes: (string | null)[]) => {
+  const subjects = subjectTypes.filter((s): s is string => !!s);
+  const subjectUse = subjects.map(useOf).find(Boolean) ?? null;
+  const compUse = useOf(comp);
+  if (compUse && subjectUse) return compUse === subjectUse;
+  const compClass = classOf(comp);
+  const subjectClass = subjects.map(classOf).find(Boolean) ?? null;
+  if (compClass && subjectClass) return compClass === subjectClass;
+  if (compUse || subjectUse || compClass || subjectClass) return true; // can't tell — don't flag
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z]/g, "");
-  const A = norm(a);
-  const B = norm(b);
-  return A.includes(B) || B.includes(A);
+  const A = norm(comp);
+  return subjects.some((s) => {
+    const B = norm(s);
+    return A.includes(B) || B.includes(A);
+  });
+};
+// The most specific description of the subject: a use beats a broad class.
+const subjectTypeLabel = (subjectTypes: (string | null)[]) => {
+  const s = subjectTypes.filter((t): t is string => !!t);
+  return s.find((t) => useOf(t)) ?? s[0] ?? null;
 };
 
 export type CadEvidenceAnalysis = {
@@ -346,16 +406,18 @@ export function analyzeCadEvidence(
         });
       }
     }
+    const subjectTypes = [subject.propertyType, st.propertyType];
+    const subjectType = subjectTypeLabel(subjectTypes);
     if (
       c.propertyType &&
-      subject.propertyType &&
-      !sameType(c.propertyType, subject.propertyType)
+      subjectType &&
+      !sameType(c.propertyType, subjectTypes)
     ) {
       flags.push("property_type");
       add({
         kind: "property_type",
         comp: c.label,
-        title: `${c.label} is ${article(c.propertyType)} ${c.propertyType.toLowerCase()}, not ${article(subject.propertyType)} ${subject.propertyType.toLowerCase()}`,
+        title: `${c.label} is ${article(c.propertyType)} ${c.propertyType.toLowerCase()}, not ${article(subjectType)} ${subjectType.toLowerCase()}`,
         detail:
           "A different property type has a different market and isn't a valid comparable.",
         weight: 6,
