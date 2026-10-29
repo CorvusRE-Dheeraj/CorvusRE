@@ -193,7 +193,18 @@ const LANE_STEPS: [LaneStep, string][] = [
   ["approved", "Approved"],
 ];
 
-export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView: Nav }) {
+// With `loop`, each permit's card also holds its review loop (one continuous
+// parallel track from the lane into the loop on the Track Map), and the lane's
+// rail and the card are tagged for that track drawing (data-rail / data-corridor).
+export function PermitLanes({
+  tracks,
+  onView,
+  loop,
+}: {
+  tracks: PermitTrack[];
+  onView: Nav;
+  loop?: (t: PermitTrack, i: number) => ReactNode;
+}) {
   if (!tracks.length)
     return (
       <p className="text-sm text-muted-foreground">No permits identified for this project yet.</p>
@@ -223,8 +234,9 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
           <article
             key={t.permit.id}
             id={`permit-${t.permit.id}`}
+            data-corridor={loop ? i : undefined}
             className={cn(
-              "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4",
+              "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4 xl:p-5",
               LANE_COLORS[i % LANE_COLORS.length],
             )}
           >
@@ -245,7 +257,7 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
                 label={t.permit.name}
                 color={LANE_HEX[i % LANE_HEX.length]}
               />
-              <Rail color={LANE_HEX[i % LANE_HEX.length]} />
+              <Rail color={LANE_HEX[i % LANE_HEX.length]} railId={loop ? `lane-${i}` : undefined} />
             </div>
             <div className="my-3 flex items-stretch overflow-x-auto pb-1">
               {LANE_STEPS.map(([key, label], k) => {
@@ -317,17 +329,19 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
                     Mark as already approved
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="btn-outline px-2.5 py-1 text-xs"
-                  onClick={() =>
-                    document
-                      .getElementById(`loop-${t.permit.id}`)
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }
-                >
-                  Open this permit's loop
-                </button>
+                {!loop && (
+                  <button
+                    type="button"
+                    className="btn-outline px-2.5 py-1 text-xs"
+                    onClick={() =>
+                      document
+                        .getElementById(`loop-${t.permit.id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                  >
+                    Open this permit's loop
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn-outline px-2.5 py-1 text-xs"
@@ -343,6 +357,7 @@ export function PermitLanes({ tracks, onView }: { tracks: PermitTrack[]; onView:
                 </button>
               </span>
             </div>
+            {loop?.(t, i)}
           </article>
         );
       })}

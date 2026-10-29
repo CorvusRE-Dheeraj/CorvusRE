@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, LocateFixed, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,7 +40,8 @@ import {
   permitStage,
   stageName,
 } from "@/lib/permit-history";
-import { MAIN_RAIL, Rail, TrackJunction, TrackLabel } from "@/components/rail";
+import { ContinuousTrack, Rail, TrackJunction, TrackLabel } from "@/components/rail";
+import { MAIN_RAIL, trackGutter } from "@/lib/track-path";
 import { TRACK_PORTFOLIO_KEY, getTrackPortfolio, type TrackPortfolio } from "@/lib/track-portfolio";
 import { setActiveProject } from "@/lib/projects";
 
@@ -89,6 +90,7 @@ function TrackMap() {
   const [query, setQuery] = useState("");
   const [stack, setStack] = useState<TrackView[]>([]);
   const tracks = useMemo(() => buildTracks(portfolio.data), [portfolio.data]);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   if (loading) return <Loading />;
   if (!hasProject || !project) return <EmptyProject />;
@@ -96,6 +98,14 @@ function TrackMap() {
   const projectTracks = tracks.filter((t) => t.project.id === project.id);
   // each permit's parallel track is drawn in its lane colour
   const laneHex = projectTracks.map((_, i) => LANE_HEX[i % LANE_HEX.length]);
+  // room beside the map for the track's bends, and what it's drawn over
+  const trackPad = trackGutter(projectTracks.length);
+  const trackVersion = [
+    filter,
+    query,
+    location?.station,
+    ...projectTracks.map((t) => `${t.permit.id}:${t.stage}`),
+  ].join("|");
   const projects = portfolio.data?.projects ?? [project];
   const wagons = location
     ? wagonCargo({
@@ -395,209 +405,198 @@ function TrackMap() {
         </span>
       </div>
 
-      {/* ── routes 1–3 ───────────────────────────────────────────────── */}
-      {ROUTES.slice(0, 3).map((route, i) => (
-        <Fragment key={route.name}>
-          <RouteSection
-            color={route.color}
-            title={route.name}
-            subtitle={`${["Validated project inputs", "Local requirements + constraints", "Pre-application + package preparation"][i]} · Click a numbered station or its AI module.`}
-            tag="Process group"
-          >
+      {/* ── the map: one continuous track through every section ─────── */}
+      <div
+        ref={mapRef}
+        className="relative grid min-w-0 grid-cols-1 gap-5 xl:px-[var(--track-pad)]"
+        style={{ "--track-pad": `${trackPad}px` } as CSSProperties}
+      >
+        <ContinuousTrack
+          container={mapRef}
+          pad={trackPad}
+          version={trackVersion}
+          plan={{
+            main: ["route-1", "route-2", "route-3", "station-18"],
+            permits: projectTracks.map((_, i) => [`lane-${i}`, `loop-${i}`] as [string, string]),
+            after: "route-6",
+            colors: laneHex,
+          }}
+        />
+
+        {/* ── routes 1–3 ─────────────────────────────────────────────── */}
+        {ROUTES.slice(0, 3).map((route, i) => (
+          <Fragment key={route.name}>
+            <RouteSection
+              color={route.color}
+              title={route.name}
+              subtitle={`${["Validated project inputs", "Local requirements + constraints", "Pre-application + package preparation"][i]} · Click a numbered station or its AI module.`}
+              tag="Process group"
+            >
+              <StationRow
+                nums={route.stations}
+                current={(n) => location?.station === n}
+                trainAt={location?.station}
+                track={{ kind: "main", id: `route-${i + 1}` }}
+                {...rowProps}
+              />
+            </RouteSection>
+            <TrackJunction
+              from={1}
+              to={1}
+              colors={[]}
+              title={i < 2 ? "One continuous line." : "The main line runs on to submission."}
+              text={
+                i < 2
+                  ? "Each step's outputs feed the next; support work can continue alongside."
+                  : "Each complete permit package then starts its own submission and review."
+              }
+            />
+          </Fragment>
+        ))}
+
+        {/* ── submission, then one parallel track per permit: its lane and its
+            review loop together, so its track runs on unbroken ─────────── */}
+        <RouteSection
+          id="submission-section"
+          color="teal"
+          title="Submission Management + Parallel Permit Tracks"
+          subtitle={`${project.name ?? project.address} · ${projectTracks.length} permit${projectTracks.length === 1 ? "" : "s"} · each permit's submission and its own review loop · every step is clickable`}
+          tag="∥ Independent permit records"
+        >
+          <div className="mx-auto w-full max-w-[340px]">
             <StationRow
-              nums={route.stations}
+              nums={[18]}
               current={(n) => location?.station === n}
               trainAt={location?.station}
-              track={{ kind: "main" }}
+              track={{ kind: "main", id: "station-18" }}
               {...rowProps}
+              single
             />
-          </RouteSection>
-          {i < 2 ? (
-            <TrackJunction
-              from={1}
-              to={1}
-              colors={[]}
-              title="One continuous line."
-              text="Each step's outputs feed the next; support work can continue alongside."
-            />
-          ) : (
-            <TrackJunction
-              from={1}
-              to={1}
-              colors={[]}
-              title="The main line runs on to submission."
-              text="Each complete permit package then starts its own submission and review."
-            />
-          )}
-        </Fragment>
-      ))}
-
-      {/* ── submission + parallel permit tracks ───────────────────────── */}
-      <RouteSection
-        id="submission-section"
-        color="teal"
-        title="Submission Management + Parallel Permit Tracks"
-        subtitle={`${project.name ?? project.address} · ${projectTracks.length} permit${projectTracks.length === 1 ? "" : "s"} · every step below is clickable`}
-        tag="∥ Independent permit records"
-      >
-        {/* station 18 on the main line, centred over the point where it splits */}
-        <div className="mx-auto w-full max-w-[340px]">
-          <StationRow
-            nums={[18]}
-            current={(n) => location?.station === n}
-            trainAt={location?.station}
-            track={{ kind: "main" }}
-            {...rowProps}
-            single
-          />
-        </div>
-        <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
-          Open <strong className="text-foreground">Submission Management</strong> to see every
-          permit's latest filing. Open the{" "}
-          <strong className="text-foreground">Resubmission Manager</strong> to compare every round
-          and keep time at the city apart from time with engineers.{" "}
-          <button
-            type="button"
-            className="font-semibold text-accent underline-offset-2 hover:underline"
-            onClick={() => openHistory()}
-          >
-            View all submissions / resubmissions
-          </button>
-        </p>
-        <div className="my-4">
-          <TrackJunction
-            from={1}
-            to={Math.max(projectTracks.length, 1)}
-            colors={laneHex}
-            title="The main line splits into parallel permit tracks."
-            text="Each permit runs on its own track from here — one permit's review never holds up another's."
-          />
-        </div>
-        {portfolio.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading permits…</p>
-        ) : (
-          <PermitLanes tracks={projectTracks} onView={open} />
-        )}
-      </RouteSection>
-
-      <TrackJunction
-        from={Math.max(projectTracks.length, 1)}
-        to={Math.max(projectTracks.length, 1)}
-        colors={laneHex}
-        title="The tracks stay parallel."
-        text="Each permit goes into its own review loop; the dashboard adds up results but never merges the permits' review clocks."
-      />
-
-      {/* ── review loop, one per permit ───────────────────────────────── */}
-      <RouteSection
-        color="green"
-        title="Review + Comment / Resubmission Loops"
-        subtitle="Each permit has its own reviewer, comment assignments, engineer response and versioned submissions."
-        tag="↻ Repeats per permit"
-      >
-        {projectTracks.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Permits appear here once the analysis identifies them.
+          </div>
+          <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-muted-foreground">
+            Open <strong className="text-foreground">Submission Management</strong> to see every
+            permit's latest filing. Open the{" "}
+            <strong className="text-foreground">Resubmission Manager</strong> to compare every round
+            and keep time at the city apart from time with engineers.{" "}
+            <button
+              type="button"
+              className="font-semibold text-accent underline-offset-2 hover:underline"
+              onClick={() => openHistory()}
+            >
+              View all submissions / resubmissions
+            </button>
           </p>
-        )}
-        <div className="grid gap-4">
-          {projectTracks.map((t, i) => {
-            const r = t.rounds.at(-1);
-            return (
-              <article
-                key={t.permit.id}
-                id={`loop-${t.permit.id}`}
-                className={cn(
-                  "min-w-0 rounded-xl border border-l-4 border-border bg-card p-4",
-                  LANE_COLORS[i % LANE_COLORS.length],
-                )}
-              >
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold">
-                      {t.permit.name} · Review + Comment / Resubmission Loop
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {r
-                        ? `Latest: submission ${r.round}, filed ${fmtDate(r.submitted_at)}`
-                        : "Not submitted yet"}{" "}
-                      · this permit's records only
+          <div className="my-4">
+            <TrackJunction
+              from={1}
+              to={Math.max(projectTracks.length, 1)}
+              colors={laneHex}
+              title="The main line branches into parallel permit tracks."
+              text="Each permit runs on its own track from here — through its submission and its own review loop — and one permit's review never holds up another's."
+            />
+          </div>
+          {portfolio.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading permits…</p>
+          ) : (
+            <PermitLanes
+              tracks={projectTracks}
+              onView={open}
+              loop={(t, i) => {
+                const r = t.rounds.at(-1);
+                return (
+                  <div id={`loop-${t.permit.id}`} className="scroll-mt-4">
+                    {/* the band the track bends back through, from the lane into the loop */}
+                    <div data-gap={`corridor-${i}`} className="hidden h-8 xl:block" />
+                    <div className="mb-3 mt-4 flex flex-wrap items-start justify-between gap-2 border-t border-dashed border-border pt-3 xl:mt-0">
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold">
+                          {t.permit.name} · Review + Comment / Resubmission Loop
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {r
+                            ? `Latest: submission ${r.round}, filed ${fmtDate(r.submitted_at)}`
+                            : "Not submitted yet"}{" "}
+                          · this permit's records only
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-outline px-2.5 py-1 text-xs"
+                        onClick={() =>
+                          open({
+                            type: "history",
+                            projectId: project.id,
+                            permitKey: t.permit.permit_key,
+                          })
+                        }
+                      >
+                        Resubmission Manager
+                      </button>
+                    </div>
+                    <StationRow
+                      nums={[19, 20, 21, 22, 23, 24]}
+                      current={(n) => t.stage === n}
+                      trainAt={trainLoopPermit === t.permit.id ? location?.station : undefined}
+                      permitId={t.permit.id}
+                      track={{
+                        kind: "loop",
+                        label: t.permit.name,
+                        color: laneHex[i],
+                        id: `loop-${i}`,
+                      }}
+                      {...rowProps}
+                    />
+                    {/* the return track: resubmitting runs back to the start of this loop */}
+                    <div className="mt-3 rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-3 py-2">
+                      <div className="flex items-center gap-2" aria-hidden>
+                        <span className="text-lg font-bold leading-none text-red-700">←</span>
+                        <Rail color="#dc2626" className="flex-1" />
+                        <span className="text-lg font-bold leading-none text-red-700">↻</span>
+                      </div>
+                      <p className="mt-1.5 text-center text-xs font-semibold text-red-800">
+                        Return track: resubmit this permit and it runs back to Station 19 for its
+                        next city review. Repeats only when the city asks for revisions.
+                      </p>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      City approval exits the loop directly — no extra resubmission, and the other
+                      permits don't have to finish first.
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StagePill stage={t.stage} />
-                    <button
-                      type="button"
-                      className="btn-outline px-2.5 py-1 text-xs"
-                      onClick={() =>
-                        open({
-                          type: "history",
-                          projectId: project.id,
-                          permitKey: t.permit.permit_key,
-                        })
-                      }
-                    >
-                      Resubmission Manager
-                    </button>
-                  </div>
-                </div>
-                <StationRow
-                  nums={[19, 20, 21, 22, 23, 24]}
-                  current={(n) => t.stage === n}
-                  trainAt={trainLoopPermit === t.permit.id ? location?.station : undefined}
-                  permitId={t.permit.id}
-                  track={{ kind: "loop", label: t.permit.name, color: laneHex[i] }}
-                  {...rowProps}
-                />
-                {/* the return track: resubmitting runs back to the start of this loop */}
-                <div className="mt-3 rounded-lg border-2 border-dashed border-red-300 bg-red-50 px-3 py-2">
-                  <div className="flex items-center gap-2" aria-hidden>
-                    <span className="text-lg font-bold leading-none text-red-700">←</span>
-                    <Rail color="#dc2626" className="flex-1" />
-                    <span className="text-lg font-bold leading-none text-red-700">↻</span>
-                  </div>
-                  <p className="mt-1.5 text-center text-xs font-semibold text-red-800">
-                    Return track: resubmit this permit and it runs back to Station 19 for its next
-                    city review. Repeats only when the city asks for revisions.
-                  </p>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  City approval exits the loop directly — no extra resubmission, and the other
-                  permits don't have to finish first.
-                </p>
-              </article>
-            );
-          })}
-        </div>
-      </RouteSection>
+                );
+              }}
+            />
+          )}
+        </RouteSection>
 
-      <TrackJunction
-        from={Math.max(projectTracks.length, 1)}
-        to={1}
-        colors={laneHex}
-        title="Approved permits rejoin the main line."
-        text="Each permit leaves its loop on its own approval; approval, clearance and expiry records stay specific to each permit."
-      />
-
-      {/* ── approval / clearance / expiry ─────────────────────────────── */}
-      <RouteSection
-        color="gray"
-        title={ROUTES[5].name}
-        subtitle="Submission aging and expediting run during review; clearance follows the required approvals."
-        tag="Monitoring + closeout"
-      >
-        <StationRow
-          nums={ROUTES[5].stations}
-          current={(n) => location?.station === n}
-          trainAt={location?.station}
-          track={{ kind: "main" }}
-          {...rowProps}
+        <TrackJunction
+          from={Math.max(projectTracks.length, 1)}
+          to={1}
+          colors={laneHex}
+          title="Approved permits rejoin the main line."
+          text="Each permit leaves its loop on its own approval; approval, clearance and expiry records stay specific to each permit."
         />
-        <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
-          Outcome: faster submissions · clearer accountability · central permit review visibility ·
-          reduced permit aging risk
-        </p>
-      </RouteSection>
+
+        {/* ── approval / clearance / expiry ─────────────────────────────── */}
+        <RouteSection
+          color="gray"
+          title={ROUTES[5].name}
+          subtitle="Submission aging and expediting run during review; clearance follows the required approvals."
+          tag="Monitoring + closeout"
+        >
+          <StationRow
+            nums={ROUTES[5].stations}
+            current={(n) => location?.station === n}
+            trainAt={location?.station}
+            track={{ kind: "main", id: "route-6" }}
+            {...rowProps}
+          />
+          <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
+            Outcome: faster submissions · clearer accountability · central permit review visibility
+            · reduced permit aging risk
+          </p>
+        </RouteSection>
+      </div>
 
       {/* ── popups ────────────────────────────────────────────────────── */}
       <Dialog open={stack.length > 0} onOpenChange={(o) => !o && setStack([])}>
@@ -798,7 +797,7 @@ function StationRow({
   wagons: Wagon[];
   onOpen: (n: number, ai?: boolean, permitId?: string) => void;
   single?: boolean;
-  track: { kind: "main" | "parallel" | "loop"; label?: string; color?: string };
+  track: { kind: "main" | "parallel" | "loop"; label?: string; color?: string; id?: string };
 }) {
   const color = track.color ?? MAIN_RAIL;
   // room above the rail for the train, only on the row it's on
@@ -809,7 +808,7 @@ function StationRow({
       <TrackLabel kind={track.kind} label={track.label} color={color} />
       <ol className={cn("relative flex items-stretch", single ? "w-full" : "min-w-max xl:min-w-0")}>
         <li aria-hidden className="pointer-events-none absolute inset-x-0" style={{ top: railTop }}>
-          <Rail color={color} />
+          <Rail color={color} railId={track.id} />
         </li>
         {nums.map((n, i) => {
           const s = getStation(n)!;
@@ -820,7 +819,7 @@ function StationRow({
             <Fragment key={n}>
               {i > 0 && (
                 <li
-                  className="flex w-7 shrink-0 items-start justify-center text-slate-400 xl:w-4"
+                  className="flex w-7 shrink-0 items-start justify-center text-slate-400 xl:w-3"
                   style={{ paddingTop: cardTop + 66 }}
                   aria-hidden
                 >
@@ -830,7 +829,7 @@ function StationRow({
               <li
                 className={cn(
                   "relative flex flex-col gap-1.5",
-                  single ? "w-full" : "w-[196px] shrink-0 xl:w-auto xl:min-w-[128px] xl:flex-1",
+                  single ? "w-full" : "w-[196px] shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 xl:shrink",
                   dim && "opacity-25",
                 )}
                 style={{ paddingTop: cardTop }}
@@ -864,7 +863,7 @@ function StationRow({
                     onClick={() => onOpen(n, false, permitId)}
                     aria-label={`Station ${n}: ${s.title}${isCurrent ? " — current stage" : ""}`}
                     className={cn(
-                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md",
+                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md xl:px-2.5 xl:[overflow-wrap:anywhere]",
                       style.border,
                       isCurrent && "border-green-600 bg-green-50 ring-4 ring-green-500/20",
                     )}
@@ -904,7 +903,7 @@ function StationRow({
                   <button
                     type="button"
                     onClick={() => onOpen(n, true)}
-                    className="flex min-h-[44px] w-full items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-amber-900 hover:bg-amber-100"
+                    className="flex min-h-[44px] w-full items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-left text-[11px] font-semibold leading-tight text-amber-900 hover:bg-amber-100 xl:px-2 xl:[overflow-wrap:anywhere]"
                   >
                     <span className="shrink-0 rounded bg-amber-400 px-1 py-0.5 text-[9px] font-bold text-amber-950">
                       AI

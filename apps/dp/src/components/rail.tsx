@@ -1,24 +1,53 @@
 // The Track Map's railway graphics (same rails and sleepers as the earlier
-// map's RouteTrack): a straight piece of track under a row of stations, and
-// the pieces that join one section to the next — one continuous main line,
-// the main line splitting into one parallel track per permit, those tracks
-// running side by side, and merging back into the main line.
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+// map's RouteTrack).
+//
+// On wide screens (xl, where every row of stations fits without scrolling)
+// <ContinuousTrack> draws the whole track as ONE unbroken line, measured from
+// the page and laid like the original route track: the main line snakes down
+// the page, leaving each row by one side and bending down round the card into
+// the next row; at Submission Management it branches into one track per
+// permit, each running on unbroken through that permit's lane and its review
+// loop, and they rejoin the main line for closeout. The per-row <Rail>s with a
+// `railId` mark where the track goes; while it's drawn, the container carries
+// data-track-on and styles.css hides those rails and the junction pieces.
+//
+// Narrower screens scroll the rows sideways, so they keep the per-row rails
+// and the drawn junction pieces between sections (so does a wide screen where
+// some row still doesn't fit).
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 
-export const MAIN_RAIL = "#6a7987";
-const SLEEPER = "#c4cdd5";
+import { GAUGE, MAIN_RAIL, planTrack, railPath, type TrackLine } from "@/lib/track-path";
 
-// A horizontal piece of track, 14px tall: two rails over sleepers.
-export function Rail({ color = MAIN_RAIL, className }: { color?: string; className?: string }) {
+const SLEEPER = "#c4cdd5";
+const sleeperOf = (color: string) => (color === MAIN_RAIL ? SLEEPER : `${color}55`);
+
+// A horizontal piece of track, 14px tall: two rails over sleepers. With a
+// railId it's where the continuous track runs on wide screens (and hides there).
+export function Rail({
+  color = MAIN_RAIL,
+  className,
+  railId,
+}: {
+  color?: string;
+  className?: string;
+  railId?: string;
+}) {
   const style: CSSProperties = {
     background: [
       `linear-gradient(${color}, ${color}) 0 2px / 100% 2.5px no-repeat`,
       `linear-gradient(${color}, ${color}) 0 9.5px / 100% 2.5px no-repeat`,
-      `repeating-linear-gradient(90deg, ${color === MAIN_RAIL ? SLEEPER : `${color}55`} 0 4px, transparent 4px 13px)`,
+      `repeating-linear-gradient(90deg, ${sleeperOf(color)} 0 4px, transparent 4px 13px)`,
     ].join(", "),
   };
-  return <div aria-hidden className={cn("h-[14px] rounded-sm", className)} style={style} />;
+  return (
+    <div
+      aria-hidden
+      data-rail={railId}
+      className={cn("h-[14px] rounded-sm", className)}
+      style={style}
+    />
+  );
 }
 
 // What kind of track a row of stations runs on — said in words and shown.
@@ -48,14 +77,119 @@ export function TrackLabel({
   );
 }
 
+function TrackLines({ lines }: { lines: TrackLine[] }) {
+  return (
+    <>
+      {lines.map((l, i) => (
+        <g key={i} fill="none" strokeLinejoin="round">
+          <path
+            d={railPath(l.points)}
+            stroke={sleeperOf(l.color)}
+            strokeWidth={14}
+            strokeDasharray="4 9"
+          />
+          <path d={railPath(l.points, GAUGE)} stroke={l.color} strokeWidth={2.5} />
+          <path d={railPath(l.points, -GAUGE)} stroke={l.color} strokeWidth={2.5} />
+        </g>
+      ))}
+    </>
+  );
+}
+
+export function ContinuousTrack({
+  container,
+  plan,
+  pad,
+  version,
+}: {
+  container: RefObject<HTMLDivElement | null>;
+  plan: Parameters<typeof planTrack>[3];
+  pad: number;
+  version: string; // changes whenever the content behind the track changes
+}) {
+  const [lines, setLines] = useState<TrackLine[]>([]);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const planKey = JSON.stringify(plan);
+  useLayoutEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const wide = window.matchMedia("(min-width: 1280px)");
+    let live = true;
+    const measure = () => {
+      if (!live) return;
+      // only where every row of stations fits — a row that scrolls sideways
+      // would slide its stations out from under the drawn track
+      const fits = [...el.querySelectorAll<HTMLElement>("[data-rail]")].every((r) => {
+        const s = r.closest<HTMLElement>(".overflow-x-auto");
+        return !s || s.scrollWidth <= s.clientWidth + 1;
+      });
+      if (!wide.matches || !fits) {
+        el.removeAttribute("data-track-on");
+        return setLines([]);
+      }
+      const box = el.getBoundingClientRect();
+      const rect = (q: string) => el.querySelector<HTMLElement>(q)?.getBoundingClientRect() ?? null;
+      const rail = (id: string) => {
+        const r = rect(`[data-rail="${id}"]`);
+        return r ? { x0: r.left - box.left, x1: r.right - box.left, y: r.top - box.top + 7 } : null;
+      };
+      const corridor = (i: number) => {
+        const r = rect(`[data-corridor="${i}"]`);
+        const g = rect(`[data-gap="corridor-${i}"]`);
+        return r && g
+          ? { left: r.left - box.left, right: r.right - box.left, gapTop: g.top - box.top }
+          : null;
+      };
+      const next = planTrack({ width: el.clientWidth, pad }, rail, corridor, JSON.parse(planKey));
+      el.toggleAttribute("data-track-on", next.length > 0);
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+      setLines(next);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // a row can stop (or start) overflowing without the map changing size —
+    // e.g. once the web font loads — so watch each row too
+    el.querySelectorAll("[data-rail]").forEach((r) => {
+      const row = r.closest(".overflow-x-auto")?.querySelector("ol");
+      if (row) ro.observe(row);
+    });
+    void document.fonts?.ready.then(measure);
+    // and once more as the page settles (images, late data)
+    const timers = [300, 1000, 2500].map((ms) => window.setTimeout(measure, ms));
+    wide.addEventListener("change", measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      live = false;
+      timers.forEach((t) => window.clearTimeout(t));
+      el.removeAttribute("data-track-on");
+      ro.disconnect();
+      wide.removeEventListener("change", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [container, pad, planKey, version]);
+  if (!lines.length) return null;
+  return (
+    <svg
+      data-continuous-track
+      width={size.w}
+      height={size.h}
+      className="pointer-events-none absolute left-0 top-0 z-[1]"
+      aria-hidden
+    >
+      <TrackLines lines={lines} />
+    </svg>
+  );
+}
+
 const RAIL_W = 11; // outer width of the two rails, px
 const GAP_W = 6.5; // the gap between them
 const H = 64; // height of a joining piece, px
 
-// Joins two sections with real track: `from` tracks at the top, `to` at the
-// bottom (1 = the main line). 1→1 runs straight on, 1→N splits, N→N runs in
-// parallel, N→1 merges. Rails are a wide stroke with a narrower card-coloured
-// stroke on top (so they follow the curves); sleepers a dashed stroke between.
+// Joins two sections on narrow screens with a drawn piece of track — `from`
+// tracks at the top, `to` at the bottom (1 = the main line): 1→1 runs straight
+// on, 1→N splits, N→N runs in parallel, N→1 merges. (On wide screens the
+// continuous track runs past it down the side instead, and only the words stay.)
 export function TrackJunction({
   from,
   to,
@@ -84,8 +218,8 @@ export function TrackJunction({
     Array.from({ length: n }, (_, i) => (n === 1 ? w / 2 : (w * (i + 1)) / (n + 1)));
   const top = xs(Math.max(from, 1));
   const bottom = xs(Math.max(to, 1));
-  const lines = Math.max(from, to, 1);
-  const paths = Array.from({ length: lines }, (_, i) => {
+  const count = Math.max(from, to, 1);
+  const paths = Array.from({ length: count }, (_, i) => {
     const a = top[from === 1 ? 0 : i] ?? top[0];
     const b = bottom[to === 1 ? 0 : i] ?? bottom[0];
     const color = from === 1 && to === 1 ? MAIN_RAIL : (colors[i] ?? MAIN_RAIL);
@@ -95,7 +229,7 @@ export function TrackJunction({
     from === 1 && to === 1 ? "main" : from === 1 ? "split" : to === 1 ? "merge" : "parallel";
   return (
     <div className="-my-2 grid gap-1" data-junction={kind}>
-      <div ref={ref} className="relative h-16 w-full">
+      <div ref={ref} data-junction-art className="relative h-16 w-full">
         {w > 0 && (
           <svg width={w} height={H} className="absolute inset-0" aria-hidden>
             {paths.map((p, i) => (
@@ -104,7 +238,7 @@ export function TrackJunction({
                 <path d={p.d} stroke="var(--background)" strokeWidth={GAP_W} />
                 <path
                   d={p.d}
-                  stroke={p.color === MAIN_RAIL ? SLEEPER : `${p.color}66`}
+                  stroke={sleeperOf(p.color)}
                   strokeWidth={GAP_W}
                   strokeDasharray="3 6"
                 />
