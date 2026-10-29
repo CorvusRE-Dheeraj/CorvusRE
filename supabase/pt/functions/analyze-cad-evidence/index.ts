@@ -30,7 +30,7 @@ Rules:
 - Every weakness must refer to something actually in the district's packet (a specific comp, figure, assumption or statement). Never invent a comp, number or fact.
 - Compare against the subject facts provided (building size, year built, land, income, cap rate, address). If the packet states a subject fact that disagrees with the provided facts, that is a "subject_data" weakness.
 - category: one of ${WEAKNESS_CATEGORIES.join(", ")}.
-  location = a comp in a materially better/different location; size = a comp much larger/smaller (say by how much, e.g. "42% smaller"); age_condition; cap_rate = cap rates inconsistent with each other or the market; income = rent/vacancy/expense assumptions; time = stale or unadjusted sale dates; property_type = different use/class.
+  location = a comp in a materially better/different location; size = a comp much larger/smaller (say by how much, e.g. "42% smaller"); age_condition; cap_rate = cap rates inconsistent with each other or the market; income = rent/vacancy/expense assumptions; time = stale or unadjusted sale dates; property_type = different use/class. Judge property type by the subject's actual use (as the packet or the owner's documents describe it), not just the county's broad class: a daycare comp IS a valid comparable for a daycare subject the county classes as "Commercial". Only flag property_type when the uses really differ (e.g. an office comp for a daycare).
 - finding: one plain line naming the comp/item. detail: why it matters and what to say at the hearing (1-3 sentences).
 - item: which comp / page / exhibit it concerns, or null.
 - cadIndicatedValue: the value the district's packet argues for, as a number, or null if not stated.

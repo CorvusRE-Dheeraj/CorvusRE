@@ -170,6 +170,38 @@ describe("analyzeCadEvidence", () => {
   });
 });
 
+describe("property type", () => {
+  const daycareComps = (subjectAsStated: Record<string, unknown>) =>
+    sanitizeExtraction({
+      subjectAsStated,
+      comps: [
+        { label: "S1", kind: "sale", propertyType: "Preschool/Daycare" },
+        { label: "S2", kind: "sale", propertyType: "Child Care Center" },
+        { label: "S3", kind: "sale", propertyType: "Office building" },
+        { label: "S4", kind: "sale", propertyType: "Single family residence" },
+      ],
+    });
+  const flagged = (x: ReturnType<typeof sanitizeExtraction>, type: string) =>
+    analyzeCadEvidence(x, { ...subject, propertyType: type }, 2026, null)
+      .findings.filter((f) => f.kind === "property_type")
+      .map((f) => f.comp);
+
+  it("a daycare comp is valid for a daycare the county classes only as Commercial", () => {
+    expect(flagged(daycareComps({}), "Commercial")).toEqual(["S4"]);
+  });
+
+  it("uses the district's own description of the subject's use", () => {
+    expect(flagged(daycareComps({ propertyType: "Daycare" }), "F1 Commercial")).toEqual([
+      "S3",
+      "S4",
+    ]);
+  });
+
+  it("compares specific uses directly", () => {
+    expect(flagged(daycareComps({}), "Preschool")).toEqual(["S3", "S4"]);
+  });
+});
+
 describe("strongestPoints de-duplication", () => {
   it("keeps every wrong subject fact and drops an AI point that restates one", () => {
     const x = sanitizeExtraction({
