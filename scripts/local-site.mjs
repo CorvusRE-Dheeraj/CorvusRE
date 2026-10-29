@@ -24,7 +24,7 @@ const PORT = Number(process.env.PORT) || 8080;
 const PT_DIST = path.join(root, "apps/pt/dist/client");
 const AUTH_DIST = path.join(root, "apps/identity/dist/local");
 // The not-yet-live door pages live at their own public URLs (apps/<dir> ->
-// /<url>/), and share hub.css / door-page.* from the landing app -- serve
+// /<url>/), and share coming-soon.css from the landing app -- serve
 // them locally too so those links don't 404.
 const HOME = path.join(root, "apps/home");
 const STATIC_DOORS = {
@@ -32,7 +32,7 @@ const STATIC_DOORS = {
   "/corvusco": path.join(root, "apps/co"),
   "/corvusrf": path.join(root, "apps/rf"),
 };
-const HOME_ASSETS = new Set(["/hub.css", "/door-page.css", "/door-page.js", "/favicon.svg", "/favicon.ico"]);
+const HOME_ASSETS = new Set(["/hub.css", "/coming-soon.css", "/favicon.svg", "/favicon.ico"]);
 
 if (!existsSync(path.join(root, "apps/pt/.env"))) {
   console.warn("! apps/pt/.env is missing -- copy apps/pt/.env.example to apps/pt/.env first.");

@@ -1,0 +1,441 @@
+/* "Coming soon" pages for the Corvus products that aren't live yet
+   (CorvusBSL, CorvusCO, CorvusRF — apps/sbl, apps/co, apps/rf). One shared
+   look; each page sets its product's door colours from hub.css on <body>:
+   --cs-tint (the door) and --cs-glow (its light). Plain static CSS, no JS. */
+
+:root {
+  --cs-bg: #070b1a;
+  --cs-ink: #f5f7ff;
+  --cs-muted: #aab3cf;
+  --cs-line: rgba(255, 255, 255, 0.1);
+  --cs-card: rgba(255, 255, 255, 0.045);
+  --cs-tint: #7c3aed;
+  --cs-glow: #c4b5fd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--cs-bg);
+}
+
+body.cs {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--cs-ink);
+  background: var(--cs-bg);
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+}
+
+/* --- Background: glow orbs, a fine grid and a skyline ------------------- */
+.cs-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.cs-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  animation: cs-drift 22s ease-in-out infinite alternate;
+}
+.cs-orb-1 {
+  width: 46vmax;
+  height: 46vmax;
+  top: -18vmax;
+  left: -12vmax;
+  background: var(--cs-tint);
+}
+.cs-orb-2 {
+  width: 34vmax;
+  height: 34vmax;
+  top: 8vmax;
+  right: -14vmax;
+  background: var(--cs-glow);
+  opacity: 0.28;
+  animation-duration: 28s;
+}
+.cs-orb-3 {
+  width: 30vmax;
+  height: 30vmax;
+  bottom: -16vmax;
+  left: 30vw;
+  background: #1d4ed8;
+  opacity: 0.3;
+  animation-duration: 34s;
+}
+@keyframes cs-drift {
+  to {
+    transform: translate(4vmax, 3vmax) scale(1.08);
+  }
+}
+.cs-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--cs-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cs-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 75%);
+  opacity: 0.6;
+}
+.cs-skyline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 22vh;
+  min-height: 120px;
+  color: var(--cs-glow);
+  opacity: 0.16;
+}
+
+/* --- Layout --------------------------------------------------------------- */
+.cs-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+@media (min-width: 640px) {
+  .cs-wrap {
+    padding: 0 28px;
+  }
+}
+
+.cs-header {
+  position: relative;
+  z-index: 2;
+}
+.cs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+.cs-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+.cs-logo {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--cs-line);
+}
+.cs-back {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cs-muted);
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--cs-line);
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.cs-back:hover,
+.cs-back:focus-visible {
+  color: var(--cs-ink);
+  border-color: var(--cs-glow);
+}
+
+/* --- Hero ----------------------------------------------------------------- */
+.cs-hero {
+  padding: 56px 0 40px;
+  text-align: center;
+}
+@media (min-width: 768px) {
+  .cs-hero {
+    padding: 88px 0 56px;
+  }
+}
+.cs-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cs-glow);
+  border: 1px solid color-mix(in srgb, var(--cs-glow) 45%, transparent);
+  background: color-mix(in srgb, var(--cs-tint) 22%, transparent);
+}
+.cs-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cs-glow);
+  animation: cs-pulse 1.8s ease-in-out infinite;
+}
+@keyframes cs-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
+.cs-name {
+  margin: 22px 0 6px;
+  font-size: clamp(2.6rem, 9vw, 5.2rem);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+.cs-name span {
+  background: linear-gradient(120deg, var(--cs-glow), #ffffff 55%, var(--cs-glow));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cs-words {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+  font-size: clamp(1.05rem, 2.6vw, 1.35rem);
+  font-weight: 600;
+  color: var(--cs-muted);
+}
+.cs-words b {
+  color: var(--cs-glow);
+  font-weight: 800;
+}
+.cs-tagline {
+  max-width: 680px;
+  margin: 0 auto;
+  font-size: clamp(1.05rem, 2.4vw, 1.25rem);
+  color: #d6dcf0;
+}
+.cs-cta {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
+}
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: 1px solid var(--cs-line);
+  background: rgba(255, 255, 255, 0.06);
+  transition:
+    transform 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+.cs-btn:hover,
+.cs-btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--cs-glow);
+}
+.cs-btn-primary {
+  background: var(--cs-tint);
+  border-color: transparent;
+  box-shadow: 0 10px 30px -10px var(--cs-tint);
+}
+.cs-btn-primary:hover,
+.cs-btn-primary:focus-visible {
+  background: color-mix(in srgb, var(--cs-tint) 85%, #fff);
+}
+
+/* --- Sections --------------------------------------------------------------- */
+.cs-section {
+  padding: 36px 0;
+}
+.cs-section h2 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.5rem, 3.6vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.cs-sub {
+  max-width: 620px;
+  margin: 10px auto 28px;
+  text-align: center;
+  color: var(--cs-muted);
+}
+.cs-features {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .cs-features {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (min-width: 960px) {
+  .cs-features {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.cs-feature {
+  position: relative;
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px solid var(--cs-line);
+  background: var(--cs-card);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    border-color 0.25s,
+    transform 0.25s;
+}
+.cs-feature:hover {
+  border-color: color-mix(in srgb, var(--cs-glow) 55%, transparent);
+  transform: translateY(-2px);
+}
+.cs-feature-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: var(--cs-glow);
+  background: color-mix(in srgb, var(--cs-tint) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cs-glow) 30%, transparent);
+}
+.cs-feature-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.cs-feature h3 {
+  margin: 14px 0 6px;
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+.cs-feature p {
+  margin: 0;
+  font-size: 0.94rem;
+  color: var(--cs-muted);
+}
+.cs-soon {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cs-muted);
+}
+
+/* --- Live today ------------------------------------------------------------ */
+.cs-live {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) {
+  .cs-live {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.cs-live a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 20px 22px;
+  border-radius: 18px;
+  text-decoration: none;
+  border: 1px solid var(--cs-line);
+  background: var(--cs-card);
+  transition: border-color 0.25s;
+}
+.cs-live a:hover,
+.cs-live a:focus-visible {
+  border-color: var(--cs-glow);
+}
+.cs-live strong {
+  display: block;
+  font-size: 1.05rem;
+}
+.cs-live small {
+  color: var(--cs-muted);
+  font-size: 0.9rem;
+}
+.cs-live .cs-arrow {
+  flex: none;
+  font-size: 1.3rem;
+  color: var(--cs-glow);
+}
+.cs-live-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #052e16;
+  background: #6ee7b7;
+  vertical-align: middle;
+}
+
+.cs-footer {
+  position: relative;
+  z-index: 1;
+  padding: 40px 0 32px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--cs-muted);
+}
+
+/* --- Entrance motion -------------------------------------------------------- */
+.cs-rise {
+  animation: cs-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 0.08s);
+}
+@keyframes cs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-orb,
+  .cs-pill-dot,
+  .cs-rise {
+    animation: none;
+  }
+}
