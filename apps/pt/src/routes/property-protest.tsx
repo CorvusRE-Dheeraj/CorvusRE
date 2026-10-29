@@ -204,7 +204,7 @@ function ProtestedPropertyCard({
           View Protest Case
         </Link>
         <button type="button" onClick={goToModules} className="btn-outline">
-          Manage
+          AI Modules
         </button>
       </div>
     </div>
