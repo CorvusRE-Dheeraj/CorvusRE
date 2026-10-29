@@ -590,6 +590,7 @@ function TrackMap() {
             trainAt={location?.station}
             track={{ kind: "main", id: "route-6" }}
             reverse={sides.closeout === "right"}
+            finish
             {...rowProps}
           />
           <p className="mt-4 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-semibold text-green-800">
@@ -773,6 +774,26 @@ function RouteSection({
   );
 }
 
+// The green flag at the final destination, after the last station. On a
+// right-to-left row (wide screens) it flies towards the line's end.
+function FinishFlag({ mirrored }: { mirrored: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 30 36"
+      width="30"
+      height="36"
+      className={cn("block drop-shadow-sm", mirrored && "xl:-scale-x-100")}
+      role="img"
+      aria-label="Final destination"
+    >
+      <rect x="4" y="2" width="2.5" height="34" rx="1.2" fill="#334155" />
+      <circle cx="5.25" cy="2.5" r="2.2" fill="#facc15" />
+      <path d="M6.5 4 C 13 1.5, 17 7, 28 4 L 28 17 C 17 20, 13 14.5, 6.5 17 Z" fill="#16a34a" />
+      <path d="M6.5 4 C 13 1.5, 17 7, 28 4 L 28 7 C 17 10, 13 4.5, 6.5 7 Z" fill="#22c55e" />
+    </svg>
+  );
+}
+
 // One row of track: station cards joined by → connectors, each with its AI
 // module underneath, all standing on a piece of rail (the main line, or one
 // permit's parallel track) with a stop marker above each station. The train
@@ -789,6 +810,7 @@ function StationRow({
   single,
   track,
   reverse = false,
+  finish = false,
 }: {
   nums: number[];
   current: (n: number) => boolean;
@@ -803,10 +825,12 @@ function StationRow({
   // the track runs through this row right to left (wide screens): stations laid
   // out from the right, arrows pointing left, the train facing left
   reverse?: boolean;
+  // the end of the line: a green flag stands on the rail after the last station
+  finish?: boolean;
 }) {
   const color = track.color ?? MAIN_RAIL;
   // room above the rail for the train, only on the row it's on
-  const railTop = trainAt != null && nums.includes(trainAt) ? 50 : 6;
+  const railTop = trainAt != null && nums.includes(trainAt) ? 50 : finish ? 40 : 6;
   const cardTop = railTop + 26;
   return (
     // wide screens: rows fit, so the train's wagons may hang past the row's ends
@@ -821,6 +845,15 @@ function StationRow({
       >
         <li aria-hidden className="pointer-events-none absolute inset-x-0" style={{ top: railTop }}>
           <Rail color={color} railId={track.id} />
+          {finish && (
+            <span
+              className={cn("absolute", reverse ? "right-1 xl:left-1 xl:right-auto" : "right-1")}
+              style={{ bottom: 10 }}
+              title="Final destination"
+            >
+              <FinishFlag mirrored={reverse} />
+            </span>
+          )}
         </li>
         {nums.map((n, i) => {
           const s = getStation(n)!;
