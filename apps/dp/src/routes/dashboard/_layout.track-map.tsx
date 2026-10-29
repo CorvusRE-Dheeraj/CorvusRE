@@ -437,6 +437,13 @@ function TrackMap() {
                 {...rowProps}
               />
             </RouteSection>
+            {/* the main line crosses back here to the next row's first station */}
+            <div
+              data-gap={`gap-${i}`}
+              aria-hidden
+              className="-mb-3 hidden xl:block"
+              style={{ height: LINE_GAP * 2 }}
+            />
             <TrackJunction
               from={1}
               to={1}
@@ -483,6 +490,13 @@ function TrackMap() {
               View all submissions / resubmissions
             </button>
           </p>
+          {/* the permit tracks cross back here to the start of their lanes */}
+          <div
+            data-gap="split"
+            aria-hidden
+            className="mt-2 hidden xl:block"
+            style={{ height: LINE_GAP * (Math.max(projectTracks.length, 1) + 1) }}
+          />
           <div className="my-4">
             <TrackJunction
               from={1}

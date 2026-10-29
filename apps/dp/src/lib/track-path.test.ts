@@ -28,11 +28,20 @@ const plan = {
   after: "route-6",
   colors: ["#2563eb", "#7c3aed", "#f97316"],
 };
+// the bands the line crosses back through
+const bands: Record<string, number> = {
+  "gap-0": 300,
+  "gap-1": 600,
+  "gap-2": 900,
+  split: 1100,
+  merge: 2900,
+};
+const band = (id: string) => bands[id] ?? null;
 const lines = planTrack(
   { width: W, pad },
   (id) => rails[id] ?? null,
   (i) => cards[i] ?? null,
-  2900, // the merge band above closeout
+  band,
   plan,
 );
 
@@ -71,17 +80,38 @@ describe("planTrack", () => {
       for (const [a, b] of segments(l)) expect(a[0] === b[0] || a[1] === b[1]).toBe(true);
   });
 
-  it("the main line snakes down like the original track: right, left, right, then into station 18", () => {
+  it("every main-line row is entered at its first station and left after its last", () => {
     const main = lines[3].points;
     expect(main[0]).toEqual([120, 100]); // starts at station 1
-    const turns = main.filter(([x]) => x < 120 || x > 1080).map(([x]) => (x > 1080 ? "R" : "L"));
-    expect(turns.join("")).toBe("RRLLRR");
-    expect(main.at(-1)).toEqual([430, 1000]); // leaves station 18 at its left end, where it branches
+    for (const id of ["route-1", "route-2", "route-3", "station-18"]) {
+      const r = rails[id];
+      const a = main.findIndex(([x, y]) => x === r.x0 && y === r.y);
+      const b = main.findIndex(([x, y]) => x === r.x1 && y === r.y);
+      expect(a).toBeGreaterThanOrEqual(0);
+      expect(b).toBe(a + 1); // runs first station → last station
+    }
+    // crossing back between rows: right gutter down, left across the band, down the left
+    const after1 = main.slice(2, 6);
+    expect(after1.map(([x]) => (x > 1080 ? "R" : x < 120 ? "L" : "row"))).toEqual([
+      "R",
+      "R",
+      "L",
+      "L",
+    ]);
+    expect(after1[1][1]).toBeGreaterThan(300); // inside the band below route 1
+    expect(main.at(-1)).toEqual([770, 1000]); // leaves station 18 at its right end, where it branches
   });
 
   it("each permit's line leaves the branch, runs through its lane and loop, and joins closeout", () => {
     lines.slice(0, 3).forEach((l, i) => {
-      expect(l.points[0]).toEqual([430, 1000]);
+      expect(l.points[0]).toEqual([770, 1000]);
+      // comes into its lane and its loop at their first station
+      const lane = rails[`lane-${i}`];
+      const loop = rails[`loop-${i}`];
+      const li = l.points.findIndex(([x, y]) => x === lane.x0 && y === lane.y);
+      const lo = l.points.findIndex(([x, y]) => x === loop.x0 && y === loop.y);
+      expect(l.points[li + 1]).toEqual([lane.x1, lane.y]);
+      expect(l.points[lo + 1]).toEqual([loop.x1, loop.y]);
       const ys = l.points.map(([, y]) => y);
       expect(ys).toContain(rails[`lane-${i}`].y);
       expect(ys).toContain(rails[`loop-${i}`].y);
@@ -112,7 +142,7 @@ describe("planTrack", () => {
       { width: W, pad },
       (id) => rails[id] ?? null,
       () => null,
-      2900,
+      band,
       { ...plan, permits: [], colors: [] },
     );
     expect(only).toHaveLength(1);

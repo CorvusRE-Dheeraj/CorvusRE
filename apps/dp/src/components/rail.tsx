@@ -3,11 +3,12 @@
 //
 // On wide screens (xl, where every row of stations fits without scrolling)
 // <ContinuousTrack> draws the whole track as ONE unbroken line, measured from
-// the page and laid like the original route track: the main line snakes down
-// the page, leaving each row by one side and bending down round the card into
-// the next row; at Submission Management it branches into one track per
+// the page, with the original route track's rails: every row is entered at its
+// first station and left after its last — the line bends down past the card,
+// crosses back through the band below it and comes into the next row at its
+// first station; at Submission Management it branches into one track per
 // permit, each running on unbroken through that permit's lane and its review
-// loop, and they rejoin the main line for closeout. The per-row <Rail>s with a
+// loop, and they rejoin the main line into the closeout row at Station 25. The per-row <Rail>s with a
 // `railId` mark where the track goes; while it's drawn, the container carries
 // data-track-on and styles.css hides those rails and the junction pieces.
 //
@@ -143,12 +144,15 @@ export function ContinuousTrack({
           ? { left: r.left - box.left, right: r.right - box.left, gapTop: g.top - box.top }
           : null;
       };
-      const merge = rect("[data-gap=merge]");
+      const band = (id: string) => {
+        const r = rect(`[data-gap="${id}"]`);
+        return r && r.height > 0 ? r.top - box.top : null;
+      };
       const next = planTrack(
         { width: el.clientWidth, pad },
         rail,
         corridor,
-        merge ? merge.top - box.top : null,
+        band,
         JSON.parse(planKey),
       );
       el.toggleAttribute("data-track-on", next.length > 0);
