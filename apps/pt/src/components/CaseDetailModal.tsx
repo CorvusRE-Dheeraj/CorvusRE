@@ -727,6 +727,16 @@ export function CaseDetailView({
             {/* --- Formal Hearing --- */}
             {activeTab === "hearing" && (current.status !== "requested" || noticeSigned) && (
               <div className="space-y-5">
+                {/* The hearing notice is the first step of the formal hearing —
+                    it leads the tab until the ARB has decided. */}
+                {!current.arbDecision && (
+                  <HearingNoticeSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                )}
                 {/* Once decided, the ARB result leads the tab. */}
                 <CaseOutcomeSection
                   userId={userId}
@@ -761,12 +771,14 @@ export function CaseDetailView({
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                   onOpenAppeal={() => setActiveTab(escalationTab)}
                 />
-                <HearingNoticeSection
-                  userId={userId}
-                  protest={current}
-                  property={property}
-                  onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
-                />
+                {current.arbDecision && (
+                  <HearingNoticeSection
+                    userId={userId}
+                    protest={current}
+                    property={property}
+                    onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                  />
+                )}
                 <HearingPrepSection
                   protest={current}
                   property={property}
