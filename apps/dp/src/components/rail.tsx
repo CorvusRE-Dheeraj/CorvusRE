@@ -14,7 +14,7 @@
 // Narrower screens scroll the rows sideways, so they keep the per-row rails
 // and the drawn junction pieces between sections (so does a wide screen where
 // some row still doesn't fit).
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 import { GAUGE, MAIN_RAIL, planTrack, railPath, type TrackLine } from "@/lib/track-path";
@@ -96,22 +96,25 @@ function TrackLines({ lines }: { lines: TrackLine[] }) {
   );
 }
 
+// Rendered as the first child of the map container (position: relative); it
+// finds that container itself — its own wrapper is always there, so the
+// measuring runs on first render too (a ref passed down from the parent isn't
+// attached yet when a child's layout effect runs).
 export function ContinuousTrack({
-  container,
   plan,
   pad,
   version,
 }: {
-  container: RefObject<HTMLDivElement | null>;
-  plan: Parameters<typeof planTrack>[3];
+  plan: Parameters<typeof planTrack>[4];
   pad: number;
   version: string; // changes whenever the content behind the track changes
 }) {
   const [lines, setLines] = useState<TrackLine[]>([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const planKey = JSON.stringify(plan);
+  const self = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const el = container.current;
+    const el = self.current?.parentElement;
     if (!el) return;
     const wide = window.matchMedia("(min-width: 1280px)");
     let live = true;
@@ -140,7 +143,14 @@ export function ContinuousTrack({
           ? { left: r.left - box.left, right: r.right - box.left, gapTop: g.top - box.top }
           : null;
       };
-      const next = planTrack({ width: el.clientWidth, pad }, rail, corridor, JSON.parse(planKey));
+      const merge = rect("[data-gap=merge]");
+      const next = planTrack(
+        { width: el.clientWidth, pad },
+        rail,
+        corridor,
+        merge ? merge.top - box.top : null,
+        JSON.parse(planKey),
+      );
       el.toggleAttribute("data-track-on", next.length > 0);
       setSize({ w: el.clientWidth, h: el.clientHeight });
       setLines(next);
@@ -167,18 +177,15 @@ export function ContinuousTrack({
       wide.removeEventListener("change", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [container, pad, planKey, version]);
-  if (!lines.length) return null;
+  }, [pad, planKey, version]);
   return (
-    <svg
-      data-continuous-track
-      width={size.w}
-      height={size.h}
-      className="pointer-events-none absolute left-0 top-0 z-[1]"
-      aria-hidden
-    >
-      <TrackLines lines={lines} />
-    </svg>
+    <div ref={self} aria-hidden className="pointer-events-none absolute left-0 top-0 z-[1]">
+      {lines.length > 0 && (
+        <svg data-continuous-track width={size.w} height={size.h} className="block">
+          <TrackLines lines={lines} />
+        </svg>
+      )}
+    </div>
   );
 }
 

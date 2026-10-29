@@ -41,7 +41,7 @@ import {
   stageName,
 } from "@/lib/permit-history";
 import { ContinuousTrack, Rail, TrackJunction, TrackLabel } from "@/components/rail";
-import { MAIN_RAIL, trackGutter } from "@/lib/track-path";
+import { LINE_GAP, MAIN_RAIL, trackGutter } from "@/lib/track-path";
 import { TRACK_PORTFOLIO_KEY, getTrackPortfolio, type TrackPortfolio } from "@/lib/track-portfolio";
 import { setActiveProject } from "@/lib/projects";
 
@@ -90,7 +90,6 @@ function TrackMap() {
   const [query, setQuery] = useState("");
   const [stack, setStack] = useState<TrackView[]>([]);
   const tracks = useMemo(() => buildTracks(portfolio.data), [portfolio.data]);
-  const mapRef = useRef<HTMLDivElement>(null);
 
   if (loading) return <Loading />;
   if (!hasProject || !project) return <EmptyProject />;
@@ -407,12 +406,10 @@ function TrackMap() {
 
       {/* ── the map: one continuous track through every section ─────── */}
       <div
-        ref={mapRef}
         className="relative grid min-w-0 grid-cols-1 gap-5 xl:px-[var(--track-pad)]"
         style={{ "--track-pad": `${trackPad}px` } as CSSProperties}
       >
         <ContinuousTrack
-          container={mapRef}
           pad={trackPad}
           version={trackVersion}
           plan={{
@@ -575,6 +572,13 @@ function TrackMap() {
           colors={laneHex}
           title="Approved permits rejoin the main line."
           text="Each permit leaves its loop on its own approval; approval, clearance and expiry records stay specific to each permit."
+        />
+        {/* where the permit tracks cross back to rejoin the main line at Station 25 */}
+        <div
+          data-gap="merge"
+          aria-hidden
+          className="-my-2 hidden xl:block"
+          style={{ height: LINE_GAP * (Math.max(projectTracks.length, 1) + 1) }}
         />
 
         {/* ── approval / clearance / expiry ─────────────────────────────── */}

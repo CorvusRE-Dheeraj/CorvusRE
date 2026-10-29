@@ -32,6 +32,7 @@ const lines = planTrack(
   { width: W, pad },
   (id) => rails[id] ?? null,
   (i) => cards[i] ?? null,
+  2900, // the merge band above closeout
   plan,
 );
 
@@ -84,8 +85,18 @@ describe("planTrack", () => {
       const ys = l.points.map(([, y]) => y);
       expect(ys).toContain(rails[`lane-${i}`].y);
       expect(ys).toContain(rails[`loop-${i}`].y);
-      expect(l.points.at(-1)).toEqual([1080, 3100]);
+      expect(l.points.at(-1)).toEqual([120, 3100]); // into closeout at its first station
     });
+  });
+
+  it("closeout is entered at Station 25 and runs to Station 29, like every other row", () => {
+    const after = lines[4].points;
+    expect(after.slice(-2)).toEqual([
+      [120, 3100],
+      [1080, 3100],
+    ]);
+    // nothing comes into the closeout row from its far (Station 29) end
+    for (const l of lines) expect(l.points.some(([x, y]) => y === 3100 && x > 1080)).toBe(false);
   });
 
   it("no two permit tracks cross", () => {
@@ -101,6 +112,7 @@ describe("planTrack", () => {
       { width: W, pad },
       (id) => rails[id] ?? null,
       () => null,
+      2900,
       { ...plan, permits: [], colors: [] },
     );
     expect(only).toHaveLength(1);

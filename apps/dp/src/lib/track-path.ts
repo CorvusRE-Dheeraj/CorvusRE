@@ -54,10 +54,13 @@ export type TrackLine = { points: Pt[]; color: string };
 //   main      rail ids of the main-line rows before the branch, in order
 //   permits   one per permit: [lane rail id, loop rail id] (inside data-corridor=i)
 //   after     the main-line row after the permits rejoin it
+//   mergeTop  top of the band above that row, where the permit tracks cross
+//             back so the line comes into it at its first station
 export function planTrack(
   box: { width: number; pad: number },
   rail: (id: string) => { x0: number; x1: number; y: number } | null,
   corridor: (i: number) => { left: number; right: number; gapTop: number } | null,
+  mergeTop: number | null,
   plan: { main: string[]; permits: [string, string][]; after: string; colors: string[] },
 ): TrackLine[] {
   type Side = "left" | "right";
@@ -69,7 +72,7 @@ export function planTrack(
 
   const rows = plan.main.map(rail);
   const end = rail(plan.after);
-  if (!rows.length || rows.some((r) => !r) || !end) return [];
+  if (!rows.length || rows.some((r) => !r) || !end || mergeTop == null) return [];
   const main: Pt[] = [];
   let side: Side = "left"; // the side the line comes in from
   rows.forEach((row, i) => {
@@ -89,8 +92,10 @@ export function planTrack(
     return [{ points: main, color: MAIN_RAIL }];
   }
   // Permit i leaves the branch down the gutter on track i, runs along its lane,
-  // bends back inside its card into its review loop, and rejoins the main line
-  // down the far gutter on track n-1-i. Ordered so, no two permit tracks cross.
+  // bends back inside its card into its review loop, leaves it down the far
+  // gutter on track n-1-i, and crosses back through the merge band (later
+  // permits higher) to rejoin the main line, which comes into the closeout row
+  // at its first station like every other row. Ordered so, nothing crosses.
   plan.permits.forEach(([laneId, loopId], i) => {
     const lane = rail(laneId);
     const loop = rail(loopId);
@@ -100,6 +105,7 @@ export function planTrack(
     const near = S === "left" ? card.left + 12 : card.right - 12;
     const far = S === "left" ? card.right - 10 : card.left + 10;
     const k = n - 1 - i;
+    const ym = mergeTop + LINE_GAP * (1 + k);
     lines.push({
       color: plan.colors[i] ?? MAIN_RAIL,
       points: [
@@ -115,8 +121,10 @@ export function planTrack(
         [at(loop, S), loop.y],
         [at(loop, O), loop.y],
         [G(O, k), loop.y],
-        [G(O, k), end.y],
-        [at(end, O), end.y],
+        [G(O, k), ym],
+        [G(S, 0), ym],
+        [G(S, 0), end.y],
+        [at(end, S), end.y],
       ],
     });
   });
@@ -125,9 +133,10 @@ export function planTrack(
   lines.push({
     color: MAIN_RAIL,
     points: [
-      [G(O, n - 1), end.y],
-      [at(end, O), end.y],
+      [G(S, 0), mergeTop + LINE_GAP * n],
+      [G(S, 0), end.y],
       [at(end, S), end.y],
+      [at(end, O), end.y],
     ],
   });
   return lines;
