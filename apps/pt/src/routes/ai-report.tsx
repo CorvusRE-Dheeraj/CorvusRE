@@ -89,6 +89,15 @@ import {
   type StrategyEntry,
 } from "@/lib/ai-report-modules";
 import { computeEvidenceReadiness } from "@/lib/evidence-readiness";
+import {
+  clearUnavailable,
+  isUnavailable,
+  listUnavailable,
+  markUnavailable,
+  type UnavailableReason,
+  type UnavailableRecord,
+} from "@/lib/evidence-unavailable";
+import { MarkUnavailable, UnavailableGuidancePanel } from "@/components/EvidenceUnavailable";
 import { CasePreviewFor } from "@/components/CasePreview";
 import { getComps, type CompsResult, type CompProperty } from "@/lib/cad-comps";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
@@ -10438,6 +10447,20 @@ function ModulePreviewContent({
   // of by priority. Priority stays the default (Part 3 explicitly wants
   // prioritization first); this is just a different lens on the same data.
   const [evidenceGroupBy, setEvidenceGroupBy] = useState<"priority" | "category">("priority");
+  // Module 8's "Document not available" marks, keyed by checklist slug (see
+  // evidence-unavailable.ts) — overlaid on the checklist, never regenerating it.
+  const [unavailable, setUnavailable] = useState<Map<string, UnavailableRecord>>(new Map());
+  const unavailablePropertyId = m.id === "evidence" ? (resolvedProperty?.id ?? null) : null;
+  useEffect(() => {
+    if (!unavailablePropertyId) return;
+    let live = true;
+    listUnavailable(unavailablePropertyId)
+      .then((map) => live && setUnavailable(map))
+      .catch((e) => console.error("evidence_unavailable load failed:", e));
+    return () => {
+      live = false;
+    };
+  }, [unavailablePropertyId]);
 
   if (m.requiresUserData) {
     if (isModuleNotApplicable(overrides, "income")) {
@@ -11434,12 +11457,18 @@ function ModulePreviewContent({
       const evStatus = (it: ModuleResultMap["evidence"]["items"][number]) =>
         it.status ?? (it.availability === "Low" ? "Missing" : "Found");
       const onFileItems = d.items.filter((i) => evStatus(i) !== "Missing");
+      // Missing items the owner marked "not available" stop asking for action —
+      // they get their own group with the AI's "what to do instead".
+      const notAvailable = (i: ModuleResultMap["evidence"]["items"][number]) =>
+        evStatus(i) === "Missing" &&
+        isUnavailable({ item: i.item, status: "Missing" }, unavailable);
       const needsActionItems = d.items.filter(
-        (i) => evStatus(i) === "Missing" && evPriority(i) === "Critical",
+        (i) => evStatus(i) === "Missing" && evPriority(i) === "Critical" && !notAvailable(i),
       );
       const strengthenItems = d.items.filter(
-        (i) => evStatus(i) === "Missing" && evPriority(i) !== "Critical",
+        (i) => evStatus(i) === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
       );
+      const unavailableItems = d.items.filter(notAvailable);
       const verifiedCount = d.items.filter((i) => evStatus(i) === "Verified").length;
       const foundCount = d.items.filter((i) => evStatus(i) === "Found").length;
       // Real protest-case evidence — the generic PROTEST_EVIDENCE_DOCUMENT_TYPE
@@ -11570,6 +11599,39 @@ function ModulePreviewContent({
             onUploadEvidence={(files) =>
               onUploadEvidence(files, undefined, `Evidence Category: ${slug}`)
             }
+            unavailable={unavailable.get(slug) ?? null}
+            onMarkUnavailable={
+              allowEvidenceUpload && resolvedProperty
+                ? async (reason, note) => {
+                    const rec = await markUnavailable({
+                      property: resolvedProperty,
+                      item: it,
+                      checklist: d.items,
+                      strategies: (
+                        (moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined)
+                          ?.strategies ?? []
+                      ).map((s) => s.name),
+                      reason,
+                      note,
+                    });
+                    setUnavailable((prev) => new Map(prev).set(slug, rec));
+                  }
+                : undefined
+            }
+            onClearUnavailable={
+              allowEvidenceUpload
+                ? async () => {
+                    const rec = unavailable.get(slug);
+                    if (!rec) return;
+                    await clearUnavailable(rec.id);
+                    setUnavailable((prev) => {
+                      const next = new Map(prev);
+                      next.delete(slug);
+                      return next;
+                    });
+                  }
+                : undefined
+            }
           />
         );
       };
@@ -11593,6 +11655,7 @@ function ModulePreviewContent({
                 >
                   {needsActionItems.length} need action
                 </span>
+                {unavailableItems.length > 0 && <> · {unavailableItems.length} not available</>}
               </div>
               <button
                 type="button"
@@ -11661,6 +11724,19 @@ function ModulePreviewContent({
                   {strengthenItems.map(renderEvidenceRow)}
                 </div>
               )}
+
+              {unavailableItems.length > 0 && (
+                <div className="grid gap-2">
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Not available — strategy adjusted — {unavailableItems.length}
+                  </div>
+                  <p className="-mt-1 text-[11px] text-muted-foreground">
+                    You told us you can&apos;t provide these. Open one to see what AI suggests using
+                    instead and how the case changes without it.
+                  </p>
+                  {unavailableItems.map(renderEvidenceRow)}
+                </div>
+              )}
             </>
           ) : (
             <div className="grid gap-3">
@@ -11694,12 +11770,16 @@ function ModulePreviewContent({
                   className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                     needsActionItems.length > 0
                       ? "bg-warning/15 text-warning-foreground"
-                      : "bg-success/15 text-success"
+                      : unavailableItems.some((i) => evPriority(i) === "Critical")
+                        ? "bg-accent/15 text-accent"
+                        : "bg-success/15 text-success"
                   }`}
                 >
                   {needsActionItems.length > 0
                     ? "Incomplete — Additional Evidence Suggested"
-                    : "Complete"}
+                    : unavailableItems.some((i) => evPriority(i) === "Critical")
+                      ? "Gaps Noted — Strategy Adjusted"
+                      : "Complete"}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
@@ -12746,6 +12826,9 @@ export function EvidenceCategoryRow({
   onToggleExpand,
   uploadingEvidence,
   onUploadEvidence,
+  unavailable,
+  onMarkUnavailable,
+  onClearUnavailable,
 }: {
   it: ModuleResultMap["evidence"]["items"][number];
   uploadedDocs: DocumentRecord[];
@@ -12754,23 +12837,36 @@ export function EvidenceCategoryRow({
   onToggleExpand: () => void;
   uploadingEvidence: boolean;
   onUploadEvidence: (files: File[]) => void;
+  // "Document not available" (see components/EvidenceUnavailable.tsx) — only
+  // offered while the item is Missing; omitted where the owner can't edit.
+  unavailable?: UnavailableRecord | null;
+  onMarkUnavailable?: (reason: UnavailableReason, note: string) => Promise<void>;
+  onClearUnavailable?: () => Promise<void>;
 }) {
   // priority drives the tone now (only Critical is "blocking"); fall back to
   // the legacy importance/availability when a stale cache lacks it.
   const priority = it.priority ?? (it.importance === "High" ? "Important" : "Supporting");
   const status = it.status ?? (it.availability === "Low" ? "Missing" : "Found");
-  const tone =
-    priority === "Critical" && status === "Missing"
+  const notAvailable = status === "Missing" && !!unavailable;
+  const tone = notAvailable
+    ? { bg: "bg-secondary/50", text: "text-muted-foreground" }
+    : priority === "Critical" && status === "Missing"
       ? { bg: "bg-destructive/10", text: "text-destructive" }
       : status !== "Missing"
         ? { bg: "bg-success/10", text: "text-success" }
         : priority === "Important"
           ? { bg: "bg-warning/15", text: "text-warning-foreground" }
           : { bg: "bg-secondary/60", text: "text-muted-foreground" };
-  const statusLabel =
-    status === "Verified" ? "Verified" : status === "Found" ? "Found — review" : "Missing";
-  const statusTone =
-    status === "Verified"
+  const statusLabel = notAvailable
+    ? "Not available"
+    : status === "Verified"
+      ? "Verified"
+      : status === "Found"
+        ? "Found — review"
+        : "Missing";
+  const statusTone = notAvailable
+    ? "bg-foreground/10 text-foreground"
+    : status === "Verified"
       ? "bg-success/15 text-success"
       : status === "Found"
         ? "bg-accent/15 text-accent"
@@ -12841,6 +12937,15 @@ export function EvidenceCategoryRow({
               ))}
             </ul>
           )}
+          {notAvailable && unavailable && onMarkUnavailable && onClearUnavailable && (
+            <UnavailableGuidancePanel
+              record={unavailable}
+              onRegenerate={() =>
+                onMarkUnavailable(unavailable.reason, unavailable.reasonNote ?? "")
+              }
+              onClear={onClearUnavailable}
+            />
+          )}
           {it.documentSuggestions.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No specific document suggestions for this item — use the Upload Evidence section
@@ -12880,6 +12985,9 @@ export function EvidenceCategoryRow({
                 )}
               </div>
             ))
+          )}
+          {status === "Missing" && !unavailable && onMarkUnavailable && (
+            <MarkUnavailable onSubmit={onMarkUnavailable} />
           )}
         </div>
       )}
