@@ -63,6 +63,8 @@ type ModulesInput = {
   }[];
   authoritativeFacts?: string[];
   selectedStrategy?: string | null;
+  // Items the owner can't provide ("Document not available") — kept, not re-asked.
+  unavailableEvidence?: { item?: string; reason?: string }[];
   // Module 2's own per-strategy scores, sent when calling comps/site/improvement/
   // zoning so their guidance stays consistent with — and prioritized by — the
   // Strategy module's ranking. See loadModule()'s sequencing in ai-report.tsx.
@@ -1459,6 +1461,21 @@ function buildRecord(input: ModulesInput): string {
                 d.verdict ? ` / ${d.verdict}` : ""
               }${d.aiNotes ? ` — ${String(d.aiNotes).slice(0, 200)}` : ""}`,
           )
+          .join("\n"),
+    );
+  }
+  const unavailable = Array.isArray(input.unavailableEvidence)
+    ? input.unavailableEvidence.filter((u) => typeof u?.item === "string" && u.item.trim())
+    : [];
+  if (unavailable.length > 0) {
+    lines.push(
+      `Evidence the owner has said they CANNOT provide (keep each in the checklist with this EXACT ` +
+        `item text, status Missing, unless a document or fact listed here now satisfies it; never ` +
+        `add another item asking for the same document under a different name — favor evidence ` +
+        `that can stand in for it instead):\n` +
+        unavailable
+          .slice(0, 15)
+          .map((u) => `- ${String(u.item).slice(0, 160)} (${String(u.reason ?? "").slice(0, 60)})`)
           .join("\n"),
     );
   }

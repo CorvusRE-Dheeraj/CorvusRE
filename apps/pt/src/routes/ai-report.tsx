@@ -94,6 +94,8 @@ import {
   isUnavailable,
   listUnavailable,
   markUnavailable,
+  orphanedUnavailable,
+  reasonLabel,
   type UnavailableReason,
   type UnavailableRecord,
 } from "@/lib/evidence-unavailable";
@@ -2116,6 +2118,17 @@ function Report() {
     // explicit Regenerate, and the stored row was produced from the same
     // inputs. Otherwise generate and store.
     (async () => {
+      // Module 8: items the owner marked "Document not available" — read fresh
+      // here (before hashing) so marking one regenerates the checklist with it
+      // kept under the same name and never re-requested under a new one.
+      if (id === "evidence" && resolvedProperty) {
+        const marks = await listUnavailable(resolvedProperty.id).catch(() => null);
+        if (marks && marks.size > 0) {
+          input.unavailableEvidence = [...marks.values()]
+            .sort((a, b) => a.item.localeCompare(b.item))
+            .map((r) => ({ item: r.item, reason: reasonLabel(r.reason) }));
+        }
+      }
       const canCache = !!resolvedProperty && !!user && cacheEnabled;
       let inputHash: string | null = null;
       if (canCache) {
@@ -11472,7 +11485,11 @@ function ModulePreviewContent({
       const strengthenItems = d.items.filter(
         (i) => evStatus(i) === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
       );
-      const unavailableItems = d.items.filter(notAvailable);
+      // plus marks whose item a regenerated checklist renamed or dropped
+      const unavailableItems = [
+        ...d.items.filter(notAvailable),
+        ...orphanedUnavailable(d.items, unavailable),
+      ];
       const verifiedCount = d.items.filter((i) => evStatus(i) === "Verified").length;
       const foundCount = d.items.filter((i) => evStatus(i) === "Found").length;
       // Real protest-case evidence — the generic PROTEST_EVIDENCE_DOCUMENT_TYPE
@@ -12956,7 +12973,8 @@ export function EvidenceCategoryRow({
               onClear={onClearUnavailable}
             />
           )}
-          {it.documentSuggestions.length === 0 ? (
+          {notAvailable && it.documentSuggestions.length === 0 ? null : it.documentSuggestions
+              .length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No specific document suggestions for this item — use the Upload Evidence section
               below.

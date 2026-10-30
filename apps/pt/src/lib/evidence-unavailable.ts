@@ -32,6 +32,7 @@ export type UnavailableRecord = {
   id: string;
   itemSlug: string;
   item: string;
+  priority: EvidenceItem["priority"] | null;
   reason: UnavailableReason;
   reasonNote: string | null;
   guidance: UnavailableGuidance | null;
@@ -45,6 +46,7 @@ type Row = {
   id: string;
   item_slug: string;
   item: string;
+  priority: EvidenceItem["priority"] | null;
   reason: UnavailableReason;
   reason_note: string | null;
   guidance: UnavailableGuidance | null;
@@ -54,6 +56,7 @@ const toRecord = (r: Row): UnavailableRecord => ({
   id: r.id,
   itemSlug: r.item_slug,
   item: r.item,
+  priority: r.priority,
   reason: r.reason,
   reasonNote: r.reason_note,
   guidance: r.guidance,
@@ -64,7 +67,7 @@ const toRecord = (r: Row): UnavailableRecord => ({
 export async function listUnavailable(propertyId: string): Promise<Map<string, UnavailableRecord>> {
   const { data, error } = await supabase
     .from("evidence_unavailable")
-    .select("id, item_slug, item, reason, reason_note, guidance, updated_at")
+    .select("id, item_slug, item, priority, reason, reason_note, guidance, updated_at")
     .eq("property_id", propertyId);
   if (error) throw error;
   return new Map(((data ?? []) as Row[]).map((r) => [r.item_slug, toRecord(r)]));
@@ -115,13 +118,14 @@ export async function markUnavailable(args: {
         property_id: property.id,
         item_slug: evidenceItemSlug(item.item),
         item: item.item,
+        priority: item.priority ?? null,
         reason,
         reason_note: note,
         guidance,
       },
       { onConflict: "property_id,item_slug" },
     )
-    .select("id, item_slug, item, reason, reason_note, guidance, updated_at")
+    .select("id, item_slug, item, priority, reason, reason_note, guidance, updated_at")
     .single();
   if (error) throw error;
   return toRecord(data as Row);
@@ -131,6 +135,28 @@ export async function markUnavailable(args: {
 export async function clearUnavailable(id: string): Promise<void> {
   const { error } = await supabase.from("evidence_unavailable").delete().eq("id", id);
   if (error) throw error;
+}
+
+/** Marks whose item a regenerated checklist no longer lists under the same
+ *  name, as stand-in Missing items — so a mark never silently disappears. */
+export function orphanedUnavailable(
+  items: Pick<EvidenceItem, "item">[],
+  unavailable: Map<string, UnavailableRecord>,
+): EvidenceItem[] {
+  const listed = new Set(items.map((i) => evidenceItemSlug(i.item)));
+  return [...unavailable.values()]
+    .filter((r) => !listed.has(r.itemSlug))
+    .map((r) => ({
+      item: r.item,
+      priority: r.priority ?? "Supporting",
+      status: "Missing",
+      foundIn: null,
+      whyNeeded: "",
+      verificationNote: "",
+      importance: r.priority === "Critical" || r.priority === "Important" ? "High" : "Low",
+      availability: "Low",
+      documentSuggestions: [],
+    }));
 }
 
 /** A missing item the owner marked unavailable no longer asks for action. */

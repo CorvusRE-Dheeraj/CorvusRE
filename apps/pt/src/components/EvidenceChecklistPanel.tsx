@@ -25,6 +25,7 @@ import {
   isUnavailable,
   listUnavailable,
   markUnavailable,
+  orphanedUnavailable,
   type UnavailableRecord,
 } from "@/lib/evidence-unavailable";
 // Reused straight from the AI Report page's own Module 8 detail view — the
@@ -206,7 +207,10 @@ export function EvidenceChecklistPanel({
   const strengthenItems = items.filter(
     (i) => i.status === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
   );
-  const unavailableItems = items.filter(notAvailable);
+  const unavailableItems = [
+    ...items.filter(notAvailable),
+    ...orphanedUnavailable(items, unavailable),
+  ];
   const hasEvidence = docs.some(
     (d) =>
       d.useAsEvidence === true ||

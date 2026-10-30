@@ -73,3 +73,11 @@ create trigger evidence_unavailable_owner
   for each row execute function public.evidence_unavailable_owner();
 
 grant select, insert, update, delete on public.evidence_unavailable to authenticated;
+
+-- The item's priority when it was marked, so the row still shows correctly if a
+-- regenerated checklist no longer lists the item under the same name.
+alter table public.evidence_unavailable add column if not exists priority text;
+alter table public.evidence_unavailable drop constraint if exists evidence_unavailable_priority;
+alter table public.evidence_unavailable add constraint evidence_unavailable_priority check (
+  priority is null or priority in ('Critical', 'Important', 'Supporting', 'Optional')
+);
