@@ -76,6 +76,10 @@ function DocumentReview() {
     setState(s);
     if (!s.extraction) {
       nav({ to: "/intake" });
+    } else if (s.extractionConfirmed) {
+      // already confirmed (a reload or coming back) — go straight to the
+      // workflows; confirming again would add the property a second time
+      setMode("confirmed");
     }
   }, [nav]);
 
@@ -556,40 +560,42 @@ function DocumentReview() {
         </Card>
       </section>
 
-      {/* Actions */}
-      <section className="mt-8 card-elev p-5 flex flex-wrap gap-2 justify-between items-center">
-        <div className="text-sm text-muted-foreground">
-          {mode === "edit"
-            ? "Edits are saved automatically. Return to review when finished."
-            : "AI extracted values above. Data Not Found means the field wasn't visible on this document."}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {mode !== "edit" ? (
-            <>
-              <button
-                onClick={onConfirm}
-                disabled={saving}
-                className={`btn-primary btn-primary-hover ${saving ? "opacity-60" : ""}`}
-              >
-                {saving ? "Saving…" : "Confirm Details"}
+      {/* Actions — gone once confirmed; the workflow cards below take over */}
+      {mode !== "confirmed" && (
+        <section className="mt-8 card-elev p-5 flex flex-wrap gap-2 justify-between items-center">
+          <div className="text-sm text-muted-foreground">
+            {mode === "edit"
+              ? "Edits are saved automatically. Return to review when finished."
+              : "AI extracted values above. Data Not Found means the field wasn't visible on this document."}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {mode !== "edit" ? (
+              <>
+                <button
+                  onClick={onConfirm}
+                  disabled={saving}
+                  className={`btn-primary btn-primary-hover ${saving ? "opacity-60" : ""}`}
+                >
+                  {saving ? "Saving…" : "Confirm Details"}
+                </button>
+                <button onClick={() => setMode("edit")} className="btn-outline">
+                  Edit Details
+                </button>
+                <Link to="/intake" className="btn-outline">
+                  Upload Another Document
+                </Link>
+                <button onClick={() => setAskOpen(true)} className="btn-outline">
+                  Ask AI
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setMode("review")} className="btn-primary btn-primary-hover">
+                Done editing
               </button>
-              <button onClick={() => setMode("edit")} className="btn-outline">
-                Edit Details
-              </button>
-              <Link to="/intake" className="btn-outline">
-                Upload Another Document
-              </Link>
-              <button onClick={() => setAskOpen(true)} className="btn-outline">
-                Ask AI
-              </button>
-            </>
-          ) : (
-            <button onClick={() => setMode("review")} className="btn-primary btn-primary-hover">
-              Done editing
-            </button>
-          )}
-        </div>
-      </section>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Workflow routing shown after confirm */}
       {mode === "confirmed" && (
