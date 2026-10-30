@@ -100,6 +100,11 @@ hedging, no restating numbers the gauge/chips already show>",
 a detailed review" filler, no leading "The property". Style like: "CAD value is higher than
 comparable properties", "property has condition issues", "assessment jumped sharply versus
 prior years", "assessment ratio above the county norm".
+"factorExplanations": ["<one entry per factorsIncreasing item, same order: 1-2 plain
+sentences, max ~40 words, explaining that point to an owner with no appraisal background —
+the actual figures from the record behind it (e.g. land $790,527 of a $790,527 total) and why
+it gives the protest room to lower the value. Ground every number in the record; never invent
+one>", ...] (exactly as many entries as factorsIncreasing).
 "factorsReducing": ["<plain phrase, max ~12 words, that makes the protest WEAKER or harder
 to win>", ...] (up to 5, empty array if none apply). Same terse style. Style like: "strong
 comparable assessments nearby", "limited evidence of overvaluation", "county ratio study
@@ -306,6 +311,7 @@ Deno.serve(async (req: Request) => {
     const result = {
       executiveConclusion: str(parsed.executiveConclusion, 260),
       factorsIncreasing: strList(parsed.factorsIncreasing, 5, 80),
+      factorExplanations: strList(parsed.factorExplanations, 5, 320),
       factorsReducing: strList(parsed.factorsReducing, 5, 80),
       confidenceReasoning: str(parsed.confidenceReasoning, 140),
       methodology: str(parsed.methodology, 160),

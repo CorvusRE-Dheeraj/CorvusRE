@@ -403,7 +403,7 @@ export function EvidenceStatusCard({
               status === "evidence_required" ||
               status === "being_prepared") && (
               <button onClick={goToModule8} className="btn-accent text-xs py-1.5">
-                {evidenceDocuments.length > 0 ? "Upload Additional Evidence" : "Upload Evidence"}
+                {evidenceDocuments.length > 0 ? "Upload More Evidence" : "Upload Evidence"}
               </button>
             )}
             {status === "ready_to_submit" && (

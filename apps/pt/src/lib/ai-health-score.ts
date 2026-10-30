@@ -55,6 +55,9 @@ export type HealthScoreResult = {
   executiveConclusion: string;
   scoreBreakdown: HealthScoreBreakdownEntry[];
   factorsIncreasing: string[];
+  // One plain explanation per factorsIncreasing item, same order (the "Why"
+  // box). Optional: results stored before it existed don't have it.
+  factorExplanations?: string[];
   factorsReducing: string[];
   confidencePct: number;
   confidenceReasoning: string;
@@ -70,6 +73,7 @@ type HealthScoreProse = Pick<
   HealthScoreResult,
   | "executiveConclusion"
   | "factorsIncreasing"
+  | "factorExplanations"
   | "factorsReducing"
   | "confidenceReasoning"
   | "methodology"

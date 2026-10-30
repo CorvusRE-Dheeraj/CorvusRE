@@ -20,6 +20,14 @@ import {
   MODEL_TAG,
 } from "@/lib/module-results-cache";
 import type { PropertyRecord } from "@/lib/properties";
+import {
+  clearUnavailable,
+  isUnavailable,
+  listUnavailable,
+  markUnavailable,
+  orphanedUnavailable,
+  type UnavailableRecord,
+} from "@/lib/evidence-unavailable";
 // Reused straight from the AI Report page's own Module 8 detail view — the
 // exact same per-item row (expand, upload, existing-files list), not a
 // second copy that could drift from it.
@@ -57,6 +65,7 @@ export function EvidenceChecklistPanel({
   const [uploading, setUploading] = useState(false);
   const [categorizing, setCategorizing] = useState(false);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState<Map<string, UnavailableRecord>>(new Map());
 
   async function loadDocs(): Promise<DocumentRecord[]> {
     const all = await listDocuments(userId);
@@ -111,6 +120,9 @@ export function EvidenceChecklistPanel({
     setError(null);
     try {
       const currentDocs = await loadDocs();
+      listUnavailable(property.id)
+        .then(setUnavailable)
+        .catch((e) => console.error("evidence_unavailable load failed:", e));
       await loadChecklist(forceRegenerate, currentDocs);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the evidence checklist.");
@@ -187,12 +199,24 @@ export function EvidenceChecklistPanel({
   if (!items) return null;
 
   const evPriority = (it: EvidenceItem) => it.priority ?? "Supporting";
+  const notAvailable = (i: EvidenceItem) => isUnavailable(i, unavailable);
   const needsActionItems = items.filter(
-    (i) => i.status === "Missing" && evPriority(i) === "Critical",
+    (i) => i.status === "Missing" && evPriority(i) === "Critical" && !notAvailable(i),
   );
   const onFileItems = items.filter((i) => i.status !== "Missing");
   const strengthenItems = items.filter(
-    (i) => i.status === "Missing" && evPriority(i) !== "Critical",
+    (i) => i.status === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
+  );
+  const unavailableItems = [
+    ...items.filter(notAvailable),
+    ...orphanedUnavailable(items, unavailable),
+  ];
+  const hasEvidence = docs.some(
+    (d) =>
+      d.useAsEvidence === true ||
+      (d.useAsEvidence !== false &&
+        (d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE ||
+          d.documentType?.startsWith("Evidence Category: "))),
   );
   const categories = items.map((x) => ({ label: x.item, slug: evidenceItemSlug(x.item) }));
 
@@ -209,6 +233,32 @@ export function EvidenceChecklistPanel({
         onToggleExpand={() => setExpandedItem((prev) => (prev === it.item ? null : it.item))}
         uploadingEvidence={uploading}
         onUploadEvidence={(files) => handleUploadEvidence(files, `Evidence Category: ${slug}`)}
+        unavailable={unavailable.get(slug) ?? null}
+        onMarkUnavailable={async (reason, note) => {
+          const cached = await getCachedModuleResult(property.id, "strategy").catch(() => null);
+          const strategies = (
+            (cached?.result as { strategies?: { name: string }[] } | undefined)?.strategies ?? []
+          ).map((s) => s.name);
+          const rec = await markUnavailable({
+            property,
+            item: it,
+            checklist: items,
+            strategies,
+            reason,
+            note,
+          });
+          setUnavailable((prev) => new Map(prev).set(slug, rec));
+        }}
+        onClearUnavailable={async () => {
+          const rec = unavailable.get(slug);
+          if (!rec) return;
+          await clearUnavailable(rec.id);
+          setUnavailable((prev) => {
+            const next = new Map(prev);
+            next.delete(slug);
+            return next;
+          });
+        }}
       />
     );
   };
@@ -226,7 +276,13 @@ export function EvidenceChecklistPanel({
             }`}
           >
             <Upload className="h-3.5 w-3.5" />
-            {categorizing ? "Reading documents…" : uploading ? "Uploading…" : "Upload Evidence"}
+            {categorizing
+              ? "Reading documents…"
+              : uploading
+                ? "Uploading…"
+                : hasEvidence
+                  ? "Upload More Evidence"
+                  : "Upload Evidence"}
             <input
               type="file"
               accept="image/*,.pdf"
@@ -275,6 +331,14 @@ export function EvidenceChecklistPanel({
             Strengthen your case (optional) — {strengthenItems.length}
           </div>
           {strengthenItems.map(renderRow)}
+        </div>
+      )}
+      {unavailableItems.length > 0 && (
+        <div className="grid gap-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Not available — strategy adjusted — {unavailableItems.length}
+          </div>
+          {unavailableItems.map(renderRow)}
         </div>
       )}
     </div>

@@ -89,6 +89,17 @@ import {
   type StrategyEntry,
 } from "@/lib/ai-report-modules";
 import { computeEvidenceReadiness } from "@/lib/evidence-readiness";
+import {
+  clearUnavailable,
+  isUnavailable,
+  listUnavailable,
+  markUnavailable,
+  orphanedUnavailable,
+  reasonLabel,
+  type UnavailableReason,
+  type UnavailableRecord,
+} from "@/lib/evidence-unavailable";
+import { MarkUnavailable, UnavailableGuidancePanel } from "@/components/EvidenceUnavailable";
 import { CasePreviewFor } from "@/components/CasePreview";
 import { getComps, type CompsResult, type CompProperty } from "@/lib/cad-comps";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
@@ -2107,6 +2118,17 @@ function Report() {
     // explicit Regenerate, and the stored row was produced from the same
     // inputs. Otherwise generate and store.
     (async () => {
+      // Module 8: items the owner marked "Document not available" — read fresh
+      // here (before hashing) so marking one regenerates the checklist with it
+      // kept under the same name and never re-requested under a new one.
+      if (id === "evidence" && resolvedProperty) {
+        const marks = await listUnavailable(resolvedProperty.id).catch(() => null);
+        if (marks && marks.size > 0) {
+          input.unavailableEvidence = [...marks.values()]
+            .sort((a, b) => a.item.localeCompare(b.item))
+            .map((r) => ({ item: r.item, reason: reasonLabel(r.reason) }));
+        }
+      }
       const canCache = !!resolvedProperty && !!user && cacheEnabled;
       let inputHash: string | null = null;
       if (canCache) {
@@ -7268,7 +7290,11 @@ function StrategyDetail({
             <label
               className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
             >
-              {uploadingEvidence ? "Uploading…" : "Upload Evidence"}
+              {uploadingEvidence
+                ? "Uploading…"
+                : uploaded.length > 0
+                  ? "Upload More Evidence"
+                  : "Upload Evidence"}
               <input
                 type="file"
                 accept="image/*,.pdf"
@@ -9622,48 +9648,52 @@ function Module1Content({
               {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            {caseDone && caseOutcome ? (
-              <>
-                <Stat
-                  label="Actual Tax Savings"
-                  value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
-                  tone="success"
-                />
-                <Stat
-                  label="Assessment Reduction"
-                  value={
-                    caseOutcome.valueReductionPct != null
-                      ? `${Math.round(caseOutcome.valueReductionPct)}%`
-                      : "—"
-                  }
-                />
-                <Stat
-                  label="Final Assessed Value"
-                  value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
-                />
-              </>
-            ) : (
-              <>
-                <Stat
-                  label="Potential Tax Savings"
-                  value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
-                  tone="success"
-                />
-                <Stat
-                  label="Potential Assessment Reduction"
-                  value={
-                    estimated.hasEstimate && state.totalValue
-                      ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
-                      : "Not yet available"
-                  }
-                />
-                <Stat
-                  label="Current Assessed Value"
-                  value={state.totalValue ? currency(state.totalValue) : "—"}
-                />
-              </>
-            )}
+          <div className="@container min-w-0">
+            <div className="grid grid-cols-1 gap-3 @[28rem]:grid-cols-3">
+              {caseDone && caseOutcome ? (
+                <>
+                  <Stat
+                    label="Actual Tax Savings"
+                    value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
+                    tone="success"
+                  />
+                  <Stat
+                    label="Assessment Reduction"
+                    value={
+                      caseOutcome.valueReductionPct != null
+                        ? `${Math.round(caseOutcome.valueReductionPct)}%`
+                        : "—"
+                    }
+                  />
+                  <Stat
+                    label="Final Assessed Value"
+                    value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
+                  />
+                </>
+              ) : (
+                <>
+                  <Stat
+                    label="Potential Tax Savings"
+                    value={
+                      estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"
+                    }
+                    tone="success"
+                  />
+                  <Stat
+                    label="Potential Assessment Reduction"
+                    value={
+                      estimated.hasEstimate && state.totalValue
+                        ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                        : "Not yet available"
+                    }
+                  />
+                  <Stat
+                    label="Current Assessed Value"
+                    value={state.totalValue ? currency(state.totalValue) : "—"}
+                  />
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -9676,14 +9706,38 @@ function Module1Content({
             <TrendingUp className="h-3.5 w-3.5" />
             Why
           </div>
-          <ul className="grid gap-1 text-xs text-foreground/90">
-            {data.factorsIncreasing.map((f, i) => (
-              <li key={i}>• {f}</li>
-            ))}
+          <ul className="grid gap-2 text-sm text-foreground/90">
+            {data.factorsIncreasing.map((f, i) => {
+              const explanation = data.factorExplanations?.[i];
+              return (
+                <li key={i} className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground">
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </div>
+                    {explanation && (
+                      <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        <MarkdownLite text={explanation} />
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-          <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence: {data.confidencePct}%{!data.dataSufficient && " — More information needed"}
+          <div className="mt-3 flex items-start gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              <span className="font-semibold text-foreground">
+                Confidence: {data.confidencePct}%
+              </span>{" "}
+              — how complete the information behind this score is, not the odds of winning.
+              {!data.dataSufficient &&
+                (data.confidenceReasoning
+                  ? ` More information needed: ${data.confidenceReasoning}`
+                  : " More information needed.")}
+            </span>
           </div>
         </div>
       )}
@@ -9863,14 +9917,16 @@ function Module1Content({
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "success" }) {
   return (
-    <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
+    <div
+      className={`min-w-0 rounded-xl p-4 @[44rem]:p-5 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}
+    >
       <div
-        className={`text-[10px] font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
+        className={`text-xs font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
       >
         {label}
       </div>
       <div
-        className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}
+        className={`mt-1.5 break-words font-serif text-2xl font-bold leading-tight tabular-nums @[28rem]:text-xl @[36rem]:text-2xl @[44rem]:text-3xl ${tone === "success" ? "text-success" : ""}`}
       >
         {value}
       </div>
@@ -10438,6 +10494,20 @@ function ModulePreviewContent({
   // of by priority. Priority stays the default (Part 3 explicitly wants
   // prioritization first); this is just a different lens on the same data.
   const [evidenceGroupBy, setEvidenceGroupBy] = useState<"priority" | "category">("priority");
+  // Module 8's "Document not available" marks, keyed by checklist slug (see
+  // evidence-unavailable.ts) — overlaid on the checklist, never regenerating it.
+  const [unavailable, setUnavailable] = useState<Map<string, UnavailableRecord>>(new Map());
+  const unavailablePropertyId = m.id === "evidence" ? (resolvedProperty?.id ?? null) : null;
+  useEffect(() => {
+    if (!unavailablePropertyId) return;
+    let live = true;
+    listUnavailable(unavailablePropertyId)
+      .then((map) => live && setUnavailable(map))
+      .catch((e) => console.error("evidence_unavailable load failed:", e));
+    return () => {
+      live = false;
+    };
+  }, [unavailablePropertyId]);
 
   if (m.requiresUserData) {
     if (isModuleNotApplicable(overrides, "income")) {
@@ -11434,12 +11504,22 @@ function ModulePreviewContent({
       const evStatus = (it: ModuleResultMap["evidence"]["items"][number]) =>
         it.status ?? (it.availability === "Low" ? "Missing" : "Found");
       const onFileItems = d.items.filter((i) => evStatus(i) !== "Missing");
+      // Missing items the owner marked "not available" stop asking for action —
+      // they get their own group with the AI's "what to do instead".
+      const notAvailable = (i: ModuleResultMap["evidence"]["items"][number]) =>
+        evStatus(i) === "Missing" &&
+        isUnavailable({ item: i.item, status: "Missing" }, unavailable);
       const needsActionItems = d.items.filter(
-        (i) => evStatus(i) === "Missing" && evPriority(i) === "Critical",
+        (i) => evStatus(i) === "Missing" && evPriority(i) === "Critical" && !notAvailable(i),
       );
       const strengthenItems = d.items.filter(
-        (i) => evStatus(i) === "Missing" && evPriority(i) !== "Critical",
+        (i) => evStatus(i) === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
       );
+      // plus marks whose item a regenerated checklist renamed or dropped
+      const unavailableItems = [
+        ...d.items.filter(notAvailable),
+        ...orphanedUnavailable(d.items, unavailable),
+      ];
       const verifiedCount = d.items.filter((i) => evStatus(i) === "Verified").length;
       const foundCount = d.items.filter((i) => evStatus(i) === "Found").length;
       // Real protest-case evidence — the generic PROTEST_EVIDENCE_DOCUMENT_TYPE
@@ -11570,6 +11650,39 @@ function ModulePreviewContent({
             onUploadEvidence={(files) =>
               onUploadEvidence(files, undefined, `Evidence Category: ${slug}`)
             }
+            unavailable={unavailable.get(slug) ?? null}
+            onMarkUnavailable={
+              allowEvidenceUpload && resolvedProperty
+                ? async (reason, note) => {
+                    const rec = await markUnavailable({
+                      property: resolvedProperty,
+                      item: it,
+                      checklist: d.items,
+                      strategies: (
+                        (moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined)
+                          ?.strategies ?? []
+                      ).map((s) => s.name),
+                      reason,
+                      note,
+                    });
+                    setUnavailable((prev) => new Map(prev).set(slug, rec));
+                  }
+                : undefined
+            }
+            onClearUnavailable={
+              allowEvidenceUpload
+                ? async () => {
+                    const rec = unavailable.get(slug);
+                    if (!rec) return;
+                    await clearUnavailable(rec.id);
+                    setUnavailable((prev) => {
+                      const next = new Map(prev);
+                      next.delete(slug);
+                      return next;
+                    });
+                  }
+                : undefined
+            }
           />
         );
       };
@@ -11593,6 +11706,7 @@ function ModulePreviewContent({
                 >
                   {needsActionItems.length} need action
                 </span>
+                {unavailableItems.length > 0 && <> · {unavailableItems.length} not available</>}
               </div>
               <button
                 type="button"
@@ -11661,6 +11775,19 @@ function ModulePreviewContent({
                   {strengthenItems.map(renderEvidenceRow)}
                 </div>
               )}
+
+              {unavailableItems.length > 0 && (
+                <div className="grid gap-2">
+                  <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Not available — strategy adjusted — {unavailableItems.length}
+                  </div>
+                  <p className="-mt-1 text-[11px] text-muted-foreground">
+                    You told us you can&apos;t provide these. Open one to see what AI suggests using
+                    instead and how the case changes without it.
+                  </p>
+                  {unavailableItems.map(renderEvidenceRow)}
+                </div>
+              )}
             </>
           ) : (
             <div className="grid gap-3">
@@ -11694,12 +11821,16 @@ function ModulePreviewContent({
                   className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                     needsActionItems.length > 0
                       ? "bg-warning/15 text-warning-foreground"
-                      : "bg-success/15 text-success"
+                      : unavailableItems.some((i) => evPriority(i) === "Critical")
+                        ? "bg-accent/15 text-accent"
+                        : "bg-success/15 text-success"
                   }`}
                 >
                   {needsActionItems.length > 0
                     ? "Incomplete — Additional Evidence Suggested"
-                    : "Complete"}
+                    : unavailableItems.some((i) => evPriority(i) === "Critical")
+                      ? "Gaps Noted — Strategy Adjusted"
+                      : "Complete"}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
@@ -11755,7 +11886,9 @@ function ModulePreviewContent({
               id="evidence-upload-section"
               className="border-t border-border/60 pt-4 print:hidden"
             >
-              <div className="text-sm font-medium">Upload Evidence</div>
+              <div className="text-sm font-medium">
+                {protestEvidenceDocs.length > 0 ? "Upload More Evidence" : "Upload Evidence"}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Add documents in bulk — AI reads each one and sorts it into the matching category
                 above automatically. Anything that doesn't clearly match stays here, uncategorized.
@@ -11781,7 +11914,9 @@ function ModulePreviewContent({
                   ? "Sorting your documents…"
                   : uploadingEvidence
                     ? "Uploading…"
-                    : "Upload Evidence"}
+                    : protestEvidenceDocs.length > 0
+                      ? "Upload More Evidence"
+                      : "Upload Evidence"}
                 <input
                   type="file"
                   accept="image/*,.pdf"
@@ -11954,7 +12089,9 @@ function ModulePreviewContent({
                         onClick={() => scrollTo("evidence-upload-section")}
                         className="btn-primary text-xs py-1.5"
                       >
-                        Upload Evidence
+                        {protestEvidenceDocs.length > 0
+                          ? "Upload More Evidence"
+                          : "Upload Evidence"}
                       </button>
                     )}
                     <button
@@ -12746,6 +12883,9 @@ export function EvidenceCategoryRow({
   onToggleExpand,
   uploadingEvidence,
   onUploadEvidence,
+  unavailable,
+  onMarkUnavailable,
+  onClearUnavailable,
 }: {
   it: ModuleResultMap["evidence"]["items"][number];
   uploadedDocs: DocumentRecord[];
@@ -12754,23 +12894,36 @@ export function EvidenceCategoryRow({
   onToggleExpand: () => void;
   uploadingEvidence: boolean;
   onUploadEvidence: (files: File[]) => void;
+  // "Document not available" (see components/EvidenceUnavailable.tsx) — only
+  // offered while the item is Missing; omitted where the owner can't edit.
+  unavailable?: UnavailableRecord | null;
+  onMarkUnavailable?: (reason: UnavailableReason, note: string) => Promise<void>;
+  onClearUnavailable?: () => Promise<void>;
 }) {
   // priority drives the tone now (only Critical is "blocking"); fall back to
   // the legacy importance/availability when a stale cache lacks it.
   const priority = it.priority ?? (it.importance === "High" ? "Important" : "Supporting");
   const status = it.status ?? (it.availability === "Low" ? "Missing" : "Found");
-  const tone =
-    priority === "Critical" && status === "Missing"
+  const notAvailable = status === "Missing" && !!unavailable;
+  const tone = notAvailable
+    ? { bg: "bg-secondary/50", text: "text-muted-foreground" }
+    : priority === "Critical" && status === "Missing"
       ? { bg: "bg-destructive/10", text: "text-destructive" }
       : status !== "Missing"
         ? { bg: "bg-success/10", text: "text-success" }
         : priority === "Important"
           ? { bg: "bg-warning/15", text: "text-warning-foreground" }
           : { bg: "bg-secondary/60", text: "text-muted-foreground" };
-  const statusLabel =
-    status === "Verified" ? "Verified" : status === "Found" ? "Found — review" : "Missing";
-  const statusTone =
-    status === "Verified"
+  const statusLabel = notAvailable
+    ? "Not available"
+    : status === "Verified"
+      ? "Verified"
+      : status === "Found"
+        ? "Found — review"
+        : "Missing";
+  const statusTone = notAvailable
+    ? "bg-foreground/10 text-foreground"
+    : status === "Verified"
       ? "bg-success/15 text-success"
       : status === "Found"
         ? "bg-accent/15 text-accent"
@@ -12841,7 +12994,17 @@ export function EvidenceCategoryRow({
               ))}
             </ul>
           )}
-          {it.documentSuggestions.length === 0 ? (
+          {notAvailable && unavailable && onMarkUnavailable && onClearUnavailable && (
+            <UnavailableGuidancePanel
+              record={unavailable}
+              onRegenerate={() =>
+                onMarkUnavailable(unavailable.reason, unavailable.reasonNote ?? "")
+              }
+              onClear={onClearUnavailable}
+            />
+          )}
+          {notAvailable && it.documentSuggestions.length === 0 ? null : it.documentSuggestions
+              .length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No specific document suggestions for this item — use the Upload Evidence section
               below.
@@ -12857,7 +13020,11 @@ export function EvidenceCategoryRow({
                   <label
                     className={`shrink-0 whitespace-nowrap text-accent hover:underline ${uploadingEvidence ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
                   >
-                    {uploadingEvidence ? "Uploading…" : "Upload →"}
+                    {uploadingEvidence
+                      ? "Uploading…"
+                      : uploadedDocs.length > 0
+                        ? "Upload more →"
+                        : "Upload →"}
                     <input
                       type="file"
                       accept="image/*,.pdf"
@@ -12880,6 +13047,9 @@ export function EvidenceCategoryRow({
                 )}
               </div>
             ))
+          )}
+          {status === "Missing" && !unavailable && onMarkUnavailable && (
+            <MarkUnavailable onSubmit={onMarkUnavailable} />
           )}
         </div>
       )}
