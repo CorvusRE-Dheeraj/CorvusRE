@@ -207,6 +207,13 @@ export function EvidenceChecklistPanel({
     (i) => i.status === "Missing" && evPriority(i) !== "Critical" && !notAvailable(i),
   );
   const unavailableItems = items.filter(notAvailable);
+  const hasEvidence = docs.some(
+    (d) =>
+      d.useAsEvidence === true ||
+      (d.useAsEvidence !== false &&
+        (d.documentType === PROTEST_EVIDENCE_DOCUMENT_TYPE ||
+          d.documentType?.startsWith("Evidence Category: "))),
+  );
   const categories = items.map((x) => ({ label: x.item, slug: evidenceItemSlug(x.item) }));
 
   const renderRow = (it: EvidenceItem) => {
@@ -265,7 +272,13 @@ export function EvidenceChecklistPanel({
             }`}
           >
             <Upload className="h-3.5 w-3.5" />
-            {categorizing ? "Reading documents…" : uploading ? "Uploading…" : "Upload Evidence"}
+            {categorizing
+              ? "Reading documents…"
+              : uploading
+                ? "Uploading…"
+                : hasEvidence
+                  ? "Upload More Evidence"
+                  : "Upload Evidence"}
             <input
               type="file"
               accept="image/*,.pdf"

@@ -7277,7 +7277,11 @@ function StrategyDetail({
             <label
               className={`btn-outline text-xs cursor-pointer ${uploadingEvidence ? "pointer-events-none opacity-60" : ""}`}
             >
-              {uploadingEvidence ? "Uploading…" : "Upload Evidence"}
+              {uploadingEvidence
+                ? "Uploading…"
+                : uploaded.length > 0
+                  ? "Upload More Evidence"
+                  : "Upload Evidence"}
               <input
                 type="file"
                 accept="image/*,.pdf"
@@ -11835,7 +11839,9 @@ function ModulePreviewContent({
               id="evidence-upload-section"
               className="border-t border-border/60 pt-4 print:hidden"
             >
-              <div className="text-sm font-medium">Upload Evidence</div>
+              <div className="text-sm font-medium">
+                {protestEvidenceDocs.length > 0 ? "Upload More Evidence" : "Upload Evidence"}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Add documents in bulk — AI reads each one and sorts it into the matching category
                 above automatically. Anything that doesn't clearly match stays here, uncategorized.
@@ -11861,7 +11867,9 @@ function ModulePreviewContent({
                   ? "Sorting your documents…"
                   : uploadingEvidence
                     ? "Uploading…"
-                    : "Upload Evidence"}
+                    : protestEvidenceDocs.length > 0
+                      ? "Upload More Evidence"
+                      : "Upload Evidence"}
                 <input
                   type="file"
                   accept="image/*,.pdf"
@@ -12034,7 +12042,9 @@ function ModulePreviewContent({
                         onClick={() => scrollTo("evidence-upload-section")}
                         className="btn-primary text-xs py-1.5"
                       >
-                        Upload Evidence
+                        {protestEvidenceDocs.length > 0
+                          ? "Upload More Evidence"
+                          : "Upload Evidence"}
                       </button>
                     )}
                     <button
@@ -12962,7 +12972,11 @@ export function EvidenceCategoryRow({
                   <label
                     className={`shrink-0 whitespace-nowrap text-accent hover:underline ${uploadingEvidence ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
                   >
-                    {uploadingEvidence ? "Uploading…" : "Upload →"}
+                    {uploadingEvidence
+                      ? "Uploading…"
+                      : uploadedDocs.length > 0
+                        ? "Upload more →"
+                        : "Upload →"}
                     <input
                       type="file"
                       accept="image/*,.pdf"
