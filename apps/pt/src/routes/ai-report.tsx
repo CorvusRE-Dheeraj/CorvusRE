@@ -9706,14 +9706,38 @@ function Module1Content({
             <TrendingUp className="h-3.5 w-3.5" />
             Why
           </div>
-          <ul className="grid gap-1 text-xs text-foreground/90">
-            {data.factorsIncreasing.map((f, i) => (
-              <li key={i}>• {f}</li>
-            ))}
+          <ul className="grid gap-2 text-sm text-foreground/90">
+            {data.factorsIncreasing.map((f, i) => {
+              const explanation = data.factorExplanations?.[i];
+              return (
+                <li key={i} className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-foreground">
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </div>
+                    {explanation && (
+                      <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        <MarkdownLite text={explanation} />
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-          <div className="mt-2 flex items-center gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence: {data.confidencePct}%{!data.dataSufficient && " — More information needed"}
+          <div className="mt-3 flex items-start gap-1.5 border-t border-success/20 pt-2 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              <span className="font-semibold text-foreground">
+                Confidence: {data.confidencePct}%
+              </span>{" "}
+              — how complete the information behind this score is, not the odds of winning.
+              {!data.dataSufficient &&
+                (data.confidenceReasoning
+                  ? ` More information needed: ${data.confidenceReasoning}`
+                  : " More information needed.")}
+            </span>
           </div>
         </div>
       )}

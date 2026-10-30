@@ -31,12 +31,19 @@ function stableStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
 }
 
+// Per-module prompt versions — bump one to regenerate only that module's
+// stored results (once per property, on its next view), not every module.
+const PROMPT_VERSION: Partial<Record<string, string>> = {
+  health: "why-explained", // the "Why" box gained factorExplanations
+};
+
 export async function hashModuleInput(
   moduleId: BatchModuleId | "health",
   input: ModuleAnalysisInput,
   modelTag: string = MODEL_TAG,
 ): Promise<string> {
-  const payload = `${moduleId}|${modelTag}|${stableStringify(input)}`;
+  const version = PROMPT_VERSION[moduleId];
+  const payload = `${moduleId}|${modelTag}${version ? `/${version}` : ""}|${stableStringify(input)}`;
   const bytes = new TextEncoder().encode(payload);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))
