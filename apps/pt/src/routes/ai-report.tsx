@@ -9648,48 +9648,52 @@ function Module1Content({
               {caseDone ? "Protest completed" : `${tier} Protest Opportunity`}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            {caseDone && caseOutcome ? (
-              <>
-                <Stat
-                  label="Actual Tax Savings"
-                  value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
-                  tone="success"
-                />
-                <Stat
-                  label="Assessment Reduction"
-                  value={
-                    caseOutcome.valueReductionPct != null
-                      ? `${Math.round(caseOutcome.valueReductionPct)}%`
-                      : "—"
-                  }
-                />
-                <Stat
-                  label="Final Assessed Value"
-                  value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
-                />
-              </>
-            ) : (
-              <>
-                <Stat
-                  label="Potential Tax Savings"
-                  value={estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"}
-                  tone="success"
-                />
-                <Stat
-                  label="Potential Assessment Reduction"
-                  value={
-                    estimated.hasEstimate && state.totalValue
-                      ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
-                      : "Not yet available"
-                  }
-                />
-                <Stat
-                  label="Current Assessed Value"
-                  value={state.totalValue ? currency(state.totalValue) : "—"}
-                />
-              </>
-            )}
+          <div className="@container min-w-0">
+            <div className="grid grid-cols-1 gap-3 @[28rem]:grid-cols-3">
+              {caseDone && caseOutcome ? (
+                <>
+                  <Stat
+                    label="Actual Tax Savings"
+                    value={caseOutcome.taxSavings != null ? currency(caseOutcome.taxSavings) : "—"}
+                    tone="success"
+                  />
+                  <Stat
+                    label="Assessment Reduction"
+                    value={
+                      caseOutcome.valueReductionPct != null
+                        ? `${Math.round(caseOutcome.valueReductionPct)}%`
+                        : "—"
+                    }
+                  />
+                  <Stat
+                    label="Final Assessed Value"
+                    value={caseOutcome.finalValue != null ? currency(caseOutcome.finalValue) : "—"}
+                  />
+                </>
+              ) : (
+                <>
+                  <Stat
+                    label="Potential Tax Savings"
+                    value={
+                      estimated.hasEstimate ? currency(estimated.savings) : "Not yet available"
+                    }
+                    tone="success"
+                  />
+                  <Stat
+                    label="Potential Assessment Reduction"
+                    value={
+                      estimated.hasEstimate && state.totalValue
+                        ? `~${Math.round((estimated.reduction / state.totalValue) * 100)}%`
+                        : "Not yet available"
+                    }
+                  />
+                  <Stat
+                    label="Current Assessed Value"
+                    value={state.totalValue ? currency(state.totalValue) : "—"}
+                  />
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -9889,14 +9893,16 @@ function Module1Content({
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "success" }) {
   return (
-    <div className={`rounded-lg p-3 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}>
+    <div
+      className={`min-w-0 rounded-xl p-4 @[44rem]:p-5 ${tone === "success" ? "bg-success/10" : "bg-secondary/40"}`}
+    >
       <div
-        className={`text-[10px] font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
+        className={`text-xs font-semibold uppercase tracking-wide ${tone === "success" ? "text-success" : "text-muted-foreground"}`}
       >
         {label}
       </div>
       <div
-        className={`mt-0.5 font-serif text-lg font-bold ${tone === "success" ? "text-success" : ""}`}
+        className={`mt-1.5 break-words font-serif text-2xl font-bold leading-tight tabular-nums @[28rem]:text-xl @[36rem]:text-2xl @[44rem]:text-3xl ${tone === "success" ? "text-success" : ""}`}
       >
         {value}
       </div>
