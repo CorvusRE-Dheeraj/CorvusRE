@@ -885,7 +885,7 @@ function enforceBuildingComponentRealData(
 const MODULE_SPECS: Record<string, ModuleSpec> = {
   strategy: {
     instruction:
-      "Evaluate up to 5 fixed valuation strategies for this property — Comparable Sales, Site " +
+      "Evaluate up to 5 fixed valuation strategies for this property — Comparable Sales, Land " +
       "Condition, Improvement Condition, Income Approach, and Zoning / Classification — plus, " +
       "only if a genuinely distinct argument applies beyond those 5, one additional " +
       '"Other: <label>" entry (do not invent an Other entry just to add a 6th). For EACH ' +
