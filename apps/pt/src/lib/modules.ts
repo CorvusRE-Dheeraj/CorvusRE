@@ -106,9 +106,10 @@ export const MODULES: Module[] = [
   {
     id: "income",
     n: 7,
-    title: "Income Approach & P&L Analysis",
-    shortName: "Income Value",
-    question: "Does the property's income support its current assessed value?",
+    title: "Cost and Income Approach",
+    shortName: "Cost and Income",
+    question:
+      "What would it cost to rebuild, and does the property's income support its assessed value?",
     status: "Additional Data Needed",
     teaser: "Requires P&L, rent roll, or operating statement to complete.",
     requiresUserData: true,

@@ -11,6 +11,9 @@ export type WorksheetInputs = {
   capRatePct?: number | null;
   costPerSqft?: number | null;
   economicLifeYears?: number;
+  // owner-entered when the county record has none (Cost approach)
+  buildingSqft?: number | null;
+  yearBuilt?: number | null;
   impairments?: Impairment[];
 };
 

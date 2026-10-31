@@ -43,6 +43,8 @@ const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
 type Saved = WorksheetInputs;
 
+const SYNC_EVENT = "corvuspt:valuation-inputs";
+
 // The owner's inputs (sliders, cost per SF, impairments). Signed in: saved to
 // the case (public.valuation_worksheets) so they follow the owner across
 // devices and feed the evidence packet. A guest: browser storage, wrapped so
@@ -74,6 +76,18 @@ function useSaved(
     }
     setLoaded(true);
   }, [userId, propertyId, localKey]);
+  // The panel can be on screen twice (the report page and Module 7's Cost
+  // section) — every instance follows the latest inputs, so one never saves
+  // over the other's change.
+  useEffect(() => {
+    if (!propertyId) return;
+    const onChange = (e: Event) => {
+      const d = (e as CustomEvent<{ propertyId: string; saved: Saved }>).detail;
+      if (d?.propertyId === propertyId) setSaved(d.saved);
+    };
+    window.addEventListener(SYNC_EVENT, onChange);
+    return () => window.removeEventListener(SYNC_EVENT, onChange);
+  }, [propertyId]);
   const update = (patch: Saved) =>
     setSaved((cur) => {
       const next = { ...cur, ...patch };
@@ -83,6 +97,13 @@ function useSaved(
         } catch {
           // per-viewer convenience only
         }
+      }
+      if (propertyId) {
+        queueMicrotask(() =>
+          window.dispatchEvent(
+            new CustomEvent(SYNC_EVENT, { detail: { propertyId, saved: next } }),
+          ),
+        );
       }
       return next;
     });
@@ -108,7 +129,13 @@ export function CommercialValuationPanel({
   knownConditions,
   onAddIncomeData,
   onAddSales,
+  only,
+  embedded = false,
 }: {
+  // Show just these approaches (Module 7 shows Cost + Impairments) — the
+  // reconciliation and heading are left to the full panel.
+  only?: ApproachId[];
+  embedded?: boolean;
   // Signed-in owner — inputs and results are saved to the case.
   userId: string | null;
   propertyId: string | null;
@@ -142,8 +169,8 @@ export function CommercialValuationPanel({
       equity: equalUniformApproach(compStats),
       cost: costApproach({
         landValue,
-        buildingSqft,
-        yearBuilt,
+        buildingSqft: buildingSqft ?? saved.buildingSqft ?? null,
+        yearBuilt: yearBuilt ?? saved.yearBuilt ?? null,
         costPerSqft: saved.costPerSqft ?? null,
         economicLifeYears: saved.economicLifeYears ?? 50,
         currentYear,
@@ -218,6 +245,107 @@ export function CommercialValuationPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryDigest, userId, propertyId, loaded]);
 
+  const shown = only ? ordered.filter((r) => only.includes(r.id)) : ordered;
+  const cards = (
+    <div className={embedded ? "grid gap-4" : "mt-5 grid gap-4 lg:grid-cols-2"}>
+      {shown.map((r) => {
+        const Icon = ICON[r.id];
+        const expanded = open === r.id;
+        return (
+          <article key={r.id} className="rounded-lg border border-border p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+                  <Icon className="h-4.5 w-4.5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="font-semibold">{r.name}</h3>
+                  <p className="text-xs text-muted-foreground">{r.basis}</p>
+                </div>
+              </div>
+              <StatusPill result={r} cadValue={cadValue} />
+            </div>
+
+            {r.id === "income" && (
+              <IncomeControls
+                income={income}
+                saved={saved}
+                baseExpenseRatio={baseExpenseRatio}
+                update={update}
+              />
+            )}
+            {r.id === "cost" && (
+              <CostControls
+                saved={saved}
+                update={update}
+                askSqft={buildingSqft == null}
+                askYear={yearBuilt == null}
+              />
+            )}
+            {r.id === "impairments" && (
+              <ImpairmentBuilder
+                items={saved.impairments ?? []}
+                propertyId={propertyId}
+                buildingSqft={buildingSqft ?? saved.buildingSqft ?? null}
+                onChange={(impairments) => update({ impairments })}
+              />
+            )}
+
+            {r.missing.length > 0 && (
+              <div className="mt-3 rounded-md bg-secondary/60 p-3 text-xs">
+                <div className="font-semibold">To run this approach, add:</div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {r.missing.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+                {r.id === "income" && onAddIncomeData && (
+                  <button
+                    type="button"
+                    onClick={onAddIncomeData}
+                    className="mt-2 text-accent underline"
+                  >
+                    Upload a rent roll or P&amp;L
+                  </button>
+                )}
+                {r.id === "sales" && onAddSales && (
+                  <button type="button" onClick={onAddSales} className="mt-2 text-accent underline">
+                    Add a comparable sale
+                  </button>
+                )}
+              </div>
+            )}
+
+            {r.steps.length > 0 && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setOpen(expanded ? null : r.id)}
+                  aria-expanded={expanded}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-accent"
+                >
+                  {expanded ? "Hide" : "Show"} the math
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+                    aria-hidden="true"
+                  />
+                </button>
+                {expanded && (
+                  <ol className="mt-2 space-y-1 rounded-md bg-secondary/40 p-3 font-mono text-xs">
+                    {r.steps.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+  if (embedded) return cards;
+
   return (
     <section aria-labelledby="commercial-valuation" className="mt-6 card-elev p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -280,99 +408,7 @@ export function CommercialValuationPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        {ordered.map((r) => {
-          const Icon = ICON[r.id];
-          const expanded = open === r.id;
-          return (
-            <article key={r.id} className="rounded-lg border border-border p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
-                    <Icon className="h-4.5 w-4.5" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold">{r.name}</h3>
-                    <p className="text-xs text-muted-foreground">{r.basis}</p>
-                  </div>
-                </div>
-                <StatusPill result={r} cadValue={cadValue} />
-              </div>
-
-              {r.id === "income" && (
-                <IncomeControls
-                  income={income}
-                  saved={saved}
-                  baseExpenseRatio={baseExpenseRatio}
-                  update={update}
-                />
-              )}
-              {r.id === "cost" && <CostControls saved={saved} update={update} />}
-              {r.id === "impairments" && (
-                <ImpairmentBuilder
-                  items={saved.impairments ?? []}
-                  propertyId={propertyId}
-                  buildingSqft={buildingSqft}
-                  onChange={(impairments) => update({ impairments })}
-                />
-              )}
-
-              {r.missing.length > 0 && (
-                <div className="mt-3 rounded-md bg-secondary/60 p-3 text-xs">
-                  <div className="font-semibold">To run this approach, add:</div>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    {r.missing.map((m) => (
-                      <li key={m}>{m}</li>
-                    ))}
-                  </ul>
-                  {r.id === "income" && onAddIncomeData && (
-                    <button
-                      type="button"
-                      onClick={onAddIncomeData}
-                      className="mt-2 text-accent underline"
-                    >
-                      Upload a rent roll or P&amp;L
-                    </button>
-                  )}
-                  {r.id === "sales" && onAddSales && (
-                    <button
-                      type="button"
-                      onClick={onAddSales}
-                      className="mt-2 text-accent underline"
-                    >
-                      Add a comparable sale
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {r.steps.length > 0 && (
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => setOpen(expanded ? null : r.id)}
-                    aria-expanded={expanded}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-accent"
-                  >
-                    {expanded ? "Hide" : "Show"} the math
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-                      aria-hidden="true"
-                    />
-                  </button>
-                  {expanded && (
-                    <ol className="mt-2 space-y-1 rounded-md bg-secondary/40 p-3 font-mono text-xs">
-                      {r.steps.map((s, i) => (
-                        <li key={i}>{s}</li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+      {cards}
       <p className="mt-4 text-xs text-muted-foreground">
         Indicated values are computed from your county record, comparable properties, sales you add
         and the figures you enter — estimates to support your protest, not an appraisal.
@@ -538,9 +574,51 @@ function IncomeControls({
   );
 }
 
-function CostControls({ saved, update }: { saved: Saved; update: (p: Saved) => void }) {
+function CostControls({
+  saved,
+  update,
+  askSqft,
+  askYear,
+}: {
+  saved: Saved;
+  update: (p: Saved) => void;
+  // the county record has no building size / year built — the owner can enter them
+  askSqft: boolean;
+  askYear: boolean;
+}) {
+  const num = (v: string) => (v === "" ? null : Number(v));
+  const input = "rounded-md border border-input bg-background px-2 py-1.5";
   return (
     <div className="mt-3 grid grid-cols-2 gap-3 rounded-md border border-border p-3 text-xs">
+      {askSqft && (
+        <label className="grid gap-1">
+          <span className="font-medium">Building square footage</span>
+          <input
+            type="number"
+            min={0}
+            inputMode="numeric"
+            placeholder="not in the county record"
+            value={saved.buildingSqft ?? ""}
+            onChange={(e) => update({ buildingSqft: num(e.target.value) })}
+            className={input}
+          />
+        </label>
+      )}
+      {askYear && (
+        <label className="grid gap-1">
+          <span className="font-medium">Year built</span>
+          <input
+            type="number"
+            min={1800}
+            max={new Date().getFullYear()}
+            inputMode="numeric"
+            placeholder="not in the county record"
+            value={saved.yearBuilt ?? ""}
+            onChange={(e) => update({ yearBuilt: num(e.target.value) })}
+            className={input}
+          />
+        </label>
+      )}
       <label className="grid gap-1">
         <span className="font-medium">Replacement cost per SF</span>
         <input
@@ -549,10 +627,8 @@ function CostControls({ saved, update }: { saved: Saved; update: (p: Saved) => v
           inputMode="decimal"
           placeholder="e.g. from a contractor bid"
           value={saved.costPerSqft ?? ""}
-          onChange={(e) =>
-            update({ costPerSqft: e.target.value === "" ? null : Number(e.target.value) })
-          }
-          className="rounded-md border border-input bg-background px-2 py-1.5"
+          onChange={(e) => update({ costPerSqft: num(e.target.value) })}
+          className={input}
         />
       </label>
       <label className="grid gap-1">
@@ -560,7 +636,7 @@ function CostControls({ saved, update }: { saved: Saved; update: (p: Saved) => v
         <select
           value={saved.economicLifeYears ?? 50}
           onChange={(e) => update({ economicLifeYears: Number(e.target.value) })}
-          className="rounded-md border border-input bg-background px-2 py-1.5"
+          className={input}
         >
           {[30, 35, 40, 45, 50, 55, 60].map((y) => (
             <option key={y} value={y}>

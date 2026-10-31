@@ -10517,6 +10517,7 @@ function ModulePreviewContent({
   // of by priority. Priority stays the default (Part 3 explicitly wants
   // prioritization first); this is just a different lens on the same data.
   const [evidenceGroupBy, setEvidenceGroupBy] = useState<"priority" | "category">("priority");
+  const { user: authUser } = useAuth();
   // Module 8's "Document not available" marks, keyed by checklist slug (see
   // evidence-unavailable.ts) — overlaid on the checklist, never regenerating it.
   const [unavailable, setUnavailable] = useState<Map<string, UnavailableRecord>>(new Map());
@@ -10533,41 +10534,85 @@ function ModulePreviewContent({
   }, [unavailablePropertyId]);
 
   if (m.requiresUserData) {
+    // Module 7 "Cost and Income": the Cost approach (and the conditions a
+    // buyer would discount for) first, then Income — the same calculators as
+    // the report page's Commercial Valuation panel, sharing its saved inputs.
+    const costSection = (
+      <section className="mt-4 grid gap-3">
+        <div>
+          <h3 className="font-serif text-lg font-semibold">Cost</h3>
+          <p className="text-xs text-muted-foreground">
+            Land value plus what it would cost to rebuild the improvements today, less depreciation
+            — then the conditions a buyer would discount for.
+          </p>
+        </div>
+        {state.improvementValue === 0 ? (
+          <p className="rounded-md bg-secondary/60 p-3 text-sm text-muted-foreground">
+            The county records no buildings on this property (improvement value $0), so the cost
+            approach is just the land value of {currency(state.landValue ?? undefined)}. Conditions
+            a buyer would discount for are covered under Land Condition.
+          </p>
+        ) : (
+          <CommercialValuationPanel
+            embedded
+            only={["cost", "impairments"]}
+            userId={allowEvidenceUpload ? (authUser?.id ?? null) : null}
+            propertyId={resolvedProperty?.id ?? null}
+            cadValue={state.totalValue ?? null}
+            landValue={state.landValue ?? null}
+            improvementValue={state.improvementValue ?? null}
+            acres={compsMap.data?.subject?.legalAcreage ?? null}
+            buildingSqft={state.buildingSqft ?? null}
+            yearBuilt={state.yearBuilt ?? null}
+            income={incomeComputed}
+            compStats={null}
+            knownConditions={[]}
+          />
+        )}
+        <h3 className="mt-2 font-serif text-lg font-semibold">Income</h3>
+      </section>
+    );
     if (isModuleNotApplicable(overrides, "income")) {
       return (
-        <div className="mt-4 card-elev p-4 bg-secondary/60">
-          <p className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-            Marked not applicable — no P&L, rent roll, or operating statement is available for this
-            property. The income approach is excluded from this protest.
-          </p>
-          <button
-            type="button"
-            onClick={() => onClearNotApplicable("income")}
-            className="mt-2 text-xs font-medium text-accent hover:underline"
-          >
-            Undo — I can upload financials
-          </button>
-        </div>
+        <>
+          {costSection}
+          <div className="mt-4 card-elev p-4 bg-secondary/60">
+            <p className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+              Marked not applicable — no P&L, rent roll, or operating statement is available for
+              this property. The income approach is excluded from this protest.
+            </p>
+            <button
+              type="button"
+              onClick={() => onClearNotApplicable("income")}
+              className="mt-2 text-xs font-medium text-accent hover:underline"
+            >
+              Undo — I can upload financials
+            </button>
+          </div>
+        </>
       );
     }
     return (
-      <IncomeWorkspace
-        m={m}
-        state={state}
-        moduleState={moduleState}
-        compsMap={compsMap}
-        analysis={incomeAnalysis}
-        computed={incomeComputed}
-        evidenceDocs={evidenceDocs}
-        allowEvidenceUpload={allowEvidenceUpload}
-        uploadingEvidence={uploadingEvidence}
-        onUploadEvidence={onUploadEvidence}
-        onSaveIncomeAnalysis={onSaveIncomeAnalysis}
-        onExtractIncome={onExtractIncome}
-        onForceReload={onForceReload}
-        onMarkNotApplicable={() => onMarkNotApplicable("income")}
-      />
+      <>
+        {costSection}
+        <IncomeWorkspace
+          m={m}
+          state={state}
+          moduleState={moduleState}
+          compsMap={compsMap}
+          analysis={incomeAnalysis}
+          computed={incomeComputed}
+          evidenceDocs={evidenceDocs}
+          allowEvidenceUpload={allowEvidenceUpload}
+          uploadingEvidence={uploadingEvidence}
+          onUploadEvidence={onUploadEvidence}
+          onSaveIncomeAnalysis={onSaveIncomeAnalysis}
+          onExtractIncome={onExtractIncome}
+          onForceReload={onForceReload}
+          onMarkNotApplicable={() => onMarkNotApplicable("income")}
+        />
+      </>
     );
   }
 
