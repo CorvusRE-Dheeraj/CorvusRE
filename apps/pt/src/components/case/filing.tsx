@@ -131,6 +131,117 @@ const BLOCKING_FIELD_MAP: Record<
   "Protest Deadline": { key: "protestDeadline", type: "date" },
 };
 
+// The protest deadline on file, editable before filing — the date the
+// district's notice gives can differ from the one saved (e.g. a late-mailed
+// notice moves it to 30 days after delivery, Tax Code §41.44(a)). When it has
+// passed, this is where the case's "deadline passed" action lands.
+function ProtestDeadlineEditor({
+  property,
+  onSaved,
+}: {
+  property: PropertyRecord;
+  onSaved: (patch: Partial<PropertyRecord>) => void;
+}) {
+  const current = property.protestDeadline ?? null;
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const passed = !!current && current < today;
+  const [editing, setEditing] = useState(passed);
+  const [value, setValue] = useState(current ?? "");
+  const [saving, setSaving] = useState(false);
+  const fmt = (d: string) =>
+    new Date(`${d}T12:00:00`).toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  async function save() {
+    if (!value || value === current) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await updatePropertyIdentity(property.id, { protestDeadline: value });
+      onSaved(updated);
+      toast.success(`Protest deadline updated to ${fmt(value)}.`);
+      setEditing(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update the deadline.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      id="case-deadline"
+      className={`mt-3 scroll-mt-4 rounded-md border p-3 text-sm ${
+        passed ? "border-destructive/30 bg-destructive/5" : "border-border bg-secondary/30"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">Protest deadline:</span>
+        <span className={passed ? "font-semibold text-destructive" : ""}>
+          {current ? fmt(current) : "Not on file"}
+          {passed ? " — passed" : ""}
+        </span>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs font-medium text-accent hover:underline"
+          >
+            Change
+          </button>
+        )}
+      </div>
+      {passed && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          If your appraisal notice gives a later date — for example it was mailed late, which moves
+          the deadline to 30 days after it was delivered — update it here and continue filing. The
+          review board may also accept a late protest for good cause if it&apos;s filed before the
+          appraisal records are approved, usually in late July (§41.44(b)).
+        </p>
+      )}
+      {editing && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="protest-deadline-input">
+            Protest deadline
+          </label>
+          <input
+            id="protest-deadline-input"
+            type="date"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !value}
+            className="btn-primary text-xs py-1.5 disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save deadline"}
+          </button>
+          {!passed && (
+            <button
+              type="button"
+              onClick={() => {
+                setValue(current ?? "");
+                setEditing(false);
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PreFilingCheckList({
   items,
   blocked,
@@ -1802,6 +1913,9 @@ export function DocumentsSection({
         Documents.
       </p>
       <VerificationNotice status={property.verificationStatus} note={property.verificationNote} />
+      {protest.status === "requested" && (
+        <ProtestDeadlineEditor property={property} onSaved={onPropertyUpdate ?? (() => {})} />
+      )}
 
       <FilingStepBar
         steps={filingSteps}

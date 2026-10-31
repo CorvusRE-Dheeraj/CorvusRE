@@ -457,7 +457,8 @@ export function casePipeline(input: PipelineInput): Pipeline {
         "A Notice of Protest is due by May 15 or 30 days after the appraisal notice, whichever is later (Tax Code §41.44). The review board may still accept a late protest for good cause if it's filed before the appraisal records are approved, usually in late July (§41.44(b)), and a protest is allowed if the required notice was never delivered (§41.411). Otherwise the next opportunity is next year's notice.",
       dueDate: null,
       dueLabel: null,
-      target: { kind: "anchor", anchor: "case-progress" },
+      // File Protest, where the deadline on file can be corrected
+      target: { kind: "anchor", anchor: "case-deadline" },
     });
   }
 
