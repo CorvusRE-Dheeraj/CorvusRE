@@ -100,6 +100,8 @@ import {
   type UnavailableRecord,
 } from "@/lib/evidence-unavailable";
 import { MarkUnavailable, UnavailableGuidancePanel } from "@/components/EvidenceUnavailable";
+import { SiteReportsPanel } from "@/components/SiteReportsPanel";
+import { confirmedForModule, listSiteReports } from "@/lib/site-reports";
 import { CasePreviewFor } from "@/components/CasePreview";
 import { getComps, type CompsResult, type CompProperty } from "@/lib/cad-comps";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
@@ -2121,6 +2123,12 @@ function Report() {
       // Module 8: items the owner marked "Document not available" — read fresh
       // here (before hashing) so marking one regenerates the checklist with it
       // kept under the same name and never re-requested under a new one.
+      // Land Condition: findings the owner confirmed from uploaded reports
+      if (id === "site" && resolvedProperty) {
+        const r = await listSiteReports(resolvedProperty.id).catch(() => null);
+        const confirmed = r ? confirmedForModule(r.findings, r.reports) : [];
+        if (confirmed.length > 0) input.siteDocumentFindings = confirmed;
+      }
       if (id === "evidence" && resolvedProperty) {
         const marks = await listUnavailable(resolvedProperty.id).catch(() => null);
         if (marks && marks.size > 0) {
@@ -11248,6 +11256,25 @@ function ModulePreviewContent({
       }
       return (
         <div className="mt-4 grid gap-4">
+          {resolvedProperty && (
+            <SiteReportsPanel
+              propertyId={resolvedProperty.id}
+              userId={authUser?.id ?? null}
+              canEdit={allowEvidenceUpload && !!authUser}
+              onApply={onForceReload}
+              facts={{
+                address: state.address ?? null,
+                cad: state.cad ?? null,
+                floodZone: siteGis?.floodZone
+                  ? `Zone ${siteGis.floodZone.zone} (${siteGis.floodZone.label})`
+                  : null,
+                elevationFt: siteGis?.elevationFt ?? null,
+                acres: compsMap.data?.subject?.legalAcreage ?? null,
+                nearestHighwayMi: siteGis?.nearestHighwayMi ?? null,
+                nearestRailMi: siteGis?.nearestRailMi ?? null,
+              }}
+            />
+          )}
           <div>
             <div className="relative">
               {siteCoords ? (
@@ -11263,6 +11290,7 @@ function ModulePreviewContent({
                 app can actually fetch (FEMA/USGS); nothing else is claimed. */}
             {(siteGis?.floodZone || siteGis?.elevationFt != null) && (
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Fetched records:</span>
                 {siteGis?.floodZone && (
                   <span>
                     Flood zone:{" "}

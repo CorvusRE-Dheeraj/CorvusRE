@@ -145,6 +145,10 @@ type ModulesInput = {
     nearestHighwayMi: number | null;
     nearestRailMi: number | null;
   } | null;
+  // Only for moduleId "site" — findings the owner confirmed from reports they
+  // uploaded (site-report-extract → site_report_findings). Each counts as real
+  // data for its factor; source names the document and page.
+  siteDocumentFindings?: { factor?: string; finding?: string; source?: string }[];
   // Only for moduleId "improvement" — the real typical economic-life range
   // for this property's type (src/lib/improvement-condition.ts,
   // getTypicalEconomicLife()), grounding the AI's effective-age estimate in
@@ -625,8 +629,13 @@ function enforceSiteFactorRealData(
   factors: SiteFactor[],
   siteGis: ModulesInput["siteGis"],
   notApplicable: string[],
+  documentFactors: string[] = [],
 ): SiteFactor[] {
   return factors.map((f) => {
+    // an owner-confirmed finding from an uploaded report is real data
+    if (documentFactors.includes(f.factor)) {
+      return { ...f, status: "Confirmed", confidence: f.confidence === "Low" ? "Moderate" : f.confidence };
+    }
     if (f.factor === "Floodplain") {
       if (siteGis?.floodZone) return { ...f, status: "Confirmed" };
     } else if (f.factor === "Grade") {
@@ -1376,6 +1385,24 @@ function buildRecord(input: ModulesInput): string {
     input.totalValue != null && `Total assessed value: $${input.totalValue.toLocaleString()}`,
   ];
 
+  const siteDocs = Array.isArray(input.siteDocumentFindings)
+    ? input.siteDocumentFindings.filter((f) => typeof f?.finding === "string" && f.finding.trim())
+    : [];
+  if (siteDocs.length > 0) {
+    lines.push(
+      `Findings the owner confirmed from documents they uploaded (real data — use them for the ` +
+        `matching factor, cite the document and page in that factor's finding, and lower the ` +
+        `documentation priority for what they cover):\n` +
+        siteDocs
+          .slice(0, 40)
+          .map(
+            (f) =>
+              `- ${String(f.factor ?? "Other").slice(0, 60)}: ${String(f.finding).slice(0, 300)}${f.source ? ` (${String(f.source).slice(0, 120)})` : ""}`,
+          )
+          .join("\n"),
+    );
+  }
+
   if (input.siteGis) {
     const g = input.siteGis;
     const parts: string[] = [];
@@ -1894,6 +1921,9 @@ Deno.serve(async (req: Request) => {
         (result as { factors: SiteFactor[] }).factors,
         input.siteGis,
         Array.isArray(input.notApplicableFactors) ? input.notApplicableFactors : [],
+        Array.isArray(input.siteDocumentFindings)
+          ? input.siteDocumentFindings.map((f) => String(f?.factor ?? ""))
+          : [],
       );
     }
     // Real-data enforcement for Module 5 — see

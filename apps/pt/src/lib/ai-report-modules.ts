@@ -57,6 +57,9 @@ export type ModuleAnalysisInput = {
   // evidence-unavailable.ts): kept in the checklist under the same name, still
   // Missing, and not asked for again under another name.
   unavailableEvidence?: { item: string; reason: string }[];
+  // Land Condition: findings the owner confirmed from reports they uploaded
+  // (lib/site-reports.ts) — real data for their factor.
+  siteDocumentFindings?: { factor: string; finding: string; source: string }[];
   // Module 2's own per-strategy scores, sent when loading comps/site/improvement/
   // zoning so their guidance stays consistent with — and prioritized by — the
   // Strategy module's ranking. See loadModule()'s sequencing in ai-report.tsx.
