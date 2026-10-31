@@ -70,8 +70,8 @@ export const MODULES: Module[] = [
   {
     id: "site",
     n: 4,
-    title: "Site Condition Analysis",
-    shortName: "Site Condition",
+    title: "Land Condition Analysis",
+    shortName: "Land Condition",
     question: "Are there land or site-related issues that could support a lower valuation?",
     status: "Completed",
     teaser:

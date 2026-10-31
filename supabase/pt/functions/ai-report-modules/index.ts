@@ -240,7 +240,7 @@ ${PROSE_STYLE}`;
 // hit a count.
 const STRATEGY_NAMES = [
   "Comparable Sales",
-  "Site Condition",
+  "Land Condition",
   "Improvement Condition",
   "Income Approach",
   "Zoning / Classification",
@@ -248,6 +248,8 @@ const STRATEGY_NAMES = [
 
 const STRATEGY_MODULE_MAP: Record<string, string> = {
   "Comparable Sales": "comps",
+  "Land Condition": "site",
+  // the module's old name — still accepted, renamed on the way out
   "Site Condition": "site",
   "Improvement Condition": "improvement",
   "Income Approach": "income",
@@ -296,7 +298,8 @@ const strategies = (v: unknown) =>
     ? v
         .filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null)
         .map((x) => {
-          const name = str(x.name, 40);
+          const raw = str(x.name, 40);
+          const name = raw === "Site Condition" ? "Land Condition" : raw;
           return {
             name,
             strengthScore: score100(x.strengthScore),
@@ -885,7 +888,7 @@ const MODULE_SPECS: Record<string, ModuleSpec> = {
       "score it responsibly, set dataSufficient to false and list what's missing rather than " +
       "guessing a number.",
     schema:
-      '{"strategies": [{"name": "<Comparable Sales | Site Condition | Improvement Condition | ' +
+      '{"strategies": [{"name": "<Comparable Sales | Land Condition | Improvement Condition | ' +
       'Income Approach | Zoning / Classification | Other: label>", "strengthScore": <integer ' +
       '0-100>, "primaryReason": "<short phrase>", "whySelected": "<ONE short sentence, max ' +
       '~15 words>", "supportingFindings": "<ONE short sentence, max ~15 words>", ' +

@@ -1641,7 +1641,7 @@ function Report() {
       }
       const siteNA = itemsNotApplicable(overrides, "site");
       if (siteNA.length > 0) {
-        context.push(`Site Condition: no documentation available for ${siteNA.join(", ")}.`);
+        context.push(`Land Condition: no documentation available for ${siteNA.join(", ")}.`);
       }
       const improvementNA = itemsNotApplicable(overrides, "improvement");
       if (improvementNA.length > 0) {

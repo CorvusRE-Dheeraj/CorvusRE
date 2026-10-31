@@ -30,7 +30,7 @@ export const MODULE_CATALOG: { id: string; label: string; needs: string }[] = [
   },
   {
     id: "site",
-    label: "Site Conditions",
+    label: "Land Condition",
     needs:
       "surveys, plats, flood determinations, easements, environmental reports, photos of site issues",
   },
