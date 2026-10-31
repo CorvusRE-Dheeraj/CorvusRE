@@ -102,6 +102,8 @@ import {
 import { MarkUnavailable, UnavailableGuidancePanel } from "@/components/EvidenceUnavailable";
 import { SiteReportsPanel } from "@/components/SiteReportsPanel";
 import { confirmedForModule, listSiteReports } from "@/lib/site-reports";
+import { ImprovementWorkspace } from "@/components/ImprovementWorkspace";
+import { cardConditions, loadImprovementData, recordsForModule } from "@/lib/improvement-records";
 import { CasePreviewFor } from "@/components/CasePreview";
 import { getComps, type CompsResult, type CompProperty } from "@/lib/cad-comps";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
@@ -2123,6 +2125,13 @@ function Report() {
       // Module 8: items the owner marked "Document not available" — read fresh
       // here (before hashing) so marking one regenerates the checklist with it
       // kept under the same name and never re-requested under a new one.
+      // Improvement Condition: the owner's confirmed building records
+      if (id === "improvement" && resolvedProperty) {
+        const imp = await loadImprovementData(resolvedProperty.id).catch(() => null);
+        const rec = imp ? recordsForModule(imp) : null;
+        if (imp && rec)
+          input.improvementRecords = { ...rec, cardConditions: cardConditions(imp.items) };
+      }
       // Land Condition: findings the owner confirmed from uploaded reports
       if (id === "site" && resolvedProperty) {
         const r = await listSiteReports(resolvedProperty.id).catch(() => null);
@@ -10144,6 +10153,7 @@ function Module5Content({
   onClearNotApplicable,
   improvementDocs,
   onOpenModule,
+  workspace,
 }: {
   d: ModuleResultMap["improvement"];
   m: Module;
@@ -10153,7 +10163,15 @@ function Module5Content({
   onClearNotApplicable: (moduleId: string, itemKey?: string) => void;
   improvementDocs: DocumentRecord[];
   onOpenModule: (moduleId: string) => void;
+  // the building records workspace (uploads, details, condition records)
+  workspace: {
+    propertyId: string;
+    userId: string | null;
+    canEdit: boolean;
+    onApply: () => void;
+  } | null;
 }) {
+  const [hasRecords, setHasRecords] = useState(false);
   const economicLife = getTypicalEconomicLife(state.propertyType);
   const depreciation = computeDepreciation(
     d.effectiveAgeYears,
@@ -10171,6 +10189,8 @@ function Module5Content({
   const hasValueImpact =
     depreciation.conditionAdjustedValue != null && state.improvementValue != null;
   const needsMoreInfo = missingComponents.length > 0 || !hasRealMetrics;
+  // no photos, no confirmed records: a score would be a default, not a finding
+  const insufficient = !hasRecords && !d.buildingComponents.some((c) => c.hasPhoto);
 
   const affectingValue = [
     d.functionalObsolescencePct != null ? d.functionalObsolescenceBasis : null,
@@ -10179,12 +10199,41 @@ function Module5Content({
 
   return (
     <div className="mt-4 grid gap-5">
+      {workspace && (
+        <ImprovementWorkspace
+          propertyId={workspace.propertyId}
+          userId={workspace.userId}
+          canEdit={workspace.canEdit}
+          address={state.address ?? null}
+          propertyType={state.propertyType ?? null}
+          recordFacts={{
+            yearBuilt: state.yearBuilt ?? null,
+            buildingSqft: state.buildingSqft ?? null,
+          }}
+          onApply={workspace.onApply}
+          onEvidenceChange={setHasRecords}
+        />
+      )}
       {/* 1. What We Found — the building itself, component by component. */}
       <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          AI Findings
+        </div>
         {d.guidance && <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />}
         <div className="mt-3 flex flex-col items-center">
-          <SpeedometerGauge value={d.priorityScore} size="md" />
-          <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
+          {insufficient ? (
+            <div className="rounded-lg bg-secondary/50 px-4 py-3 text-center">
+              <div className="text-sm font-semibold">Insufficient Information</div>
+              <div className="text-xs text-muted-foreground">
+                No condition score yet — add photos, a report or component conditions above.
+              </div>
+            </div>
+          ) : (
+            <>
+              <SpeedometerGauge value={d.priorityScore} size="md" />
+              <div className="-mt-1 text-xs text-muted-foreground">Condition Priority</div>
+            </>
+          )}
         </div>
         <div className="mt-3 grid gap-1.5">
           {d.buildingComponents.map((c) => (
@@ -10233,7 +10282,12 @@ function Module5Content({
             How It Compares With the CAD Value
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <FactBox label="CAD Improvement Value" value={currency(state.improvementValue)} />
+            <FactBox
+              label="CAD Improvement Value"
+              value={
+                state.improvementValue == null ? "Not Available" : currency(state.improvementValue)
+              }
+            />
             <FactBox
               label="Condition-Adjusted Value"
               value={currency(depreciation.conditionAdjustedValue)}
@@ -10283,14 +10337,25 @@ function Module5Content({
             Recommended Next Step
           </div>
           <p className="mt-1 text-sm font-semibold">
-            Complete the missing property information so Corvus AI can finish your protest analysis.
+            {missingComponents.length > 0
+              ? `Add photos of the ${missingComponents.map((c) => c.component.toLowerCase()).join(", ")} — or upload an inspection report — so Corvus AI can assess them.`
+              : "Record component conditions or upload an inspection report so Corvus AI can finish the condition analysis."}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Missing photos don&apos;t mean poor condition — they just leave it unassessed.
           </p>
           <div className="mt-3">
             <button
-              onClick={() => onOpenModule("evidence")}
+              onClick={() =>
+                workspace
+                  ? document
+                      .getElementById("improvement-uploads")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  : onOpenModule("evidence")
+              }
               className="btn-accent text-sm font-bold"
             >
-              Upload Property Information
+              Upload Photos / Report
             </button>
           </div>
         </div>
@@ -10299,58 +10364,62 @@ function Module5Content({
       {/* 7. Detailed Analysis — collapsed by default; the background math
           (effective age, economic life, depreciation) the customer never
           needs to read to understand the conclusion above. */}
-      <details className="card-elev overflow-hidden p-0">
-        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-          <div className="flex items-center justify-between gap-2">
-            <span>Condition Metrics</span>
-            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+      {hasRealMetrics && (
+        <details className="card-elev overflow-hidden p-0">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <span>Analysis Details</span>
+              <span className="text-xs font-normal text-accent">Effective age, depreciation</span>
+            </div>
+          </summary>
+          <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
+            <ExecutiveStat
+              label="Effective Age"
+              value={
+                d.effectiveAgeYears != null
+                  ? `${d.effectiveAgeYears} yrs`
+                  : "Additional Data Needed"
+              }
+            />
+            <ExecutiveStat
+              label="Economic Life"
+              value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
+            />
+            <ExecutiveStat
+              label="Physical Depreciation"
+              value={
+                depreciation.physicalDepreciationPct != null
+                  ? `${depreciation.physicalDepreciationPct}%`
+                  : "Additional Data Needed"
+              }
+            />
+            <ExecutiveStat
+              label="Functional Obsolescence"
+              value={
+                d.functionalObsolescencePct != null
+                  ? `${d.functionalObsolescencePct}%`
+                  : "Additional Data Needed"
+              }
+            />
+            <ExecutiveStat
+              label="External Obsolescence"
+              value={
+                d.externalObsolescencePct != null
+                  ? `${d.externalObsolescencePct}%`
+                  : "Additional Data Needed"
+              }
+            />
+            <ExecutiveStat
+              label="Total Depreciation"
+              value={
+                depreciation.totalDepreciationPct != null
+                  ? `${depreciation.totalDepreciationPct}%`
+                  : "Additional Data Needed"
+              }
+            />
           </div>
-        </summary>
-        <div className="grid grid-cols-2 gap-2 border-t border-border/60 p-4 sm:grid-cols-3">
-          <ExecutiveStat
-            label="Effective Age"
-            value={
-              d.effectiveAgeYears != null ? `${d.effectiveAgeYears} yrs` : "Additional Data Needed"
-            }
-          />
-          <ExecutiveStat
-            label="Economic Life"
-            value={`${economicLife.typical} yrs (${economicLife.min}-${economicLife.max} typical)`}
-          />
-          <ExecutiveStat
-            label="Physical Depreciation"
-            value={
-              depreciation.physicalDepreciationPct != null
-                ? `${depreciation.physicalDepreciationPct}%`
-                : "Additional Data Needed"
-            }
-          />
-          <ExecutiveStat
-            label="Functional Obsolescence"
-            value={
-              d.functionalObsolescencePct != null
-                ? `${d.functionalObsolescencePct}%`
-                : "Additional Data Needed"
-            }
-          />
-          <ExecutiveStat
-            label="External Obsolescence"
-            value={
-              d.externalObsolescencePct != null
-                ? `${d.externalObsolescencePct}%`
-                : "Additional Data Needed"
-            }
-          />
-          <ExecutiveStat
-            label="Total Depreciation"
-            value={
-              depreciation.totalDepreciationPct != null
-                ? `${depreciation.totalDepreciationPct}%`
-                : "Additional Data Needed"
-            }
-          />
-        </div>
-      </details>
+        </details>
+      )}
     </div>
   );
 }
@@ -11496,6 +11565,16 @@ function ModulePreviewContent({
           onClearNotApplicable={onClearNotApplicable}
           improvementDocs={improvementDocs}
           onOpenModule={onOpenModule}
+          workspace={
+            resolvedProperty
+              ? {
+                  propertyId: resolvedProperty.id,
+                  userId: authUser?.id ?? null,
+                  canEdit: allowEvidenceUpload && !!authUser,
+                  onApply: onForceReload,
+                }
+              : null
+          }
         />
       );
     }

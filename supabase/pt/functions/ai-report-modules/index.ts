@@ -220,6 +220,22 @@ type ModulesInput = {
   notApplicableFactors?: string[];
   notApplicableComponents?: string[];
   notApplicableContext?: string[];
+  // Only for moduleId "improvement" — the owner's confirmed building records
+  // (src/lib/improvement-records.ts): buildings with type and details, and
+  // component conditions / issues / documented repair estimates. cardConditions
+  // is the worst confirmed condition per Roof / HVAC / Exterior / Interior card.
+  improvementRecords?: {
+    buildings?: { name?: string; types?: string[]; details?: Record<string, unknown> }[];
+    items?: {
+      building?: string;
+      component?: string;
+      condition?: string;
+      issue?: string | null;
+      estimate?: number | null;
+      source?: string;
+    }[];
+    cardConditions?: Record<string, string>;
+  } | null;
 };
 
 const PREAMBLE = `You are CorvusPT's AI property tax analyst for Texas commercial properties.
@@ -867,7 +883,14 @@ function enforceBuildingComponentRealData(
   components: BuildingComponent[],
   hadAnyPhotos: boolean,
   notApplicable: string[],
+  ownerConditions: Record<string, string> = {},
 ): BuildingComponent[] {
+  const fromOwner = (c: BuildingComponent): BuildingComponent => {
+    const oc = ownerConditions[c.component];
+    return oc === "Good" || oc === "Fair" || oc === "Poor"
+      ? { ...c, condition: oc, notApplicable: false }
+      : c;
+  };
   const clamped = hadAnyPhotos
     ? components
     : components.map((c) => ({
@@ -877,9 +900,11 @@ function enforceBuildingComponentRealData(
         actionNeeded: null,
         notes: "",
       }));
-  return clamped.map((c) =>
-    !c.hasPhoto && notApplicable.includes(c.component) ? { ...c, notApplicable: true } : c,
-  );
+  return clamped
+    .map((c) =>
+      !c.hasPhoto && notApplicable.includes(c.component) ? { ...c, notApplicable: true } : c,
+    )
+    .map(fromOwner);
 }
 
 const MODULE_SPECS: Record<string, ModuleSpec> = {
@@ -1434,6 +1459,27 @@ function buildRecord(input: ModulesInput): string {
       );
     }
   }
+  const rec = input.improvementRecords;
+  if (rec && (rec.items?.length || rec.buildings?.length)) {
+    const b = (rec.buildings ?? []).slice(0, 10).map((x) => {
+      const d = x.details ?? {};
+      const facts = Object.entries(d)
+        .filter(([k, v]) => v != null && v !== "" && k !== "overallCondition")
+        .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`)
+        .join(", ");
+      return `- ${String(x.name ?? "Building").slice(0, 60)} — ${(x.types ?? []).join(" + ") || "type not set"}${facts ? ` (${facts})` : ""}${d.overallCondition ? ` — owner's overall condition: ${d.overallCondition}` : ""}`;
+    });
+    const it = (rec.items ?? []).slice(0, 60).map(
+      (x) =>
+        `- ${x.building ? `${String(x.building).slice(0, 60)}: ` : ""}${String(x.component ?? "").slice(0, 60)} — ${x.condition ?? "Not Assessed"}${x.issue ? `; ${String(x.issue).slice(0, 200)}` : ""}${x.estimate ? `; documented repair estimate ${Math.round(x.estimate).toLocaleString()}` : ""} (${x.source === "owner" ? "owner entered" : `from ${x.source}, owner confirmed`})`,
+    );
+    lines.push(
+      `The owner's confirmed building records (real data — ground the guidance, key finding and ` +
+        `component notes in them; never treat a repair estimate as a value reduction by itself, ` +
+        `and never equate missing photos with poor condition):\nBuildings:\n${b.join("\n") || "- none"}\n` +
+        `Component records:\n${it.join("\n") || "- none"}`,
+    );
+  }
   if (input.economicLifeYears) {
     const e = input.economicLifeYears;
     lines.push(
@@ -1936,6 +1982,7 @@ Deno.serve(async (req: Request) => {
           (result as { buildingComponents: BuildingComponent[] }).buildingComponents,
           evidenceParts.length > 0,
           Array.isArray(input.notApplicableComponents) ? input.notApplicableComponents : [],
+          input.improvementRecords?.cardConditions ?? {},
         );
     }
     // Real-data enforcement for Module 6 — see enforceZoningRealData. Runs

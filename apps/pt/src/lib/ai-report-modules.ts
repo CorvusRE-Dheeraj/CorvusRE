@@ -60,6 +60,20 @@ export type ModuleAnalysisInput = {
   // Land Condition: findings the owner confirmed from reports they uploaded
   // (lib/site-reports.ts) — real data for their factor.
   siteDocumentFindings?: { factor: string; finding: string; source: string }[];
+  // Improvement Condition: the owner's confirmed building records
+  // (lib/improvement-records.ts) and the worst confirmed condition per card.
+  improvementRecords?: {
+    buildings: { name: string; types: string[]; details: Record<string, unknown> }[];
+    items: {
+      building: string;
+      component: string;
+      condition: string;
+      issue: string | null;
+      estimate: number | null;
+      source: string;
+    }[];
+    cardConditions: Record<string, string>;
+  };
   // Module 2's own per-strategy scores, sent when loading comps/site/improvement/
   // zoning so their guidance stays consistent with — and prioritized by — the
   // Strategy module's ranking. See loadModule()'s sequencing in ai-report.tsx.
