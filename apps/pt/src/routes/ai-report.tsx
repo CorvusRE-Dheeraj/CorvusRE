@@ -5597,43 +5597,66 @@ function ComparableTable({
 // The 10-step workflow ribbon at the top of Module 3 — purely a progress
 // cue for the sequence the user described (Find -> Verify -> Rank -> Select
 // -> Compare -> Adjust -> Calculate -> vs CAD -> Confidence -> Recommendation).
+// Each step jumps to its section below; a step whose section has nothing to
+// show yet is greyed out with the reason as its tooltip, and the line under
+// the ribbon says what the later steps are waiting for.
+const COMPS_STEPS: { label: string; target: string }[] = [
+  { label: "Find data", target: "comps-step-find" },
+  { label: "Verify", target: "comps-step-table" },
+  { label: "Rank", target: "comps-step-rank" },
+  { label: "Select", target: "comps-step-table" },
+  { label: "Compare", target: "comps-step-compare" },
+  { label: "Adjust", target: "comps-step-adjust" },
+  { label: "Calculate value", target: "comps-step-value" },
+  { label: "vs CAD", target: "comps-step-value" },
+  { label: "Confidence", target: "comps-step-confidence" },
+  { label: "Recommendation", target: "comps-step-recommendation" },
+];
+
 function CompsWorkflowRibbon({
   hasComps,
   hasSelection,
   hasIndicated,
   hasRecommendation,
+  waitingNote,
+  available: availableTargets,
 }: {
+  // which sections below have something to show (by target id)
+  available: Set<string>;
   hasComps: boolean;
   hasSelection: boolean;
   hasIndicated: boolean;
   hasRecommendation: boolean;
+  waitingNote: string | null;
 }) {
-  const steps = [
-    "Find data",
-    "Verify",
-    "Rank",
-    "Select",
-    "Compare",
-    "Adjust",
-    "Calculate value",
-    "vs CAD",
-    "Confidence",
-    "Recommendation",
-  ];
   // Furthest step reached — a coarse cue, not a strict state machine.
   const reached = !hasComps ? 0 : hasRecommendation ? 9 : hasIndicated ? 7 : hasSelection ? 3 : 2;
   return (
-    <div className="flex gap-1 overflow-x-auto pb-1 text-[10px]">
-      {steps.map((s, i) => (
-        <div
-          key={s}
-          className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${
-            i <= reached ? "bg-accent/15 text-accent" : "bg-secondary/60 text-muted-foreground"
-          }`}
-        >
-          {i + 1}. {s}
-        </div>
-      ))}
+    <div className="grid gap-1">
+      <div className="flex gap-1 overflow-x-auto pb-1 text-[10px]">
+        {COMPS_STEPS.map((st, i) => {
+          const available = availableTargets.has(st.target);
+          return (
+            <button
+              key={st.label}
+              type="button"
+              disabled={!available}
+              title={available ? `Go to ${st.label}` : (waitingNote ?? "Not available yet")}
+              onClick={() =>
+                document
+                  .getElementById(st.target)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${
+                i <= reached ? "bg-accent/15 text-accent" : "bg-secondary/60 text-muted-foreground"
+              } ${available ? "hover:underline" : "cursor-default opacity-60"}`}
+            >
+              {i + 1}. {st.label}
+            </button>
+          );
+        })}
+      </div>
+      {waitingNote && <p className="text-[11px] text-muted-foreground">{waitingNote}</p>}
     </div>
   );
 }
@@ -10694,6 +10717,7 @@ function ModulePreviewContent({
         excluded: c.excluded,
       }));
     const hasAnyComp = stats.ranked.length > 0;
+    const statewideSource = compsMap.data?.source === "statewide";
 
     function handleToggleExclude(comp: RankedComp, exclude: boolean) {
       if (comp.userAdded) {
@@ -10717,6 +10741,29 @@ function ModulePreviewContent({
           hasSelection={compSelections.length > 0}
           hasIndicated={stats.indicated != null}
           hasRecommendation={!!d?.protestRecommendation}
+          available={
+            new Set(
+              [
+                "comps-step-find",
+                hasAnyComp && "comps-step-table",
+                hasAnyComp && "comps-step-rank",
+                hasAnyComp && "comps-step-adjust",
+                !!map?.subject && topRanked.length > 0 && "comps-step-compare",
+                !!stats.indicated && "comps-step-value",
+                stats.confidencePct != null && "comps-step-confidence",
+                !!d && "comps-step-recommendation",
+              ].filter((x): x is string => !!x),
+            )
+          }
+          waitingNote={
+            compsMap.loading
+              ? null
+              : !hasAnyComp
+                ? "Steps 2–10 start once there are comparables: none could be found for this property in public parcel data yet. Add a sale you know about below and they fill in."
+                : stats.indicated == null
+                  ? `Steps 7–9 need at least one comparable with a usable value — ${usable.length} so far.`
+                  : null
+          }
         />
 
         {/* Map first — the visual centerpiece of Module 3: every located
@@ -10724,9 +10771,12 @@ function ModulePreviewContent({
             assessed-value comps by colour. Shown for every county; when the
             county publishes no comp feed it's still the subject on the map
             with an invitation to add a real sale. */}
-        <div>
+        <div id="comps-step-find" className="scroll-mt-4">
           <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3">
-            <div className="text-sm font-medium">Comparable Sales — Located vs. Your Property</div>
+            <div className="text-sm font-medium">
+              {statewideSource ? "Comparable Properties" : "Comparable Sales"} — Located vs. Your
+              Property
+            </div>
             <div className="text-[11px] text-muted-foreground">
               {hasAnyComp
                 ? `${mapComps.length} located` +
@@ -10759,11 +10809,24 @@ function ModulePreviewContent({
           )}
         </div>
 
+        {statewideSource && hasAnyComp && (
+          <p className="-mt-2 text-[11px] text-muted-foreground">
+            {map?.comps.length} nearby{" "}
+            {map?.subject?.improvementValue === 0 ? "vacant land parcels" : "improved properties"}{" "}
+            in {state.cad ?? "this county"} valued within half to double this property, from the
+            State of Texas parcel data
+            {compsMap.data?.taxYear ? ` (${compsMap.data.taxYear} values)` : ""}. These are the
+            district&apos;s assessed values, not sale prices.
+          </p>
+        )}
+
         {stats.limitedData && (
           <div className="rounded-lg bg-warning/15 p-3 text-sm text-warning-foreground">
-            <span className="font-semibold">Limited Comparable Sales Data.</span> Fewer than 3
-            reliable recent commercial sales were found. The system may use alternative market
-            evidence, but will clearly distinguish it from actual sale data.
+            <span className="font-semibold">Limited Comparable Data.</span>{" "}
+            {usable.length === 0
+              ? "No comparable properties with a usable value were found, so there's no indicated value yet."
+              : `Only ${usable.length} comparable propert${usable.length === 1 ? "y" : "ies"} with a usable value ${usable.length === 1 ? "was" : "were"} found — at least 3 are needed for a reliable value range.`}{" "}
+            Adding a real sale from a closing statement (below) strengthens this the most.
           </div>
         )}
 
@@ -10774,6 +10837,7 @@ function ModulePreviewContent({
         {hasAnyComp && (
           <>
             {/* How the comp set was narrowed — real counts only. */}
+            <div id="comps-step-rank" className="scroll-mt-4" />
             <ComparableSelectionFunnel
               reviewed={stats.ranked.length}
               qualified={usable.length}
@@ -10782,6 +10846,7 @@ function ModulePreviewContent({
 
             {/* Comparable table — interactive Keep toggle + AI verdict in the
                 live modal, read-only in the printable report. */}
+            <div id="comps-step-table" className="scroll-mt-4" />
             <ComparableTable
               ranked={stats.ranked}
               cad={state.cad}
@@ -10802,7 +10867,7 @@ function ModulePreviewContent({
             {/* 4a. Adjustments — real per-signal deltas for the top comps
                 (CAD-record signals, so gated on a real CAD subject). */}
             {map?.subject && topRanked.length > 0 && (
-              <div>
+              <div id="comps-step-compare" className="scroll-mt-4">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Adjustments — How the Top Comps Differ
                 </div>
@@ -10811,6 +10876,7 @@ function ModulePreviewContent({
             )}
 
             {/* 4b. Size + time normalization → reconciled indicated value. */}
+            <div id="comps-step-adjust" className="scroll-mt-4" />
             <CompsAdjustmentGrid
               perCompAdjustment={stats.perCompAdjustment}
               ranked={topRanked}
@@ -10835,7 +10901,7 @@ function ModulePreviewContent({
                 target range (comps priced below the subject's own $/acre)
                 when at least one qualifies; otherwise the raw top-5 range. */}
             {stats.indicated && (
-              <div className="grid grid-cols-3 gap-2">
+              <div id="comps-step-value" className="grid scroll-mt-4 grid-cols-3 gap-2">
                 <div className="rounded-lg bg-success/10 p-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-success">
                     {stats.adjustedIndicated ? "Indicated Target Range" : "Indicated Value Range"}
@@ -10871,7 +10937,7 @@ function ModulePreviewContent({
 
             {/* 7. Confidence — real percentage + real, deterministic reasoning. */}
             {stats.confidencePct != null && (
-              <div className="card-elev p-4">
+              <div id="comps-step-confidence" className="card-elev scroll-mt-4 p-4">
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Comparable Confidence
@@ -10888,7 +10954,11 @@ function ModulePreviewContent({
             <div className="grid gap-3 rounded-lg bg-secondary/40 p-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <div className="text-xs font-semibold text-foreground">Methodology</div>
-                <FactBullet icon={Building2}>Same CAD subdivision as this property</FactBullet>
+                <FactBullet icon={Building2}>
+                  {statewideSource
+                    ? "Same county and kind (vacant land or improved), valued half to double this property, nearest first"
+                    : "Same CAD subdivision as this property"}
+                </FactBullet>
                 <FactBullet icon={Percent}>
                   0–100 similarity: value, distance, size, use, recency, source reliability
                 </FactBullet>
@@ -10899,8 +10969,9 @@ function ModulePreviewContent({
               <div className="grid gap-1.5">
                 <div className="text-xs font-semibold text-foreground">Sources</div>
                 <FactBullet icon={FileText}>
-                  {state.cad ?? "County appraisal district"} assessed-value records + any closing
-                  documents you upload
+                  {statewideSource
+                    ? `State of Texas parcel data (TxGIO), compiled from ${state.cad ?? "the county appraisal district"}'s records${compsMap.data?.taxYear ? ` — ${compsMap.data.taxYear} values` : ""} — plus any closing documents you upload`
+                    : `${state.cad ?? "County appraisal district"} assessed-value records + any closing documents you upload`}
                 </FactBullet>
                 <FactBullet icon={ShieldCheck}>
                   Texas doesn&apos;t disclose sale prices — a verified price shows only for a comp
@@ -10960,7 +11031,7 @@ function ModulePreviewContent({
         ) : error ? (
           <ErrorWithRetry message={error} onRetry={onRetry} />
         ) : d ? (
-          <div className="grid gap-3">
+          <div id="comps-step-recommendation" className="grid scroll-mt-4 gap-3">
             <AiVerdictLine icon={m.icon} text={d.guidance} color={m.color} />
             <ChecklistSteps items={d.checklist} color={m.color} />
 

@@ -30,12 +30,19 @@ export type CompProperty = {
 export type CompsResult = {
   subject: (CompProperty & { asCode: string }) | null;
   comps: CompProperty[];
+  // "statewide": nearby similar parcels from the State of Texas parcel layer
+  // (TxGIO, compiled from every appraisal district) — every county without
+  // its own feed. Absent for the county feeds.
+  source?: "statewide";
+  taxYear?: number | null;
 };
 
 // Real data for the 4 TrueProdigy counties (Denton, Montgomery, Tarrant, Travis —
-// same-subdivision comps) and Collin + Grayson (nearest comparable parcels within 5
-// miles, from the county's own parcel layer) — every other county gets
-// { subject: null, comps: [] } rather than a fabricated map.
+// same-subdivision comps), Collin + Grayson (nearest comparable parcels within 5
+// miles, from the county's own parcel layer), and every other county from the
+// State of Texas parcel layer (source "statewide": same county, same kind —
+// vacant or improved — value within 0.5x-2x, nearest first). Assessed values,
+// never sale prices; { subject: null, comps: [] } when the parcel can't be found.
 export async function getComps(input: {
   cad?: string;
   accountNumber?: string;
@@ -45,6 +52,10 @@ export async function getComps(input: {
   // share one address.
   address?: string;
   totalValue?: number;
+  // where the property is, when already known — the statewide search starts
+  // here instead of geocoding the address
+  latitude?: number;
+  longitude?: number;
 }): Promise<CompsResult> {
   return invokeEdgeFunction<CompsResult>("cad-comps", input);
 }
