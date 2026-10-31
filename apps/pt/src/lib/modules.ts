@@ -70,8 +70,8 @@ export const MODULES: Module[] = [
   {
     id: "site",
     n: 4,
-    title: "Site Condition Analysis",
-    shortName: "Site Condition",
+    title: "Land Condition Analysis",
+    shortName: "Land Condition",
     question: "Are there land or site-related issues that could support a lower valuation?",
     status: "Completed",
     teaser:
@@ -106,9 +106,10 @@ export const MODULES: Module[] = [
   {
     id: "income",
     n: 7,
-    title: "Income Approach & P&L Analysis",
-    shortName: "Income Value",
-    question: "Does the property's income support its current assessed value?",
+    title: "Cost and Income Approach",
+    shortName: "Cost and Income",
+    question:
+      "What would it cost to rebuild, and does the property's income support its assessed value?",
     status: "Additional Data Needed",
     teaser: "Requires P&L, rent roll, or operating statement to complete.",
     requiresUserData: true,

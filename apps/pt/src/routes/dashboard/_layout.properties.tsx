@@ -94,6 +94,7 @@ import {
   RotateCcw,
   ArrowLeftRight,
   SlidersHorizontal,
+  Lock,
 } from "lucide-react";
 import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
 import { Building2 as HeroPropertiesIcon } from "lucide-react";
@@ -699,6 +700,20 @@ function Properties() {
     navigate({ to: "/ai-report" });
   }
 
+  // A click anywhere on a row/card opens the property's summary (the AI
+  // report — modules 4-10 show locked with "Subscribe to unlock" when the
+  // property isn't subscribed), except on its own buttons, links, checkbox
+  // and menu, which keep doing their own thing.
+  function openFromRow(p: PropertyRecord) {
+    return (e: React.MouseEvent | React.KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest("button, a, input, select, textarea, label, [role=menu], [role=menuitem]"))
+        return;
+      if ("key" in e && e.key !== "Enter") return;
+      openAiReport(p);
+    };
+  }
+
   // Per-property values both the card and the compact row need. Kept in one
   // place so the two renderers can't drift.
   const today = localTodayIso();
@@ -1180,7 +1195,15 @@ function Properties() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-border/60 align-top last:border-0 hover:bg-secondary/30"
+                      tabIndex={0}
+                      title={
+                        isPaid || isBeta
+                          ? "Open property summary"
+                          : "Open property summary — not subscribed: the free modules are open, the rest are locked until you subscribe"
+                      }
+                      onClick={openFromRow(p)}
+                      onKeyDown={openFromRow(p)}
+                      className="cursor-pointer border-b border-border/60 align-top last:border-0 hover:bg-secondary/30 focus-visible:bg-secondary/30 focus-visible:outline-none"
                     >
                       <td className="px-3 py-2.5">
                         {bulkEligible(p) && (
@@ -1195,7 +1218,13 @@ function Properties() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex flex-wrap items-center gap-2 font-medium">
-                          {p.address}
+                          <span className="hover:underline">{p.address}</span>
+                          {!isPaid && !isBeta && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-secondary/70 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                              <Lock className="h-3 w-3" aria-hidden="true" />
+                              Not subscribed
+                            </span>
+                          )}
                           <VerificationBadge status={p.verificationStatus} />
                         </div>
                         <NextActionLine next={pipelineFor(p).next} />
@@ -1260,7 +1289,17 @@ function Properties() {
               return (
                 <div
                   key={p.id}
-                  className="card-elev p-4 sm:p-6"
+                  role="link"
+                  aria-label={`Open property summary for ${p.address}`}
+                  tabIndex={0}
+                  title={
+                    isPaid || isBeta
+                      ? "Open property summary"
+                      : "Open property summary — not subscribed: the free modules are open, the rest are locked until you subscribe"
+                  }
+                  onClick={openFromRow(p)}
+                  onKeyDown={openFromRow(p)}
+                  className="card-elev cursor-pointer p-4 transition-shadow hover:shadow-elev focus-visible:outline-2 focus-visible:outline-accent sm:p-6"
                   style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -1276,7 +1315,13 @@ function Properties() {
                           />
                         )}
                         <h2 className="flex flex-wrap items-center gap-2 font-serif text-xl font-semibold">
-                          {p.address}
+                          <span className="hover:underline">{p.address}</span>
+                          {!isPaid && !isBeta && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-secondary/70 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-muted-foreground">
+                              <Lock className="h-3 w-3" aria-hidden="true" />
+                              Not subscribed
+                            </span>
+                          )}
                           <VerificationBadge status={p.verificationStatus} />
                         </h2>
                       </div>

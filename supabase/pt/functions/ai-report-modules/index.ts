@@ -145,6 +145,10 @@ type ModulesInput = {
     nearestHighwayMi: number | null;
     nearestRailMi: number | null;
   } | null;
+  // Only for moduleId "site" — findings the owner confirmed from reports they
+  // uploaded (site-report-extract → site_report_findings). Each counts as real
+  // data for its factor; source names the document and page.
+  siteDocumentFindings?: { factor?: string; finding?: string; source?: string }[];
   // Only for moduleId "improvement" — the real typical economic-life range
   // for this property's type (src/lib/improvement-condition.ts,
   // getTypicalEconomicLife()), grounding the AI's effective-age estimate in
@@ -216,6 +220,22 @@ type ModulesInput = {
   notApplicableFactors?: string[];
   notApplicableComponents?: string[];
   notApplicableContext?: string[];
+  // Only for moduleId "improvement" — the owner's confirmed building records
+  // (src/lib/improvement-records.ts): buildings with type and details, and
+  // component conditions / issues / documented repair estimates. cardConditions
+  // is the worst confirmed condition per Roof / HVAC / Exterior / Interior card.
+  improvementRecords?: {
+    buildings?: { name?: string; types?: string[]; details?: Record<string, unknown> }[];
+    items?: {
+      building?: string;
+      component?: string;
+      condition?: string;
+      issue?: string | null;
+      estimate?: number | null;
+      source?: string;
+    }[];
+    cardConditions?: Record<string, string>;
+  } | null;
 };
 
 const PREAMBLE = `You are CorvusPT's AI property tax analyst for Texas commercial properties.
@@ -240,7 +260,7 @@ ${PROSE_STYLE}`;
 // hit a count.
 const STRATEGY_NAMES = [
   "Comparable Sales",
-  "Site Condition",
+  "Land Condition",
   "Improvement Condition",
   "Income Approach",
   "Zoning / Classification",
@@ -248,6 +268,8 @@ const STRATEGY_NAMES = [
 
 const STRATEGY_MODULE_MAP: Record<string, string> = {
   "Comparable Sales": "comps",
+  "Land Condition": "site",
+  // the module's old name — still accepted, renamed on the way out
   "Site Condition": "site",
   "Improvement Condition": "improvement",
   "Income Approach": "income",
@@ -296,7 +318,8 @@ const strategies = (v: unknown) =>
     ? v
         .filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null)
         .map((x) => {
-          const name = str(x.name, 40);
+          const raw = str(x.name, 40);
+          const name = raw === "Site Condition" ? "Land Condition" : raw;
           return {
             name,
             strengthScore: score100(x.strengthScore),
@@ -622,8 +645,13 @@ function enforceSiteFactorRealData(
   factors: SiteFactor[],
   siteGis: ModulesInput["siteGis"],
   notApplicable: string[],
+  documentFactors: string[] = [],
 ): SiteFactor[] {
   return factors.map((f) => {
+    // an owner-confirmed finding from an uploaded report is real data
+    if (documentFactors.includes(f.factor)) {
+      return { ...f, status: "Confirmed", confidence: f.confidence === "Low" ? "Moderate" : f.confidence };
+    }
     if (f.factor === "Floodplain") {
       if (siteGis?.floodZone) return { ...f, status: "Confirmed" };
     } else if (f.factor === "Grade") {
@@ -855,7 +883,14 @@ function enforceBuildingComponentRealData(
   components: BuildingComponent[],
   hadAnyPhotos: boolean,
   notApplicable: string[],
+  ownerConditions: Record<string, string> = {},
 ): BuildingComponent[] {
+  const fromOwner = (c: BuildingComponent): BuildingComponent => {
+    const oc = ownerConditions[c.component];
+    return oc === "Good" || oc === "Fair" || oc === "Poor"
+      ? { ...c, condition: oc, notApplicable: false }
+      : c;
+  };
   const clamped = hadAnyPhotos
     ? components
     : components.map((c) => ({
@@ -865,15 +900,17 @@ function enforceBuildingComponentRealData(
         actionNeeded: null,
         notes: "",
       }));
-  return clamped.map((c) =>
-    !c.hasPhoto && notApplicable.includes(c.component) ? { ...c, notApplicable: true } : c,
-  );
+  return clamped
+    .map((c) =>
+      !c.hasPhoto && notApplicable.includes(c.component) ? { ...c, notApplicable: true } : c,
+    )
+    .map(fromOwner);
 }
 
 const MODULE_SPECS: Record<string, ModuleSpec> = {
   strategy: {
     instruction:
-      "Evaluate up to 5 fixed valuation strategies for this property — Comparable Sales, Site " +
+      "Evaluate up to 5 fixed valuation strategies for this property — Comparable Sales, Land " +
       "Condition, Improvement Condition, Income Approach, and Zoning / Classification — plus, " +
       "only if a genuinely distinct argument applies beyond those 5, one additional " +
       '"Other: <label>" entry (do not invent an Other entry just to add a 6th). For EACH ' +
@@ -885,7 +922,7 @@ const MODULE_SPECS: Record<string, ModuleSpec> = {
       "score it responsibly, set dataSufficient to false and list what's missing rather than " +
       "guessing a number.",
     schema:
-      '{"strategies": [{"name": "<Comparable Sales | Site Condition | Improvement Condition | ' +
+      '{"strategies": [{"name": "<Comparable Sales | Land Condition | Improvement Condition | ' +
       'Income Approach | Zoning / Classification | Other: label>", "strengthScore": <integer ' +
       '0-100>, "primaryReason": "<short phrase>", "whySelected": "<ONE short sentence, max ' +
       '~15 words>", "supportingFindings": "<ONE short sentence, max ~15 words>", ' +
@@ -1373,6 +1410,24 @@ function buildRecord(input: ModulesInput): string {
     input.totalValue != null && `Total assessed value: $${input.totalValue.toLocaleString()}`,
   ];
 
+  const siteDocs = Array.isArray(input.siteDocumentFindings)
+    ? input.siteDocumentFindings.filter((f) => typeof f?.finding === "string" && f.finding.trim())
+    : [];
+  if (siteDocs.length > 0) {
+    lines.push(
+      `Findings the owner confirmed from documents they uploaded (real data — use them for the ` +
+        `matching factor, cite the document and page in that factor's finding, and lower the ` +
+        `documentation priority for what they cover):\n` +
+        siteDocs
+          .slice(0, 40)
+          .map(
+            (f) =>
+              `- ${String(f.factor ?? "Other").slice(0, 60)}: ${String(f.finding).slice(0, 300)}${f.source ? ` (${String(f.source).slice(0, 120)})` : ""}`,
+          )
+          .join("\n"),
+    );
+  }
+
   if (input.siteGis) {
     const g = input.siteGis;
     const parts: string[] = [];
@@ -1403,6 +1458,27 @@ function buildRecord(input: ModulesInput): string {
         `${parts.join(" ")} Use these exact real values — never invent a different zone, elevation, or distance.`,
       );
     }
+  }
+  const rec = input.improvementRecords;
+  if (rec && (rec.items?.length || rec.buildings?.length)) {
+    const b = (rec.buildings ?? []).slice(0, 10).map((x) => {
+      const d = x.details ?? {};
+      const facts = Object.entries(d)
+        .filter(([k, v]) => v != null && v !== "" && k !== "overallCondition")
+        .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`)
+        .join(", ");
+      return `- ${String(x.name ?? "Building").slice(0, 60)} — ${(x.types ?? []).join(" + ") || "type not set"}${facts ? ` (${facts})` : ""}${d.overallCondition ? ` — owner's overall condition: ${d.overallCondition}` : ""}`;
+    });
+    const it = (rec.items ?? []).slice(0, 60).map(
+      (x) =>
+        `- ${x.building ? `${String(x.building).slice(0, 60)}: ` : ""}${String(x.component ?? "").slice(0, 60)} — ${x.condition ?? "Not Assessed"}${x.issue ? `; ${String(x.issue).slice(0, 200)}` : ""}${x.estimate ? `; documented repair estimate ${Math.round(x.estimate).toLocaleString()}` : ""} (${x.source === "owner" ? "owner entered" : `from ${x.source}, owner confirmed`})`,
+    );
+    lines.push(
+      `The owner's confirmed building records (real data — ground the guidance, key finding and ` +
+        `component notes in them; never treat a repair estimate as a value reduction by itself, ` +
+        `and never equate missing photos with poor condition):\nBuildings:\n${b.join("\n") || "- none"}\n` +
+        `Component records:\n${it.join("\n") || "- none"}`,
+    );
   }
   if (input.economicLifeYears) {
     const e = input.economicLifeYears;
@@ -1891,6 +1967,9 @@ Deno.serve(async (req: Request) => {
         (result as { factors: SiteFactor[] }).factors,
         input.siteGis,
         Array.isArray(input.notApplicableFactors) ? input.notApplicableFactors : [],
+        Array.isArray(input.siteDocumentFindings)
+          ? input.siteDocumentFindings.map((f) => String(f?.factor ?? ""))
+          : [],
       );
     }
     // Real-data enforcement for Module 5 — see
@@ -1903,6 +1982,7 @@ Deno.serve(async (req: Request) => {
           (result as { buildingComponents: BuildingComponent[] }).buildingComponents,
           evidenceParts.length > 0,
           Array.isArray(input.notApplicableComponents) ? input.notApplicableComponents : [],
+          input.improvementRecords?.cardConditions ?? {},
         );
     }
     // Real-data enforcement for Module 6 — see enforceZoningRealData. Runs

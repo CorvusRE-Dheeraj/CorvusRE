@@ -1,4 +1,5 @@
 import { rateLimit } from "../_shared/rate-limit.ts";
+import { STRATMAP_URL, landUseLabel, tidyAddress } from "../_shared/statewide-parcels.ts";
 // Deploy via CLI: `supabase functions deploy cad-comps`.
 // No secrets required — same public TrueProdigy API used by cad-lookup's enrichment.
 //
@@ -593,6 +594,243 @@ async function spatialComps(
   return { subject: { ...subjectProp, asCode: "" }, comps: comps.slice(0, 10) };
 }
 
+// Every other Texas county: nearby parcels from the State of Texas's statewide
+// parcel layer (TxGIO StratMap, compiled yearly from every appraisal district —
+// see _shared/statewide-parcels.ts). The layer only supports "identify", so this
+// asks for every parcel within a radius of the subject, then keeps the ones
+// that compare: same kind (vacant land vs improved), market value within
+// 0.5x-2x of the subject's, not government/school/church owned, and — for land
+// — a lot size within 0.25x-4x. Assessed values, never sale prices.
+const EXEMPT_OWNER =
+  /\b(CITY OF|COUNTY|STATE OF|ISD|INDEPENDENT SCHOOL|SCHOOL DIST|UNITED STATES|USA|CHURCH|CEMETERY|DRAINAGE|UTILITY DIST|MUD\b|WATER DIST|RAILROAD|RAILWAY|TXDOT)\b/i;
+const STATEWIDE_RADII_MILES = [1, 2.5, COMPS_RADIUS_MILES];
+// how far from the address point the subject parcel is looked for (the Census
+// geocoder can land miles off on a highway address — seen live: "1001 HWY 66,
+// Royse City" geocoded ~4 mi from the parcel, on the other side of a county line)
+const SUBJECT_SEARCH_MILES = 15;
+
+type StratmapResult = {
+  attributes: Record<string, unknown>;
+  geometry?: { rings?: number[][][] };
+};
+
+/** "Rockwall Central Appraisal District" / "Rockwall CAD" → "ROCKWALL". */
+function countyOf(cad: string | undefined): string | null {
+  const c = (cad ?? "")
+    .replace(/\b(central\s+)?appraisal\s+district\b|\bcad\b/gi, "")
+    .trim()
+    .toUpperCase();
+  return /^[A-Z][A-Z .'-]{1,30}$/.test(c) ? c : null;
+}
+
+// Every parcel within radius of the point (up to the service's 2,000), narrowed
+// by an attribute filter. The layer has no query operation — only identify.
+async function stratmapIdentify(
+  lon: number,
+  lat: number,
+  radiusMiles: number,
+  where: string | null,
+): Promise<StratmapResult[]> {
+  // 600 px image over a square of side 2·radius, tolerance 300 px = radius
+  const dLat = radiusMiles / 69;
+  const dLon = radiusMiles / (69 * Math.cos((lat * Math.PI) / 180));
+  const qs = new URLSearchParams({
+    geometry: `${lon},${lat}`,
+    geometryType: "esriGeometryPoint",
+    sr: "4326",
+    layers: "all:0",
+    tolerance: "300",
+    mapExtent: [lon - dLon, lat - dLat, lon + dLon, lat + dLat].join(","),
+    imageDisplay: "600,600,96",
+    returnGeometry: "true",
+    maxAllowableOffset: "0.0003",
+    geometryPrecision: "6",
+    f: "json",
+  });
+  if (where) qs.set("layerDefs", JSON.stringify({ "0": where }));
+  const res = await fetch(`${STRATMAP_URL}/identify?${qs}`, {
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`statewide parcels ${res.status}`);
+  const json = (await res.json()) as { results?: StratmapResult[]; error?: { message?: string } };
+  if (json.error) throw new Error(json.error.message ?? "statewide parcels error");
+  return json.results ?? [];
+}
+
+function stratmapComp(r: StratmapResult): CompProperty | null {
+  const a = r.attributes;
+  const v = (k: string) => {
+    const s = a[k];
+    return typeof s === "string" && s !== "Null" && s.trim() ? s.trim() : null;
+  };
+  const pid = parseNum(v("PROP_ID"));
+  const c = centroidOf(r.geometry);
+  if (pid == null || !c) return null;
+  const market = parseNum(v("MKT_VALUE"));
+  const improvement = parseNum(v("IMP_VALUE"));
+  const unit = (v("LGL_AREA_UNIT") ?? "").toLowerCase();
+  const area = parseNum(v("LEGAL_AREA")) ?? parseNum(v("GIS_AREA"));
+  const situs = tidyAddress(v("SITUS_ADDR"));
+  return {
+    pid,
+    address: situs ?? v("LEGAL_DESC") ?? "",
+    latitude: c.lat,
+    longitude: c.lon,
+    marketValue: market && market > 0 ? market : null,
+    ownerName: v("OWNER_NAME"),
+    legalAcreage: area && (!unit || unit.startsWith("ac")) ? area : null,
+    landValue: parseNum(v("LAND_VALUE")),
+    improvementValue: improvement,
+    appraisedValue: market && market > 0 ? market : null,
+    lastTransferDt: null,
+    propType:
+      landUseLabel(v("STAT_LAND_USE")) ??
+      v("LOC_LAND_USE") ??
+      (improvement === 0 ? "Vacant land" : null),
+    zoning: null,
+  };
+}
+
+async function geocodeTx(address: string): Promise<{ lat: number; lon: number } | null> {
+  const q = /\b(TX|Texas)\b/i.test(address) ? address : `${address}, TX`;
+  const res = await fetch(
+    `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(q)}&benchmark=Public_AR_Current&format=json`,
+    { signal: AbortSignal.timeout(9_000) },
+  ).catch(() => null);
+  if (!res?.ok) return null;
+  const json = (await res.json().catch(() => ({}))) as {
+    result?: { addressMatches?: { matchedAddress: string; coordinates: { x: number; y: number } }[] };
+  };
+  const m = json.result?.addressMatches?.find((x) => /,\s*TX,?\s*\d{5}/.test(x.matchedAddress));
+  return m ? { lat: m.coordinates.y, lon: m.coordinates.x } : null;
+}
+
+// Big enough to cover any Texas county from its centre (Brewster is ~95 mi across).
+const COUNTY_SEARCH_MILES = 70;
+
+/** A county's centre (Census TIGERweb) — used only to search the county for an account. */
+async function countyCenter(county: string): Promise<{ lat: number; lon: number } | null> {
+  const name = county
+    .toLowerCase()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase())
+    .replace(/'/g, "''");
+  const res = await fetch(
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1/query?" +
+      new URLSearchParams({
+        where: `STATE='48' AND BASENAME='${name}'`,
+        outFields: "CENTLAT,CENTLON",
+        returnGeometry: "false",
+        f: "json",
+      }),
+    { signal: AbortSignal.timeout(8_000) },
+  ).catch(() => null);
+  if (!res?.ok) return null;
+  const json = (await res.json().catch(() => ({}))) as {
+    features?: { attributes: { CENTLAT?: string; CENTLON?: string } }[];
+  };
+  const at = json.features?.[0]?.attributes;
+  const lat = Number(at?.CENTLAT), lon = Number(at?.CENTLON);
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+async function statewideComps(
+  input: CompsInput & { latitude?: number; longitude?: number },
+): Promise<CompsResult & { source?: string; taxYear?: number | null }> {
+  const empty = { subject: null, comps: [] };
+  const county = countyOf(input.cad);
+  if (!county) return empty;
+  const located =
+    typeof input.latitude === "number" && typeof input.longitude === "number"
+      ? { lat: input.latitude, lon: input.longitude }
+      : input.address
+        ? await geocodeTx(input.address)
+        : null;
+  // the county centre is only a place to search from — never "the property"
+  const at = located ?? (await countyCenter(county));
+  if (!at) return empty;
+  const inCounty = `county='${escapeSql(county)}'`;
+  const acct = (input.accountNumber ?? "").trim();
+  const target =
+    typeof input.totalValue === "number" && input.totalValue > 0 ? Math.round(input.totalValue) : null;
+
+  // Subject: the county's own account number, else the parcel with exactly the
+  // saved value — searched widely, since the address point can be miles off.
+  let subjectRow: StratmapResult | undefined;
+  if (/^[\w-]{1,30}$/.test(acct)) {
+    const q = escapeSql(acct);
+    subjectRow = (
+      await stratmapIdentify(at.lon, at.lat, SUBJECT_SEARCH_MILES, `${inCounty} AND (prop_id='${q}' OR geo_id='${q}')`)
+    )[0];
+  }
+  if (!subjectRow && /^[\w-]{1,30}$/.test(acct)) {
+    // not near the address point — look across the whole county for the account
+    const center = await countyCenter(county);
+    if (center) {
+      const q = escapeSql(acct);
+      subjectRow = (
+        await stratmapIdentify(center.lon, center.lat, COUNTY_SEARCH_MILES, `${inCounty} AND (prop_id='${q}' OR geo_id='${q}')`)
+      )[0];
+    }
+  }
+  if (!subjectRow && target) {
+    const rows = await stratmapIdentify(at.lon, at.lat, SUBJECT_SEARCH_MILES, `${inCounty} AND mkt_value=${target}`);
+    if (rows.length === 1) subjectRow = rows[0];
+  }
+  if (!subjectRow && located) {
+    // the parcel right at the address point (only trusted when it's that close)
+    const rows = await stratmapIdentify(at.lon, at.lat, 0.04, inCounty);
+    subjectRow = rows
+      .map((r) => ({ r, c: stratmapComp(r) }))
+      .filter((x) => x.c)
+      .sort(
+        (a, b) =>
+          milesBetween(at.lat, at.lon, a.c!.latitude, a.c!.longitude) -
+          milesBetween(at.lat, at.lon, b.c!.latitude, b.c!.longitude),
+      )[0]?.r;
+  }
+  const subject = subjectRow ? stratmapComp(subjectRow) : null;
+  if (!subject) return empty;
+  const sv = subject.marketValue ?? target;
+  if (!sv) return empty;
+  const vacant = subject.improvementValue === 0;
+  const sAcres = subject.legalAcreage;
+
+  const where = [
+    inCounty,
+    vacant ? "imp_value=0" : "imp_value>0",
+    `mkt_value>=${Math.round(sv * 0.5)}`,
+    `mkt_value<=${Math.round(sv * 2)}`,
+  ].join(" AND ");
+  let comps: CompProperty[] = [];
+  for (const radius of STATEWIDE_RADII_MILES) {
+    const rows = await stratmapIdentify(subject.longitude, subject.latitude, radius, where);
+    const seen = new Set<number>();
+    comps = rows
+      .filter((r) => !EXEMPT_OWNER.test(String(r.attributes.OWNER_NAME ?? "")))
+      .map(stratmapComp)
+      .filter((c): c is CompProperty => c !== null)
+      .filter((c) => c.pid !== subject.pid && !seen.has(c.pid) && !!seen.add(c.pid))
+      // same land size band for vacant land, where $/acre is the measure
+      .filter(
+        (c) =>
+          !vacant ||
+          !sAcres ||
+          (c.legalAcreage != null && c.legalAcreage >= sAcres * 0.25 && c.legalAcreage <= sAcres * 4),
+      )
+      .filter((c) => milesBetween(subject.latitude, subject.longitude, c.latitude, c.longitude) <= radius);
+    if (comps.length >= ENOUGH_COMPS) break;
+  }
+  comps.sort(
+    (a, b) => Math.abs((a.marketValue ?? Infinity) - sv) - Math.abs((b.marketValue ?? Infinity) - sv),
+  );
+  return {
+    subject: { ...subject, asCode: "" },
+    comps: comps.slice(0, 10),
+    source: "statewide",
+    taxYear: parseNum(subjectRow?.attributes.TAX_YEAR ?? null),
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
@@ -601,25 +839,24 @@ Deno.serve(async (req: Request) => {
   if (limited) return limited;
 
   try {
-    const input = (await req.json()) as CompsInput;
+    const input = (await req.json()) as CompsInput & { latitude?: number; longitude?: number };
+    const statewide = () =>
+      statewideComps(input)
+        .then((r) => new Response(JSON.stringify(r), { status: 200, headers: corsHeaders }));
     const office = input.cad ? TRUEPRODIGY_OFFICE_BY_CAD[input.cad] : undefined;
     const emptyResult: CompsResult = { subject: null, comps: [] };
 
     const spatialCfg = input.cad ? SPATIAL_BY_CAD[input.cad] : undefined;
     if (!office && spatialCfg) {
-      const result = await spatialComps(spatialCfg, input);
+      const result = await spatialComps(spatialCfg, input).catch(() => emptyResult);
+      if (result.comps.length === 0) return await statewide();
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: corsHeaders,
       });
     }
 
-    if (!office || !input.accountNumber) {
-      return new Response(JSON.stringify(emptyResult), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
+    if (!office || !input.accountNumber) return await statewide();
     const subjectPid = parseInt(input.accountNumber, 10);
     if (!Number.isFinite(subjectPid)) {
       return new Response(JSON.stringify(emptyResult), {
@@ -730,6 +967,7 @@ Deno.serve(async (req: Request) => {
       })
       .slice(0, 10);
 
+    if (comps.length === 0) return await statewide();
     const result: CompsResult = { subject: { ...subjectProp, asCode }, comps };
     return new Response(JSON.stringify(result), {
       status: 200,

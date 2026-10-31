@@ -59,6 +59,19 @@ export type CachedModuleResult = {
   updatedAt: string;
 };
 
+// Module 4 was "Site Condition"; stored strategy results keep the old name
+// until they regenerate — shown under the new one.
+function renameOldStrategies(result: unknown): unknown {
+  const r = result as { strategies?: { name?: string }[] } | null;
+  if (!r || !Array.isArray(r.strategies)) return result;
+  return {
+    ...r,
+    strategies: r.strategies.map((st) =>
+      st?.name === "Site Condition" ? { ...st, name: "Land Condition" } : st,
+    ),
+  };
+}
+
 export async function getCachedModuleResult(
   propertyId: string,
   moduleId: string,
@@ -71,7 +84,7 @@ export async function getCachedModuleResult(
     .maybeSingle();
   if (error || !data) return null;
   return {
-    result: data.result,
+    result: moduleId === "strategy" ? renameOldStrategies(data.result) : data.result,
     inputHash: data.input_hash as string,
     model: data.model as string,
     updatedAt: data.updated_at as string,

@@ -149,6 +149,7 @@ const ANCHOR_TAB: Record<string, CaseTabId> = {
   "case-record": "overview",
   "case-audit-trail": "overview",
   "case-documents": "file",
+  "case-deadline": "file",
   "case-upload-evidence": "file",
   "case-informal-review": "informal",
   "case-settlement-signature": "informal",
