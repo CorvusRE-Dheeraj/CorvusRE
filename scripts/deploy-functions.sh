@@ -60,7 +60,9 @@ for name in $names; do
   fi
   echo "→ deploying $dir/$name $flags"
   if [ "${DRY_RUN:-}" = "1" ]; then continue; fi
-  (cd "$work" && npx --yes supabase functions deploy "$name" --project-ref "$ref" $flags) || {
+  # Pinned: an unpinned `npx supabase` picked up CLI 3.0.0 (2026-11-02), which
+  # refuses hosted deploys without a new confirmation flag and failed the run.
+  (cd "$work" && npx --yes supabase@2.122.0 functions deploy "$name" --project-ref "$ref" $flags) || {
     echo "::error::deploy failed for $name"
     failed=1
   }
