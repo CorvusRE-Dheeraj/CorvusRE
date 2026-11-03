@@ -122,7 +122,7 @@ type ModulesInput = {
     annualSavings?: number;
     netBenefit?: number;
     protestCost?: number;
-    protestCostSource?: "contingency" | "override" | "none";
+    protestCostSource?: "plan" | "contingency" | "override" | "none";
     savingsToCostMultiple?: number | null;
     roiPct?: number | null;
     indicatedRange?: { low: number; high: number } | null;

@@ -62,13 +62,19 @@ export type SavingsAnalysis = {
   taxableValueAssumed: boolean;
   exemptionsApplied: number;
 
+  // Market-value reduction, and how much of it actually lowers the taxable
+  // value (less, when the appraised value is capped — see appraisalCap).
   reductionBase: number;
   reductionPct: number;
+  taxableReduction: number;
+  appraisalCap: number | null;
   annualSavings: number;
   scenarios: SavingsScenario[];
+  // Why the savings figure is uncertain; empty when it isn't.
+  uncertainReasons: string[];
 
   protestCost: number;
-  protestCostSource: "contingency" | "override" | "none";
+  protestCostSource: "plan" | "contingency" | "override" | "none";
   netBenefit: number;
   savingsToCostMultiple: number | null;
   roiPct: number | null;
@@ -119,6 +125,12 @@ export function computeSavingsAnalysis(args: {
   // itself is only non-null once real photo evidence exists — see
   // ai-report-modules.ts).
   moduleIndications?: ModuleIndication[];
+  // The county's capped appraised value for this year, when it's below the
+  // market value (from the CAD value history).
+  appraisedValue?: number | null;
+  // The owner's real protest cost from their CorvusPT plan (protest-cost.ts).
+  // Omitted: the owner-entered override, else the 25% contingency estimate.
+  planCost?: { total: number | null; label: string } | null;
 }): SavingsAnalysis {
   const { taxYear, cad, estimate, compsIndicated, taxInputs } = args;
   const cadValue = num(args.cadValue) ?? 0;
@@ -194,11 +206,29 @@ export function computeSavingsAnalysis(args: {
   const reductionBase = clampRed(cadValue - indicatedValue);
   const reductionPct = cadValue > 0 ? round1((reductionBase / cadValue) * 100) : 0;
 
-  const taxableValueUsed = Math.max(0, providedTaxable ?? cadValue - exemptionsApplied);
+  // A capped appraised value (homestead 10% / non-homestead 20% limitation)
+  // sits below the market value: a lower market value only reduces the tax
+  // once it falls below that cap, so a market-value cut doesn't translate
+  // dollar for dollar into a taxable-value cut.
+  const appraisedRaw = num(args.appraisedValue);
+  const appraisalCap =
+    appraisedRaw != null && cadValue > 0 && appraisedRaw > 0 && appraisedRaw < cadValue
+      ? Math.round(appraisedRaw)
+      : null;
+  const taxableReductionFor = (marketReduction: number) =>
+    appraisalCap != null
+      ? Math.max(0, appraisalCap - (cadValue - marketReduction))
+      : marketReduction;
+
+  const taxableValueUsed = Math.max(
+    0,
+    providedTaxable ?? (appraisalCap ?? cadValue) - exemptionsApplied,
+  );
   const taxableValueAssumed = providedTaxable == null;
 
   const savingsFor = (valueReduction: number) =>
-    Math.round(Math.min(valueReduction, taxableValueUsed) * rate);
+    Math.round(Math.min(taxableReductionFor(valueReduction), taxableValueUsed) * rate);
+  const taxableReduction = Math.min(taxableReductionFor(reductionBase), taxableValueUsed);
 
   // ── scenarios ───────────────────────────────────────────────────────
   let lowRed: number, highRed: number;
@@ -235,7 +265,12 @@ export function computeSavingsAnalysis(args: {
   // ── protest economics ───────────────────────────────────────────────
   let protestCost: number;
   let protestCostSource: SavingsAnalysis["protestCostSource"];
-  if (overrideRaw != null) {
+  if (args.planCost && args.planCost.total != null) {
+    // The owner's real CorvusPT plan (and any other expenses they entered)
+    // — see protest-cost.ts.
+    protestCost = Math.max(0, Math.round(args.planCost.total));
+    protestCostSource = "plan";
+  } else if (overrideRaw != null) {
     protestCost = Math.max(0, Math.round(overrideRaw));
     protestCostSource = protestCost === 0 ? "none" : "override";
   } else {
@@ -274,15 +309,37 @@ export function computeSavingsAnalysis(args: {
     `Combined property tax rate ${rateMeta.pct}% (${rateMeta.source}, effective ${rateMeta.effectiveYear})${
       rateMeta.countySpecific ? "" : " — a statewide average, not this county's specific rate"
     }.`,
-    protestCostSource === "contingency"
-      ? "Protest cost estimated at 25% of first-year savings (CorvusPT's contingency fee)."
-      : protestCostSource === "override"
-        ? `Protest cost ${money(protestCost)} as you entered.`
-        : "Protest cost not entered — owner-managed / DIY assumed ($0).",
+    protestCostSource === "plan"
+      ? `Protest cost: ${args.planCost?.label ?? "your CorvusPT plan"}.`
+      : protestCostSource === "contingency"
+        ? "Protest cost estimated at 25% of first-year savings (CorvusPT's contingency fee)."
+        : protestCostSource === "override"
+          ? `Protest cost ${money(protestCost)} as you entered.`
+          : "Protest cost not entered — owner-managed / DIY assumed ($0).",
   ];
+  if (appraisalCap != null) {
+    assumptions.push(
+      `The county caps this property's appraised value at ${money(appraisalCap)} (below its ${money(cadValue)} market value), so only the part of a market-value reduction that falls below the cap lowers the tax: a ${money(reductionBase)} market reduction lowers the taxable value by ${money(taxableReduction)}.`,
+    );
+  }
   if (multiYearSavings != null) {
     assumptions.push(
-      `Multi-year figure = annual savings x ${projectionYears} years; assumes the reduced value holds as the base. Actual carry-over depends on the county's re-appraisal.`,
+      `Multi-year figure = annual savings x ${projectionYears} years — hypothetical: future property values and tax rates can change, and the reduced value may not carry over after the county re-appraises.`,
+    );
+  }
+
+  // The estimate is uncertain — not a confident figure — when the comparable
+  // range reaches the current value (no reduction is a real possibility),
+  // the valuation rests on limited evidence, or there's no reduction at all.
+  const uncertainReasons: string[] = [];
+  if (indicatedRange && indicatedRange.high >= cadValue) {
+    uncertainReasons.push(
+      "The current CAD value falls within the range the comparable evidence supports, so a protest may result in no reduction.",
+    );
+  }
+  if (valuationConfidence === "Limited") {
+    uncertainReasons.push(
+      "The valuation rests on limited evidence — the estimate could change substantially as evidence is added.",
     );
   }
   if (moduleAdjustment) {
@@ -316,8 +373,11 @@ export function computeSavingsAnalysis(args: {
     exemptionsApplied,
     reductionBase,
     reductionPct,
+    taxableReduction,
+    appraisalCap,
     annualSavings,
     scenarios,
+    uncertainReasons,
     protestCost,
     protestCostSource,
     netBenefit,

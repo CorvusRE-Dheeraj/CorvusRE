@@ -34,6 +34,7 @@ import {
   Gauge,
   ExternalLink,
   Download,
+  Receipt,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -65,15 +66,27 @@ import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import {
   getMyBilling,
+  listMySubscriptions,
   startPropertyCheckout,
   bracketForValue,
   formatMoney,
   isCustomPricedValue,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
+  type MySubscription,
   type PlanValue,
   type Tier,
 } from "@/lib/billing";
+import { getProtestCost, type ProtestCost, type ProtestCostLine } from "@/lib/protest-cost";
+import {
+  EVIDENCE_LABEL,
+  SCENARIO_COPY,
+  buildSavingsFindings,
+  getSavingsNextStep,
+  type EvidenceStrength,
+  type SavingsFinding,
+  type SavingsNextStep,
+} from "@/lib/savings-dashboard";
 import {
   getHealthScore,
   type HealthScoreResult,
@@ -2707,6 +2720,46 @@ function Report() {
     state.propertyType,
   ]);
 
+  // Module 9's protest cost comes from this property's real subscription —
+  // Stripe's own figure when it has one (see protest-cost.ts).
+  const [propertySubscription, setPropertySubscription] = useState<MySubscription | null>(null);
+  const subscriptionId = resolvedProperty?.stripeSubscriptionId ?? null;
+  const subscriptionPropertyId = resolvedProperty?.id ?? null;
+  useEffect(() => {
+    setPropertySubscription(null);
+    if (!user || !subscriptionId) return;
+    listMySubscriptions()
+      .then((subs) =>
+        setPropertySubscription(
+          subs.find((s) => s.id === subscriptionId || s.propertyId === subscriptionPropertyId) ??
+            null,
+        ),
+      )
+      .catch(() => {});
+  }, [user, subscriptionId, subscriptionPropertyId]);
+  const protestCost = useMemo(
+    () =>
+      getProtestCost({
+        accountPlan: myPlan,
+        planTier: resolvedProperty?.planTier ?? null,
+        subscriptionStatus: resolvedProperty?.subscriptionStatus ?? null,
+        valueBracket: resolvedProperty?.valueBracket ?? null,
+        subscription: propertySubscription,
+        otherExpenses: savingsTaxInputs?.protestCostOverride ?? null,
+      }),
+    [myPlan, resolvedProperty, propertySubscription, savingsTaxInputs],
+  );
+  // The county's capped appraised value for the year on file, when the
+  // value history carries one below the market value.
+  const appraisedValue = useMemo(() => {
+    const year = state.valueYear ?? state.taxYear;
+    const row = state.valueHistory?.find((h) => h.year === year);
+    if (!row?.appraisedValue || !row.marketValue || !state.totalValue) return null;
+    // Only when the history's market value is the value on file.
+    if (Math.abs(row.marketValue - state.totalValue) > state.totalValue * 0.01) return null;
+    return row.appraisedValue < row.marketValue ? row.appraisedValue : null;
+  }, [state.valueHistory, state.valueYear, state.taxYear, state.totalValue]);
+
   const savingsAnalysis = useMemo<SavingsAnalysis>(() => {
     const cs = computeComparableStats(
       compsMap.data?.subject ?? null,
@@ -2714,6 +2767,8 @@ function Report() {
       state.totalValue,
     );
     return computeSavingsAnalysis({
+      appraisedValue,
+      planCost: protestCost,
       cadValue: state.totalValue ?? null,
       taxYear: state.taxYear ?? null,
       cad: state.cad ?? null,
@@ -2732,6 +2787,8 @@ function Report() {
     state.taxYear,
     state.cad,
     moduleIndications,
+    appraisedValue,
+    protestCost,
   ]);
 
   // Persists savingsAnalysis's own annualSavings (not the raw savingsEstimate
@@ -3594,6 +3651,7 @@ function Report() {
                   onSaveIncomeAnalysis={() => {}}
                   onExtractIncome={extractIncome}
                   savingsAnalysis={savingsAnalysis}
+                  protestCost={protestCost}
                   savingsTaxInputs={savingsTaxInputs}
                   onSaveSavingsTaxInputs={() => {}}
                 />
@@ -3707,6 +3765,7 @@ function Report() {
               onSaveIncomeAnalysis={saveIncomeAnalysis}
               onExtractIncome={extractIncome}
               savingsAnalysis={savingsAnalysis}
+              protestCost={protestCost}
               savingsTaxInputs={savingsTaxInputs}
               onSaveSavingsTaxInputs={saveSavingsTaxInputs}
             />
@@ -4232,7 +4291,6 @@ function ModuleVisual({
           ratePct={estimated.effectiveTaxRatePct}
           savings={estimated.savings}
         />
-        {estimated.savings > 0 && <CostBenefitRow savings={estimated.savings} />}
       </div>
     );
   }
@@ -8636,34 +8694,6 @@ function IncomeWorkspace({
   );
 }
 
-// Second formula row for Tax Savings & ROI — Protest Cost / Net Benefit
-// derived from the real 25% contingency fee already stated as CorvusPT's
-// actual terms in ProtestAuthorizationFlow's AGREEMENT (src/components/
-// ProtestAuthorizationFlow.tsx), not an invented number.
-const CONTINGENCY_FEE_PCT = 0.25;
-
-function CostBenefitRow({ savings }: { savings: number }) {
-  const cost = Math.round(savings * CONTINGENCY_FEE_PCT);
-  const netBenefit = savings - cost;
-  return (
-    <div className="flex items-center justify-center gap-1.5">
-      <FormulaIcon
-        Icon={DollarSign}
-        value={compactCurrency(cost)}
-        label="protest cost (25%)"
-        tone="bg-violet-500/15 text-violet-700"
-      />
-      <span className="text-sm text-muted-foreground">−</span>
-      <FormulaIcon
-        Icon={BarChart3}
-        value={compactCurrency(netBenefit)}
-        label="net benefit"
-        tone="bg-success/15 text-success"
-      />
-    </div>
-  );
-}
-
 // ── Module 9 (Estimated Savings) ─────────────────────────────────────────
 // Every figure here is the deterministic result from
 // src/lib/savings-analysis.ts — no AI value anywhere, identical on every
@@ -8726,9 +8756,9 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
       <div className="flex items-center justify-center gap-2 text-xs">
         <span
           className="text-muted-foreground"
-          title="After our standard 25% success fee. Beta testers do not pay it."
+          title="After the protest cost under your CorvusPT plan."
         >
-          Net benefit (after 25% fee)
+          Net benefit (after protest cost)
         </span>
         <span className="font-serif font-bold text-success">{compactCurrency(a.netBenefit)}</span>
         {a.roiPct != null ? (
@@ -8745,61 +8775,6 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
           </span>
         )}
       </div>
-    </div>
-  );
-}
-
-// The Value Reduction Impact stepped strip.
-function SavingsFlowStrip({ a }: { a: SavingsAnalysis }) {
-  const indicated = a.indicatedRange
-    ? `${compactCurrency(a.indicatedRange.low)} – ${compactCurrency(a.indicatedRange.high)}`
-    : compactCurrency(a.indicatedValue);
-  const steps: { label: string; value: string; tone: string; Icon: LucideIcon }[] = [
-    {
-      label: "Current CAD Value",
-      value: currency(a.cadValue),
-      tone: "border-destructive/40 bg-destructive/5 text-destructive",
-      Icon: Building2,
-    },
-    {
-      label: a.indicatedRange ? "AI-Indicated Value Range" : "AI-Indicated Value",
-      value: indicated,
-      tone: "border-sky-500/40 bg-sky-500/5 text-sky-700",
-      Icon: Home,
-    },
-    {
-      label: "Potential Reduction",
-      value: `${compactCurrency(a.reductionBase)}  ·  ${a.reductionPct}%`,
-      tone: "border-warning/40 bg-warning/10 text-warning-foreground",
-      Icon: TrendingDown,
-    },
-    {
-      label: "Est. Annual Tax Savings",
-      value: currency(a.annualSavings),
-      tone: "border-success/40 bg-success/10 text-success",
-      Icon: DollarSign,
-    },
-  ];
-  return (
-    <div className="flex items-stretch gap-1 overflow-x-auto pb-1">
-      {steps.map((s, i) => (
-        <Fragment key={s.label}>
-          <div
-            className={`flex min-w-[104px] flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center sm:min-w-[130px] ${s.tone}`}
-          >
-            <s.Icon className="h-4 w-4" />
-            <div className="text-[9px] font-semibold uppercase leading-tight tracking-wide opacity-80">
-              {s.label}
-            </div>
-            <div className="text-[11px] font-bold tabular-nums text-foreground sm:text-xs">
-              {s.value}
-            </div>
-          </div>
-          {i < steps.length - 1 && (
-            <ArrowRight className="h-4 w-4 shrink-0 self-center text-muted-foreground" />
-          )}
-        </Fragment>
-      ))}
     </div>
   );
 }
@@ -8856,105 +8831,152 @@ function SavingsSummaryList({ a }: { a: SavingsAnalysis }) {
   );
 }
 
+// Low / Estimated / High as three compact cards in plain language — the
+// middle one highlighted, but only called the most likely outcome when the
+// valuation evidence is strong. The calculation behind each sits under
+// "How are these calculated?".
 function SavingsScenarioCards({ a }: { a: SavingsAnalysis }) {
   return (
-    <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Scenario Analysis
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {a.scenarios.map((s) => (
-          <div
-            key={s.key}
-            className={`rounded-lg border p-3 text-center ${
-              s.key === "base" ? "border-accent/40 bg-accent/5" : "border-border"
-            }`}
-          >
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Savings Scenarios
+      </h3>
+      <div className="grid grid-cols-3 gap-2">
+        {a.scenarios.map((s) => {
+          const copy = SCENARIO_COPY[s.key];
+          const mid = s.key === "base";
+          return (
             <div
-              className={`text-[10px] font-semibold uppercase tracking-wide ${
-                s.key === "base" ? "text-accent" : "text-muted-foreground"
+              key={s.key}
+              className={`rounded-lg border p-2.5 text-center sm:p-3 ${
+                mid ? "border-success/50 bg-success/10 shadow-sm" : "border-border"
               }`}
             >
-              {s.label} Scenario
+              <div
+                className={`text-[10px] font-semibold uppercase tracking-wide ${mid ? "text-success" : "text-muted-foreground"}`}
+              >
+                {copy.title}
+              </div>
+              <div className="mt-1 font-serif text-base font-bold tabular-nums sm:text-lg">
+                {currency(s.annualSavings)}
+                <span className="text-[10px] font-normal text-muted-foreground">/yr</span>
+              </div>
+              <p className="mt-1 hidden text-[11px] leading-snug text-muted-foreground sm:block">
+                {copy.plain}
+              </p>
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              {s.reductionPct}% reduction
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {compactCurrency(s.valueReduction)} off value
-            </div>
-            <div className="mt-1 font-serif text-lg font-bold text-success">
-              {currency(s.annualSavings)}
-              <span className="text-xs font-normal text-muted-foreground"> / yr</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <p className="mt-1.5 text-[11px] text-muted-foreground">
-        The High scenario is a supportable higher-end opportunity based on the available analysis —
-        not the expected outcome.
+        Illustrative scenarios based on the available valuation evidence and how an Appraisal Review
+        Board panel might decide — not guaranteed outcomes.
+        {a.valuationConfidence !== "High" &&
+          " The middle figure is not necessarily the most likely outcome."}
       </p>
-    </div>
+      <details className="mt-1.5 text-xs">
+        <summary className="cursor-pointer text-accent">How are these calculated?</summary>
+        <div className="mt-2 grid gap-1.5 rounded-lg bg-secondary/40 p-3 text-muted-foreground">
+          {a.scenarios.map((s) => (
+            <p key={s.key}>
+              <span className="font-semibold text-foreground">{SCENARIO_COPY[s.key].title}:</span>{" "}
+              the value comes down {currency(s.valueReduction)} ({s.reductionPct}%) ×{" "}
+              {a.taxRate.pct}% tax rate = {currency(s.annualSavings)} a year.
+            </p>
+          ))}
+          <p>
+            {a.indicatedRange
+              ? `Conservative uses the top of the comparable range (${currency(a.indicatedRange.high)}), Higher Savings the bottom (${currency(a.indicatedRange.low)}), and Estimated the ${a.valueBasisLabel} value.`
+              : `Without a comparable range, Conservative is 60% and Higher Savings 150% of the estimated reduction (${a.valueBasisLabel}).`}
+          </p>
+          {a.appraisalCap != null && (
+            <p>
+              Each scenario only counts the part of the reduction that falls below the county&apos;s
+              capped appraised value ({currency(a.appraisalCap)}).
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
-function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
+const COST_KIND_LABEL: Record<ProtestCostLine["kind"], string> = {
+  annual: "Annual",
+  one_time: "One-time",
+  additional: "Additional",
+};
+
+// Savings − protest cost = net benefit, from the owner's real plan (see
+// protest-cost.ts). The ratio, cost breakdown and the hypothetical
+// multi-year figure stay under "Financial details".
+function SavingsWorthIt({ a, cost }: { a: SavingsAnalysis; cost: ProtestCost }) {
+  const costKnown = cost.total != null;
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        ROI Analysis (Base Scenario)
-      </div>
-      <p className="mb-2 text-[11px] text-muted-foreground">
-        This fuller model applies exemptions and the standard 25% fee, so its savings figure can
-        differ slightly from the headline estimate. Beta testers do not pay the fee.
-      </p>
-      {/* Annual figures only — ROI is defined on the annual net benefit
-          (spec §8). The multi-year projection is its own line below. */}
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
+    <section className="rounded-lg border border-border p-3 sm:p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Is Filing a Protest Worth It?
+      </h3>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
         <FormulaIcon
           Icon={DollarSign}
           value={currency(a.annualSavings)}
-          label="annual savings"
+          label="potential savings / yr"
           tone="bg-success/15 text-success"
         />
-        <span className="text-sm text-muted-foreground">−</span>
+        <span className="text-lg text-muted-foreground">−</span>
         <FormulaIcon
-          Icon={DollarSign}
-          value={a.protestCostSource === "none" ? "$0" : currency(a.protestCost)}
+          Icon={Receipt}
+          value={costKnown ? currency(a.protestCost) : "Not on file"}
           label="protest cost"
-          tone="bg-violet-500/15 text-violet-700"
+          tone="bg-secondary text-foreground"
         />
-        <span className="text-sm text-muted-foreground">=</span>
+        <span className="text-lg text-muted-foreground">=</span>
         <FormulaIcon
           Icon={BarChart3}
-          value={currency(a.netBenefit)}
-          label="net benefit / yr"
-          tone="bg-success/15 text-success"
+          value={costKnown ? currency(a.netBenefit) : "—"}
+          label="estimated net benefit"
+          tone={
+            !costKnown || a.netBenefit > 0
+              ? "bg-success/15 text-success"
+              : "bg-warning/20 text-warning-foreground"
+          }
         />
       </div>
-      <div className="mt-2 text-center text-sm">
-        {a.roiPct != null ? (
-          <>
-            <span className="text-muted-foreground">Annual ROI </span>
-            <span className="font-serif text-lg font-bold text-success">{a.roiPct}%</span>
-            {a.savingsToCostMultiple != null && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                ({a.savingsToCostMultiple}x savings-to-cost)
+      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+        Protest cost: {cost.label}.
+      </p>
+      <details className="mt-2 text-xs">
+        <summary className="cursor-pointer text-accent">Financial details</summary>
+        <div className="mt-2 grid gap-1.5 rounded-lg bg-secondary/40 p-3">
+          {cost.lines.map((l) => (
+            <div key={l.label} className="flex items-start justify-between gap-3">
+              <span className="min-w-0">
+                <span className="mr-1.5 rounded-full bg-background px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+                  {COST_KIND_LABEL[l.kind]}
+                </span>
+                {l.label}
+                {l.note && <span className="block text-muted-foreground">{l.note}</span>}
               </span>
-            )}
-          </>
-        ) : a.protestCostSource === "none" ? (
-          <span className="text-xs text-muted-foreground">
-            No direct protest cost entered — ROI not calculated. Net benefit equals the estimated
-            savings.
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            Protest cost needed to calculate ROI.
-          </span>
-        )}
-      </div>
-    </div>
+              <span className="shrink-0 font-medium tabular-nums">{currency(l.amount)}</span>
+            </div>
+          ))}
+          {a.savingsToCostMultiple != null && (
+            <div className="flex justify-between gap-3 border-t border-border/60 pt-1.5">
+              <span className="text-muted-foreground">Savings-to-cost ratio</span>
+              <span className="font-medium">{a.savingsToCostMultiple}x</span>
+            </div>
+          )}
+          {a.multiYearSavings != null && (
+            <p className="border-t border-border/60 pt-1.5 text-muted-foreground">
+              Hypothetical: if the lower value held for {a.projectionYears} years, savings would
+              total about {currency(a.multiYearSavings)}. Future property values and tax rates can
+              change, so this is not an estimate of what you will save.
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -9015,8 +9037,8 @@ function SavingsTaxDetailsForm({
         <div className="grid gap-3 sm:grid-cols-2">
           {field("Taxable value (if different from appraised)", "taxableValue", "$")}
           {field("Total exemptions", "exemptionsTotal", "$")}
-          {field("Protest cost (override — enter 0 for DIY)", "protestCostOverride", "$")}
-          {field("Projection years for multi-year estimate", "projectionYears")}
+          {field("Other protest expenses (appraisal, travel …)", "protestCostOverride", "$")}
+          {field("Years for the hypothetical multi-year figure", "projectionYears")}
         </div>
         <div className="mt-3 flex justify-end">
           <button
@@ -9140,35 +9162,88 @@ function SavingsViewDetails({ a }: { a: SavingsAnalysis }) {
   );
 }
 
+const FINDING_ICON: Record<SavingsFinding["key"], LucideIcon> = {
+  comps: BarChart3,
+  property: Building2,
+  documents: FileText,
+};
+const STRENGTH_STYLE: Record<EvidenceStrength, string> = {
+  Strong: "bg-success/15 text-success",
+  Limited: "bg-secondary text-muted-foreground",
+  Missing: "bg-warning/15 text-warning-foreground",
+};
+const STRENGTH_LABEL: Record<EvidenceStrength, string> = {
+  Strong: "Strong evidence",
+  Limited: "Limited evidence",
+  Missing: "Evidence missing",
+};
+
+// Current vs estimated value as two simple bars; "See Valuation Range"
+// overlays the comparable range on the estimate.
+function SavingsValueBars({ a, showRange }: { a: SavingsAnalysis; showRange: boolean }) {
+  const max = Math.max(a.cadValue, a.indicatedRange?.high ?? 0) * 1.04 || 1;
+  const pct = (v: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
+  const rows = [
+    { label: "Current CAD value", value: a.cadValue, bar: "bg-slate-400 dark:bg-slate-500" },
+    { label: "Estimated value", value: a.indicatedValue, bar: "bg-success" },
+  ];
+  return (
+    <div className="grid gap-2" aria-label="Current value compared with the estimated value">
+      {rows.map((r, i) => (
+        <div key={r.label} className="grid grid-cols-[7.5rem_1fr] items-center gap-2 text-xs">
+          <span className="text-muted-foreground">{r.label}</span>
+          <div className="relative h-4 rounded bg-secondary/60">
+            <div className={`h-4 rounded ${r.bar}`} style={{ width: pct(r.value) }} />
+            {i === 1 && showRange && a.indicatedRange && (
+              <div
+                className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full border-2 border-foreground/70"
+                style={{
+                  left: pct(a.indicatedRange.low),
+                  width: `calc(${pct(a.indicatedRange.high)} - ${pct(a.indicatedRange.low)})`,
+                }}
+                title="Supported valuation range"
+              />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SavingsWorkspace({
   analysis: a,
+  cost,
+  findings,
+  nextStep,
+  cadSourceLabel,
   taxInputs,
   allowEdit,
   onSaveTaxInputs,
   onOpenModule,
-  headlineSavings,
-  currentValue,
-  reducedValue,
   rationale,
   incomeNote,
 }: {
   analysis: SavingsAnalysis;
+  cost: ProtestCost;
+  findings: SavingsFinding[];
+  nextStep: SavingsNextStep;
+  cadSourceLabel: string;
   taxInputs: SavingsTaxInputs | null;
   allowEdit: boolean;
   onSaveTaxInputs: (input: SavingsTaxInputsInput) => void;
   onOpenModule: (moduleId: string) => void;
-  headlineSavings: number;
-  currentValue: number;
-  reducedValue: number;
   rationale: string | null;
   incomeNote: string | null;
 }) {
+  const [showRange, setShowRange] = useState(false);
+  const evidence = useContext(EvidenceImpactContext);
   if (!a.sufficient) {
     return (
       <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-4">
         <div className="text-sm font-semibold text-warning-foreground">Additional Data Needed</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          The financial opportunity can't be calculated yet. Missing:
+          The savings can&apos;t be estimated yet. Missing:
         </p>
         <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm">
           {a.missing.map((x) => (
@@ -9178,16 +9253,67 @@ function SavingsWorkspace({
       </div>
     );
   }
+  const uncertain = a.uncertainReasons.length > 0;
+  const low = a.scenarios[0]?.annualSavings ?? 0;
+  const high = a.scenarios[2]?.annualSavings ?? a.annualSavings;
+  const docCount = evidence?.evidenceCount ?? 0;
+  const docReliability =
+    evidence?.adjustment.applied && evidence.adjustment.strength >= 0.6
+      ? "strong"
+      : evidence?.adjustment.applied
+        ? "moderate"
+        : "not yet usable";
+  const NEXT_TONE: Record<SavingsNextStep["kind"], string> = {
+    potential: "border-success/40 bg-success/10",
+    more_evidence: "border-warning/40 bg-warning/10",
+    limited: "border-border bg-secondary/40",
+  };
+
   return (
     <div className="mt-4 grid gap-4">
-      <div className="text-center">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Estimated Annual Tax Savings
+      {/* How much could I save? */}
+      <section className="rounded-xl border border-success/30 bg-success/5 p-4 text-center sm:p-5">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Potential Annual Tax Savings
         </div>
-        <div className="font-serif text-4xl font-bold text-success">
-          <AnimatedNumber value={headlineSavings} format={currency} duration={900} />
-        </div>
-      </div>
+        {uncertain ? (
+          <div className="mt-1 font-serif text-3xl font-bold text-success sm:text-4xl">
+            {currency(low)} – {currency(high)}
+            <span className="text-base font-normal text-muted-foreground"> / year</span>
+          </div>
+        ) : (
+          <div className="mt-1 font-serif text-4xl font-bold text-success sm:text-5xl">
+            <AnimatedNumber value={a.annualSavings} format={currency} duration={900} />
+            <span className="text-base font-normal text-muted-foreground"> / year</span>
+          </div>
+        )}
+        <p className="mt-1 text-sm text-muted-foreground">
+          {uncertain
+            ? "Savings are uncertain — the range runs from no change to the strongest supported outcome."
+            : "Estimated savings based on current property information."}
+        </p>
+        <span
+          className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+            a.valuationConfidence === "High"
+              ? "bg-success/15 text-success"
+              : a.valuationConfidence === "Moderate"
+                ? "bg-secondary text-muted-foreground"
+                : "bg-warning/15 text-warning-foreground"
+          }`}
+        >
+          {EVIDENCE_LABEL[a.valuationConfidence]}
+        </span>
+        {uncertain && (
+          <ul className="mx-auto mt-2 grid max-w-md gap-0.5 text-left text-xs text-warning-foreground">
+            {a.uncertainReasons.map((r) => (
+              <li key={r} className="flex gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                {r}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {a.conflicts.length > 0 && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
@@ -9202,49 +9328,145 @@ function SavingsWorkspace({
         </div>
       )}
 
-      <SavingsFlowStrip a={a} />
-      <ValueComparisonChart current={currentValue} reduced={reducedValue} />
-      <SavingsSummaryList a={a} />
-      <SavingsScenarioCards a={a} />
-      <SavingsRoiRow a={a} />
-
-      {a.multiYearSavings != null && (
-        <p className="rounded-lg bg-secondary/40 p-3 text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">
-            Potential multi-year savings (estimate): {currency(a.multiYearSavings)} over{" "}
-            {a.projectionYears} years.
-          </span>{" "}
-          Assumes the reduced value holds as the base. Not guaranteed — actual carry-over depends on
-          the county's re-appraisal.
-        </p>
-      )}
-
-      <div className="rounded-lg bg-secondary/40 p-3 text-xs">
-        <div className="font-semibold text-foreground">
-          How this connects to the protest strategy
+      {/* Valuation comparison */}
+      <section className="grid gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Current CAD Value
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums">{currency(a.cadValue)}</div>
+            <div className="text-[11px] text-muted-foreground">Verified · {cadSourceLabel}</div>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Estimated Property Value
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums">
+              {currency(a.indicatedValue)}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              Corvus AI estimate · {a.valueBasisLabel}
+            </div>
+          </div>
+          <div className="rounded-lg border border-success/40 bg-success/5 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Potential Value Reduction
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums text-success">
+              {currency(a.reductionBase)}{" "}
+              <span className="text-sm font-semibold">({a.reductionPct}%)</span>
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {a.taxableReduction < a.reductionBase
+                ? `Lowers the taxable value by ${currency(a.taxableReduction)}`
+                : "Market value reduction"}
+            </div>
+          </div>
         </div>
-        <p className="mt-1 text-muted-foreground">
-          CAD value is {compactCurrency(a.reductionBase)} above the AI-indicated value → potential
-          reduction {compactCurrency(a.reductionBase)} → est. annual tax savings{" "}
-          {compactCurrency(a.annualSavings)} → protest cost{" "}
-          {a.protestCostSource === "none" ? "$0" : compactCurrency(a.protestCost)} → est. net
-          benefit {compactCurrency(a.netBenefit)}.
+        <SavingsValueBars a={a} showRange={showRange} />
+        {a.indicatedRange && (
+          <button
+            type="button"
+            onClick={() => setShowRange((v) => !v)}
+            className="justify-self-start text-xs text-accent hover:underline"
+          >
+            {showRange
+              ? `Supported range: ${currency(a.indicatedRange.low)} – ${currency(a.indicatedRange.high)} · Hide`
+              : "See Valuation Range"}
+          </button>
+        )}
+      </section>
+
+      {/* Why could I save? */}
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Why You May Be Paying Too Much
+        </h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {findings.map((f) => {
+            const Icon = FINDING_ICON[f.key];
+            return (
+              <div key={f.key} className="flex flex-col rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary">
+                    <Icon className="h-3.5 w-3.5 text-foreground/80" />
+                  </span>
+                  <span className="text-sm font-semibold">{f.title}</span>
+                </div>
+                <p className="mt-2 line-clamp-3 flex-1 text-xs text-foreground/90">{f.sentence}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STRENGTH_STYLE[f.strength]}`}
+                  >
+                    {STRENGTH_LABEL[f.strength]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenModule(f.module)}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {docCount === 0
+            ? "No supporting documents uploaded yet."
+            : `${docCount} supporting document${docCount === 1 ? "" : "s"} · overall reliability ${docReliability}. Documents change the estimate only when they state a value, repair cost or income figure.`}
         </p>
-        {rationale && <p className="mt-1 text-muted-foreground">{rationale}</p>}
-        {incomeNote && <p className="mt-1 text-muted-foreground">{incomeNote}</p>}
+      </section>
+
+      {/* What should I do next? */}
+      <section className={`rounded-lg border p-4 ${NEXT_TONE[nextStep.kind]}`}>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          What Should I Do Next?
+        </div>
+        <div className="mt-1 font-serif text-lg font-bold">{nextStep.title}</div>
+        <p className="mt-0.5 text-sm text-foreground/90">{nextStep.message}</p>
+        <button
+          type="button"
+          onClick={() => onOpenModule(nextStep.module)}
+          className="btn-primary mt-3 inline-flex items-center gap-2 text-sm"
+        >
+          {nextStep.button}
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </section>
+
+      <SavingsScenarioCards a={a} />
+      <SavingsWorthIt a={a} cost={cost} />
+
+      {/* Deeper detail, for owners who want it. */}
+      <div className="grid gap-2">
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            View evidence analysis
+          </summary>
+          <div className="border-t border-border/60 px-3 pb-3">
+            <EvidenceImpactCard />
+            {(rationale || incomeNote) && (
+              <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                {rationale && <p>{rationale}</p>}
+                {incomeNote && <p>{incomeNote}</p>}
+              </div>
+            )}
+          </div>
+        </details>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Financial opportunity
+          </summary>
+          <div className="border-t border-border/60 p-3">
+            <SavingsSummaryList a={a} />
+          </div>
+        </details>
+        <SavingsViewDetails a={a} />
+        {allowEdit && <SavingsTaxDetailsForm taxInputs={taxInputs} onSave={onSaveTaxInputs} />}
       </div>
-
-      {allowEdit && <SavingsTaxDetailsForm taxInputs={taxInputs} onSave={onSaveTaxInputs} />}
-      <SavingsViewDetails a={a} />
-
-      <button
-        type="button"
-        onClick={() => onOpenModule("executive")}
-        className="btn-primary flex items-center justify-center gap-2 text-sm"
-      >
-        View Final Protest Recommendation
-        <ArrowRight className="h-4 w-4" />
-      </button>
     </div>
   );
 }
@@ -10378,6 +10600,7 @@ function ModulePreviewContent({
   onSaveIncomeAnalysis,
   onExtractIncome,
   savingsAnalysis,
+  protestCost,
   savingsTaxInputs,
   onSaveSavingsTaxInputs,
 }: {
@@ -10472,6 +10695,8 @@ function ModulePreviewContent({
   // (savings-analysis.ts) and the optional tax-inputs saver (a no-op in the
   // printable report view).
   savingsAnalysis: SavingsAnalysis;
+  // Module 9 — the owner's real protest cost (see protest-cost.ts).
+  protestCost: ProtestCost;
   savingsTaxInputs: SavingsTaxInputs | null;
   onSaveSavingsTaxInputs: (input: SavingsTaxInputsInput) => void;
 }) {
@@ -10490,6 +10715,8 @@ function ModulePreviewContent({
   const [packetError, setPacketError] = useState<string | null>(null);
   // Module 10's "Download Protest Report (PDF)" — see executive-report-pdf.ts.
   const [downloadingReport, setDownloadingReport] = useState(false);
+  // Module 9 — the uploaded-evidence reading behind "Supporting Documents".
+  const evidenceImpact = useContext(EvidenceImpactContext);
   // Which evidence-checklist category (Module 8) is currently expanded —
   // single-open accordion, same unconditional-top placement as the state
   // above. Also tracks the bulk "Upload Evidence" button's own real AI
@@ -10609,7 +10836,6 @@ function ModulePreviewContent({
   // state here since there's no AI call backing this module anymore.
   if (m.id === "savings") {
     const current = state.totalValue ?? 0;
-    const reduced = Math.max(0, current - estimated.reduction);
     // No assessed value on the CAD record at all — there is no estimate,
     // which is a different finding from "we estimated ~$0." Same guard the
     // top banner now applies; without it this module told the owner their
@@ -10654,6 +10880,46 @@ function ModulePreviewContent({
       resolvedProperty && existingProtest
         ? buildFinalCaseSummary(resolvedProperty, existingProtest)
         : null;
+    // "Why You May Be Paying Too Much" — from this property's own module
+    // results and uploaded evidence (see savings-dashboard.ts).
+    const savingsComps = computeComparableStats(
+      compsMap.data?.subject ?? null,
+      compsMap.data?.comps ?? [],
+      state.totalValue,
+    );
+    const usableComps = savingsComps.ranked.filter((c) => c.marketValue != null);
+    const siteResult = moduleData.site?.data as ModuleResultMap["site"] | undefined;
+    const improvementResult = moduleData.improvement?.data as
+      ModuleResultMap["improvement"] | undefined;
+    const zoningResult = moduleData.zoning?.data as ModuleResultMap["zoning"] | undefined;
+    const savingsFindings = buildSavingsFindings({
+      comps: savingsComps.indicated
+        ? {
+            count: usableComps.length,
+            median: savingsComps.indicated.median,
+            gapPct: savingsComps.valuationGapPct,
+            limitedData: savingsComps.limitedData,
+          }
+        : null,
+      site: siteResult?.factors ?? null,
+      improvement: improvementResult?.buildingComponents.filter((c) => !c.notApplicable) ?? null,
+      zoning: zoningResult
+        ? {
+            matches: zoningResult.matches,
+            discrepancy: zoningResult.discrepancies[0]?.detail ?? null,
+          }
+        : null,
+      documents: evidenceImpact
+        ? {
+            count: evidenceImpact.evidenceCount,
+            applied: evidenceImpact.adjustment.applied,
+            direction: evidenceImpact.adjustment.direction,
+            strength: evidenceImpact.adjustment.strength,
+            kinds: [...new Set(evidenceImpact.adjustment.contributions.map((c) => c.label))],
+            indicatedValue: evidenceImpact.adjustment.indicatedValue,
+          }
+        : null,
+    });
     return (
       <div className="grid gap-4">
         {finalSummary?.available && (
@@ -10661,16 +10927,21 @@ function ModulePreviewContent({
             <FinalCaseSummaryPanel summary={finalSummary} />
           </div>
         )}
-        <EvidenceImpactCard />
         <SavingsWorkspace
           analysis={savingsAnalysis}
+          cost={protestCost}
+          findings={savingsFindings}
+          nextStep={getSavingsNextStep(savingsAnalysis, savingsFindings)}
+          cadSourceLabel={[
+            state.cad ? `${state.cad} record` : "county record",
+            state.valueYear ?? state.taxYear,
+          ]
+            .filter(Boolean)
+            .join(", ")}
           taxInputs={savingsTaxInputs}
           allowEdit={allowEvidenceUpload}
           onSaveTaxInputs={onSaveSavingsTaxInputs}
           onOpenModule={onOpenModule}
-          headlineSavings={estimated.savings}
-          currentValue={current}
-          reducedValue={reduced}
           rationale={estimated.rationale}
           incomeNote={
             incomeComputed.complete && incomeComputed.indicatedValue != null
@@ -12727,39 +12998,6 @@ function gradualScoreColor(score: number): string {
   const t = (s - 50) / 50;
   const pct = (1 - (1 - t) * (1 - t) * (1 - t)) * 100;
   return `color-mix(in oklch, var(--success) ${pct}%, var(--warning) ${100 - pct}%)`;
-}
-
-function ValueComparisonChart({ current, reduced }: { current: number; reduced: number }) {
-  const data = [
-    { name: "Current", value: current, fill: "var(--muted-foreground)" },
-    { name: "Estimated", value: reduced, fill: "var(--success)" },
-  ];
-  return (
-    <ResponsiveContainer width="100%" height={110}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }}>
-        <XAxis type="number" hide domain={[0, (max: number) => max * 1.15]} />
-        <YAxis
-          type="category"
-          dataKey="name"
-          width={70}
-          tickLine={false}
-          axisLine={false}
-          tick={{ fontSize: 12 }}
-        />
-        <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
-          {data.map((d, i) => (
-            <Cell key={i} fill={d.fill} />
-          ))}
-          <LabelList
-            dataKey="value"
-            position="right"
-            formatter={(v: number) => currency(v)}
-            style={{ fontSize: 12, fontWeight: 600, fill: "var(--foreground)" }}
-          />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
 }
 
 // Every module's AI-generated takeaway line goes through this — a tinted,
