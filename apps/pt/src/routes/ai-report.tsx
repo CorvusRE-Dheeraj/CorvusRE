@@ -33,6 +33,7 @@ import {
   Scale,
   Gauge,
   ExternalLink,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -82,7 +83,6 @@ import {
   getModuleAnalysis,
   askModuleQuestion,
   EVIDENCE_CATEGORY_ORDER,
-  RECOMMENDED_ACTION_LABEL,
   type BatchModuleId,
   type ModuleAnalysisInput,
   type ModuleResultMap,
@@ -130,17 +130,19 @@ import {
   type SavingsTaxInputsInput,
 } from "@/lib/savings-tax-inputs";
 import { getExecutiveSummary, getDefenseReadinessScore } from "@/lib/executive-summary";
-import {
-  getPreFilingCheck,
-  isPreFilingBlocked,
-  type PreFilingCheckItem,
-} from "@/lib/pre-filing-check";
+import { getPreFilingCheck, type PreFilingCheckItem } from "@/lib/pre-filing-check";
 import { getCountyProtestInfo } from "@/lib/county-protest-info";
-import { getCaseGuidance } from "@/lib/case-guidance";
-import { getCaseRecord } from "@/lib/case-record";
-import { type CaseReportInputs } from "@/lib/case-report";
 import { buildFinalCaseSummary } from "@/lib/final-case-summary";
-import { ExecutiveModuleTabs, FinalCaseSummaryPanel } from "@/components/CaseReportView";
+import { FinalCaseSummaryPanel } from "@/components/CaseReportView";
+import {
+  ASSESSMENT_TIER,
+  READINESS_LABEL,
+  assessmentTier,
+  getProtestReadiness,
+  type AssessmentTier,
+  type ProtestReadinessResult,
+} from "@/lib/executive-assessment";
+import { buildExecutiveReportPdf } from "@/lib/executive-report-pdf";
 import {
   classifyPropertyCategory,
   getAssessmentRatioInfo,
@@ -6066,83 +6068,6 @@ function ExecutiveStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Module 10's "Major Supporting Findings" row — real AI findings grounded in
-// the record, each optionally deep-linking back to the module that actually
-// produced the underlying analysis (same modal, just switches which module
-// is open — see onOpenModule in Report()).
-function FindingCard({
-  finding,
-  onOpenModule,
-}: {
-  finding: { finding: string; whyItMatters: string; relatedModule: string | null };
-  onOpenModule: (moduleId: string) => void;
-}) {
-  const target = finding.relatedModule
-    ? MODULES.find((mm) => mm.id === finding.relatedModule)
-    : null;
-  return (
-    <div className="flex items-start gap-2 rounded-lg bg-secondary/30 px-3 py-2">
-      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-semibold">{finding.finding}</span>
-        {finding.whyItMatters && (
-          <span className="text-xs text-muted-foreground"> — {finding.whyItMatters}</span>
-        )}
-      </div>
-      {target && (
-        <button
-          onClick={() => onOpenModule(target.id)}
-          className="shrink-0 whitespace-nowrap text-xs text-accent hover:underline"
-        >
-          View Analysis →
-        </button>
-      )}
-    </div>
-  );
-}
-
-const DEFENSE_QA_STATUS_TONE: Record<string, string> = {
-  Supported: "bg-success/15 text-success",
-  "Partially Supported": "bg-warning/15 text-warning-foreground",
-  "Evidence Needed": "bg-destructive/10 text-destructive",
-  "User Input Needed": "bg-secondary/60 text-muted-foreground",
-};
-
-// One row of the first-version Defense Readiness Q&A table — read-only
-// (editing the answer / re-uploading evidence for just this question is a
-// follow-up, see the plan this was built from). "View Evidence" only
-// appears when the AI actually named a real module its answer draws from.
-function DefenseQARow({
-  qa,
-  onOpenModule,
-}: {
-  qa: ModuleResultMap["executive"]["defenseQA"][number];
-  onOpenModule: (moduleId: string) => void;
-}) {
-  const target = qa.relatedModule ? MODULES.find((mm) => mm.id === qa.relatedModule) : null;
-  return (
-    <div className="card-elev p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold">{qa.question}</div>
-        <span
-          className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold ${DEFENSE_QA_STATUS_TONE[qa.status] ?? "bg-secondary/60 text-muted-foreground"}`}
-        >
-          {qa.status}
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{qa.suggestedAnswer}</p>
-      {target && (
-        <button
-          onClick={() => onOpenModule(target.id)}
-          className="mt-1.5 text-xs text-accent hover:underline"
-        >
-          View Evidence →
-        </button>
-      )}
-    </div>
-  );
-}
-
 const SITE_FACTOR_STATUS_TONE: Record<SiteFactor["status"], string> = {
   Confirmed: "bg-success/15 text-success",
   "Partial Data": "bg-warning/15 text-warning-foreground",
@@ -6967,26 +6892,6 @@ function ChecklistIconRows({ items, color }: { items: string[]; color: IconColor
 // strategies (so "Comparable Sales" shows the same icon as the Market Value
 // module card, etc.) via relatedModules; falls back to a generic icon for an
 // AI-added "Other: ..." strategy, which doesn't map to any of Modules 3-7.
-// Visual cue for Module 10's Recommended Action banner — a glance-able icon
-// standing in for reading the category string closely.
-function RecommendedActionIcon({
-  action,
-  className,
-}: {
-  action: ModuleResultMap["executive"]["recommendedAction"];
-  className?: string;
-}) {
-  const Icon =
-    action === "Proceed with Protest"
-      ? ShieldCheck
-      : action === "Proceed with Protest After Completing Recommended Evidence"
-        ? FileWarning
-        : action === "Limited Protest Opportunity Based on Available Information"
-          ? AlertTriangle
-          : HelpCircle;
-  return <Icon className={className} />;
-}
-
 function strategyIcon(s: StrategyEntry): LucideIcon {
   const relatedId = s.relatedModules[0];
   const mod = relatedId ? MODULES.find((mm) => mm.id === relatedId) : undefined;
@@ -10583,6 +10488,8 @@ function ModulePreviewContent({
   // unconditional-top-of-component placement as the analysis state above.
   const [downloadingPacket, setDownloadingPacket] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
+  // Module 10's "Download Protest Report (PDF)" — see executive-report-pdf.ts.
+  const [downloadingReport, setDownloadingReport] = useState(false);
   // Which evidence-checklist category (Module 8) is currently expanded —
   // single-open accordion, same unconditional-top placement as the state
   // above. Also tracks the bulk "Upload Evidence" button's own real AI
@@ -12365,398 +12272,246 @@ function ModulePreviewContent({
       const strategyData = moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined;
       const evidenceData = moduleData.evidence?.data as ModuleResultMap["evidence"] | undefined;
       const evidenceItems = evidenceData?.items ?? [];
-      const execStats = computeComparableStats(
-        compsMap.data?.subject ?? null,
-        compsMap.data?.comps ?? [],
-        state.totalValue,
-      );
       const preFilingItems =
         existingProtest && resolvedProperty
           ? getPreFilingCheck(resolvedProperty, existingProtest)
           : null;
-      const summary = getExecutiveSummary(
-        execStats,
-        estimated.savings,
-        evidenceItems,
-        preFilingItems,
-      );
-      const defenseScore = getDefenseReadinessScore(d.defenseQA);
-      const criticalMissing = evidenceItems.filter(
-        (i) => i.importance === "High" && i.availability === "Low",
-      );
 
-      // Single primary CTA, deterministic — never more than one rendered.
-      let cta: { label: string; onClick: () => void } | null = null;
-      if (existingProtest && existingProtest.status === "resolved") {
-        cta = { label: "View Case Outcome", onClick: onViewCase };
-      } else if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
-        cta = null; // "Complete Missing Information" — see the Properties link below instead
-      } else if (criticalMissing.length > 0) {
-        cta = { label: "Complete Missing Evidence", onClick: () => onOpenModule("evidence") };
-      } else if (!existingProtest) {
-        cta = { label: "Prepare My Protest", onClick: onStartProtest };
-      } else {
-        cta = { label: "Review Case", onClick: onViewCase };
+      // Module 10 is the final summary, not another analysis dashboard: one
+      // recommendation, one readiness status, and the full report as a PDF.
+      // Figures, comps, evidence and filing detail live in Modules 1-9 and
+      // the PDF — never repeated here.
+      const tier = assessmentTier(d.recommendedAction);
+      const tierMeta = ASSESSMENT_TIER[tier];
+      const readiness = getProtestReadiness({
+        protestDeadline: resolvedProperty?.protestDeadline ?? null,
+        preFilingItems,
+        evidenceItems,
+        missingInformation: d.missingInformation,
+      });
+      const TIER_STYLE: Record<AssessmentTier, { card: string; dot: string }> = {
+        recommended: { card: "border-success/40 bg-success/10", dot: "bg-success" },
+        review: { card: "border-warning/50 bg-warning/15", dot: "bg-warning" },
+        limited: { card: "border-violet-300/60 bg-violet-500/10", dot: "bg-violet-400" },
+      };
+      const READINESS_STYLE: Record<ProtestReadinessResult["status"], string> = {
+        ready: "bg-success/15 text-success",
+        info_needed: "bg-warning/15 text-warning-foreground",
+        deadline_review: "bg-destructive/10 text-destructive",
+      };
+
+      async function handleDownloadReport() {
+        setDownloadingReport(true);
+        try {
+          const site = moduleData.site?.data as ModuleResultMap["site"] | undefined;
+          const zoning = moduleData.zoning?.data as ModuleResultMap["zoning"] | undefined;
+          const improvement = moduleData.improvement?.data as
+            ModuleResultMap["improvement"] | undefined;
+          const stats = computeComparableStats(
+            compsMap.data?.subject ?? null,
+            compsMap.data?.comps ?? [],
+            state.totalValue,
+          );
+          const worksheet = resolvedProperty
+            ? await getValuationWorksheet(resolvedProperty.id).catch(() => null)
+            : null;
+          const approach = (id: string) => {
+            const a = worksheet?.summary?.approaches.find((x) => x.id === id);
+            return a?.status === "indicated" ? a.indicatedValue : null;
+          };
+          const isCriticalGap = (i: (typeof evidenceItems)[number]) =>
+            i.priority
+              ? i.priority === "Critical" && i.status === "Missing"
+              : i.importance === "High" && i.availability === "Low";
+          const missingCritical = [
+            ...new Set([
+              ...evidenceItems.filter(isCriticalGap).map((i) => i.item),
+              ...d.missingInformation
+                .filter((mi) => mi.severity === "Critical")
+                .map((mi) => mi.item),
+            ]),
+          ];
+          const deadline = resolvedProperty?.protestDeadline
+            ? new Date(`${resolvedProperty.protestDeadline}T00:00:00`).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })
+            : null;
+          const filingMethod =
+            preFilingItems?.find((i) => i.label === "Filing Method")?.value ??
+            (getCountyProtestInfo(state.cad)?.filingMethod?.online
+              ? `Online — ${getCountyProtestInfo(state.cad)?.filingMethod?.online?.url}`
+              : null);
+          const bytes = await buildExecutiveReportPdf({
+            property: {
+              address: resolvedProperty?.address ?? state.address ?? null,
+              county: resolvedProperty?.cad ?? state.cad ?? null,
+              account: resolvedProperty?.accountNumber ?? state.accountNumber ?? null,
+              owner: resolvedProperty?.ownerName ?? state.ownerName ?? null,
+              propertyType: resolvedProperty?.propertyType ?? state.propertyType ?? null,
+              taxYear:
+                existingProtest?.taxYear ?? resolvedProperty?.taxYear ?? state.taxYear ?? null,
+            },
+            tier,
+            explanation: d.recommendationExplanation || null,
+            readiness,
+            values: {
+              cad: state.totalValue ?? null,
+              compsMedian: stats.indicated?.median ?? null,
+              compsRange: stats.indicated
+                ? { min: stats.indicated.min, max: stats.indicated.max }
+                : null,
+              income: incomeComputed.complete ? incomeComputed.indicatedValue : approach("income"),
+              cost: approach("cost"),
+              valueToConsider: d.recommendedProtestValue,
+              valueBasis: d.recommendedProtestValueBasis || null,
+            },
+            comps: stats.ranked.slice(0, 5).map((c) => ({
+              address: c.address,
+              distanceMi: c.distanceMi,
+              value: c.marketValue ?? null,
+            })),
+            compsGapPct: stats.limitedData ? null : stats.valuationGapPct,
+            land: site
+              ? {
+                  keyFinding: site.keyFinding || null,
+                  factors: site.factors
+                    .filter(
+                      (f) =>
+                        (f.status === "Confirmed" || f.status === "Partial Data") &&
+                        f.severity !== "Unknown",
+                    )
+                    .map((f) => ({ factor: f.factor, finding: f.finding, severity: f.severity })),
+                }
+              : null,
+            zoning: zoning
+              ? {
+                  matches: zoning.matches,
+                  assessment: zoning.assessment,
+                  discrepancies: zoning.discrepancies.map((x) => `${x.between}: ${x.detail}`),
+                }
+              : null,
+            improvement: improvement
+              ? {
+                  keyFinding: improvement.keyFinding || null,
+                  components: improvement.buildingComponents
+                    .filter((c) => !c.notApplicable)
+                    .map((c) => ({ component: c.component, condition: c.condition })),
+                }
+              : null,
+            savings:
+              savingsAnalysis.sufficient && savingsAnalysis.annualSavings > 0
+                ? {
+                    annual: savingsAnalysis.annualSavings,
+                    reductionPct: savingsAnalysis.reductionPct,
+                    taxRatePct: savingsAnalysis.taxRate.pct,
+                    taxRateSource: savingsAnalysis.taxRate.source,
+                    assumptions: savingsAnalysis.assumptions,
+                  }
+                : estimated.savings > 0
+                  ? {
+                      annual: estimated.savings,
+                      reductionPct:
+                        state.totalValue && estimated.reduction
+                          ? Math.round((estimated.reduction / state.totalValue) * 100)
+                          : null,
+                      taxRatePct: estimated.effectiveTaxRatePct || null,
+                      taxRateSource: null,
+                      assumptions: estimated.rationale ? [estimated.rationale] : [],
+                    }
+                  : null,
+            strategies: (strategyData?.strategies ?? []).slice(0, 2).map((s) => ({
+              name: s.name,
+              strengthScore: s.strengthScore,
+              reason: s.primaryReason,
+            })),
+            evidence: {
+              verified: evidenceItems.filter((i) => i.status === "Verified").length,
+              found: evidenceItems.filter((i) => i.status === "Found").length,
+              missing: evidenceItems.filter((i) => i.status === "Missing").length,
+              sources: [
+                ...new Set(
+                  evidenceItems
+                    .filter((i) => i.status !== "Missing" && i.foundIn)
+                    .map((i) => i.foundIn as string),
+                ),
+              ],
+            },
+            missingCritical,
+            deadline,
+            filingMethod,
+          });
+          const base = resolvedProperty?.accountNumber ?? state.accountNumber ?? "property";
+          downloadPdf(bytes, `Protest-Report-${base}.pdf`);
+          toast.success("Protest report downloaded.");
+        } catch (err) {
+          toast.error(
+            getErrorMessage(err, "Could not build the protest report. Please try again."),
+          );
+        } finally {
+          setDownloadingReport(false);
+        }
       }
 
-      const summaryView = (
+      return (
         <div className="mt-4 grid gap-4">
-          {/* 2. Executive Protest Summary — real numbers only, see
-              src/lib/executive-summary.ts for the exact formulas. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <ExecutiveStat label="Protest Opportunity" value={summary.protestOpportunity} />
-            {summary.currentCadValue != null && (
-              <ExecutiveStat label="Current CAD Value" value={currency(summary.currentCadValue)} />
-            )}
-            {summary.indicatedValueRange && (
-              <ExecutiveStat
-                label="Market Value Range"
-                value={`${compactCurrency(summary.indicatedValueRange.min)}–${compactCurrency(summary.indicatedValueRange.max)}`}
-              />
-            )}
-            {summary.potentialValueReduction != null && (
-              <ExecutiveStat
-                label="Potential Reduction"
-                value={compactCurrency(summary.potentialValueReduction)}
-              />
-            )}
-            {summary.estimatedAnnualSavings != null && summary.estimatedAnnualSavings > 0 && (
-              <ExecutiveStat
-                label="Est. Annual Savings"
-                value={compactCurrency(summary.estimatedAnnualSavings)}
-              />
-            )}
-            <ExecutiveStat label="Evidence Readiness" value={summary.evidenceReadiness} />
-            <ExecutiveStat label="Protest Readiness" value={summary.protestReadiness} />
-          </div>
-          {summary.overallConfidencePct != null && (
-            <div className="flex flex-col items-center">
-              <SpeedometerGauge value={summary.overallConfidencePct} size="sm" />
-              <div className="-mt-1 text-xs text-muted-foreground">Overall Case Assessment</div>
+          {/* 1. Corvus AI Final Recommendation */}
+          <div className={`rounded-xl border p-5 ${TIER_STYLE[tier].card}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Corvus AI Final Recommendation
             </div>
-          )}
-
-          {/* 3. Final Protest Recommendation — icon + the action itself carry
-              the message; explanation is now capped to one short phrase
-              server-side, not a paragraph (see MODULE_SPECS.executive). */}
-          <div className={`flex items-start gap-3 rounded-lg p-4 ${m.color.bg}`}>
-            <RecommendedActionIcon
-              action={d.recommendedAction}
-              className={`mt-0.5 h-6 w-6 shrink-0 ${m.color.text}`}
-            />
-            <div className="min-w-0 flex-1">
-              <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Corvus AI Assessment
-              </div>
-              <div className="mt-0.5 font-serif text-lg font-bold">
-                {RECOMMENDED_ACTION_LABEL[d.recommendedAction] ?? d.recommendedAction}
-              </div>
-              {d.recommendationExplanation && (
-                <p className="mt-1 text-sm text-foreground/90">{d.recommendationExplanation}</p>
-              )}
+            <div className="mt-1.5 flex items-center gap-2.5">
+              <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${TIER_STYLE[tier].dot}`} />
+              <span className="font-serif text-xl font-bold text-foreground">{tierMeta.label}</span>
             </div>
-          </div>
-          {d.conflictNote && (
-            <div className="flex items-start gap-2 rounded-lg bg-warning/15 p-3 text-sm text-warning-foreground">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="min-w-0 flex-1">{d.conflictNote}</p>
-            </div>
-          )}
-
-          {/* 4. Recommended Protest Strategy — the same StrategyBar visual
-              (icon + score bar + number) Module 6's own ranked list already
-              uses, so strength reads at a glance instead of via prose; the
-              AI's phrase (now capped to ~10 words server-side) is a caption
-              under the bar, not a paragraph. */}
-          {(strategyData?.strategies[0] || strategyData?.strategies[1]) && (
-            <div className="card-elev grid gap-3 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Recommended Protest Strategy
-              </div>
-              {strategyData.strategies[0] && (
-                <div>
-                  <StrategyBar s={strategyData.strategies[0]} />
-                  {d.primaryStrategyExplanation && (
-                    <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                      {d.primaryStrategyExplanation}
-                    </p>
-                  )}
-                </div>
-              )}
-              {strategyData.strategies[1] && d.secondaryStrategyExplanation && (
-                <div>
-                  <StrategyBar s={strategyData.strategies[1]} />
-                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                    {d.secondaryStrategyExplanation}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 5. Major Supporting Findings — icon-led, one short line each
-              (whyItMatters capped to ~8 words server-side), not paragraphs. */}
-          {d.majorFindings.length > 0 && (
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Major Supporting Findings
-              </div>
-              <div className="grid gap-1.5">
-                {d.majorFindings.map((f, i) => (
-                  <FindingCard key={i} finding={f} onOpenModule={onOpenModule} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 6. Value Recommendation + 7. Financial Opportunity */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <FactBox
-              label="Potential Value to Consider"
-              value={
-                d.recommendedProtestValue != null
-                  ? currency(d.recommendedProtestValue)
-                  : "Additional Analysis Required"
-              }
-            />
-            <FactBox
-              label="Value Basis"
-              value={d.recommendedProtestValueBasis || "Not enough data yet."}
-            />
-          </div>
-          {estimated.savings > 0 && <CostBenefitRow savings={estimated.savings} />}
-
-          {/* 8. Evidence Readiness */}
-          <div className="card-elev p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Evidence Readiness
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {evidenceItems.length === 0
-                ? "Evidence checklist not generated yet."
-                : criticalMissing.length === 0
-                  ? "No top-priority evidence gaps remain."
-                  : `${criticalMissing.length} top-priority item${criticalMissing.length === 1 ? "" : "s"} still outstanding.`}
+            <p className="mt-1.5 text-sm text-foreground/90">
+              {d.recommendationExplanation || tierMeta.description}
             </p>
-            {criticalMissing.length > 0 && (
-              <ul className="mt-2 grid gap-1">
-                {criticalMissing.map((i, idx) => (
-                  <li key={idx} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{i.item}</span>
-                    <button
-                      onClick={() => onOpenModule("evidence")}
-                      className="shrink-0 text-xs text-accent hover:underline"
-                    >
-                      Upload →
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          </div>
+
+          {/* 2. Protest Readiness */}
+          <div className="card-elev p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Protest Readiness
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${READINESS_STYLE[readiness.status]}`}
+              >
+                {READINESS_LABEL[readiness.status]}
+              </span>
+            </div>
+            {readiness.requirement && (
+              <p className="mt-2 text-sm text-foreground/90">
+                {readiness.requirement}
+                {readiness.module && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenModule(readiness.module!)}
+                    className="ml-1.5 text-xs text-accent hover:underline"
+                  >
+                    Open Evidence Builder →
+                  </button>
+                )}
+              </p>
             )}
           </div>
 
-          {/* 9. Missing Information */}
-          {d.missingInformation.length > 0 && (
-            <div className="card-elev p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Missing Information
-              </div>
-              <ul className="mt-1.5 grid gap-1">
-                {d.missingInformation.map((mi, i) => (
-                  <li key={i} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 flex-1">{mi.item}</span>
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                        mi.severity === "Critical"
-                          ? "bg-destructive/10 text-destructive"
-                          : mi.severity === "Important"
-                            ? "bg-warning/15 text-warning-foreground"
-                            : "bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      {mi.severity}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 10. County-Specific Protest Readiness */}
-          {preFilingItems ? (
-            <div className="card-elev p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  County-Specific Protest Readiness
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    isPreFilingBlocked(preFilingItems)
-                      ? "bg-warning/15 text-warning-foreground"
-                      : "bg-success/15 text-success"
-                  }`}
-                >
-                  {isPreFilingBlocked(preFilingItems)
-                    ? "Additional Filing Information Required"
-                    : "Ready to File"}
-                </span>
-              </div>
-              <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                {preFilingItems.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span
-                      className={item.status === "confirmed" ? "text-success" : "text-destructive"}
-                    >
-                      {item.status === "confirmed" ? (item.value ?? "Confirmed") : "Missing"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="card-elev p-3 text-sm text-muted-foreground">
-              Start a protest to see filing readiness for your county.
-            </div>
-          )}
-
-          {/* 19-23. Protest Defense Readiness — first version: AI-generated
-              property-specific Q&A + a real, deterministically-scored
-              readiness gauge (see getDefenseReadinessScore). Read-only in
-              this version — editing an answer or reassessing after new
-              evidence is a follow-up. */}
-          {d.defenseQA.length > 0 && (
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Protest Defense Readiness
-                </div>
-                {defenseScore != null && (
-                  <span className="text-sm font-bold" style={{ color: scoreColor(defenseScore) }}>
-                    {defenseScore}/100
-                  </span>
-                )}
-              </div>
-              <div className="grid gap-2">
-                {d.defenseQA.map((qa, i) => (
-                  <DefenseQARow key={i} qa={qa} onOpenModule={onOpenModule} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 11 & 32. Next Action + single primary CTA */}
-          {d.nextAction && <AiVerdictLine icon={ArrowRight} text={d.nextAction} color={m.color} />}
-          <div className="flex justify-center">
-            {cta ? (
-              <button onClick={cta.onClick} className="btn-accent">
-                {cta.label}
-              </button>
-            ) : (
-              <Link to="/dashboard/properties" className="btn-accent">
-                Complete Missing Information
-              </Link>
-            )}
+          {/* 3. Download Executive Protest Report */}
+          <div className="flex justify-center pt-1">
+            <button
+              type="button"
+              onClick={handleDownloadReport}
+              disabled={downloadingReport}
+              className="btn-accent inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Download className="h-4 w-4" />
+              {downloadingReport ? "Building report…" : "Download Protest Report (PDF)"}
+            </button>
           </div>
         </div>
       );
-
-      // Module 10 = the consolidated Protest Case Report / playbook. The
-      // Executive Summary tab above is unchanged; the Full Case Report tab
-      // assembles every section deterministically (see src/lib/case-report.ts)
-      // from real case/property/county data + the other modules' outputs.
-      // Only shown when there's a real saved property to build a case around.
-      if (!resolvedProperty) return summaryView;
-      const reportCountyInfo = getCountyProtestInfo(state.cad);
-      const reportGuidance = getCaseGuidance(
-        resolvedProperty,
-        existingProtest ??
-          ({
-            id: "",
-            propertyId: resolvedProperty.id,
-            status: "requested",
-            notes: null,
-            requestedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            originalValue: state.totalValue ?? null,
-            settlementOfferValue: null,
-            settlementOfferReceivedAt: null,
-            hearingDate: null,
-            hearingTime: null,
-            hearingLocation: null,
-            hearingMode: null,
-            informalStatus: "not_requested",
-            informalReviewDate: null,
-            informalAppraiserCategory: null,
-            attendanceType: null,
-            arbDecision: null,
-            arbDecisionDate: null,
-            finalValue: null,
-            escalationPath: null,
-            closedAt: null,
-            taxYear: state.taxYear ?? null,
-            corvusGuidanceAckAt: null,
-          } satisfies ProtestRecord),
-        evidenceDocs.length,
-        reportCountyInfo,
-        noticeSignedAt,
-      );
-      const reportCaseRecordItems = existingProtest
-        ? getCaseRecord(existingProtest, {
-            documents: caseDocuments,
-            hearingNoticeOnFile: !!(existingProtest.hearingLocation || existingProtest.hearingTime),
-            countyCommunicationLogged: false,
-          })
-        : [];
-      const reportInputs: CaseReportInputs = {
-        property: resolvedProperty,
-        protest: existingProtest,
-        countyInfo: reportCountyInfo,
-        guidance: reportGuidance,
-        caseRecordItems: reportCaseRecordItems,
-        preFilingItems,
-        documents: caseDocuments,
-        evidenceChecklist: evidenceItems.map((it) => ({
-          item: it.item,
-          importance: it.importance,
-          availability: it.availability,
-        })),
-        topStrategy: strategyData?.strategies[0]
-          ? {
-              name: strategyData.strategies[0].name,
-              whySelected: strategyData.strategies[0].whySelected,
-            }
-          : null,
-        executive: {
-          recommendedAction: d.recommendedAction,
-          recommendedProtestValue: d.recommendedProtestValue,
-          recommendedProtestValueBasis: d.recommendedProtestValueBasis,
-        },
-        comps: execStats.indicated
-          ? {
-              indicated: execStats.indicated,
-              valuationGapPct: execStats.valuationGapPct,
-              ranked: execStats.ranked.slice(0, 5).map((c) => ({
-                address: c.address,
-                distanceMi: c.distanceMi,
-                marketValue: c.marketValue ?? null,
-              })),
-            }
-          : null,
-        savings:
-          estimated.savings > 0
-            ? {
-                amount: estimated.savings,
-                reductionPct:
-                  state.totalValue && estimated.reduction
-                    ? Math.round((estimated.reduction / state.totalValue) * 100)
-                    : null,
-              }
-            : null,
-        hearingGuide: null,
-        noticeSignedAt,
-      };
-      return <ExecutiveModuleTabs summary={summaryView} reportInputs={reportInputs} />;
     }
   }
 
