@@ -3902,87 +3902,6 @@ function Report() {
   );
 }
 
-// A card is "data-starved" when its own result openly flags missing inputs.
-// Returns the short prompt to show + the document_type an upload should be
-// tagged with, so the matching module's loadModule() input (and the
-// totalEvidenceCount digest in Report()) picks the file up and re-runs it.
-// null when there's no gap, or for a module that already carries a finer-
-// grained inline upload control (strategy's per-strategy chips, improvement's
-// per-component Photo buttons, zoning's per-aspect chips), or where a file
-// upload can't help (income has its figures form; savings is deterministic).
-function cardDataGap(
-  moduleId: string,
-  data: unknown,
-  compsMap: { data: CompsResult | null },
-  overrides: ModuleOverride[] = [],
-): { label: string; docType: string } | null {
-  if (!data) return null;
-  const GENERIC = PROTEST_EVIDENCE_DOCUMENT_TYPE;
-  switch (moduleId) {
-    case "health":
-      return (data as HealthScoreResult).dataSufficient === false
-        ? { label: "Add property records or photos to firm up this score", docType: GENERIC }
-        : null;
-    case "strategy":
-      // One upload for the whole card (same as modules 1/3/…): the AI re-runs
-      // and sorts each file to whichever strategy it strengthens — no need to
-      // match a file to a row.
-      return (data as ModuleResultMap["strategy"]).strategies.some((s) => !s.dataSufficient)
-        ? {
-            label: "Upload photos or documents to strengthen the strategy analysis",
-            docType: GENERIC,
-          }
-        : null;
-    case "comps":
-      return (compsMap.data?.comps?.length ?? 0) < 5
-        ? { label: "Upload a recent sale or appraisal to widen the comp set", docType: GENERIC }
-        : null;
-    case "site":
-      return (data as ModuleResultMap["site"]).factors.some(
-        (f) => f.status === "Additional Data Needed",
-      )
-        ? {
-            label: "Upload a survey, plat, or photos for the flagged site factors",
-            docType: GENERIC,
-          }
-        : null;
-    case "zoning": {
-      const z = data as ModuleResultMap["zoning"];
-      return z.matches === "uncertain" ||
-        z.aspects.some((a) => a.status === "Additional Data Needed")
-        ? {
-            label:
-              "Upload a zoning letter, plat, or the legal description to confirm classification",
-            docType: "Zoning: General",
-          }
-        : null;
-    }
-    case "improvement": {
-      const missing = (data as ModuleResultMap["improvement"]).buildingComponents.filter(
-        (c) => !c.hasPhoto && !isItemNotApplicable(overrides, "improvement", c.component),
-      ).length;
-      return missing > 0
-        ? {
-            label: `Upload photos of ${missing} building component${missing === 1 ? "" : "s"} to assess condition & depreciation`,
-            docType: GENERIC,
-          }
-        : null;
-    }
-    case "evidence":
-      return (data as ModuleResultMap["evidence"]).items.some((i) => i.availability === "Low")
-        ? { label: "Upload the documents this checklist is still missing", docType: GENERIC }
-        : null;
-    case "executive":
-      return (data as ModuleResultMap["executive"]).missingInformation.some(
-        (x) => x.severity === "Critical" || x.severity === "Important",
-      )
-        ? { label: "Upload the information this recommendation is still missing", docType: GENERIC }
-        : null;
-    default:
-      return null;
-  }
-}
-
 function ModuleCard({
   m,
   unlocked,
@@ -4083,23 +4002,17 @@ function ModuleCard({
   const priorityScore = strategyData?.strategies.find((s) =>
     s.relatedModules.includes(m.id),
   )?.strengthScore;
-  // Universal "this analysis is data-starved — add data right here" control.
-  // Only for a subscribed user on a module that's actually run and flags a
-  // gap; the upload is tagged so the matching module re-runs (see the digest
-  // effects in Report()).
-  const dataGap =
-    unlocked && hasFullAccess && status === "Completed"
-      ? cardDataGap(m.id, moduleState?.data, compsMap, overrides)
-      : null;
   return (
-    <div className="card-elev relative flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+    // A square tile with highlights only — the full analysis opens with
+    // View Details.
+    <div className="card-elev relative flex aspect-square flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
       {/* A strip in the module's own colour along the top. */}
       <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
       <m.icon
         aria-hidden
         className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
       />
-      <div className="p-5 flex-1 flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col p-5 pb-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <ProgressRing
@@ -4160,7 +4073,7 @@ function ModuleCard({
               )}
           </div>
         </div>
-        <div className="mt-4 flex-1 flex flex-col justify-center">
+        <div className="relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
           <ModuleVisual
             m={m}
             unlocked={unlocked}
@@ -4184,43 +4097,14 @@ function ModuleCard({
             hasFullAccess={hasFullAccess}
             onOpen={onOpen}
           />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent"
+          />
         </div>
       </div>
       {insight && <InsightBanner text={insight} color={m.color} onClick={onOpen} />}
-      {dataGap && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
-          <span className="text-[11px] leading-snug text-warning-foreground">{dataGap.label}</span>
-          <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-accent/40 bg-background px-2.5 py-1 text-[11px] font-semibold text-accent hover:bg-accent/10">
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              multiple
-              disabled={uploadingEvidence}
-              className="hidden"
-              onChange={(e) => {
-                const sel = Array.from(e.target.files ?? []);
-                if (sel.length > 0) onUploadEvidence(sel, undefined, dataGap.docType);
-                e.target.value = "";
-              }}
-            />
-            <Upload className="h-3 w-3" />
-            {uploadingEvidence ? "Uploading…" : "Upload data"}
-          </label>
-        </div>
-      )}
-      {status === "Completed" && moduleState?.cachedAt && (
-        <div className="px-5 pt-2 text-[10px] text-muted-foreground">
-          Updated {relativeTime(moduleState.cachedAt)}
-        </div>
-      )}
-      <div className="px-5 pb-5 pt-3 flex items-center justify-between gap-2">
-        {hasFullAccess ? (
-          <span className="text-xs font-medium text-success">Included in your plan</span>
-        ) : unlocked ? (
-          <span className="text-xs font-medium text-success">Free preview</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">Requires subscription</span>
-        )}
+      <div className="flex items-center justify-end gap-2 px-5 pb-4 pt-3">
         {/* The colored insight band above is the big affordance; this stays
             as the explicit, always-present control — a subtle text link for
             an unlocked module, the real "Subscribe" CTA for a locked one. */}
@@ -4229,7 +4113,7 @@ function ModuleCard({
             onClick={onOpen}
             className="inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
           >
-            Open <ArrowRight className="h-3.5 w-3.5" />
+            View Details <ArrowRight className="h-3.5 w-3.5" />
           </button>
         ) : (
           <button onClick={onOpen} className="btn-outline text-sm py-2">
@@ -4575,7 +4459,6 @@ function ModuleVisual({
               </div>
             </div>
           )}
-          <EvidenceImpactCard />
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
@@ -4609,9 +4492,8 @@ function ModuleVisual({
               <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{top.primaryReason}</p>
             </div>
           )}
-          {/* No per-row upload chips — the card shows one "Upload data" control at
-              the bottom (see cardDataGap's "strategy" case). Rows that still need
-              evidence show a plain "Data Needed" pill instead. */}
+          {/* Highlights only — uploads happen in View Details. Rows that still
+              need evidence show a plain "Data Needed" pill. */}
           <StrategyRankList strategies={d.strategies} color={m.color} max={5} />
         </div>
       );
@@ -4690,9 +4572,7 @@ function ModuleVisual({
         improvementValue ?? null,
       );
       return (
-        // No mid-card "Upload photos" button — the card shows one "Upload data"
-        // control at the bottom (see cardDataGap's "improvement" case), same as
-        // modules 4 and 6.
+        // Highlights only — photos are uploaded in View Details.
         <ImprovementCardVisual
           d={d}
           depreciation={depreciation}
@@ -4704,8 +4584,7 @@ function ModuleVisual({
     }
     case "zoning": {
       const d = moduleState.data as ModuleResultMap["zoning"];
-      // No mid-card upload — the card shows one "Upload data" control at the
-      // bottom (see cardDataGap's "zoning" case), same as Module 4.
+      // Highlights only — evidence is uploaded in View Details.
       return <ZoningAspectTiles aspects={d.aspects} matches={d.matches} />;
     }
     case "evidence": {
