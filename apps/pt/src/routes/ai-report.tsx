@@ -9940,7 +9940,9 @@ function Module1Content({
                 </span>
               )}
             </span>
-            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+            <span className="shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground shadow-sm transition-[filter] hover:brightness-110">
+              See Analysis Details
+            </span>
           </div>
         </summary>
         <div className="grid gap-4 border-t border-border/60 p-4">
@@ -10142,7 +10144,9 @@ function Module2Content({
                 {d.strategies.length} strateg{d.strategies.length === 1 ? "y" : "ies"} evaluated
               </span>
             </span>
-            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+            <span className="shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground shadow-sm transition-[filter] hover:brightness-110">
+              See Analysis Details
+            </span>
           </div>
         </summary>
         <div className="grid gap-4 border-t border-border/60 p-4 [&>*]:min-w-0">
