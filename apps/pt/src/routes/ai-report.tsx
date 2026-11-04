@@ -9940,7 +9940,9 @@ function Module1Content({
                 </span>
               )}
             </span>
-            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+            <span className="shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground shadow-sm transition-[filter] hover:brightness-110">
+              See Analysis Details
+            </span>
           </div>
         </summary>
         <div className="grid gap-4 border-t border-border/60 p-4">
@@ -10067,6 +10069,20 @@ function Module2Content({
   const featured = d.strategies.filter((s) => s.strengthScore >= STRATEGY_FEATURE_THRESHOLD);
   const shown = featured.length > 0 ? featured : d.strategies.slice(0, 1);
   const needsMoreInfo = shown.some((s) => !s.dataSufficient || s.missingEvidence.length > 0);
+  // Clicking a featured strategy opens "What Corvus AI Checked" and scrolls
+  // to that strategy's own detailed card, briefly highlighted.
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const showStrategyDetail = (name: string) => {
+    if (detailsRef.current) detailsRef.current.open = true;
+    setHighlighted(name);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`strategy-detail-${strategySlug(name)}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+    window.setTimeout(() => setHighlighted((h) => (h === name ? null : h)), 2000);
+  };
 
   return (
     <div className="mt-4 grid gap-5">
@@ -10077,7 +10093,12 @@ function Module2Content({
         )}
         <div className="mt-3 grid gap-2">
           {shown.map((s) => (
-            <div key={s.name} className="card-elev p-4">
+            <button
+              key={s.name}
+              type="button"
+              onClick={() => showStrategyDetail(s.name)}
+              className="card-elev block w-full p-4 text-left transition-colors hover:border-accent/50 hover:bg-accent/5"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold">{s.name}</h3>
                 <span
@@ -10090,7 +10111,10 @@ function Module2Content({
               {s.primaryReason && (
                 <p className="mt-1 text-sm text-muted-foreground">{s.primaryReason}</p>
               )}
-            </div>
+              <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent">
+                View detailed analysis <ArrowDown className="h-3 w-3" />
+              </span>
+            </button>
           ))}
         </div>
       </div>
@@ -10133,7 +10157,7 @@ function Module2Content({
 
       {/* 3. Detailed Analysis — collapsed by default; the full ranked list
           and every per-strategy evidence card, unchanged. */}
-      <details className="card-elev overflow-hidden p-0">
+      <details ref={detailsRef} className="card-elev overflow-hidden p-0">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
           <div className="flex items-center justify-between gap-2">
             <span>
@@ -10142,7 +10166,9 @@ function Module2Content({
                 {d.strategies.length} strateg{d.strategies.length === 1 ? "y" : "ies"} evaluated
               </span>
             </span>
-            <span className="text-xs font-normal text-accent">See Analysis Details</span>
+            <span className="shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground shadow-sm transition-[filter] hover:brightness-110">
+              See Analysis Details
+            </span>
           </div>
         </summary>
         <div className="grid gap-4 border-t border-border/60 p-4 [&>*]:min-w-0">
@@ -10165,21 +10191,28 @@ function Module2Content({
           </div>
           <div className="grid gap-3 [&>*]:min-w-0">
             {d.strategies.map((s, i) => (
-              <StrategyDetail
+              <div
                 key={s.name}
-                s={s}
-                rank={i + 1}
-                color={m.color}
-                evidenceDocs={evidenceDocs}
-                uploadingEvidence={uploadingEvidence}
-                onUploadEvidence={onUploadEvidence}
-                answer={state.strategyAnswers?.[strategySlug(s.name)]}
-                onAnswerStrategy={onAnswerStrategy}
-                onRefresh={onForceReload}
-                refreshing={refreshing}
-                onOpenModule={onOpenModule}
-                onAskQuestion={onAskQuestion}
-              />
+                id={`strategy-detail-${strategySlug(s.name)}`}
+                className={`scroll-mt-4 rounded-xl transition-shadow duration-500 ${
+                  highlighted === s.name ? "ring-2 ring-accent ring-offset-2" : ""
+                }`}
+              >
+                <StrategyDetail
+                  s={s}
+                  rank={i + 1}
+                  color={m.color}
+                  evidenceDocs={evidenceDocs}
+                  uploadingEvidence={uploadingEvidence}
+                  onUploadEvidence={onUploadEvidence}
+                  answer={state.strategyAnswers?.[strategySlug(s.name)]}
+                  onAnswerStrategy={onAnswerStrategy}
+                  onRefresh={onForceReload}
+                  refreshing={refreshing}
+                  onOpenModule={onOpenModule}
+                  onAskQuestion={onAskQuestion}
+                />
+              </div>
             ))}
           </div>
         </div>
