@@ -3251,6 +3251,15 @@ function Report() {
                       duration={900}
                     />
                   </p>
+                  {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                    ? buildCaseOutcome(resolvedProperty, existingProtest)
+                    : null
+                  )?.taxSavings == null && (
+                    <p className="mt-2 max-w-md text-xs text-primary-foreground/70">
+                      This estimate may change depending on the evidence provided and other relevant
+                      factors.
+                    </p>
+                  )}
                 </>
               ) : !estimated.hasEstimate ? (
                 // No estimate at all — the CAD record carried no assessed value
