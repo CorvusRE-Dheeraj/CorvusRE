@@ -3323,11 +3323,8 @@ function Report() {
                 // and which one is "current" all come from case-next-action.ts,
                 // the same rules View Case's own Prepare & File tab and Corvus
                 // AI Guidance panel are built on, so this can never say
-                // something View Case itself would disagree with. View Case
-                // stays the prominent, filled action (it's where the whole
-                // case actually gets managed); the dynamic button beside it
-                // just answers "what do I need to do next," using View Case's
-                // own terminology for whichever stage that is.
+                // something View Case itself would disagree with. View Case is
+                // the one action here — the next step itself is taken there.
                 <div className="grid gap-3">
                   {nextAction ? (
                     <>
@@ -3371,27 +3368,6 @@ function Report() {
                         View Protest Case
                       </Link>
                     )}
-                    {nextAction?.action &&
-                      resolvedProperty &&
-                      (nextAction.action.kind === "external" ? (
-                        <a
-                          href={nextAction.action.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                        >
-                          {nextAction.action.label}
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      ) : (
-                        <Link
-                          to="/dashboard/case"
-                          search={{ propertyId: resolvedProperty.id }}
-                          className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                        >
-                          {nextAction.action.label}
-                        </Link>
-                      ))}
                   </div>
                 </div>
               ) : hasFullAccess ? (
