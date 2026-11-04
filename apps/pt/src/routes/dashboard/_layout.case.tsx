@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { listProperties, type PropertyRecord } from "@/lib/properties";
@@ -17,9 +17,14 @@ import { LoadingLine } from "@/components/LoadingLine";
 // already-loaded data.
 export const Route = createFileRoute("/dashboard/_layout/case")({
   // anchor: open straight at a section (a NEXT REQUIRED ACTION link).
-  validateSearch: (search: Record<string, unknown>): { propertyId?: string; anchor?: string } => ({
+  // tab: the phase tab last open, kept in the URL so coming back to this
+  // case reopens it.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { propertyId?: string; anchor?: string; tab?: string } => ({
     propertyId: typeof search.propertyId === "string" ? search.propertyId : undefined,
     anchor: typeof search.anchor === "string" ? search.anchor : undefined,
+    tab: typeof search.tab === "string" ? search.tab : undefined,
   }),
   component: CasePage,
 });
@@ -27,7 +32,9 @@ export const Route = createFileRoute("/dashboard/_layout/case")({
 function CasePage() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const { propertyId, anchor } = Route.useSearch();
+  const { propertyId, anchor, tab } = Route.useSearch();
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
   const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [protest, setProtest] = useState<ProtestRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +78,13 @@ function CasePage() {
   function goToProperties() {
     nav({ to: "/dashboard/properties" });
   }
+  // Back returns to the page the owner actually came from (the AI report
+  // with its module still open, a dashboard view, …); Properties only when
+  // the case was opened directly with nothing to go back to.
+  function goBack() {
+    if (canGoBack) router.history.back();
+    else goToProperties();
+  }
 
   if (!propertyId) {
     return (
@@ -112,8 +126,18 @@ function CasePage() {
       userId={user.id}
       property={property}
       protest={protest}
-      onBack={goToProperties}
+      onBack={goBack}
       initialAnchor={anchor}
+      initialTab={tab}
+      onTabChange={(t) => {
+        if (t !== tab)
+          nav({
+            to: ".",
+            search: (prev) => ({ ...prev, tab: t }),
+            replace: true,
+            resetScroll: false,
+          });
+      }}
       userEmail={user.email ?? null}
     />
   );

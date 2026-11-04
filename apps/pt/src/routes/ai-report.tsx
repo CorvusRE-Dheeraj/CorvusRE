@@ -310,11 +310,17 @@ export const Route = createFileRoute("/ai-report")({
   // of what's in intake — the Properties page's bulk "Run AI Report" opens
   // one tab per selected property this way, so each tab is self-contained
   // rather than racing a shared sessionStorage write.
+  // tab / view: the open top tab (Protest Case) and modules tab (Commercial
+  // Valuation). The open module and both tabs are kept in the URL as the
+  // owner moves around, so going to View Case (or any page) and pressing
+  // Back reopens the report exactly where they left it.
   validateSearch: (
     search: Record<string, unknown>,
-  ): { openModule?: string; propertyId?: string } => ({
+  ): { openModule?: string; propertyId?: string; tab?: "case"; view?: "valuation" } => ({
     openModule: typeof search.openModule === "string" ? search.openModule : undefined,
     propertyId: typeof search.propertyId === "string" ? search.propertyId : undefined,
+    tab: search.tab === "case" ? "case" : undefined,
+    view: search.view === "valuation" ? "valuation" : undefined,
   }),
   component: Report,
 });
@@ -373,7 +379,12 @@ function subjectValueTrendPctPerYear(valueHistory: IntakeState["valueHistory"]):
 function Report() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const { openModule: deepLinkModuleId, propertyId: deepLinkPropertyId } = Route.useSearch();
+  const {
+    openModule: deepLinkModuleId,
+    propertyId: deepLinkPropertyId,
+    tab: initialTopTab,
+    view: initialModulesView,
+  } = Route.useSearch();
   const [state, setState] = useState<IntakeState>({ previewsUsed: [] });
   // The printed report's "Generated" date is set in the browser after load:
   // computing it while rendering baked the build date into the prerendered
@@ -386,9 +397,11 @@ function Report() {
   const [openId, setOpenId] = useState<string | null>(null);
   // The two views at the top of the page: the property itself, and its
   // protest case (savings + case progress).
-  const [topTab, setTopTab] = useState<"property" | "case">("property");
+  const [topTab, setTopTab] = useState<"property" | "case">(initialTopTab ?? "property");
   // The modules grid and the Commercial Valuation panel, as two tabs.
-  const [modulesTab, setModulesTab] = useState<"modules" | "valuation">("modules");
+  const [modulesTab, setModulesTab] = useState<"modules" | "valuation">(
+    initialModulesView === "valuation" ? "valuation" : "modules",
+  );
   const [showWall, setShowWall] = useState(false);
   const [hasFullAccess, setHasFullAccess] = useState(false);
   // The raw plan value, not just the hasFullAccess boolean below — owner_managed
@@ -2476,6 +2489,30 @@ function Report() {
   // address for it to look up (then it will never resolve, and
   // hasFullAccess staying false is the correct answer, not a race).
   const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+  // Mirror the open module and tabs into the URL (replace, not push) — see
+  // validateSearch. Waits for a deep-linked module to open first, so the
+  // URL's openModule isn't cleared before it's been honoured.
+  useEffect(() => {
+    if (deepLinkModuleId && !deepLinkHandled) return;
+    const next = {
+      openModule: openId ?? undefined,
+      tab: topTab === "case" ? ("case" as const) : undefined,
+      view: modulesTab === "valuation" ? ("valuation" as const) : undefined,
+    };
+    if (
+      next.openModule === deepLinkModuleId &&
+      next.tab === initialTopTab &&
+      next.view === initialModulesView
+    )
+      return;
+    nav({
+      to: ".",
+      search: (prev) => ({ ...prev, ...next }),
+      replace: true,
+      resetScroll: false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, topTab, modulesTab, deepLinkHandled]);
   useEffect(() => {
     if (!deepLinkModuleId || deepLinkHandled || !billingChecked) return;
     const target = MODULES.find((m) => m.id === deepLinkModuleId);
@@ -3213,7 +3250,11 @@ function Report() {
             )}
           </div>
           <div className="card-elev overflow-hidden">
+            {/* Keyed on the address: a new address mounts a fresh iframe
+                instead of changing src, which the browser would record as a
+                history entry — Back would then rewind the map, not the page. */}
             <iframe
+              key={state.address ?? "Texas"}
               title="Property Map"
               className="w-full h-64 lg:h-full min-h-[240px]"
               src={`https://www.google.com/maps?q=${encodeURIComponent(state.address ?? "Texas")}&output=embed`}

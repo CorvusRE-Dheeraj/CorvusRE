@@ -76,7 +76,7 @@ const TAB_STAGE: Record<CaseTabId, StageId> = {
   outcome: "close",
 };
 
-type CaseTabId =
+export type CaseTabId =
   "overview" | "file" | "informal" | "hearing" | "decision" | "arbitration" | "court" | "outcome";
 
 // joinsPrev: shares the previous tab's step number (Arbitration and Court Appeal are
@@ -234,6 +234,8 @@ export function CaseDetailView({
   protest,
   onBack,
   initialAnchor,
+  initialTab,
+  onTabChange,
   userEmail = null,
 }: {
   userId: string;
@@ -242,6 +244,10 @@ export function CaseDetailView({
   onBack: () => void;
   // Opens straight at this section (a NEXT REQUIRED ACTION link).
   initialAnchor?: string;
+  // The phase tab to reopen on (from the URL), so returning to View Case
+  // lands where the owner left off; onTabChange reports each switch.
+  initialTab?: string;
+  onTabChange?: (tab: string) => void;
   userEmail?: string | null;
 }) {
   const [caseData, setCaseData] = useState<ProtestCase | null>(null);
@@ -356,13 +362,23 @@ export function CaseDetailView({
   // when the status moves to a new phase (recording a hearing jumps to the
   // Hearing tab), but manual navigation between unlocked tabs is otherwise free.
   const phaseDefault = defaultCaseTab(current, needsGuidanceAck);
-  const [activeTab, setActiveTab] = useState<CaseTabId>(phaseDefault);
+  const [activeTab, setActiveTab] = useState<CaseTabId>(() =>
+    CASE_TABS.some((t) => t.id === initialTab) ? (initialTab as CaseTabId) : phaseDefault,
+  );
   // Re-runs only when the derived phase-tab string actually changes, so
   // recording a hearing (etc.) advances the open tab; unrelated re-renders
-  // don't disturb manual navigation.
+  // don't disturb manual navigation — nor does the first render, which may
+  // be restoring the tab the owner left from.
+  const lastPhaseDefault = useRef(phaseDefault);
   useEffect(() => {
+    if (lastPhaseDefault.current === phaseDefault) return;
+    lastPhaseDefault.current = phaseDefault;
     setActiveTab(phaseDefault);
   }, [phaseDefault]);
+  useEffect(() => {
+    onTabChange?.(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // A guidance "Go to X" link: switch to the tab that holds the anchor, then
   // scroll to it once the panel has mounted.
