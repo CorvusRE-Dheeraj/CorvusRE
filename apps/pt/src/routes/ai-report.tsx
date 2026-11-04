@@ -33,6 +33,8 @@ import {
   Scale,
   Gauge,
   ExternalLink,
+  Download,
+  Receipt,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -64,15 +66,27 @@ import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
 import { useAuth } from "@/lib/auth";
 import {
   getMyBilling,
+  listMySubscriptions,
   startPropertyCheckout,
   bracketForValue,
   formatMoney,
   isCustomPricedValue,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
+  type MySubscription,
   type PlanValue,
   type Tier,
 } from "@/lib/billing";
+import { getProtestCost, type ProtestCost, type ProtestCostLine } from "@/lib/protest-cost";
+import {
+  EVIDENCE_LABEL,
+  SCENARIO_COPY,
+  buildSavingsFindings,
+  getSavingsNextStep,
+  type EvidenceStrength,
+  type SavingsFinding,
+  type SavingsNextStep,
+} from "@/lib/savings-dashboard";
 import {
   getHealthScore,
   type HealthScoreResult,
@@ -82,7 +96,6 @@ import {
   getModuleAnalysis,
   askModuleQuestion,
   EVIDENCE_CATEGORY_ORDER,
-  RECOMMENDED_ACTION_LABEL,
   type BatchModuleId,
   type ModuleAnalysisInput,
   type ModuleResultMap,
@@ -130,17 +143,19 @@ import {
   type SavingsTaxInputsInput,
 } from "@/lib/savings-tax-inputs";
 import { getExecutiveSummary, getDefenseReadinessScore } from "@/lib/executive-summary";
-import {
-  getPreFilingCheck,
-  isPreFilingBlocked,
-  type PreFilingCheckItem,
-} from "@/lib/pre-filing-check";
+import { getPreFilingCheck, type PreFilingCheckItem } from "@/lib/pre-filing-check";
 import { getCountyProtestInfo } from "@/lib/county-protest-info";
-import { getCaseGuidance } from "@/lib/case-guidance";
-import { getCaseRecord } from "@/lib/case-record";
-import { type CaseReportInputs } from "@/lib/case-report";
 import { buildFinalCaseSummary } from "@/lib/final-case-summary";
-import { ExecutiveModuleTabs, FinalCaseSummaryPanel } from "@/components/CaseReportView";
+import { FinalCaseSummaryPanel } from "@/components/CaseReportView";
+import {
+  ASSESSMENT_TIER,
+  READINESS_LABEL,
+  assessmentTier,
+  getProtestReadiness,
+  type AssessmentTier,
+  type ProtestReadinessResult,
+} from "@/lib/executive-assessment";
+import { buildExecutiveReportPdf } from "@/lib/executive-report-pdf";
 import {
   classifyPropertyCategory,
   getAssessmentRatioInfo,
@@ -366,6 +381,11 @@ function Report() {
   }, []);
   const [analyzing, setAnalyzing] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  // The two views at the top of the page: the property itself, and its
+  // protest case (savings + case progress).
+  const [topTab, setTopTab] = useState<"property" | "case">("property");
+  // The modules grid and the Commercial Valuation panel, as two tabs.
+  const [modulesTab, setModulesTab] = useState<"modules" | "valuation">("modules");
   const [showWall, setShowWall] = useState(false);
   const [hasFullAccess, setHasFullAccess] = useState(false);
   // The raw plan value, not just the hasFullAccess boolean below — owner_managed
@@ -2705,6 +2725,46 @@ function Report() {
     state.propertyType,
   ]);
 
+  // Module 9's protest cost comes from this property's real subscription —
+  // Stripe's own figure when it has one (see protest-cost.ts).
+  const [propertySubscription, setPropertySubscription] = useState<MySubscription | null>(null);
+  const subscriptionId = resolvedProperty?.stripeSubscriptionId ?? null;
+  const subscriptionPropertyId = resolvedProperty?.id ?? null;
+  useEffect(() => {
+    setPropertySubscription(null);
+    if (!user || !subscriptionId) return;
+    listMySubscriptions()
+      .then((subs) =>
+        setPropertySubscription(
+          subs.find((s) => s.id === subscriptionId || s.propertyId === subscriptionPropertyId) ??
+            null,
+        ),
+      )
+      .catch(() => {});
+  }, [user, subscriptionId, subscriptionPropertyId]);
+  const protestCost = useMemo(
+    () =>
+      getProtestCost({
+        accountPlan: myPlan,
+        planTier: resolvedProperty?.planTier ?? null,
+        subscriptionStatus: resolvedProperty?.subscriptionStatus ?? null,
+        valueBracket: resolvedProperty?.valueBracket ?? null,
+        subscription: propertySubscription,
+        otherExpenses: savingsTaxInputs?.protestCostOverride ?? null,
+      }),
+    [myPlan, resolvedProperty, propertySubscription, savingsTaxInputs],
+  );
+  // The county's capped appraised value for the year on file, when the
+  // value history carries one below the market value.
+  const appraisedValue = useMemo(() => {
+    const year = state.valueYear ?? state.taxYear;
+    const row = state.valueHistory?.find((h) => h.year === year);
+    if (!row?.appraisedValue || !row.marketValue || !state.totalValue) return null;
+    // Only when the history's market value is the value on file.
+    if (Math.abs(row.marketValue - state.totalValue) > state.totalValue * 0.01) return null;
+    return row.appraisedValue < row.marketValue ? row.appraisedValue : null;
+  }, [state.valueHistory, state.valueYear, state.taxYear, state.totalValue]);
+
   const savingsAnalysis = useMemo<SavingsAnalysis>(() => {
     const cs = computeComparableStats(
       compsMap.data?.subject ?? null,
@@ -2712,6 +2772,8 @@ function Report() {
       state.totalValue,
     );
     return computeSavingsAnalysis({
+      appraisedValue,
+      planCost: protestCost,
       cadValue: state.totalValue ?? null,
       taxYear: state.taxYear ?? null,
       cad: state.cad ?? null,
@@ -2730,6 +2792,8 @@ function Report() {
     state.taxYear,
     state.cad,
     moduleIndications,
+    appraisedValue,
+    protestCost,
   ]);
 
   // Persists savingsAnalysis's own annualSavings (not the raw savingsEstimate
@@ -3046,15 +3110,43 @@ function Report() {
   }
 
   const openModel = MODULES.find((m) => m.id === openId) ?? null;
+  // Not for a property the county itself codes as residential.
+  const showCommercialValuation = classifyPropertyCategory(state.propertyType) !== "residential";
+  const activeModulesTab = showCommercialValuation ? modulesTab : "modules";
 
   return (
     <EvidenceImpactContext.Provider value={evidenceImpact}>
       <div className="container-page py-10">
+        <div role="tablist" className="mb-4 flex gap-1 border-b border-border print:hidden">
+          {(
+            [
+              ["property", "Property Summary"],
+              ["case", "Protest Case"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={topTab === id}
+              onClick={() => setTopTab(id)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                topTab === id
+                  ? "border-accent text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Summary */}
-        <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <section
+          className={`grid gap-6 lg:grid-cols-[1.4fr_1fr] ${topTab === "property" ? "" : "hidden print:grid"}`}
+        >
           <div className="card-elev p-6">
             <div className="flex items-center gap-2">
-              <span className="badge-soft">Property Summary</span>
               <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
             </div>
             <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
@@ -3106,7 +3198,9 @@ function Report() {
           it read as cartoonish for what's otherwise a professional tax-filing
           tool — the gradient/glow/sheen surface below carries the "this is a
           good moment" read on its own, without particle animation. */}
-        <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
+        <section
+          className={`relative card-elev overflow-hidden text-primary-foreground print:mt-6 ${topTab === "case" ? "" : "hidden print:block"}`}
+        >
           {/* Richer than a flat bg-primary fill — a diagonal gradient with a
             faint accent-green undertone, so the banner reads as an
             intentionally celebratory surface even before any motion kicks in. */}
@@ -3192,6 +3286,15 @@ function Report() {
                       duration={900}
                     />
                   </p>
+                  {(existingProtest && resolvedProperty && existingProtest.status === "resolved"
+                    ? buildCaseOutcome(resolvedProperty, existingProtest)
+                    : null
+                  )?.taxSavings == null && (
+                    <p className="mt-2 max-w-md text-xs text-primary-foreground/70">
+                      This estimate may change depending on the evidence provided and other relevant
+                      factors.
+                    </p>
+                  )}
                 </>
               ) : !estimated.hasEstimate ? (
                 // No estimate at all — the CAD record carried no assessed value
@@ -3255,11 +3358,8 @@ function Report() {
                 // and which one is "current" all come from case-next-action.ts,
                 // the same rules View Case's own Prepare & File tab and Corvus
                 // AI Guidance panel are built on, so this can never say
-                // something View Case itself would disagree with. View Case
-                // stays the prominent, filled action (it's where the whole
-                // case actually gets managed); the dynamic button beside it
-                // just answers "what do I need to do next," using View Case's
-                // own terminology for whichever stage that is.
+                // something View Case itself would disagree with. View Case is
+                // the one action here — the next step itself is taken there.
                 <div className="grid gap-3">
                   {nextAction ? (
                     <>
@@ -3303,27 +3403,6 @@ function Report() {
                         View Protest Case
                       </Link>
                     )}
-                    {nextAction?.action &&
-                      resolvedProperty &&
-                      (nextAction.action.kind === "external" ? (
-                        <a
-                          href={nextAction.action.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-outline inline-flex items-center gap-1.5 border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                        >
-                          {nextAction.action.label}
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      ) : (
-                        <Link
-                          to="/dashboard/case"
-                          search={{ propertyId: resolvedProperty.id }}
-                          className="btn-outline border-white/30 text-sm py-1.5 text-primary-foreground hover:bg-background/10"
-                        >
-                          {nextAction.action.label}
-                        </Link>
-                      ))}
                   </div>
                 </div>
               ) : hasFullAccess ? (
@@ -3375,13 +3454,37 @@ function Report() {
 
         {/* Modules */}
         <section className="mt-8 print:hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
-            <button onClick={() => window.print()} className="btn-outline text-sm py-2">
+          <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border">
+            <div role="tablist" className="flex gap-1">
+              {(
+                [
+                  ["modules", "10 Premium AI Modules"],
+                  ...(showCommercialValuation
+                    ? ([["valuation", "Commercial Valuation"]] as const)
+                    : []),
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeModulesTab === id}
+                  onClick={() => setModulesTab(id)}
+                  className={`-mb-px border-b-2 px-3 py-2 font-serif text-lg font-semibold transition-colors sm:text-xl ${
+                    activeModulesTab === id
+                      ? "border-accent text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => window.print()} className="btn-outline mb-2 text-sm py-2">
               Export Report
             </button>
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="mt-2 text-muted-foreground text-sm">
             {hasFullAccess
               ? "All modules unlocked with your AI Report subscription."
               : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
@@ -3433,7 +3536,7 @@ function Report() {
               Sales Comparison, Equal & Uniform, Cost, Land / Improvement,
               Impairments (lib/commercial-valuation.ts). Not for a property the
               county itself codes as residential. */}
-          {classifyPropertyCategory(state.propertyType) !== "residential" && (
+          {showCommercialValuation && activeModulesTab === "valuation" && (
             <CommercialValuationPanel
               userId={user?.id ?? null}
               propertyId={resolvedProperty?.id ?? null}
@@ -3485,7 +3588,9 @@ function Report() {
                 : null
             }
           >
-            <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={`mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3 ${activeModulesTab === "modules" ? "" : "hidden"}`}
+            >
               {MODULES.map((m) => (
                 <ModuleCard
                   key={m.id}
@@ -3592,6 +3697,7 @@ function Report() {
                   onSaveIncomeAnalysis={() => {}}
                   onExtractIncome={extractIncome}
                   savingsAnalysis={savingsAnalysis}
+                  protestCost={protestCost}
                   savingsTaxInputs={savingsTaxInputs}
                   onSaveSavingsTaxInputs={() => {}}
                 />
@@ -3705,6 +3811,7 @@ function Report() {
               onSaveIncomeAnalysis={saveIncomeAnalysis}
               onExtractIncome={extractIncome}
               savingsAnalysis={savingsAnalysis}
+              protestCost={protestCost}
               savingsTaxInputs={savingsTaxInputs}
               onSaveSavingsTaxInputs={saveSavingsTaxInputs}
             />
@@ -3793,87 +3900,6 @@ function Report() {
       </div>
     </EvidenceImpactContext.Provider>
   );
-}
-
-// A card is "data-starved" when its own result openly flags missing inputs.
-// Returns the short prompt to show + the document_type an upload should be
-// tagged with, so the matching module's loadModule() input (and the
-// totalEvidenceCount digest in Report()) picks the file up and re-runs it.
-// null when there's no gap, or for a module that already carries a finer-
-// grained inline upload control (strategy's per-strategy chips, improvement's
-// per-component Photo buttons, zoning's per-aspect chips), or where a file
-// upload can't help (income has its figures form; savings is deterministic).
-function cardDataGap(
-  moduleId: string,
-  data: unknown,
-  compsMap: { data: CompsResult | null },
-  overrides: ModuleOverride[] = [],
-): { label: string; docType: string } | null {
-  if (!data) return null;
-  const GENERIC = PROTEST_EVIDENCE_DOCUMENT_TYPE;
-  switch (moduleId) {
-    case "health":
-      return (data as HealthScoreResult).dataSufficient === false
-        ? { label: "Add property records or photos to firm up this score", docType: GENERIC }
-        : null;
-    case "strategy":
-      // One upload for the whole card (same as modules 1/3/…): the AI re-runs
-      // and sorts each file to whichever strategy it strengthens — no need to
-      // match a file to a row.
-      return (data as ModuleResultMap["strategy"]).strategies.some((s) => !s.dataSufficient)
-        ? {
-            label: "Upload photos or documents to strengthen the strategy analysis",
-            docType: GENERIC,
-          }
-        : null;
-    case "comps":
-      return (compsMap.data?.comps?.length ?? 0) < 5
-        ? { label: "Upload a recent sale or appraisal to widen the comp set", docType: GENERIC }
-        : null;
-    case "site":
-      return (data as ModuleResultMap["site"]).factors.some(
-        (f) => f.status === "Additional Data Needed",
-      )
-        ? {
-            label: "Upload a survey, plat, or photos for the flagged site factors",
-            docType: GENERIC,
-          }
-        : null;
-    case "zoning": {
-      const z = data as ModuleResultMap["zoning"];
-      return z.matches === "uncertain" ||
-        z.aspects.some((a) => a.status === "Additional Data Needed")
-        ? {
-            label:
-              "Upload a zoning letter, plat, or the legal description to confirm classification",
-            docType: "Zoning: General",
-          }
-        : null;
-    }
-    case "improvement": {
-      const missing = (data as ModuleResultMap["improvement"]).buildingComponents.filter(
-        (c) => !c.hasPhoto && !isItemNotApplicable(overrides, "improvement", c.component),
-      ).length;
-      return missing > 0
-        ? {
-            label: `Upload photos of ${missing} building component${missing === 1 ? "" : "s"} to assess condition & depreciation`,
-            docType: GENERIC,
-          }
-        : null;
-    }
-    case "evidence":
-      return (data as ModuleResultMap["evidence"]).items.some((i) => i.availability === "Low")
-        ? { label: "Upload the documents this checklist is still missing", docType: GENERIC }
-        : null;
-    case "executive":
-      return (data as ModuleResultMap["executive"]).missingInformation.some(
-        (x) => x.severity === "Critical" || x.severity === "Important",
-      )
-        ? { label: "Upload the information this recommendation is still missing", docType: GENERIC }
-        : null;
-    default:
-      return null;
-  }
 }
 
 function ModuleCard({
@@ -3976,23 +4002,17 @@ function ModuleCard({
   const priorityScore = strategyData?.strategies.find((s) =>
     s.relatedModules.includes(m.id),
   )?.strengthScore;
-  // Universal "this analysis is data-starved — add data right here" control.
-  // Only for a subscribed user on a module that's actually run and flags a
-  // gap; the upload is tagged so the matching module re-runs (see the digest
-  // effects in Report()).
-  const dataGap =
-    unlocked && hasFullAccess && status === "Completed"
-      ? cardDataGap(m.id, moduleState?.data, compsMap, overrides)
-      : null;
   return (
-    <div className="card-elev relative flex flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+    // A square tile with highlights only — the full analysis opens with
+    // View Details.
+    <div className="card-elev relative flex aspect-square flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
       {/* A strip in the module's own colour along the top. */}
       <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
       <m.icon
         aria-hidden
         className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
       />
-      <div className="p-5 flex-1 flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col p-5 pb-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <ProgressRing
@@ -4053,7 +4073,7 @@ function ModuleCard({
               )}
           </div>
         </div>
-        <div className="mt-4 flex-1 flex flex-col justify-center">
+        <div className="relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
           <ModuleVisual
             m={m}
             unlocked={unlocked}
@@ -4077,43 +4097,14 @@ function ModuleCard({
             hasFullAccess={hasFullAccess}
             onOpen={onOpen}
           />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent"
+          />
         </div>
       </div>
       {insight && <InsightBanner text={insight} color={m.color} onClick={onOpen} />}
-      {dataGap && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
-          <span className="text-[11px] leading-snug text-warning-foreground">{dataGap.label}</span>
-          <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-accent/40 bg-background px-2.5 py-1 text-[11px] font-semibold text-accent hover:bg-accent/10">
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              multiple
-              disabled={uploadingEvidence}
-              className="hidden"
-              onChange={(e) => {
-                const sel = Array.from(e.target.files ?? []);
-                if (sel.length > 0) onUploadEvidence(sel, undefined, dataGap.docType);
-                e.target.value = "";
-              }}
-            />
-            <Upload className="h-3 w-3" />
-            {uploadingEvidence ? "Uploading…" : "Upload data"}
-          </label>
-        </div>
-      )}
-      {status === "Completed" && moduleState?.cachedAt && (
-        <div className="px-5 pt-2 text-[10px] text-muted-foreground">
-          Updated {relativeTime(moduleState.cachedAt)}
-        </div>
-      )}
-      <div className="px-5 pb-5 pt-3 flex items-center justify-between gap-2">
-        {hasFullAccess ? (
-          <span className="text-xs font-medium text-success">Included in your plan</span>
-        ) : unlocked ? (
-          <span className="text-xs font-medium text-success">Free preview</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">Requires subscription</span>
-        )}
+      <div className="flex items-center justify-end gap-2 px-5 pb-4 pt-3">
         {/* The colored insight band above is the big affordance; this stays
             as the explicit, always-present control — a subtle text link for
             an unlocked module, the real "Subscribe" CTA for a locked one. */}
@@ -4122,7 +4113,7 @@ function ModuleCard({
             onClick={onOpen}
             className="inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
           >
-            Open <ArrowRight className="h-3.5 w-3.5" />
+            View Details <ArrowRight className="h-3.5 w-3.5" />
           </button>
         ) : (
           <button onClick={onOpen} className="btn-outline text-sm py-2">
@@ -4230,7 +4221,6 @@ function ModuleVisual({
           ratePct={estimated.effectiveTaxRatePct}
           savings={estimated.savings}
         />
-        {estimated.savings > 0 && <CostBenefitRow savings={estimated.savings} />}
       </div>
     );
   }
@@ -4469,7 +4459,6 @@ function ModuleVisual({
               </div>
             </div>
           )}
-          <EvidenceImpactCard />
           {d.executiveConclusion && (
             <div className="mt-2 text-center text-[11px] leading-snug text-muted-foreground">
               <MarkdownLite text={d.executiveConclusion} />
@@ -4503,9 +4492,8 @@ function ModuleVisual({
               <p className="mt-0.5 line-clamp-2 text-xs text-foreground">{top.primaryReason}</p>
             </div>
           )}
-          {/* No per-row upload chips — the card shows one "Upload data" control at
-              the bottom (see cardDataGap's "strategy" case). Rows that still need
-              evidence show a plain "Data Needed" pill instead. */}
+          {/* Highlights only — uploads happen in View Details. Rows that still
+              need evidence show a plain "Data Needed" pill. */}
           <StrategyRankList strategies={d.strategies} color={m.color} max={5} />
         </div>
       );
@@ -4584,9 +4572,7 @@ function ModuleVisual({
         improvementValue ?? null,
       );
       return (
-        // No mid-card "Upload photos" button — the card shows one "Upload data"
-        // control at the bottom (see cardDataGap's "improvement" case), same as
-        // modules 4 and 6.
+        // Highlights only — photos are uploaded in View Details.
         <ImprovementCardVisual
           d={d}
           depreciation={depreciation}
@@ -4598,8 +4584,7 @@ function ModuleVisual({
     }
     case "zoning": {
       const d = moduleState.data as ModuleResultMap["zoning"];
-      // No mid-card upload — the card shows one "Upload data" control at the
-      // bottom (see cardDataGap's "zoning" case), same as Module 4.
+      // Highlights only — evidence is uploaded in View Details.
       return <ZoningAspectTiles aspects={d.aspects} matches={d.matches} />;
     }
     case "evidence": {
@@ -6066,83 +6051,6 @@ function ExecutiveStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Module 10's "Major Supporting Findings" row — real AI findings grounded in
-// the record, each optionally deep-linking back to the module that actually
-// produced the underlying analysis (same modal, just switches which module
-// is open — see onOpenModule in Report()).
-function FindingCard({
-  finding,
-  onOpenModule,
-}: {
-  finding: { finding: string; whyItMatters: string; relatedModule: string | null };
-  onOpenModule: (moduleId: string) => void;
-}) {
-  const target = finding.relatedModule
-    ? MODULES.find((mm) => mm.id === finding.relatedModule)
-    : null;
-  return (
-    <div className="flex items-start gap-2 rounded-lg bg-secondary/30 px-3 py-2">
-      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-semibold">{finding.finding}</span>
-        {finding.whyItMatters && (
-          <span className="text-xs text-muted-foreground"> — {finding.whyItMatters}</span>
-        )}
-      </div>
-      {target && (
-        <button
-          onClick={() => onOpenModule(target.id)}
-          className="shrink-0 whitespace-nowrap text-xs text-accent hover:underline"
-        >
-          View Analysis →
-        </button>
-      )}
-    </div>
-  );
-}
-
-const DEFENSE_QA_STATUS_TONE: Record<string, string> = {
-  Supported: "bg-success/15 text-success",
-  "Partially Supported": "bg-warning/15 text-warning-foreground",
-  "Evidence Needed": "bg-destructive/10 text-destructive",
-  "User Input Needed": "bg-secondary/60 text-muted-foreground",
-};
-
-// One row of the first-version Defense Readiness Q&A table — read-only
-// (editing the answer / re-uploading evidence for just this question is a
-// follow-up, see the plan this was built from). "View Evidence" only
-// appears when the AI actually named a real module its answer draws from.
-function DefenseQARow({
-  qa,
-  onOpenModule,
-}: {
-  qa: ModuleResultMap["executive"]["defenseQA"][number];
-  onOpenModule: (moduleId: string) => void;
-}) {
-  const target = qa.relatedModule ? MODULES.find((mm) => mm.id === qa.relatedModule) : null;
-  return (
-    <div className="card-elev p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold">{qa.question}</div>
-        <span
-          className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold ${DEFENSE_QA_STATUS_TONE[qa.status] ?? "bg-secondary/60 text-muted-foreground"}`}
-        >
-          {qa.status}
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{qa.suggestedAnswer}</p>
-      {target && (
-        <button
-          onClick={() => onOpenModule(target.id)}
-          className="mt-1.5 text-xs text-accent hover:underline"
-        >
-          View Evidence →
-        </button>
-      )}
-    </div>
-  );
-}
-
 const SITE_FACTOR_STATUS_TONE: Record<SiteFactor["status"], string> = {
   Confirmed: "bg-success/15 text-success",
   "Partial Data": "bg-warning/15 text-warning-foreground",
@@ -6967,26 +6875,6 @@ function ChecklistIconRows({ items, color }: { items: string[]; color: IconColor
 // strategies (so "Comparable Sales" shows the same icon as the Market Value
 // module card, etc.) via relatedModules; falls back to a generic icon for an
 // AI-added "Other: ..." strategy, which doesn't map to any of Modules 3-7.
-// Visual cue for Module 10's Recommended Action banner — a glance-able icon
-// standing in for reading the category string closely.
-function RecommendedActionIcon({
-  action,
-  className,
-}: {
-  action: ModuleResultMap["executive"]["recommendedAction"];
-  className?: string;
-}) {
-  const Icon =
-    action === "Proceed with Protest"
-      ? ShieldCheck
-      : action === "Proceed with Protest After Completing Recommended Evidence"
-        ? FileWarning
-        : action === "Limited Protest Opportunity Based on Available Information"
-          ? AlertTriangle
-          : HelpCircle;
-  return <Icon className={className} />;
-}
-
 function strategyIcon(s: StrategyEntry): LucideIcon {
   const relatedId = s.relatedModules[0];
   const mod = relatedId ? MODULES.find((mm) => mm.id === relatedId) : undefined;
@@ -8731,34 +8619,6 @@ function IncomeWorkspace({
   );
 }
 
-// Second formula row for Tax Savings & ROI — Protest Cost / Net Benefit
-// derived from the real 25% contingency fee already stated as CorvusPT's
-// actual terms in ProtestAuthorizationFlow's AGREEMENT (src/components/
-// ProtestAuthorizationFlow.tsx), not an invented number.
-const CONTINGENCY_FEE_PCT = 0.25;
-
-function CostBenefitRow({ savings }: { savings: number }) {
-  const cost = Math.round(savings * CONTINGENCY_FEE_PCT);
-  const netBenefit = savings - cost;
-  return (
-    <div className="flex items-center justify-center gap-1.5">
-      <FormulaIcon
-        Icon={DollarSign}
-        value={compactCurrency(cost)}
-        label="protest cost (25%)"
-        tone="bg-violet-500/15 text-violet-700"
-      />
-      <span className="text-sm text-muted-foreground">−</span>
-      <FormulaIcon
-        Icon={BarChart3}
-        value={compactCurrency(netBenefit)}
-        label="net benefit"
-        tone="bg-success/15 text-success"
-      />
-    </div>
-  );
-}
-
 // ── Module 9 (Estimated Savings) ─────────────────────────────────────────
 // Every figure here is the deterministic result from
 // src/lib/savings-analysis.ts — no AI value anywhere, identical on every
@@ -8821,9 +8681,9 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
       <div className="flex items-center justify-center gap-2 text-xs">
         <span
           className="text-muted-foreground"
-          title="After our standard 25% success fee. Beta testers do not pay it."
+          title="After the protest cost under your CorvusPT plan."
         >
-          Net benefit (after 25% fee)
+          Net benefit (after protest cost)
         </span>
         <span className="font-serif font-bold text-success">{compactCurrency(a.netBenefit)}</span>
         {a.roiPct != null ? (
@@ -8840,61 +8700,6 @@ function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
           </span>
         )}
       </div>
-    </div>
-  );
-}
-
-// The Value Reduction Impact stepped strip.
-function SavingsFlowStrip({ a }: { a: SavingsAnalysis }) {
-  const indicated = a.indicatedRange
-    ? `${compactCurrency(a.indicatedRange.low)} – ${compactCurrency(a.indicatedRange.high)}`
-    : compactCurrency(a.indicatedValue);
-  const steps: { label: string; value: string; tone: string; Icon: LucideIcon }[] = [
-    {
-      label: "Current CAD Value",
-      value: currency(a.cadValue),
-      tone: "border-destructive/40 bg-destructive/5 text-destructive",
-      Icon: Building2,
-    },
-    {
-      label: a.indicatedRange ? "AI-Indicated Value Range" : "AI-Indicated Value",
-      value: indicated,
-      tone: "border-sky-500/40 bg-sky-500/5 text-sky-700",
-      Icon: Home,
-    },
-    {
-      label: "Potential Reduction",
-      value: `${compactCurrency(a.reductionBase)}  ·  ${a.reductionPct}%`,
-      tone: "border-warning/40 bg-warning/10 text-warning-foreground",
-      Icon: TrendingDown,
-    },
-    {
-      label: "Est. Annual Tax Savings",
-      value: currency(a.annualSavings),
-      tone: "border-success/40 bg-success/10 text-success",
-      Icon: DollarSign,
-    },
-  ];
-  return (
-    <div className="flex items-stretch gap-1 overflow-x-auto pb-1">
-      {steps.map((s, i) => (
-        <Fragment key={s.label}>
-          <div
-            className={`flex min-w-[104px] flex-1 flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center sm:min-w-[130px] ${s.tone}`}
-          >
-            <s.Icon className="h-4 w-4" />
-            <div className="text-[9px] font-semibold uppercase leading-tight tracking-wide opacity-80">
-              {s.label}
-            </div>
-            <div className="text-[11px] font-bold tabular-nums text-foreground sm:text-xs">
-              {s.value}
-            </div>
-          </div>
-          {i < steps.length - 1 && (
-            <ArrowRight className="h-4 w-4 shrink-0 self-center text-muted-foreground" />
-          )}
-        </Fragment>
-      ))}
     </div>
   );
 }
@@ -8951,105 +8756,152 @@ function SavingsSummaryList({ a }: { a: SavingsAnalysis }) {
   );
 }
 
+// Low / Estimated / High as three compact cards in plain language — the
+// middle one highlighted, but only called the most likely outcome when the
+// valuation evidence is strong. The calculation behind each sits under
+// "How are these calculated?".
 function SavingsScenarioCards({ a }: { a: SavingsAnalysis }) {
   return (
-    <div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Scenario Analysis
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {a.scenarios.map((s) => (
-          <div
-            key={s.key}
-            className={`rounded-lg border p-3 text-center ${
-              s.key === "base" ? "border-accent/40 bg-accent/5" : "border-border"
-            }`}
-          >
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Savings Scenarios
+      </h3>
+      <div className="grid grid-cols-3 gap-2">
+        {a.scenarios.map((s) => {
+          const copy = SCENARIO_COPY[s.key];
+          const mid = s.key === "base";
+          return (
             <div
-              className={`text-[10px] font-semibold uppercase tracking-wide ${
-                s.key === "base" ? "text-accent" : "text-muted-foreground"
+              key={s.key}
+              className={`rounded-lg border p-2.5 text-center sm:p-3 ${
+                mid ? "border-success/50 bg-success/10 shadow-sm" : "border-border"
               }`}
             >
-              {s.label} Scenario
+              <div
+                className={`text-[10px] font-semibold uppercase tracking-wide ${mid ? "text-success" : "text-muted-foreground"}`}
+              >
+                {copy.title}
+              </div>
+              <div className="mt-1 font-serif text-base font-bold tabular-nums sm:text-lg">
+                {currency(s.annualSavings)}
+                <span className="text-[10px] font-normal text-muted-foreground">/yr</span>
+              </div>
+              <p className="mt-1 hidden text-[11px] leading-snug text-muted-foreground sm:block">
+                {copy.plain}
+              </p>
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              {s.reductionPct}% reduction
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {compactCurrency(s.valueReduction)} off value
-            </div>
-            <div className="mt-1 font-serif text-lg font-bold text-success">
-              {currency(s.annualSavings)}
-              <span className="text-xs font-normal text-muted-foreground"> / yr</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <p className="mt-1.5 text-[11px] text-muted-foreground">
-        The High scenario is a supportable higher-end opportunity based on the available analysis —
-        not the expected outcome.
+        Illustrative scenarios based on the available valuation evidence and how an Appraisal Review
+        Board panel might decide — not guaranteed outcomes.
+        {a.valuationConfidence !== "High" &&
+          " The middle figure is not necessarily the most likely outcome."}
       </p>
-    </div>
+      <details className="mt-1.5 text-xs">
+        <summary className="cursor-pointer text-accent">How are these calculated?</summary>
+        <div className="mt-2 grid gap-1.5 rounded-lg bg-secondary/40 p-3 text-muted-foreground">
+          {a.scenarios.map((s) => (
+            <p key={s.key}>
+              <span className="font-semibold text-foreground">{SCENARIO_COPY[s.key].title}:</span>{" "}
+              the value comes down {currency(s.valueReduction)} ({s.reductionPct}%) ×{" "}
+              {a.taxRate.pct}% tax rate = {currency(s.annualSavings)} a year.
+            </p>
+          ))}
+          <p>
+            {a.indicatedRange
+              ? `Conservative uses the top of the comparable range (${currency(a.indicatedRange.high)}), Higher Savings the bottom (${currency(a.indicatedRange.low)}), and Estimated the ${a.valueBasisLabel} value.`
+              : `Without a comparable range, Conservative is 60% and Higher Savings 150% of the estimated reduction (${a.valueBasisLabel}).`}
+          </p>
+          {a.appraisalCap != null && (
+            <p>
+              Each scenario only counts the part of the reduction that falls below the county&apos;s
+              capped appraised value ({currency(a.appraisalCap)}).
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
-function SavingsRoiRow({ a }: { a: SavingsAnalysis }) {
+const COST_KIND_LABEL: Record<ProtestCostLine["kind"], string> = {
+  annual: "Annual",
+  one_time: "One-time",
+  additional: "Additional",
+};
+
+// Savings − protest cost = net benefit, from the owner's real plan (see
+// protest-cost.ts). The ratio, cost breakdown and the hypothetical
+// multi-year figure stay under "Financial details".
+function SavingsWorthIt({ a, cost }: { a: SavingsAnalysis; cost: ProtestCost }) {
+  const costKnown = cost.total != null;
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        ROI Analysis (Base Scenario)
-      </div>
-      <p className="mb-2 text-[11px] text-muted-foreground">
-        This fuller model applies exemptions and the standard 25% fee, so its savings figure can
-        differ slightly from the headline estimate. Beta testers do not pay the fee.
-      </p>
-      {/* Annual figures only — ROI is defined on the annual net benefit
-          (spec §8). The multi-year projection is its own line below. */}
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
+    <section className="rounded-lg border border-border p-3 sm:p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Is Filing a Protest Worth It?
+      </h3>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
         <FormulaIcon
           Icon={DollarSign}
           value={currency(a.annualSavings)}
-          label="annual savings"
+          label="potential savings / yr"
           tone="bg-success/15 text-success"
         />
-        <span className="text-sm text-muted-foreground">−</span>
+        <span className="text-lg text-muted-foreground">−</span>
         <FormulaIcon
-          Icon={DollarSign}
-          value={a.protestCostSource === "none" ? "$0" : currency(a.protestCost)}
+          Icon={Receipt}
+          value={costKnown ? currency(a.protestCost) : "Not on file"}
           label="protest cost"
-          tone="bg-violet-500/15 text-violet-700"
+          tone="bg-secondary text-foreground"
         />
-        <span className="text-sm text-muted-foreground">=</span>
+        <span className="text-lg text-muted-foreground">=</span>
         <FormulaIcon
           Icon={BarChart3}
-          value={currency(a.netBenefit)}
-          label="net benefit / yr"
-          tone="bg-success/15 text-success"
+          value={costKnown ? currency(a.netBenefit) : "—"}
+          label="estimated net benefit"
+          tone={
+            !costKnown || a.netBenefit > 0
+              ? "bg-success/15 text-success"
+              : "bg-warning/20 text-warning-foreground"
+          }
         />
       </div>
-      <div className="mt-2 text-center text-sm">
-        {a.roiPct != null ? (
-          <>
-            <span className="text-muted-foreground">Annual ROI </span>
-            <span className="font-serif text-lg font-bold text-success">{a.roiPct}%</span>
-            {a.savingsToCostMultiple != null && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                ({a.savingsToCostMultiple}x savings-to-cost)
+      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+        Protest cost: {cost.label}.
+      </p>
+      <details className="mt-2 text-xs">
+        <summary className="cursor-pointer text-accent">Financial details</summary>
+        <div className="mt-2 grid gap-1.5 rounded-lg bg-secondary/40 p-3">
+          {cost.lines.map((l) => (
+            <div key={l.label} className="flex items-start justify-between gap-3">
+              <span className="min-w-0">
+                <span className="mr-1.5 rounded-full bg-background px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+                  {COST_KIND_LABEL[l.kind]}
+                </span>
+                {l.label}
+                {l.note && <span className="block text-muted-foreground">{l.note}</span>}
               </span>
-            )}
-          </>
-        ) : a.protestCostSource === "none" ? (
-          <span className="text-xs text-muted-foreground">
-            No direct protest cost entered — ROI not calculated. Net benefit equals the estimated
-            savings.
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            Protest cost needed to calculate ROI.
-          </span>
-        )}
-      </div>
-    </div>
+              <span className="shrink-0 font-medium tabular-nums">{currency(l.amount)}</span>
+            </div>
+          ))}
+          {a.savingsToCostMultiple != null && (
+            <div className="flex justify-between gap-3 border-t border-border/60 pt-1.5">
+              <span className="text-muted-foreground">Savings-to-cost ratio</span>
+              <span className="font-medium">{a.savingsToCostMultiple}x</span>
+            </div>
+          )}
+          {a.multiYearSavings != null && (
+            <p className="border-t border-border/60 pt-1.5 text-muted-foreground">
+              Hypothetical: if the lower value held for {a.projectionYears} years, savings would
+              total about {currency(a.multiYearSavings)}. Future property values and tax rates can
+              change, so this is not an estimate of what you will save.
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -9110,8 +8962,8 @@ function SavingsTaxDetailsForm({
         <div className="grid gap-3 sm:grid-cols-2">
           {field("Taxable value (if different from appraised)", "taxableValue", "$")}
           {field("Total exemptions", "exemptionsTotal", "$")}
-          {field("Protest cost (override — enter 0 for DIY)", "protestCostOverride", "$")}
-          {field("Projection years for multi-year estimate", "projectionYears")}
+          {field("Other protest expenses (appraisal, travel …)", "protestCostOverride", "$")}
+          {field("Years for the hypothetical multi-year figure", "projectionYears")}
         </div>
         <div className="mt-3 flex justify-end">
           <button
@@ -9235,35 +9087,88 @@ function SavingsViewDetails({ a }: { a: SavingsAnalysis }) {
   );
 }
 
+const FINDING_ICON: Record<SavingsFinding["key"], LucideIcon> = {
+  comps: BarChart3,
+  property: Building2,
+  documents: FileText,
+};
+const STRENGTH_STYLE: Record<EvidenceStrength, string> = {
+  Strong: "bg-success/15 text-success",
+  Limited: "bg-secondary text-muted-foreground",
+  Missing: "bg-warning/15 text-warning-foreground",
+};
+const STRENGTH_LABEL: Record<EvidenceStrength, string> = {
+  Strong: "Strong evidence",
+  Limited: "Limited evidence",
+  Missing: "Evidence missing",
+};
+
+// Current vs estimated value as two simple bars; "See Valuation Range"
+// overlays the comparable range on the estimate.
+function SavingsValueBars({ a, showRange }: { a: SavingsAnalysis; showRange: boolean }) {
+  const max = Math.max(a.cadValue, a.indicatedRange?.high ?? 0) * 1.04 || 1;
+  const pct = (v: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
+  const rows = [
+    { label: "Current CAD value", value: a.cadValue, bar: "bg-slate-400 dark:bg-slate-500" },
+    { label: "Estimated value", value: a.indicatedValue, bar: "bg-success" },
+  ];
+  return (
+    <div className="grid gap-2" aria-label="Current value compared with the estimated value">
+      {rows.map((r, i) => (
+        <div key={r.label} className="grid grid-cols-[7.5rem_1fr] items-center gap-2 text-xs">
+          <span className="text-muted-foreground">{r.label}</span>
+          <div className="relative h-4 rounded bg-secondary/60">
+            <div className={`h-4 rounded ${r.bar}`} style={{ width: pct(r.value) }} />
+            {i === 1 && showRange && a.indicatedRange && (
+              <div
+                className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full border-2 border-foreground/70"
+                style={{
+                  left: pct(a.indicatedRange.low),
+                  width: `calc(${pct(a.indicatedRange.high)} - ${pct(a.indicatedRange.low)})`,
+                }}
+                title="Supported valuation range"
+              />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SavingsWorkspace({
   analysis: a,
+  cost,
+  findings,
+  nextStep,
+  cadSourceLabel,
   taxInputs,
   allowEdit,
   onSaveTaxInputs,
   onOpenModule,
-  headlineSavings,
-  currentValue,
-  reducedValue,
   rationale,
   incomeNote,
 }: {
   analysis: SavingsAnalysis;
+  cost: ProtestCost;
+  findings: SavingsFinding[];
+  nextStep: SavingsNextStep;
+  cadSourceLabel: string;
   taxInputs: SavingsTaxInputs | null;
   allowEdit: boolean;
   onSaveTaxInputs: (input: SavingsTaxInputsInput) => void;
   onOpenModule: (moduleId: string) => void;
-  headlineSavings: number;
-  currentValue: number;
-  reducedValue: number;
   rationale: string | null;
   incomeNote: string | null;
 }) {
+  const [showRange, setShowRange] = useState(false);
+  const evidence = useContext(EvidenceImpactContext);
   if (!a.sufficient) {
     return (
       <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-4">
         <div className="text-sm font-semibold text-warning-foreground">Additional Data Needed</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          The financial opportunity can't be calculated yet. Missing:
+          The savings can&apos;t be estimated yet. Missing:
         </p>
         <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm">
           {a.missing.map((x) => (
@@ -9273,16 +9178,67 @@ function SavingsWorkspace({
       </div>
     );
   }
+  const uncertain = a.uncertainReasons.length > 0;
+  const low = a.scenarios[0]?.annualSavings ?? 0;
+  const high = a.scenarios[2]?.annualSavings ?? a.annualSavings;
+  const docCount = evidence?.evidenceCount ?? 0;
+  const docReliability =
+    evidence?.adjustment.applied && evidence.adjustment.strength >= 0.6
+      ? "strong"
+      : evidence?.adjustment.applied
+        ? "moderate"
+        : "not yet usable";
+  const NEXT_TONE: Record<SavingsNextStep["kind"], string> = {
+    potential: "border-success/40 bg-success/10",
+    more_evidence: "border-warning/40 bg-warning/10",
+    limited: "border-border bg-secondary/40",
+  };
+
   return (
     <div className="mt-4 grid gap-4">
-      <div className="text-center">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Estimated Annual Tax Savings
+      {/* How much could I save? */}
+      <section className="rounded-xl border border-success/30 bg-success/5 p-4 text-center sm:p-5">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Potential Annual Tax Savings
         </div>
-        <div className="font-serif text-4xl font-bold text-success">
-          <AnimatedNumber value={headlineSavings} format={currency} duration={900} />
-        </div>
-      </div>
+        {uncertain ? (
+          <div className="mt-1 font-serif text-3xl font-bold text-success sm:text-4xl">
+            {currency(low)} – {currency(high)}
+            <span className="text-base font-normal text-muted-foreground"> / year</span>
+          </div>
+        ) : (
+          <div className="mt-1 font-serif text-4xl font-bold text-success sm:text-5xl">
+            <AnimatedNumber value={a.annualSavings} format={currency} duration={900} />
+            <span className="text-base font-normal text-muted-foreground"> / year</span>
+          </div>
+        )}
+        <p className="mt-1 text-sm text-muted-foreground">
+          {uncertain
+            ? "Savings are uncertain — the range runs from no change to the strongest supported outcome."
+            : "Estimated savings based on current property information."}
+        </p>
+        <span
+          className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+            a.valuationConfidence === "High"
+              ? "bg-success/15 text-success"
+              : a.valuationConfidence === "Moderate"
+                ? "bg-secondary text-muted-foreground"
+                : "bg-warning/15 text-warning-foreground"
+          }`}
+        >
+          {EVIDENCE_LABEL[a.valuationConfidence]}
+        </span>
+        {uncertain && (
+          <ul className="mx-auto mt-2 grid max-w-md gap-0.5 text-left text-xs text-warning-foreground">
+            {a.uncertainReasons.map((r) => (
+              <li key={r} className="flex gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                {r}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {a.conflicts.length > 0 && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
@@ -9297,49 +9253,145 @@ function SavingsWorkspace({
         </div>
       )}
 
-      <SavingsFlowStrip a={a} />
-      <ValueComparisonChart current={currentValue} reduced={reducedValue} />
-      <SavingsSummaryList a={a} />
-      <SavingsScenarioCards a={a} />
-      <SavingsRoiRow a={a} />
-
-      {a.multiYearSavings != null && (
-        <p className="rounded-lg bg-secondary/40 p-3 text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">
-            Potential multi-year savings (estimate): {currency(a.multiYearSavings)} over{" "}
-            {a.projectionYears} years.
-          </span>{" "}
-          Assumes the reduced value holds as the base. Not guaranteed — actual carry-over depends on
-          the county's re-appraisal.
-        </p>
-      )}
-
-      <div className="rounded-lg bg-secondary/40 p-3 text-xs">
-        <div className="font-semibold text-foreground">
-          How this connects to the protest strategy
+      {/* Valuation comparison */}
+      <section className="grid gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Current CAD Value
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums">{currency(a.cadValue)}</div>
+            <div className="text-[11px] text-muted-foreground">Verified · {cadSourceLabel}</div>
+          </div>
+          <div className="rounded-lg border border-border p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Estimated Property Value
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums">
+              {currency(a.indicatedValue)}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              Corvus AI estimate · {a.valueBasisLabel}
+            </div>
+          </div>
+          <div className="rounded-lg border border-success/40 bg-success/5 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Potential Value Reduction
+            </div>
+            <div className="mt-0.5 text-lg font-bold tabular-nums text-success">
+              {currency(a.reductionBase)}{" "}
+              <span className="text-sm font-semibold">({a.reductionPct}%)</span>
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {a.taxableReduction < a.reductionBase
+                ? `Lowers the taxable value by ${currency(a.taxableReduction)}`
+                : "Market value reduction"}
+            </div>
+          </div>
         </div>
-        <p className="mt-1 text-muted-foreground">
-          CAD value is {compactCurrency(a.reductionBase)} above the AI-indicated value → potential
-          reduction {compactCurrency(a.reductionBase)} → est. annual tax savings{" "}
-          {compactCurrency(a.annualSavings)} → protest cost{" "}
-          {a.protestCostSource === "none" ? "$0" : compactCurrency(a.protestCost)} → est. net
-          benefit {compactCurrency(a.netBenefit)}.
+        <SavingsValueBars a={a} showRange={showRange} />
+        {a.indicatedRange && (
+          <button
+            type="button"
+            onClick={() => setShowRange((v) => !v)}
+            className="justify-self-start text-xs text-accent hover:underline"
+          >
+            {showRange
+              ? `Supported range: ${currency(a.indicatedRange.low)} – ${currency(a.indicatedRange.high)} · Hide`
+              : "See Valuation Range"}
+          </button>
+        )}
+      </section>
+
+      {/* Why could I save? */}
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Why You May Be Paying Too Much
+        </h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {findings.map((f) => {
+            const Icon = FINDING_ICON[f.key];
+            return (
+              <div key={f.key} className="flex flex-col rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary">
+                    <Icon className="h-3.5 w-3.5 text-foreground/80" />
+                  </span>
+                  <span className="text-sm font-semibold">{f.title}</span>
+                </div>
+                <p className="mt-2 line-clamp-3 flex-1 text-xs text-foreground/90">{f.sentence}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STRENGTH_STYLE[f.strength]}`}
+                  >
+                    {STRENGTH_LABEL[f.strength]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenModule(f.module)}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {docCount === 0
+            ? "No supporting documents uploaded yet."
+            : `${docCount} supporting document${docCount === 1 ? "" : "s"} · overall reliability ${docReliability}. Documents change the estimate only when they state a value, repair cost or income figure.`}
         </p>
-        {rationale && <p className="mt-1 text-muted-foreground">{rationale}</p>}
-        {incomeNote && <p className="mt-1 text-muted-foreground">{incomeNote}</p>}
+      </section>
+
+      {/* What should I do next? */}
+      <section className={`rounded-lg border p-4 ${NEXT_TONE[nextStep.kind]}`}>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          What Should I Do Next?
+        </div>
+        <div className="mt-1 font-serif text-lg font-bold">{nextStep.title}</div>
+        <p className="mt-0.5 text-sm text-foreground/90">{nextStep.message}</p>
+        <button
+          type="button"
+          onClick={() => onOpenModule(nextStep.module)}
+          className="btn-primary mt-3 inline-flex items-center gap-2 text-sm"
+        >
+          {nextStep.button}
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </section>
+
+      <SavingsScenarioCards a={a} />
+      <SavingsWorthIt a={a} cost={cost} />
+
+      {/* Deeper detail, for owners who want it. */}
+      <div className="grid gap-2">
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            View evidence analysis
+          </summary>
+          <div className="border-t border-border/60 px-3 pb-3">
+            <EvidenceImpactCard />
+            {(rationale || incomeNote) && (
+              <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                {rationale && <p>{rationale}</p>}
+                {incomeNote && <p>{incomeNote}</p>}
+              </div>
+            )}
+          </div>
+        </details>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Financial opportunity
+          </summary>
+          <div className="border-t border-border/60 p-3">
+            <SavingsSummaryList a={a} />
+          </div>
+        </details>
+        <SavingsViewDetails a={a} />
+        {allowEdit && <SavingsTaxDetailsForm taxInputs={taxInputs} onSave={onSaveTaxInputs} />}
       </div>
-
-      {allowEdit && <SavingsTaxDetailsForm taxInputs={taxInputs} onSave={onSaveTaxInputs} />}
-      <SavingsViewDetails a={a} />
-
-      <button
-        type="button"
-        onClick={() => onOpenModule("executive")}
-        className="btn-primary flex items-center justify-center gap-2 text-sm"
-      >
-        View Final Protest Recommendation
-        <ArrowRight className="h-4 w-4" />
-      </button>
     </div>
   );
 }
@@ -10473,6 +10525,7 @@ function ModulePreviewContent({
   onSaveIncomeAnalysis,
   onExtractIncome,
   savingsAnalysis,
+  protestCost,
   savingsTaxInputs,
   onSaveSavingsTaxInputs,
 }: {
@@ -10567,6 +10620,8 @@ function ModulePreviewContent({
   // (savings-analysis.ts) and the optional tax-inputs saver (a no-op in the
   // printable report view).
   savingsAnalysis: SavingsAnalysis;
+  // Module 9 — the owner's real protest cost (see protest-cost.ts).
+  protestCost: ProtestCost;
   savingsTaxInputs: SavingsTaxInputs | null;
   onSaveSavingsTaxInputs: (input: SavingsTaxInputsInput) => void;
 }) {
@@ -10583,6 +10638,10 @@ function ModulePreviewContent({
   // unconditional-top-of-component placement as the analysis state above.
   const [downloadingPacket, setDownloadingPacket] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
+  // Module 10's "Download Protest Report (PDF)" — see executive-report-pdf.ts.
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  // Module 9 — the uploaded-evidence reading behind "Supporting Documents".
+  const evidenceImpact = useContext(EvidenceImpactContext);
   // Which evidence-checklist category (Module 8) is currently expanded —
   // single-open accordion, same unconditional-top placement as the state
   // above. Also tracks the bulk "Upload Evidence" button's own real AI
@@ -10702,7 +10761,6 @@ function ModulePreviewContent({
   // state here since there's no AI call backing this module anymore.
   if (m.id === "savings") {
     const current = state.totalValue ?? 0;
-    const reduced = Math.max(0, current - estimated.reduction);
     // No assessed value on the CAD record at all — there is no estimate,
     // which is a different finding from "we estimated ~$0." Same guard the
     // top banner now applies; without it this module told the owner their
@@ -10747,6 +10805,46 @@ function ModulePreviewContent({
       resolvedProperty && existingProtest
         ? buildFinalCaseSummary(resolvedProperty, existingProtest)
         : null;
+    // "Why You May Be Paying Too Much" — from this property's own module
+    // results and uploaded evidence (see savings-dashboard.ts).
+    const savingsComps = computeComparableStats(
+      compsMap.data?.subject ?? null,
+      compsMap.data?.comps ?? [],
+      state.totalValue,
+    );
+    const usableComps = savingsComps.ranked.filter((c) => c.marketValue != null);
+    const siteResult = moduleData.site?.data as ModuleResultMap["site"] | undefined;
+    const improvementResult = moduleData.improvement?.data as
+      ModuleResultMap["improvement"] | undefined;
+    const zoningResult = moduleData.zoning?.data as ModuleResultMap["zoning"] | undefined;
+    const savingsFindings = buildSavingsFindings({
+      comps: savingsComps.indicated
+        ? {
+            count: usableComps.length,
+            median: savingsComps.indicated.median,
+            gapPct: savingsComps.valuationGapPct,
+            limitedData: savingsComps.limitedData,
+          }
+        : null,
+      site: siteResult?.factors ?? null,
+      improvement: improvementResult?.buildingComponents.filter((c) => !c.notApplicable) ?? null,
+      zoning: zoningResult
+        ? {
+            matches: zoningResult.matches,
+            discrepancy: zoningResult.discrepancies[0]?.detail ?? null,
+          }
+        : null,
+      documents: evidenceImpact
+        ? {
+            count: evidenceImpact.evidenceCount,
+            applied: evidenceImpact.adjustment.applied,
+            direction: evidenceImpact.adjustment.direction,
+            strength: evidenceImpact.adjustment.strength,
+            kinds: [...new Set(evidenceImpact.adjustment.contributions.map((c) => c.label))],
+            indicatedValue: evidenceImpact.adjustment.indicatedValue,
+          }
+        : null,
+    });
     return (
       <div className="grid gap-4">
         {finalSummary?.available && (
@@ -10754,16 +10852,21 @@ function ModulePreviewContent({
             <FinalCaseSummaryPanel summary={finalSummary} />
           </div>
         )}
-        <EvidenceImpactCard />
         <SavingsWorkspace
           analysis={savingsAnalysis}
+          cost={protestCost}
+          findings={savingsFindings}
+          nextStep={getSavingsNextStep(savingsAnalysis, savingsFindings)}
+          cadSourceLabel={[
+            state.cad ? `${state.cad} record` : "county record",
+            state.valueYear ?? state.taxYear,
+          ]
+            .filter(Boolean)
+            .join(", ")}
           taxInputs={savingsTaxInputs}
           allowEdit={allowEvidenceUpload}
           onSaveTaxInputs={onSaveSavingsTaxInputs}
           onOpenModule={onOpenModule}
-          headlineSavings={estimated.savings}
-          currentValue={current}
-          reducedValue={reduced}
           rationale={estimated.rationale}
           incomeNote={
             incomeComputed.complete && incomeComputed.indicatedValue != null
@@ -12365,398 +12468,246 @@ function ModulePreviewContent({
       const strategyData = moduleData.strategy?.data as ModuleResultMap["strategy"] | undefined;
       const evidenceData = moduleData.evidence?.data as ModuleResultMap["evidence"] | undefined;
       const evidenceItems = evidenceData?.items ?? [];
-      const execStats = computeComparableStats(
-        compsMap.data?.subject ?? null,
-        compsMap.data?.comps ?? [],
-        state.totalValue,
-      );
       const preFilingItems =
         existingProtest && resolvedProperty
           ? getPreFilingCheck(resolvedProperty, existingProtest)
           : null;
-      const summary = getExecutiveSummary(
-        execStats,
-        estimated.savings,
-        evidenceItems,
-        preFilingItems,
-      );
-      const defenseScore = getDefenseReadinessScore(d.defenseQA);
-      const criticalMissing = evidenceItems.filter(
-        (i) => i.importance === "High" && i.availability === "Low",
-      );
 
-      // Single primary CTA, deterministic — never more than one rendered.
-      let cta: { label: string; onClick: () => void } | null = null;
-      if (existingProtest && existingProtest.status === "resolved") {
-        cta = { label: "View Case Outcome", onClick: onViewCase };
-      } else if (preFilingItems && isPreFilingBlocked(preFilingItems)) {
-        cta = null; // "Complete Missing Information" — see the Properties link below instead
-      } else if (criticalMissing.length > 0) {
-        cta = { label: "Complete Missing Evidence", onClick: () => onOpenModule("evidence") };
-      } else if (!existingProtest) {
-        cta = { label: "Prepare My Protest", onClick: onStartProtest };
-      } else {
-        cta = { label: "Review Case", onClick: onViewCase };
+      // Module 10 is the final summary, not another analysis dashboard: one
+      // recommendation, one readiness status, and the full report as a PDF.
+      // Figures, comps, evidence and filing detail live in Modules 1-9 and
+      // the PDF — never repeated here.
+      const tier = assessmentTier(d.recommendedAction);
+      const tierMeta = ASSESSMENT_TIER[tier];
+      const readiness = getProtestReadiness({
+        protestDeadline: resolvedProperty?.protestDeadline ?? null,
+        preFilingItems,
+        evidenceItems,
+        missingInformation: d.missingInformation,
+      });
+      const TIER_STYLE: Record<AssessmentTier, { card: string; dot: string }> = {
+        recommended: { card: "border-success/40 bg-success/10", dot: "bg-success" },
+        review: { card: "border-warning/50 bg-warning/15", dot: "bg-warning" },
+        limited: { card: "border-violet-300/60 bg-violet-500/10", dot: "bg-violet-400" },
+      };
+      const READINESS_STYLE: Record<ProtestReadinessResult["status"], string> = {
+        ready: "bg-success/15 text-success",
+        info_needed: "bg-warning/15 text-warning-foreground",
+        deadline_review: "bg-destructive/10 text-destructive",
+      };
+
+      async function handleDownloadReport() {
+        setDownloadingReport(true);
+        try {
+          const site = moduleData.site?.data as ModuleResultMap["site"] | undefined;
+          const zoning = moduleData.zoning?.data as ModuleResultMap["zoning"] | undefined;
+          const improvement = moduleData.improvement?.data as
+            ModuleResultMap["improvement"] | undefined;
+          const stats = computeComparableStats(
+            compsMap.data?.subject ?? null,
+            compsMap.data?.comps ?? [],
+            state.totalValue,
+          );
+          const worksheet = resolvedProperty
+            ? await getValuationWorksheet(resolvedProperty.id).catch(() => null)
+            : null;
+          const approach = (id: string) => {
+            const a = worksheet?.summary?.approaches.find((x) => x.id === id);
+            return a?.status === "indicated" ? a.indicatedValue : null;
+          };
+          const isCriticalGap = (i: (typeof evidenceItems)[number]) =>
+            i.priority
+              ? i.priority === "Critical" && i.status === "Missing"
+              : i.importance === "High" && i.availability === "Low";
+          const missingCritical = [
+            ...new Set([
+              ...evidenceItems.filter(isCriticalGap).map((i) => i.item),
+              ...d.missingInformation
+                .filter((mi) => mi.severity === "Critical")
+                .map((mi) => mi.item),
+            ]),
+          ];
+          const deadline = resolvedProperty?.protestDeadline
+            ? new Date(`${resolvedProperty.protestDeadline}T00:00:00`).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })
+            : null;
+          const filingMethod =
+            preFilingItems?.find((i) => i.label === "Filing Method")?.value ??
+            (getCountyProtestInfo(state.cad)?.filingMethod?.online
+              ? `Online — ${getCountyProtestInfo(state.cad)?.filingMethod?.online?.url}`
+              : null);
+          const bytes = await buildExecutiveReportPdf({
+            property: {
+              address: resolvedProperty?.address ?? state.address ?? null,
+              county: resolvedProperty?.cad ?? state.cad ?? null,
+              account: resolvedProperty?.accountNumber ?? state.accountNumber ?? null,
+              owner: resolvedProperty?.ownerName ?? state.ownerName ?? null,
+              propertyType: resolvedProperty?.propertyType ?? state.propertyType ?? null,
+              taxYear:
+                existingProtest?.taxYear ?? resolvedProperty?.taxYear ?? state.taxYear ?? null,
+            },
+            tier,
+            explanation: d.recommendationExplanation || null,
+            readiness,
+            values: {
+              cad: state.totalValue ?? null,
+              compsMedian: stats.indicated?.median ?? null,
+              compsRange: stats.indicated
+                ? { min: stats.indicated.min, max: stats.indicated.max }
+                : null,
+              income: incomeComputed.complete ? incomeComputed.indicatedValue : approach("income"),
+              cost: approach("cost"),
+              valueToConsider: d.recommendedProtestValue,
+              valueBasis: d.recommendedProtestValueBasis || null,
+            },
+            comps: stats.ranked.slice(0, 5).map((c) => ({
+              address: c.address,
+              distanceMi: c.distanceMi,
+              value: c.marketValue ?? null,
+            })),
+            compsGapPct: stats.limitedData ? null : stats.valuationGapPct,
+            land: site
+              ? {
+                  keyFinding: site.keyFinding || null,
+                  factors: site.factors
+                    .filter(
+                      (f) =>
+                        (f.status === "Confirmed" || f.status === "Partial Data") &&
+                        f.severity !== "Unknown",
+                    )
+                    .map((f) => ({ factor: f.factor, finding: f.finding, severity: f.severity })),
+                }
+              : null,
+            zoning: zoning
+              ? {
+                  matches: zoning.matches,
+                  assessment: zoning.assessment,
+                  discrepancies: zoning.discrepancies.map((x) => `${x.between}: ${x.detail}`),
+                }
+              : null,
+            improvement: improvement
+              ? {
+                  keyFinding: improvement.keyFinding || null,
+                  components: improvement.buildingComponents
+                    .filter((c) => !c.notApplicable)
+                    .map((c) => ({ component: c.component, condition: c.condition })),
+                }
+              : null,
+            savings:
+              savingsAnalysis.sufficient && savingsAnalysis.annualSavings > 0
+                ? {
+                    annual: savingsAnalysis.annualSavings,
+                    reductionPct: savingsAnalysis.reductionPct,
+                    taxRatePct: savingsAnalysis.taxRate.pct,
+                    taxRateSource: savingsAnalysis.taxRate.source,
+                    assumptions: savingsAnalysis.assumptions,
+                  }
+                : estimated.savings > 0
+                  ? {
+                      annual: estimated.savings,
+                      reductionPct:
+                        state.totalValue && estimated.reduction
+                          ? Math.round((estimated.reduction / state.totalValue) * 100)
+                          : null,
+                      taxRatePct: estimated.effectiveTaxRatePct || null,
+                      taxRateSource: null,
+                      assumptions: estimated.rationale ? [estimated.rationale] : [],
+                    }
+                  : null,
+            strategies: (strategyData?.strategies ?? []).slice(0, 2).map((s) => ({
+              name: s.name,
+              strengthScore: s.strengthScore,
+              reason: s.primaryReason,
+            })),
+            evidence: {
+              verified: evidenceItems.filter((i) => i.status === "Verified").length,
+              found: evidenceItems.filter((i) => i.status === "Found").length,
+              missing: evidenceItems.filter((i) => i.status === "Missing").length,
+              sources: [
+                ...new Set(
+                  evidenceItems
+                    .filter((i) => i.status !== "Missing" && i.foundIn)
+                    .map((i) => i.foundIn as string),
+                ),
+              ],
+            },
+            missingCritical,
+            deadline,
+            filingMethod,
+          });
+          const base = resolvedProperty?.accountNumber ?? state.accountNumber ?? "property";
+          downloadPdf(bytes, `Protest-Report-${base}.pdf`);
+          toast.success("Protest report downloaded.");
+        } catch (err) {
+          toast.error(
+            getErrorMessage(err, "Could not build the protest report. Please try again."),
+          );
+        } finally {
+          setDownloadingReport(false);
+        }
       }
 
-      const summaryView = (
+      return (
         <div className="mt-4 grid gap-4">
-          {/* 2. Executive Protest Summary — real numbers only, see
-              src/lib/executive-summary.ts for the exact formulas. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <ExecutiveStat label="Protest Opportunity" value={summary.protestOpportunity} />
-            {summary.currentCadValue != null && (
-              <ExecutiveStat label="Current CAD Value" value={currency(summary.currentCadValue)} />
-            )}
-            {summary.indicatedValueRange && (
-              <ExecutiveStat
-                label="Market Value Range"
-                value={`${compactCurrency(summary.indicatedValueRange.min)}–${compactCurrency(summary.indicatedValueRange.max)}`}
-              />
-            )}
-            {summary.potentialValueReduction != null && (
-              <ExecutiveStat
-                label="Potential Reduction"
-                value={compactCurrency(summary.potentialValueReduction)}
-              />
-            )}
-            {summary.estimatedAnnualSavings != null && summary.estimatedAnnualSavings > 0 && (
-              <ExecutiveStat
-                label="Est. Annual Savings"
-                value={compactCurrency(summary.estimatedAnnualSavings)}
-              />
-            )}
-            <ExecutiveStat label="Evidence Readiness" value={summary.evidenceReadiness} />
-            <ExecutiveStat label="Protest Readiness" value={summary.protestReadiness} />
-          </div>
-          {summary.overallConfidencePct != null && (
-            <div className="flex flex-col items-center">
-              <SpeedometerGauge value={summary.overallConfidencePct} size="sm" />
-              <div className="-mt-1 text-xs text-muted-foreground">Overall Case Assessment</div>
+          {/* 1. Corvus AI Final Recommendation */}
+          <div className={`rounded-xl border p-5 ${TIER_STYLE[tier].card}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Corvus AI Final Recommendation
             </div>
-          )}
-
-          {/* 3. Final Protest Recommendation — icon + the action itself carry
-              the message; explanation is now capped to one short phrase
-              server-side, not a paragraph (see MODULE_SPECS.executive). */}
-          <div className={`flex items-start gap-3 rounded-lg p-4 ${m.color.bg}`}>
-            <RecommendedActionIcon
-              action={d.recommendedAction}
-              className={`mt-0.5 h-6 w-6 shrink-0 ${m.color.text}`}
-            />
-            <div className="min-w-0 flex-1">
-              <div className={`text-[10px] font-semibold uppercase tracking-wide ${m.color.text}`}>
-                Corvus AI Assessment
-              </div>
-              <div className="mt-0.5 font-serif text-lg font-bold">
-                {RECOMMENDED_ACTION_LABEL[d.recommendedAction] ?? d.recommendedAction}
-              </div>
-              {d.recommendationExplanation && (
-                <p className="mt-1 text-sm text-foreground/90">{d.recommendationExplanation}</p>
-              )}
+            <div className="mt-1.5 flex items-center gap-2.5">
+              <span className={`h-3.5 w-3.5 shrink-0 rounded-full ${TIER_STYLE[tier].dot}`} />
+              <span className="font-serif text-xl font-bold text-foreground">{tierMeta.label}</span>
             </div>
-          </div>
-          {d.conflictNote && (
-            <div className="flex items-start gap-2 rounded-lg bg-warning/15 p-3 text-sm text-warning-foreground">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="min-w-0 flex-1">{d.conflictNote}</p>
-            </div>
-          )}
-
-          {/* 4. Recommended Protest Strategy — the same StrategyBar visual
-              (icon + score bar + number) Module 6's own ranked list already
-              uses, so strength reads at a glance instead of via prose; the
-              AI's phrase (now capped to ~10 words server-side) is a caption
-              under the bar, not a paragraph. */}
-          {(strategyData?.strategies[0] || strategyData?.strategies[1]) && (
-            <div className="card-elev grid gap-3 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Recommended Protest Strategy
-              </div>
-              {strategyData.strategies[0] && (
-                <div>
-                  <StrategyBar s={strategyData.strategies[0]} />
-                  {d.primaryStrategyExplanation && (
-                    <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                      {d.primaryStrategyExplanation}
-                    </p>
-                  )}
-                </div>
-              )}
-              {strategyData.strategies[1] && d.secondaryStrategyExplanation && (
-                <div>
-                  <StrategyBar s={strategyData.strategies[1]} />
-                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                    {d.secondaryStrategyExplanation}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 5. Major Supporting Findings — icon-led, one short line each
-              (whyItMatters capped to ~8 words server-side), not paragraphs. */}
-          {d.majorFindings.length > 0 && (
-            <div>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Major Supporting Findings
-              </div>
-              <div className="grid gap-1.5">
-                {d.majorFindings.map((f, i) => (
-                  <FindingCard key={i} finding={f} onOpenModule={onOpenModule} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 6. Value Recommendation + 7. Financial Opportunity */}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <FactBox
-              label="Potential Value to Consider"
-              value={
-                d.recommendedProtestValue != null
-                  ? currency(d.recommendedProtestValue)
-                  : "Additional Analysis Required"
-              }
-            />
-            <FactBox
-              label="Value Basis"
-              value={d.recommendedProtestValueBasis || "Not enough data yet."}
-            />
-          </div>
-          {estimated.savings > 0 && <CostBenefitRow savings={estimated.savings} />}
-
-          {/* 8. Evidence Readiness */}
-          <div className="card-elev p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Evidence Readiness
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {evidenceItems.length === 0
-                ? "Evidence checklist not generated yet."
-                : criticalMissing.length === 0
-                  ? "No top-priority evidence gaps remain."
-                  : `${criticalMissing.length} top-priority item${criticalMissing.length === 1 ? "" : "s"} still outstanding.`}
+            <p className="mt-1.5 text-sm text-foreground/90">
+              {d.recommendationExplanation || tierMeta.description}
             </p>
-            {criticalMissing.length > 0 && (
-              <ul className="mt-2 grid gap-1">
-                {criticalMissing.map((i, idx) => (
-                  <li key={idx} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{i.item}</span>
-                    <button
-                      onClick={() => onOpenModule("evidence")}
-                      className="shrink-0 text-xs text-accent hover:underline"
-                    >
-                      Upload →
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          </div>
+
+          {/* 2. Protest Readiness */}
+          <div className="card-elev p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Protest Readiness
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${READINESS_STYLE[readiness.status]}`}
+              >
+                {READINESS_LABEL[readiness.status]}
+              </span>
+            </div>
+            {readiness.requirement && (
+              <p className="mt-2 text-sm text-foreground/90">
+                {readiness.requirement}
+                {readiness.module && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenModule(readiness.module!)}
+                    className="ml-1.5 text-xs text-accent hover:underline"
+                  >
+                    Open Evidence Builder →
+                  </button>
+                )}
+              </p>
             )}
           </div>
 
-          {/* 9. Missing Information */}
-          {d.missingInformation.length > 0 && (
-            <div className="card-elev p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Missing Information
-              </div>
-              <ul className="mt-1.5 grid gap-1">
-                {d.missingInformation.map((mi, i) => (
-                  <li key={i} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 flex-1">{mi.item}</span>
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                        mi.severity === "Critical"
-                          ? "bg-destructive/10 text-destructive"
-                          : mi.severity === "Important"
-                            ? "bg-warning/15 text-warning-foreground"
-                            : "bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      {mi.severity}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 10. County-Specific Protest Readiness */}
-          {preFilingItems ? (
-            <div className="card-elev p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  County-Specific Protest Readiness
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    isPreFilingBlocked(preFilingItems)
-                      ? "bg-warning/15 text-warning-foreground"
-                      : "bg-success/15 text-success"
-                  }`}
-                >
-                  {isPreFilingBlocked(preFilingItems)
-                    ? "Additional Filing Information Required"
-                    : "Ready to File"}
-                </span>
-              </div>
-              <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                {preFilingItems.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span
-                      className={item.status === "confirmed" ? "text-success" : "text-destructive"}
-                    >
-                      {item.status === "confirmed" ? (item.value ?? "Confirmed") : "Missing"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="card-elev p-3 text-sm text-muted-foreground">
-              Start a protest to see filing readiness for your county.
-            </div>
-          )}
-
-          {/* 19-23. Protest Defense Readiness — first version: AI-generated
-              property-specific Q&A + a real, deterministically-scored
-              readiness gauge (see getDefenseReadinessScore). Read-only in
-              this version — editing an answer or reassessing after new
-              evidence is a follow-up. */}
-          {d.defenseQA.length > 0 && (
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Protest Defense Readiness
-                </div>
-                {defenseScore != null && (
-                  <span className="text-sm font-bold" style={{ color: scoreColor(defenseScore) }}>
-                    {defenseScore}/100
-                  </span>
-                )}
-              </div>
-              <div className="grid gap-2">
-                {d.defenseQA.map((qa, i) => (
-                  <DefenseQARow key={i} qa={qa} onOpenModule={onOpenModule} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 11 & 32. Next Action + single primary CTA */}
-          {d.nextAction && <AiVerdictLine icon={ArrowRight} text={d.nextAction} color={m.color} />}
-          <div className="flex justify-center">
-            {cta ? (
-              <button onClick={cta.onClick} className="btn-accent">
-                {cta.label}
-              </button>
-            ) : (
-              <Link to="/dashboard/properties" className="btn-accent">
-                Complete Missing Information
-              </Link>
-            )}
+          {/* 3. Download Executive Protest Report */}
+          <div className="flex justify-center pt-1">
+            <button
+              type="button"
+              onClick={handleDownloadReport}
+              disabled={downloadingReport}
+              className="btn-accent inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <Download className="h-4 w-4" />
+              {downloadingReport ? "Building report…" : "Download Protest Report (PDF)"}
+            </button>
           </div>
         </div>
       );
-
-      // Module 10 = the consolidated Protest Case Report / playbook. The
-      // Executive Summary tab above is unchanged; the Full Case Report tab
-      // assembles every section deterministically (see src/lib/case-report.ts)
-      // from real case/property/county data + the other modules' outputs.
-      // Only shown when there's a real saved property to build a case around.
-      if (!resolvedProperty) return summaryView;
-      const reportCountyInfo = getCountyProtestInfo(state.cad);
-      const reportGuidance = getCaseGuidance(
-        resolvedProperty,
-        existingProtest ??
-          ({
-            id: "",
-            propertyId: resolvedProperty.id,
-            status: "requested",
-            notes: null,
-            requestedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            originalValue: state.totalValue ?? null,
-            settlementOfferValue: null,
-            settlementOfferReceivedAt: null,
-            hearingDate: null,
-            hearingTime: null,
-            hearingLocation: null,
-            hearingMode: null,
-            informalStatus: "not_requested",
-            informalReviewDate: null,
-            informalAppraiserCategory: null,
-            attendanceType: null,
-            arbDecision: null,
-            arbDecisionDate: null,
-            finalValue: null,
-            escalationPath: null,
-            closedAt: null,
-            taxYear: state.taxYear ?? null,
-            corvusGuidanceAckAt: null,
-          } satisfies ProtestRecord),
-        evidenceDocs.length,
-        reportCountyInfo,
-        noticeSignedAt,
-      );
-      const reportCaseRecordItems = existingProtest
-        ? getCaseRecord(existingProtest, {
-            documents: caseDocuments,
-            hearingNoticeOnFile: !!(existingProtest.hearingLocation || existingProtest.hearingTime),
-            countyCommunicationLogged: false,
-          })
-        : [];
-      const reportInputs: CaseReportInputs = {
-        property: resolvedProperty,
-        protest: existingProtest,
-        countyInfo: reportCountyInfo,
-        guidance: reportGuidance,
-        caseRecordItems: reportCaseRecordItems,
-        preFilingItems,
-        documents: caseDocuments,
-        evidenceChecklist: evidenceItems.map((it) => ({
-          item: it.item,
-          importance: it.importance,
-          availability: it.availability,
-        })),
-        topStrategy: strategyData?.strategies[0]
-          ? {
-              name: strategyData.strategies[0].name,
-              whySelected: strategyData.strategies[0].whySelected,
-            }
-          : null,
-        executive: {
-          recommendedAction: d.recommendedAction,
-          recommendedProtestValue: d.recommendedProtestValue,
-          recommendedProtestValueBasis: d.recommendedProtestValueBasis,
-        },
-        comps: execStats.indicated
-          ? {
-              indicated: execStats.indicated,
-              valuationGapPct: execStats.valuationGapPct,
-              ranked: execStats.ranked.slice(0, 5).map((c) => ({
-                address: c.address,
-                distanceMi: c.distanceMi,
-                marketValue: c.marketValue ?? null,
-              })),
-            }
-          : null,
-        savings:
-          estimated.savings > 0
-            ? {
-                amount: estimated.savings,
-                reductionPct:
-                  state.totalValue && estimated.reduction
-                    ? Math.round((estimated.reduction / state.totalValue) * 100)
-                    : null,
-              }
-            : null,
-        hearingGuide: null,
-        noticeSignedAt,
-      };
-      return <ExecutiveModuleTabs summary={summaryView} reportInputs={reportInputs} />;
     }
   }
 
@@ -12972,39 +12923,6 @@ function gradualScoreColor(score: number): string {
   const t = (s - 50) / 50;
   const pct = (1 - (1 - t) * (1 - t) * (1 - t)) * 100;
   return `color-mix(in oklch, var(--success) ${pct}%, var(--warning) ${100 - pct}%)`;
-}
-
-function ValueComparisonChart({ current, reduced }: { current: number; reduced: number }) {
-  const data = [
-    { name: "Current", value: current, fill: "var(--muted-foreground)" },
-    { name: "Estimated", value: reduced, fill: "var(--success)" },
-  ];
-  return (
-    <ResponsiveContainer width="100%" height={110}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }}>
-        <XAxis type="number" hide domain={[0, (max: number) => max * 1.15]} />
-        <YAxis
-          type="category"
-          dataKey="name"
-          width={70}
-          tickLine={false}
-          axisLine={false}
-          tick={{ fontSize: 12 }}
-        />
-        <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
-          {data.map((d, i) => (
-            <Cell key={i} fill={d.fill} />
-          ))}
-          <LabelList
-            dataKey="value"
-            position="right"
-            formatter={(v: number) => currency(v)}
-            style={{ fontSize: 12, fontWeight: 600, fill: "var(--foreground)" }}
-          />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
 }
 
 // Every module's AI-generated takeaway line goes through this — a tinted,

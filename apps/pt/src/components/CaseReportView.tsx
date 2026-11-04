@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { buildCaseReport, type CaseReportInputs, type ProtestCaseReport } from "@/lib/case-report";
+import type { ReactNode } from "react";
+import type { ProtestCaseReport } from "@/lib/case-report";
 import type { FinalCaseSummary } from "@/lib/final-case-summary";
 
 // Module 10's "Full Case Report" — the consolidated protest playbook. Purely
@@ -364,41 +364,6 @@ export function FinalCaseSummaryPanel({ summary }: { summary: FinalCaseSummary }
         Figures are the real, recorded outcome of this case. Savings shown before the case is closed
         are estimates, not a guarantee.
       </p>
-    </div>
-  );
-}
-
-// Module 10 modal shell: keeps the existing executive summary exactly as it
-// was (passed in as `summary`) and adds a second tab that renders the
-// consolidated report. The report is built on demand from `reportInputs`
-// (cheap, pure) the first time the tab is shown.
-export function ExecutiveModuleTabs({
-  summary,
-  reportInputs,
-}: {
-  summary: ReactNode;
-  reportInputs: CaseReportInputs;
-}) {
-  const [tab, setTab] = useState<"summary" | "report">("summary");
-  return (
-    <div>
-      <div className="mt-2 flex gap-1 border-b border-border">
-        {(["summary", "report"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-1.5 text-xs font-semibold transition-colors ${
-              tab === t
-                ? "border-accent text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "summary" ? "Executive Summary" : "Full Case Report"}
-          </button>
-        ))}
-      </div>
-      {tab === "summary" ? summary : <CaseReportView report={buildCaseReport(reportInputs)} />}
     </div>
   );
 }
