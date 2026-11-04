@@ -381,6 +381,9 @@ function Report() {
   }, []);
   const [analyzing, setAnalyzing] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  // The two views at the top of the page: the property itself, and its
+  // protest case (savings + case progress).
+  const [topTab, setTopTab] = useState<"property" | "case">("property");
   const [showWall, setShowWall] = useState(false);
   const [hasFullAccess, setHasFullAccess] = useState(false);
   // The raw plan value, not just the hasFullAccess boolean below — owner_managed
@@ -3109,11 +3112,36 @@ function Report() {
   return (
     <EvidenceImpactContext.Provider value={evidenceImpact}>
       <div className="container-page py-10">
+        <div role="tablist" className="mb-4 flex gap-1 border-b border-border print:hidden">
+          {(
+            [
+              ["property", "Property Summary"],
+              ["case", "Protest Case"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={topTab === id}
+              onClick={() => setTopTab(id)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+                topTab === id
+                  ? "border-accent text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Summary */}
-        <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <section
+          className={`grid gap-6 lg:grid-cols-[1.4fr_1fr] ${topTab === "property" ? "" : "hidden print:grid"}`}
+        >
           <div className="card-elev p-6">
             <div className="flex items-center gap-2">
-              <span className="badge-soft">Property Summary</span>
               <span className="text-xs text-muted-foreground">Source: Official CAD Record</span>
             </div>
             <h1 className="mt-3 font-serif text-3xl font-semibold">{state.address}</h1>
@@ -3165,7 +3193,9 @@ function Report() {
           it read as cartoonish for what's otherwise a professional tax-filing
           tool — the gradient/glow/sheen surface below carries the "this is a
           good moment" read on its own, without particle animation. */}
-        <section className="relative mt-6 card-elev overflow-hidden text-primary-foreground">
+        <section
+          className={`relative card-elev overflow-hidden text-primary-foreground print:mt-6 ${topTab === "case" ? "" : "hidden print:block"}`}
+        >
           {/* Richer than a flat bg-primary fill — a diagonal gradient with a
             faint accent-green undertone, so the banner reads as an
             intentionally celebratory surface even before any motion kicks in. */}
