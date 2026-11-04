@@ -11627,7 +11627,7 @@ function ModulePreviewContent({
                 {notApplicableFactors.length > 0 && (
                   <div>
                     <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Marked Not Applicable
+                      Marked Not Applicable / Not Available
                     </div>
                     <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                       {notApplicableFactors.map((f) => (
