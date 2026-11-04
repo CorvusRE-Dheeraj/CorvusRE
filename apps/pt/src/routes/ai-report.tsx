@@ -5675,73 +5675,6 @@ function ComparableTable({
   );
 }
 
-// The 10-step workflow ribbon at the top of Module 3 — purely a progress
-// cue for the sequence the user described (Find -> Verify -> Rank -> Select
-// -> Compare -> Adjust -> Calculate -> vs CAD -> Confidence -> Recommendation).
-// Each step jumps to its section below; a step whose section has nothing to
-// show yet is greyed out with the reason as its tooltip, and the line under
-// the ribbon says what the later steps are waiting for.
-const COMPS_STEPS: { label: string; target: string }[] = [
-  { label: "Find data", target: "comps-step-find" },
-  { label: "Verify", target: "comps-step-table" },
-  { label: "Rank", target: "comps-step-rank" },
-  { label: "Select", target: "comps-step-table" },
-  { label: "Compare", target: "comps-step-compare" },
-  { label: "Adjust", target: "comps-step-adjust" },
-  { label: "Calculate value", target: "comps-step-value" },
-  { label: "vs CAD", target: "comps-step-value" },
-  { label: "Confidence", target: "comps-step-confidence" },
-  { label: "Recommendation", target: "comps-step-recommendation" },
-];
-
-function CompsWorkflowRibbon({
-  hasComps,
-  hasSelection,
-  hasIndicated,
-  hasRecommendation,
-  waitingNote,
-  available: availableTargets,
-}: {
-  // which sections below have something to show (by target id)
-  available: Set<string>;
-  hasComps: boolean;
-  hasSelection: boolean;
-  hasIndicated: boolean;
-  hasRecommendation: boolean;
-  waitingNote: string | null;
-}) {
-  // Furthest step reached — a coarse cue, not a strict state machine.
-  const reached = !hasComps ? 0 : hasRecommendation ? 9 : hasIndicated ? 7 : hasSelection ? 3 : 2;
-  return (
-    <div className="grid gap-1">
-      <div className="flex gap-1 overflow-x-auto pb-1 text-[10px]">
-        {COMPS_STEPS.map((st, i) => {
-          const available = availableTargets.has(st.target);
-          return (
-            <button
-              key={st.label}
-              type="button"
-              disabled={!available}
-              title={available ? `Go to ${st.label}` : (waitingNote ?? "Not available yet")}
-              onClick={() =>
-                document
-                  .getElementById(st.target)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-              className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${
-                i <= reached ? "bg-accent/15 text-accent" : "bg-secondary/60 text-muted-foreground"
-              } ${available ? "hover:underline" : "cursor-default opacity-60"}`}
-            >
-              {i + 1}. {st.label}
-            </button>
-          );
-        })}
-      </div>
-      {waitingNote && <p className="text-[11px] text-muted-foreground">{waitingNote}</p>}
-    </div>
-  );
-}
-
 // "Add a comparable" — a comp the user knows about that the CAD feed didn't
 // surface (or a real sale from a document). Address is geocoded on submit so
 // it lands on the map relative to the subject; sale figures are optional and
@@ -11073,36 +11006,6 @@ function ModulePreviewContent({
 
     return (
       <div className="mt-4 grid gap-4">
-        <CompsWorkflowRibbon
-          hasComps={hasAnyComp}
-          hasSelection={compSelections.length > 0}
-          hasIndicated={stats.indicated != null}
-          hasRecommendation={!!d?.protestRecommendation}
-          available={
-            new Set(
-              [
-                "comps-step-find",
-                hasAnyComp && "comps-step-table",
-                hasAnyComp && "comps-step-rank",
-                hasAnyComp && "comps-step-adjust",
-                !!map?.subject && topRanked.length > 0 && "comps-step-compare",
-                !!stats.indicated && "comps-step-value",
-                stats.confidencePct != null && "comps-step-confidence",
-                !!d && "comps-step-recommendation",
-              ].filter((x): x is string => !!x),
-            )
-          }
-          waitingNote={
-            compsMap.loading
-              ? null
-              : !hasAnyComp
-                ? "Steps 2–10 start once there are comparables: none could be found for this property in public parcel data yet. Add a sale you know about below and they fill in."
-                : stats.indicated == null
-                  ? `Steps 7–9 need at least one comparable with a usable value — ${usable.length} so far.`
-                  : null
-          }
-        />
-
         {/* Map first — the visual centerpiece of Module 3: every located
             comp plotted against the subject, sale data distinguished from
             assessed-value comps by colour. Shown for every county; when the
