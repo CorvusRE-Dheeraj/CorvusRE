@@ -287,6 +287,9 @@ type ModuleAsyncState = {
   // When this data came from public.module_results rather than a fresh AI
   // call — drives the "Updated {time}" line next to Regenerate.
   cachedAt?: string;
+  // Re-running in the background (e.g. after marking a factor N/A): the
+  // data above stays on screen until the new result arrives.
+  refreshing?: boolean;
 };
 
 export const Route = createFileRoute("/ai-report")({
@@ -406,6 +409,7 @@ function Report() {
   // loadModule() below — rather than all up front, so tokens are only spent on
   // modules the user actually opens.
   const [rawModuleData, setModuleData] = useState<Record<string, ModuleAsyncState>>({});
+  const moduleRequestSeq = useRef<Record<string, number>>({});
   // Separate from moduleData since it's not an AI call and has its own real/empty
   // result shape (CompsResult, not the free-text ModuleResultMap) — only fetched
   // when the Comps module (module 3) is opened.
@@ -1237,7 +1241,8 @@ function Report() {
           ? [moduleId, "strategy", "evidence", "executive"]
           : [moduleId];
     for (const id of dependents) {
-      if (moduleData[id]?.data || moduleData[id]?.error) loadModule(id, { force: true });
+      if (moduleData[id]?.data || moduleData[id]?.error)
+        loadModule(id, { force: true, background: true });
     }
   }
 
@@ -1596,7 +1601,12 @@ function Report() {
   // opts.recheck — re-read module_results even though data is already shown:
   //   an identical input hash re-serves the stored bytes (no AI call), only a
   //   real input change regenerates. Backs the "Refresh" control.
-  function loadModule(id: string, opts?: { force?: boolean; recheck?: boolean }) {
+  // opts.background — keep the current result on screen while it re-runs
+  //   (marking a factor N/A); a failure keeps it too, with a toast.
+  function loadModule(
+    id: string,
+    opts?: { force?: boolean; recheck?: boolean; background?: boolean },
+  ) {
     // No AI call backs this module anymore — it renders straight from the
     // deterministic `estimated` value (see estimateSavings() above).
     if (id === "savings") return;
@@ -1606,12 +1616,26 @@ function Report() {
     // and the eager-load effect already skips it via requiresUserData).
     if (id === "income" && !incomeComputed.dataComplete) return;
     const existing = moduleData[id];
+    const background = !!opts?.background && !!existing?.data;
     if (
-      (existing && (existing.loading || (existing.data && !opts?.force && !opts?.recheck))) ||
+      (existing &&
+        (existing.loading ||
+          (existing.refreshing && !background) ||
+          (existing.data && !opts?.force && !opts?.recheck))) ||
       !state.totalValue
     )
       return;
-    setModuleData((prev) => ({ ...prev, [id]: { data: null, loading: true, error: null } }));
+    // Only the latest request for a module may write its result — a
+    // background re-run started twice in a row must not land out of order.
+    const seq = (moduleRequestSeq.current[id] ?? 0) + 1;
+    moduleRequestSeq.current[id] = seq;
+    const isLatest = () => moduleRequestSeq.current[id] === seq;
+    setModuleData((prev) => ({
+      ...prev,
+      [id]: background
+        ? { ...prev[id], refreshing: true }
+        : { data: null, loading: true, error: null },
+    }));
     const input: ModuleAnalysisInput = {
       address: state.address,
       cad: state.cad,
@@ -2174,6 +2198,7 @@ function Report() {
           if (!opts?.force) {
             const hit = await getCachedModuleResult(resolvedProperty!.id, id);
             if (hit && hit.inputHash === inputHash) {
+              if (!isLatest()) return;
               setModuleData((prev) => ({
                 ...prev,
                 [id]: { data: hit.result, loading: false, error: null, cachedAt: hit.updatedAt },
@@ -2187,6 +2212,7 @@ function Report() {
       }
       try {
         const data = await run();
+        if (!isLatest()) return;
         setModuleData((prev) => ({ ...prev, [id]: { data, loading: false, error: null } }));
         if (canCache && inputHash) {
           saveModuleResult(user!.id, resolvedProperty!.id, id, inputHash, MODEL_TAG, data).catch(
@@ -2194,6 +2220,12 @@ function Report() {
           );
         }
       } catch (err) {
+        if (!isLatest()) return;
+        if (background) {
+          setModuleData((prev) => ({ ...prev, [id]: { ...prev[id], refreshing: false } }));
+          toast.error("Could not update this analysis — showing the previous result.");
+          return;
+        }
         setModuleData((prev) => ({
           ...prev,
           [id]: {
@@ -3719,9 +3751,15 @@ function Report() {
             {!!moduleData[openModel.id]?.data && (
               <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <span>
-                  {moduleData[openModel.id]?.cachedAt
-                    ? `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
-                    : "Updated just now"}
+                  {moduleData[openModel.id]?.refreshing ? (
+                    <span className="inline-flex items-center gap-1">
+                      <RefreshCw className="h-3 w-3 animate-spin" /> Updating in the background…
+                    </span>
+                  ) : moduleData[openModel.id]?.cachedAt ? (
+                    `Updated ${relativeTime(moduleData[openModel.id]!.cachedAt)}`
+                  ) : (
+                    "Updated just now"
+                  )}
                 </span>
                 {openModel.id !== "savings" && (
                   <>
