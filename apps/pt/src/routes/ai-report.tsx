@@ -384,6 +384,8 @@ function Report() {
   // The two views at the top of the page: the property itself, and its
   // protest case (savings + case progress).
   const [topTab, setTopTab] = useState<"property" | "case">("property");
+  // The modules grid and the Commercial Valuation panel, as two tabs.
+  const [modulesTab, setModulesTab] = useState<"modules" | "valuation">("modules");
   const [showWall, setShowWall] = useState(false);
   const [hasFullAccess, setHasFullAccess] = useState(false);
   // The raw plan value, not just the hasFullAccess boolean below — owner_managed
@@ -3108,6 +3110,9 @@ function Report() {
   }
 
   const openModel = MODULES.find((m) => m.id === openId) ?? null;
+  // Not for a property the county itself codes as residential.
+  const showCommercialValuation = classifyPropertyCategory(state.propertyType) !== "residential";
+  const activeModulesTab = showCommercialValuation ? modulesTab : "modules";
 
   return (
     <EvidenceImpactContext.Provider value={evidenceImpact}>
@@ -3449,13 +3454,37 @@ function Report() {
 
         {/* Modules */}
         <section className="mt-8 print:hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-serif text-2xl font-semibold">10 Premium AI Modules</h2>
-            <button onClick={() => window.print()} className="btn-outline text-sm py-2">
+          <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border">
+            <div role="tablist" className="flex gap-1">
+              {(
+                [
+                  ["modules", "10 Premium AI Modules"],
+                  ...(showCommercialValuation
+                    ? ([["valuation", "Commercial Valuation"]] as const)
+                    : []),
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeModulesTab === id}
+                  onClick={() => setModulesTab(id)}
+                  className={`-mb-px border-b-2 px-3 py-2 font-serif text-lg font-semibold transition-colors sm:text-xl ${
+                    activeModulesTab === id
+                      ? "border-accent text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => window.print()} className="btn-outline mb-2 text-sm py-2">
               Export Report
             </button>
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="mt-2 text-muted-foreground text-sm">
             {hasFullAccess
               ? "All modules unlocked with your AI Report subscription."
               : `Modules 1-${FREE_MODULE_COUNT} are free for everyone. Subscribe to unlock modules ${FREE_MODULE_COUNT + 1}-${MODULES.length}.`}
@@ -3507,7 +3536,7 @@ function Report() {
               Sales Comparison, Equal & Uniform, Cost, Land / Improvement,
               Impairments (lib/commercial-valuation.ts). Not for a property the
               county itself codes as residential. */}
-          {classifyPropertyCategory(state.propertyType) !== "residential" && (
+          {showCommercialValuation && activeModulesTab === "valuation" && (
             <CommercialValuationPanel
               userId={user?.id ?? null}
               propertyId={resolvedProperty?.id ?? null}
@@ -3559,7 +3588,9 @@ function Report() {
                 : null
             }
           >
-            <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={`mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3 ${activeModulesTab === "modules" ? "" : "hidden"}`}
+            >
               {MODULES.map((m) => (
                 <ModuleCard
                   key={m.id}
