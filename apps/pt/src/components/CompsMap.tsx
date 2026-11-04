@@ -204,8 +204,8 @@ function CompsMapInner({
           ))}
         </MapContainer>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-        <LegendDot color="var(--accent)" /> Subject
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        <LegendDot color="var(--accent)" /> Subject property
         {hasSaleData ? (
           <>
             <LegendDot color="var(--success)" /> Verified sale
@@ -225,7 +225,7 @@ function CompsMapInner({
 function LegendDot({ color }: { color: string }) {
   return (
     <span
-      className="inline-block h-2 w-2 shrink-0 rounded-full"
+      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
       style={{ backgroundColor: color, border: "1px solid white" }}
     />
   );

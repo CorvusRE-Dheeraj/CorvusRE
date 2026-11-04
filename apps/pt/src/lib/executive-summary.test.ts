@@ -13,6 +13,7 @@ function stats(overrides: Partial<ComparableStats> = {}): ComparableStats {
     confidencePct: 80,
     limitedData: false,
     ranked: [],
+    selected: [],
     ...overrides,
   };
 }

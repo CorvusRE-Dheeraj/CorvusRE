@@ -8,9 +8,10 @@ import {
 import type { CompProperty } from "./cad-comps";
 
 function comp(overrides: Partial<CompProperty>): CompProperty {
+  const pid = overrides.pid ?? 1;
   return {
-    pid: 1,
-    address: "123 Main St",
+    pid,
+    address: `${pid}00 Main St`,
     latitude: 33.05,
     longitude: -96.75,
     marketValue: 400000,
@@ -245,5 +246,41 @@ describe("computeComparableStats", () => {
     expect(added?.pricePerSqft).toBe(245); // 490000 / 2000
     // the added comp counts toward the usable pool (2 of 3 needed here)
     expect(stats.ranked.filter((r) => r.marketValue != null && !r.excluded)).toHaveLength(2);
+  });
+
+  // 7 comps, similarity falling with value distance: pid 2 most similar, pid 8 least.
+  const seven = [2, 3, 4, 5, 6, 7, 8].map((pid) =>
+    comp({ pid, marketValue: 500000 - (pid - 1) * 15000, legalAcreage: 0.3 }),
+  );
+
+  it("selects the top 5 by similarity by default, and builds the figures from only those", () => {
+    const stats = computeComparableStats(subject, seven, 500000);
+    expect(stats.selected.map((c) => c.pid)).toEqual([2, 3, 4, 5, 6]);
+    expect(stats.ranked.filter((c) => c.selected)).toHaveLength(5);
+    expect(stats.indicated?.min).toBe(500000 - 5 * 15000); // pid 6, not pid 8
+    expect(stats.perCompAdjustment.every((a) => ["2", "3", "4", "5", "6"].includes(a.key))).toBe(
+      true,
+    );
+  });
+
+  it("the user's own picks go in first; the most similar of the rest fill the 5", () => {
+    const stats = computeComparableStats(subject, seven, 500000, {
+      pinnedKeys: new Set(["8", "7"]),
+      excludedKeys: new Set(["2"]),
+    });
+    expect(stats.selected.map((c) => c.pid)).toEqual([3, 4, 5, 7, 8]);
+  });
+
+  it("a parcel at the subject's own street address is labelled the subject, never a comp", () => {
+    const stats = computeComparableStats(
+      subject,
+      [comp({ pid: 2, address: "1001 HWY66, TX", marketValue: 480000 }), ...seven.slice(1)],
+      500000,
+      { subjectAddress: "1001 Hwy 66, Rockwall, TX 75087" },
+    );
+    const own = stats.ranked.find((c) => c.pid === 2)!;
+    expect(own.isSubject).toBe(true);
+    expect(own.selected).toBeUndefined();
+    expect(stats.selected.map((c) => c.pid)).not.toContain(2);
   });
 });

@@ -26,10 +26,13 @@ export async function extractCompSale(documentId: string): Promise<CompSaleExtra
 // Per-property comparable-sales selection for Module 3 (Market Value). A row
 // exists only for a comp the user has actually touched:
 //
-//  - a CAD comp they excluded from the indicated-value math:
+//  - a CAD comp they unticked from the final 5:
 //    { compKey: "<cad pid>", action: "exclude" }  — every other field null
+//  - a CAD comp they ticked into the final 5 themselves:
+//    { compKey: "<cad pid>", action: "include" }  — every other field null
 //  - a comp they added by hand or from an uploaded sale document:
 //    { compKey: "user:<uuid>", action: "include", address, latitude, ... }
+//    (action "exclude" once unticked — its figures are kept)
 //
 // Ranking / indicated value / gap / confidence stay deterministic in
 // comps-analysis.ts — this only decides which comps feed that math. Mirrors
@@ -161,19 +164,19 @@ export function excludedCompKeys(selections: CompSelection[]): Set<string> {
   return new Set(selections.filter((s) => s.action === "exclude").map((s) => s.compKey));
 }
 
+// The comps the user put in the final 5 themselves (a CAD comp they ticked,
+// or one they added) — computeComparableStats()'s `pinnedKeys` option.
+export function pinnedCompKeys(selections: CompSelection[]): Set<string> {
+  return new Set(selections.filter((s) => s.action === "include").map((s) => s.compKey));
+}
+
 // The comps the user added by hand / from a document, mapped to the
 // ExtraComp shape computeComparableStats() merges into the ranking pool.
 // Skips any without real coordinates — the ranking math needs lat/lng, and a
 // comp we couldn't geocode has no place on the map either.
 export function compSelectionsToExtraComps(selections: CompSelection[]): ExtraComp[] {
   return selections
-    .filter(
-      (s) =>
-        s.action === "include" &&
-        s.compKey.startsWith("user:") &&
-        s.latitude != null &&
-        s.longitude != null,
-    )
+    .filter((s) => s.compKey.startsWith("user:") && s.latitude != null && s.longitude != null)
     .map((s) => ({
       key: s.compKey,
       address: s.address,
