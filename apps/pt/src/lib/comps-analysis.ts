@@ -69,6 +69,13 @@ export type RankedComp = CompProperty & {
   // can still show it (struck through), but left out of the indicated value,
   // gap and confidence math.
   excluded?: boolean;
+  // One of the (up to) 5 comps the indicated value, gap, target range,
+  // charts and AI recommendation are built from — the top 5 by similarity
+  // unless the user picked their own (see ComputeOpts.pinnedKeys).
+  selected?: boolean;
+  // A parcel at the subject's own street address (e.g. a second parcel of
+  // the same property) — shown labelled as the subject, never used as a comp.
+  isSubject?: boolean;
   // Populated only for a user-added comp (ExtraComp) — a CAD comp has no
   // verifiable sale in a non-disclosure state.
   salePrice?: number | null;
@@ -82,6 +89,13 @@ export type RankedComp = CompProperty & {
 type ComputeOpts = {
   // CAD pids (as strings) the user has excluded from the value math.
   excludedKeys?: Set<string>;
+  // Comps the user chose for the final 5 — they go in first, the highest-
+  // similarity remaining comps fill the rest.
+  pinnedKeys?: Set<string>;
+  // The owner's own saved address — a comp at the same street address is the
+  // subject itself (see RankedComp.isSubject). The CAD subject's own address
+  // is checked too.
+  subjectAddress?: string | null;
   // Comps the user added — merged into the pool before ranking.
   extraComps?: ExtraComp[];
   // The subject's own gross building area, when known — enables a $/SF
@@ -244,10 +258,25 @@ export type ComparableStats = {
   // back to other valuation methods rather than trust a number this thin.
   limitedData: boolean;
   ranked: RankedComp[];
+  // The final comps (up to TOP_N_FOR_INDICATED_VALUE), highest similarity
+  // first — every figure above is built from these.
+  selected: RankedComp[];
 };
 
 const MIN_USABLE_COMPS = 3;
-const TOP_N_FOR_INDICATED_VALUE = 5;
+export const TOP_N_FOR_INDICATED_VALUE = 5;
+
+// "1001 Hwy 66, Rockwall, TX 75087" and "1001 HWY66, TX" → "1001HWY66" — the
+// street part only, so a county situs string and a geocoded address compare.
+function streetKey(address: string | null | undefined): string | null {
+  const street = (address ?? "").split(",")[0].toUpperCase();
+  const key = street
+    .replace(/\bHIGHWAY\b/g, "HWY")
+    .replace(/\bSTATE HWY\b/g, "SH")
+    .replace(/[^A-Z0-9]/g, "");
+  // needs a house number and a street name to mean anything
+  return /^\d+[A-Z]/.test(key) ? key : null;
+}
 
 // Same honest 35-95 bounding success-probability.ts uses for its own
 // derived (not AI-guessed) confidence score — never claims near-certainty
@@ -341,11 +370,37 @@ export function computeComparableStats(
     ranked = ranked.map((c) => ({ ...c, flags: compFlags(subject, c, medianDist) }));
   }
 
-  const usable = ranked.filter((c) => c.marketValue != null && !c.excluded);
+  // A parcel at the subject's own street address (and right next to it) is
+  // the subject, not a comp.
+  const subjectStreets = new Set(
+    [streetKey(opts.subjectAddress), streetKey(subject?.address)].filter(
+      (k): k is string => k != null,
+    ),
+  );
+  if (subjectStreets.size > 0) {
+    ranked = ranked.map((c) =>
+      !c.userAdded && c.distanceMi <= 0.25 && subjectStreets.has(streetKey(c.address) ?? "")
+        ? { ...c, isSubject: true }
+        : c,
+    );
+  }
+
+  const usable = ranked.filter((c) => c.marketValue != null && !c.excluded && !c.isSubject);
   const limitedData = usable.length < MIN_USABLE_COMPS;
   const subjectValue = subjectTotalValue ?? subject?.marketValue ?? null;
 
-  if (usable.length === 0) {
+  // The final 5: the user's own picks first, then the most similar of the
+  // rest — kept in similarity order.
+  const pinned = opts.pinnedKeys ?? new Set<string>();
+  const selectedKeys = new Set(
+    [...usable.filter((c) => pinned.has(c.key)), ...usable.filter((c) => !pinned.has(c.key))]
+      .slice(0, TOP_N_FOR_INDICATED_VALUE)
+      .map((c) => c.key),
+  );
+  ranked = ranked.map((c) => (selectedKeys.has(c.key) ? { ...c, selected: true } : c));
+  const top = ranked.filter((c) => c.selected);
+
+  if (top.length === 0) {
     return {
       indicated: null,
       adjustedIndicated: null,
@@ -355,18 +410,18 @@ export function computeComparableStats(
       confidencePct: null,
       limitedData: true,
       ranked,
+      selected: [],
     };
   }
 
-  const top = usable.slice(0, TOP_N_FOR_INDICATED_VALUE);
   const values = top.map((c) => c.marketValue as number).sort((a, b) => a - b);
   const min = values[0];
   const max = values[values.length - 1];
   const median = values[Math.floor(values.length / 2)];
 
   // ── Rate-based indicated range (Texas Tax Code §41.43(b)(3) "equal and
-  // uniform" logic, product-specified 2026-09): every USABLE comp (not just
-  // the top-5-by-similarity slice above) with a real acreage gets its own
+  // uniform" logic, product-specified 2026-09): each of the final 5 comps
+  // (product-specified 2026-11 — was every usable comp) with a real acreage gets its own
   // $/acre computed, then applied directly to the subject's own actual
   // acreage — what the subject would be worth at that comp's rate. Only
   // comps priced BELOW the subject's own $/acre are used: a comp priced at
@@ -378,7 +433,7 @@ export function computeComparableStats(
   const perCompAdjustment: CompAdjustment[] = [];
   if (subjAcres != null && subjAcres > 0 && subjectValue != null && subjectValue > 0) {
     const subjectPerAcre = subjectValue / subjAcres;
-    for (const c of usable) {
+    for (const c of top) {
       if (!c.legalAcreage || c.legalAcreage <= 0) continue;
       const compPerAcre = (c.marketValue as number) / c.legalAcreage;
       if (compPerAcre >= subjectPerAcre) continue;
@@ -431,5 +486,6 @@ export function computeComparableStats(
     confidencePct,
     limitedData,
     ranked,
+    selected: top,
   };
 }
