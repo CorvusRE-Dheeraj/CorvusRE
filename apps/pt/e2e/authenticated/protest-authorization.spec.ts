@@ -59,6 +59,8 @@ test.skip("signing the authorization and requesting a protest creates a case", a
   // The button's own label is "File Protest" here (the AI Report page) --
   // "Request Protest Filing" is a *different* entry point into the same
   // flow, on the Properties list page's "Actions" dropdown, not this one.
+  // The protest banner lives under the page's "Protest Case" tab.
+  await page.getByRole("tab", { name: "Protest Case" }).click();
   const requestFilingButton = page.getByRole("button", { name: "File Protest" });
   await requestFilingButton.waitFor({ state: "visible", timeout: 60_000 });
   await requestFilingButton.click();

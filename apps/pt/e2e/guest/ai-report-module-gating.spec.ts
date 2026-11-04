@@ -41,32 +41,29 @@ test("unsubscribed guest sees free preview on modules 1-3 and a subscription gat
   // Relative, no leading slash — see pricing-tiers.spec.ts for why.
   await page.goto("ai-report");
 
-  await expect(page.getByRole("heading", { name: "10 Premium AI Modules" })).toBeVisible();
+  // The modules section is a tab ("10 Premium AI Modules" | "Commercial
+  // Valuation" — the latter only for non-residential properties).
+  await expect(page.getByRole("tab", { name: "10 Premium AI Modules" })).toBeVisible();
 
-  const freeLabels = page.getByText("Free preview", { exact: true });
-  const gatedLabels = page.getByText("Requires subscription", { exact: true });
-
-  await expect(freeLabels).toHaveCount(3);
-  await expect(gatedLabels).toHaveCount(7);
+  // Square tiles, highlights only: a free-preview tile opens with "View
+  // Details"; a gated tile shows the Locked chip and "Subscribe to unlock".
+  await expect(page.getByRole("button", { name: /^View Details/ })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Subscribe to unlock" })).toHaveCount(7);
+  await expect(page.getByText("Locked", { exact: true })).toHaveCount(7);
 
   // A subscribed-only label should never appear for a guest.
-  await expect(page.getByText("Included", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Included in your plan", { exact: true })).toHaveCount(0);
 
-  await expect(page.getByRole("button", { name: "Subscribe to unlock" })).toHaveCount(7);
-
-  // The old prominent "View preview" / "View report" button is gone — the
-  // free-preview modules now open via a subtle "Open" link (plus the
-  // clickable colored insight band). One "Open" per free-preview module.
-  await expect(page.getByRole("button", { name: "View preview" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open", exact: true })).toHaveCount(3);
-
-  // …and that link opens the module's preview modal. Wait for the eager
+  // …and View Details opens the module's preview modal. Wait for the eager
   // module loads to settle first — the cards re-render as each resolves, and
   // clicking mid-re-render detaches the node (flaky otherwise). "Analyzing"
   // is the per-card loading label; wait for every card to leave that state
   // rather than networkidle, which is too tight now that comps generates
   // right around the old 30s test budget.
   await expect(page.getByText("Analyzing")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("button", { name: "Open", exact: true }).first().click();
+  await page
+    .getByRole("button", { name: /^View Details/ })
+    .first()
+    .click();
   await expect(page.getByRole("button", { name: "Close" })).toBeVisible();
 });
