@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -309,6 +309,7 @@ export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
   }
 
   const { isDragging, dropHandlers } = useFileDrop(onFile, uploading);
+  const skippedFileInput = useRef<HTMLInputElement>(null);
 
   // "/" and "/dashboard" each already have their own address/upload widget
   // built directly into the page — showing JourneyTracker's generic action
@@ -345,9 +346,22 @@ export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
     return (
       <section className="card-elev p-6">
         <span className="badge-soft">Your Journey</span>
+        <input
+          ref={skippedFileInput}
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void onFile(file);
+          }}
+        />
         <JourneyBlock
           steps={[...intake.done, false, false, false, false, false, false]}
           skippedSteps={[...intake.skipped, false, false, false, false, false, false]}
+          // The skipped "Upload Documents" step opens the same notice upload.
+          onSkippedStep={() => skippedFileInput.current?.click()}
           uploading={uploading}
           onFile={onFile}
           isDragging={isDragging}
@@ -385,6 +399,10 @@ export function JourneyTracker({ propertyId }: { propertyId?: string } = {}) {
         title={activeProperty.address}
         steps={[...intakeSteps.done, ...computeFilingSteps(activeRank)]}
         skippedSteps={[...intakeSteps.skipped, false, false, false, false, false, false]}
+        // The skipped "Upload Documents" step goes to this property's documents.
+        onSkippedStep={() =>
+          navigate({ to: "/dashboard/documents", search: { propertyId: activeProperty.id } })
+        }
         uploading={uploading}
         onFile={onFile}
         isDragging={isDragging}
@@ -465,6 +483,7 @@ export function JourneyBlock({
   dropHandlers,
   suppressActions,
   onProtestClick,
+  onSkippedStep,
 }: {
   title?: string;
   steps: boolean[];
@@ -480,6 +499,8 @@ export function JourneyBlock({
   dropHandlers: ReturnType<typeof useFileDrop>["dropHandlers"];
   suppressActions?: boolean;
   onProtestClick?: () => void;
+  // Opens the page where a skipped step can still be done.
+  onSkippedStep?: (index: number) => void;
 }) {
   const completedCount = steps.filter(Boolean).length;
   const firstIncomplete = steps.findIndex((done) => !done);
@@ -541,27 +562,45 @@ export function JourneyBlock({
                     className="absolute -top-4 h-4 w-4 text-primary motion-safe:animate-bounce"
                   />
                 )}
-                <span
-                  className={`h-8 w-8 rounded-full grid place-items-center text-xs font-semibold ${
-                    skipped
-                      ? "bg-secondary text-muted-foreground"
-                      : done
-                        ? "bg-success text-success-foreground"
-                        : active
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-muted-foreground"
-                  }`}
-                >
-                  {i + 1}
-                </span>
-                <span
-                  className={`text-[11px] text-center leading-tight ${
-                    active ? "text-foreground font-medium" : "text-muted-foreground"
-                  }`}
-                >
-                  {label}
-                  {skipped && " (skipped)"}
-                </span>
+                {skipped && onSkippedStep ? (
+                  <button
+                    type="button"
+                    onClick={() => onSkippedStep(i)}
+                    title={`${label} was skipped — do it now`}
+                    className="group flex flex-col items-center gap-1"
+                  >
+                    <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-dashed border-warning bg-warning/10 text-xs font-semibold text-warning-foreground transition-colors group-hover:bg-warning/25">
+                      {i + 1}
+                    </span>
+                    <span className="text-center text-[11px] leading-tight text-accent group-hover:underline">
+                      {label} (skipped — add now)
+                    </span>
+                  </button>
+                ) : (
+                  <>
+                    <span
+                      className={`h-8 w-8 rounded-full grid place-items-center text-xs font-semibold ${
+                        skipped
+                          ? "bg-secondary text-muted-foreground"
+                          : done
+                            ? "bg-success text-success-foreground"
+                            : active
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className={`text-[11px] text-center leading-tight ${
+                        active ? "text-foreground font-medium" : "text-muted-foreground"
+                      }`}
+                    >
+                      {label}
+                      {skipped && " (skipped)"}
+                    </span>
+                  </>
+                )}
               </div>
             </li>
           );
