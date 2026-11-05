@@ -132,7 +132,7 @@ export function fromProperty(
       title: `Tax bill due — ${p.address}`,
       amount: p.taxAmountDue,
       propertyId: p.id,
-      linkTo: "/dashboard/tax-bills",
+      linkTo: "/dashboard/pay-taxes",
       resolved: !!p.paidAt,
       propertyLabel: p.address,
     });
@@ -274,7 +274,7 @@ function fromTaxBill(bill: TaxBillRecord, properties: PropertyRecord[]): Calenda
       title: `Tax bill due${yearLabel} — ${address}`,
       amount: bill.amountDue,
       propertyId: bill.propertyId,
-      linkTo: "/dashboard/tax-bills",
+      linkTo: "/dashboard/pay-taxes",
       resolved: !!bill.paidAt,
       propertyLabel: address,
     });
@@ -287,7 +287,7 @@ function fromTaxBill(bill: TaxBillRecord, properties: PropertyRecord[]): Calenda
       title: `Penalty date${yearLabel} — ${address}`,
       amount: null,
       propertyId: bill.propertyId,
-      linkTo: "/dashboard/tax-bills",
+      linkTo: "/dashboard/pay-taxes",
       resolved: !!bill.paidAt || new Date(bill.penaltyDate) < new Date(),
       propertyLabel: address,
     });
@@ -300,7 +300,7 @@ function fromTaxBill(bill: TaxBillRecord, properties: PropertyRecord[]): Calenda
       title: `Refund expected${yearLabel} — ${address}`,
       amount: bill.refundAmount,
       propertyId: bill.propertyId,
-      linkTo: "/dashboard/tax-bills",
+      linkTo: "/dashboard/pay-taxes",
       resolved: !!bill.refundReceivedAt,
       propertyLabel: address,
     });

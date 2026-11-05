@@ -1,0 +1,3051 @@
+{
+ "source": "Each county tax assessor-collector's own website (via the Texas Comptroller's county directory)",
+ "builtAt": "2026-11-05",
+ "counties": {
+  "Anderson": {
+   "county": "Anderson",
+   "website": "http://www.co.anderson.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": []
+  },
+  "Andrews": {
+   "county": "Andrews",
+   "website": "http://www.andrewscountytax.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "404 http://www.andrewscountytax.com/"
+   ]
+  },
+  "Angelina": {
+   "county": "Angelina",
+   "website": "http://www.angelinacounty.net/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 42,
+   "errors": []
+  },
+  "Aransas": {
+   "county": "Aransas",
+   "website": "http://www.aransascountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Archer": {
+   "county": "Archer",
+   "website": "https://www.archercountytax.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Armstrong": {
+   "county": "Armstrong",
+   "website": "http://www.co.armstrong.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 27,
+   "errors": [
+    "404 http://armstrongcad.org/effective_taxrate.htm"
+   ]
+  },
+  "Atascosa": {
+   "county": "Atascosa",
+   "website": "http://www.atascosacounty.texas.gov",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://atascosacad.com/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Austin": {
+   "county": "Austin",
+   "website": "http://www.austincounty.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://austincad.org/tax-qa/",
+     "quote": "4-Payment Option: (This option applies only to property the person occupies as a residence homestead and only to those persons who are considered disabled under SSI) If, before January 1st of the current tax year, you are disabled or 65 years of age and are qualified for the OVER 65 or DISABLED HOMESTEAD EXEMPTIONS, you may make your payments in four equal installments without incurring penalty and interest, if paid"
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.austincounty.com/upload/page/10524/26.05b_property_tax_cod.pdf",
+    "404 https://newtools.cira.state.tx.us/upload/page/10524/Austin%20County%20Tax%20Rate%20Calculation%20Worksheet.pdf",
+    "403 https://www.austincounty.com/page/austin.Treas.Unclaimed.Property"
+   ]
+  },
+  "Bailey": {
+   "county": "Bailey",
+   "website": "http://www.co.bailey.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Bandera": {
+   "county": "Bandera",
+   "website": "http://www.banderacounty.org/",
+   "halfPayment": "offered",
+   "evidence": {
+    "quarter": {
+     "url": "https://mvbalaw.com/property-tax/",
+     "quote": "We make it easy on your property owners to pay their late fees by offering multiple payment options, including installment agreements, if needed and in accordance with the taxing unit.."
+    },
+    "half": {
+     "url": "https://www.banderacounty.gov/page/tax.assessor.faqs",
+     "quote": "SPLIT-PAYMENT OPTION: You may pay the January amount in two equal installments without incurring penalty and interest if:. (1) you pay one-half of the January amount before December 1 of each tax year, for the current tax year.."
+    },
+    "partial": {
+     "url": "https://www.banderacounty.gov/page/tax.assessor.faqs",
+     "quote": "Partial Payments are accepted on Property Tax."
+    }
+   },
+   "pagesChecked": 14,
+   "errors": [
+    "403 https://bandera.propertytaxpayments.net/"
+   ]
+  },
+  "Bastrop": {
+   "county": "Bastrop",
+   "website": "http://www.co.bastrop.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "403 https://www.mactexas.com/IssuerAccess/SalesTaxCharts/SalesTaxCharts/aWNMd2lGZmgyc2c9/109840"
+   ]
+  },
+  "Baylor": {
+   "county": "Baylor",
+   "website": "https://www.co.baylor.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 19,
+   "errors": []
+  },
+  "Bee": {
+   "county": "Bee",
+   "website": "http://www.co.bee.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Bell": {
+   "county": "Bell",
+   "website": "http://www.bellcountytx.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://bellcad.org/pay-property-taxes-online/",
+     "quote": "Quarterly Payment Installment Agreement ."
+    },
+    "discount": {
+     "url": "https://bellcad.org/pay-property-taxes-online/",
+     "quote": "Tax Discount Payment Deadlines: 3% October 31 st , 2% November 30 th , 1% December 31 st ."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.bellcountytx.com/publicnotice_detail_T3_R678.php"
+   ]
+  },
+  "Bexar": {
+   "county": "Bexar",
+   "website": "http://www.bexar.org/tax",
+   "halfPayment": "offered",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.bexar.org/DocumentCenter/View/25922/Payment-Plans",
+     "quote": "Equal payments are due by: 1 st Half: November 30 th 2 nd Half: June 30 th AVAILABLE EVERY NEW TAX YEAR ON OCTOBER 1 st Search Your Account The Quarter-Payment Plan is available to qualified Residential Property Owners who have a Homestead Exemption and who also have a 65 or Over, Disabled Person, or Disabled Veteran Exemption ."
+    },
+    "prepay": {
+     "url": "https://www.bexar.org/DocumentCenter/View/25922/Payment-Plans",
+     "quote": "The Pre-Payment Plan allows Homeowners and Business Owners without a mortgage escrow account to pre-pay their taxes in monthly installments through September 15 th of each tax year without penalty or interest."
+    },
+    "half": {
+     "url": "https://www.bexar.org/DocumentCenter/View/25922/Payment-Plans",
+     "quote": "THIS PAYMENT PLAN IS AVAILABLE TO EVERY BEXAR COUNTY TAX PAYER! The Half-Payment Plan is available to all Taxpayers and Business Owners for both real estate and business personal property accounts."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "429 http://www.bexar.org/tax"
+   ],
+   "verifiedByHand": true
+  },
+  "Blanco": {
+   "county": "Blanco",
+   "website": "http://www.co.blanco.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 28,
+   "errors": []
+  },
+  "Borden": {
+   "county": "Borden",
+   "website": "http://www.co.borden.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://bordencad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 42,
+   "errors": []
+  },
+  "Bosque": {
+   "county": "Bosque",
+   "website": "http://www.bosquecountytaxoffice.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://bosquecad.com/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Bowie": {
+   "county": "Bowie",
+   "website": "http://www.co.bowie.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": []
+  },
+  "Brazoria": {
+   "county": "Brazoria",
+   "website": "https://www.brazoriacountytx.gov/",
+   "halfPayment": "offered",
+   "evidence": {
+    "half": {
+     "url": "https://www.brazoriacountytx.gov/departments/tax-office/property-taxes/payment-options",
+     "quote": "Split Payment/Half Pay . Pay half of your property taxes by November 30th and the remaining half no later than June 30th of the following year without accruing any penalty and interest."
+    },
+    "quarter": {
+     "url": "https://www.brazoriacountytx.gov/departments/tax-office/property-taxes/payment-options",
+     "quote": "Over 65/Disabled/Disabled Veteran Installment Plan ."
+    },
+    "partial": {
+     "url": "https://www.brazoriacountytx.gov/departments/tax-office/property-taxes/payment-options",
+     "quote": "If you are unable to pay the total amount of your taxes due in full, the Brazoria County Tax Office accepts partial payments in any amount."
+    }
+   },
+   "pagesChecked": 4,
+   "errors": []
+  },
+  "Brazos": {
+   "county": "Brazos",
+   "website": "http://www.brazostax.org/",
+   "halfPayment": "offered",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    },
+    "half": {
+     "url": "https://wtaw.com/deadline-reminders-for-brazos-county-property-owners-planning-to-make-split-payments/",
+     "quote": "Brazos County taxing jurisdictions offer the two part payment plan to their taxpayers allowing a payment of ½ of the property tax bill on or before November 30 of the year the taxes are billed, and the second half payment on or before June 30 of the following year. (Local news report; the tax office's own site, brazostax.org, didn't state it.)"
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [],
+   "verifiedByHand": true
+  },
+  "Brewster": {
+   "county": "Brewster",
+   "website": "https://www.brewstercounty.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Briscoe": {
+   "county": "Briscoe",
+   "website": null,
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 22,
+   "errors": [
+    "no website in the Comptroller directory"
+   ]
+  },
+  "Brooks": {
+   "county": "Brooks",
+   "website": "http://www.co.brooks.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 30,
+   "errors": []
+  },
+  "Brown": {
+   "county": "Brown",
+   "website": "http://www.browncountytx.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://mvbalaw.com/property-tax/",
+     "quote": "We make it easy on your property owners to pay their late fees by offering multiple payment options, including installment agreements, if needed and in accordance with the taxing unit.."
+    }
+   },
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Burleson": {
+   "county": "Burleson",
+   "website": "http://www.co.burleson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://burlesonappraisal.com/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    },
+    "partial": {
+     "url": "https://www.burlesoncountytx.gov/page/gov.tax.assessor",
+     "quote": "AMOUNT THAT YOU NEED TO PAY- PARTIAL PAYMENTS ARE ACCEPTED."
+    }
+   },
+   "pagesChecked": 38,
+   "errors": [
+    "UND_ERR_CONNECT_TIMEOUT http://burleson.countytaxrates.com/",
+    "TypeError https://www.county.org/About-Texas-Counties/%E2%80%8BAbout-Texas-County-Officials/%E2%80%8BTexas-Tax-Assessor-Collector"
+   ]
+  },
+  "Burnet": {
+   "county": "Burnet",
+   "website": "http://www.burnetcountytexas.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Caldwell": {
+   "county": "Caldwell",
+   "website": null,
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": [
+    "no website in the Comptroller directory"
+   ]
+  },
+  "Calhoun": {
+   "county": "Calhoun",
+   "website": "http://www.calhouncotx.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 31,
+   "errors": []
+  },
+  "Callahan": {
+   "county": "Callahan",
+   "website": "http://www.co.callahan.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    },
+    "discount": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/options.php",
+     "quote": "It allows for two types of discounts: October-November-December or 3-2-1."
+    }
+   },
+   "pagesChecked": 27,
+   "errors": []
+  },
+  "Cameron": {
+   "county": "Cameron",
+   "website": "https://www.cameroncountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.cameroncountytx.gov/tac/",
+     "quote": "Accounts with an Over-65 or Disabled Person Exemption that have elected the Quarter Pay option and have made their 1st payment on or before January 31st are not assessed penalty and interest.."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "404 http://www.cameroncountytax.org/pdf/clients/TX061/2022TaxInserts.pdf"
+   ]
+  },
+  "Camp": {
+   "county": "Camp",
+   "website": "http://www.co.camp.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://campcad.org/",
+     "quote": "If you are Over 65, SSI Disabled, or a service-connected Disabled Veteran, you may qualify to pay in four equal installments."
+    }
+   },
+   "pagesChecked": 27,
+   "errors": []
+  },
+  "Carson": {
+   "county": "Carson",
+   "website": "https://www.carsoncountytax.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Cass": {
+   "county": "Cass",
+   "website": "http://www.co.cass.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Castro": {
+   "county": "Castro",
+   "website": "http://www.co.castro.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 23,
+   "errors": []
+  },
+  "Chambers": {
+   "county": "Chambers",
+   "website": "https://www.chamberscountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Cherokee": {
+   "county": "Cherokee",
+   "website": "http://www.co.cherokee.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://mvbalaw.com/property-tax/",
+     "quote": "We make it easy on your property owners to pay their late fees by offering multiple payment options, including installment agreements, if needed and in accordance with the taxing unit.."
+    }
+   },
+   "pagesChecked": 37,
+   "errors": [
+    "403 https://tax.co.cherokee.tx.us/",
+    "404 http://www.county.org/texas-county-government/texas-county-officials/Pages/Tax-Assessor-Collector.aspx",
+    "404 http://www.texasonlinerecords.com/tax/?office_id=9"
+   ]
+  },
+  "Childress": {
+   "county": "Childress",
+   "website": "https://www.childresstx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 49,
+   "errors": []
+  },
+  "Clay": {
+   "county": "Clay",
+   "website": "https://www.claycountytx.net/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 18,
+   "errors": []
+  },
+  "Cochran": {
+   "county": "Cochran",
+   "website": "http://www.co.cochran.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 34,
+   "errors": [
+    "404 https://www.harrisoncountytexas.gov/upload/page/1521/2024/CWSTaxRates2024_Frm50_812.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1521/2024/CountyTaxRates2024_Frm50_812.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1521/2024/CountyGenTaxRateWS2024.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1521/2024/CochranCWSTaxRateWS2024_Redacted.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1521/2024/CochranFMFCTaxWS2024_Redacted.pdf"
+   ]
+  },
+  "Coke": {
+   "county": "Coke",
+   "website": "http://www.co.coke.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 38,
+   "errors": []
+  },
+  "Coleman": {
+   "county": "Coleman",
+   "website": "http://www.co.coleman.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 21,
+   "errors": []
+  },
+  "Collin": {
+   "county": "Collin",
+   "website": "http://www.collincountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.collincountytx.gov/tax-assessor/FAQ",
+     "quote": "ONLY taxpayers with an Over-65 or Disabled Person Exemption may pay current taxes on their homestead residence in four installments without penalty or interest:."
+    }
+   },
+   "pagesChecked": 39,
+   "errors": []
+  },
+  "Collingsworth": {
+   "county": "Collingsworth",
+   "website": "http://www.co.collingsworth.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 16,
+   "errors": []
+  },
+  "Colorado": {
+   "county": "Colorado",
+   "website": "http://www.co.colorado.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Comal": {
+   "county": "Comal",
+   "website": "http://www.co.comal.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "prepay": {
+     "url": "https://comalad.org/business-personal-property-and-renditions/",
+     "quote": "Although dealers are required to report and pay inventory tax on sales into an escrow account with the tax assessor-collector, the law requires that a market value be assigned to dealer inventory based on the previous year’s sales."
+    }
+   },
+   "pagesChecked": 14,
+   "errors": []
+  },
+  "Comanche": {
+   "county": "Comanche",
+   "website": "https://www.co.comanche.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://texaspayments.com/",
+     "quote": "Support annual and quarterly Installment Payment Plans."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Concho": {
+   "county": "Concho",
+   "website": "http://www.co.concho.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Cooke": {
+   "county": "Cooke",
+   "website": "http://www.co.cooke.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Coryell": {
+   "county": "Coryell",
+   "website": "https://coryellcountytax.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "403 https://coryell.propertytaxpayments.net/"
+   ]
+  },
+  "Cottle": {
+   "county": "Cottle",
+   "website": "http://www.co.cottle.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 21,
+   "errors": []
+  },
+  "Crane": {
+   "county": "Crane",
+   "website": "http://www.co.crane.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Crockett": {
+   "county": "Crockett",
+   "website": "http://www.co.crockett.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 5,
+   "errors": []
+  },
+  "Crosby": {
+   "county": "Crosby",
+   "website": "http://www.co.crosby.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 49,
+   "errors": []
+  },
+  "Culberson": {
+   "county": "Culberson",
+   "website": "http://www.co.culberson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 33,
+   "errors": [
+    "404 http://www.window.state.tx.us/taxinfo/local/"
+   ]
+  },
+  "Dallam": {
+   "county": "Dallam",
+   "website": "http://www.dallam.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://dallamcad.org/tax-calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Dallas": {
+   "county": "Dallas",
+   "website": "https://www.dallascounty.org/tax",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.dallascounty.org/Assets/uploads/docs/tax/PTAX-FAQ-Pamphlet-2026-V8-DC-WEB-With-QR-Code.pdf",
+     "quote": "I ’ m Over 65 (or Disabled) - Am I eligible for a pay- ment arrangement on my homestead? Yes, you may wish to utilize the installment plan to pay the taxes on your homestead in four equal payments."
+    },
+    "partial": {
+     "url": "https://www.dallascounty.org/Assets/uploads/docs/tax/PTAX-FAQ-Pamphlet-2026-V8-DC-WEB-With-QR-Code.pdf",
+     "quote": "Can I make partial payments on my account? Yes, if you are unable to pay the amount due in full, the Tax Office accepts partial payments in any amount, at any time."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.dallascounty.org/Rhythmyx/assembler/render?sys_revision=126&sys_context=0&sys_authtype=0&sys_variantid=335&sys_contentid=57982",
+    "403 https://taxoffice.dallascounty.org/hc/en-us/articles/52332457957915-Exemptions-and-Tax-Deferrals"
+   ]
+  },
+  "Dawson": {
+   "county": "Dawson",
+   "website": "http://www.co.dawson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Deaf Smith": {
+   "county": "Deaf Smith",
+   "website": "http://www.co.deaf-smith.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 39,
+   "errors": []
+  },
+  "Delta": {
+   "county": "Delta",
+   "website": "http://www.deltacountytx.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "403 http://www.deltacountytx.com/"
+   ]
+  },
+  "Denton": {
+   "county": "Denton",
+   "website": "https://www.dentoncounty.gov/778/Tax-Assessor-Collector",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "403 https://taxweb.dentoncounty.gov/search/",
+    "403 https://taxweb.dentoncounty.gov/truth-in-taxation",
+    "403 https://taxweb.dentoncounty.gov/TaxEstimator",
+    "403 https://taxweb.dentoncounty.gov/TaxEstimator/"
+   ]
+  },
+  "DeWitt": {
+   "county": "DeWitt",
+   "website": "http://www.co.dewitt.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "partial": {
+     "url": "https://www.co.dewitt.tx.us/page/County.Assessor.Collector",
+     "quote": "The tax office accepts partial payments on both current year & delinquent taxes.."
+    },
+    "quarter": {
+     "url": "https://www.co.dewitt.tx.us/upload/page/0080/DEWITT%20COUNTY%20FAQs%20PDF.pdf",
+     "quote": "How do Installment Payments work if I have an Over 65 Exemption, Disabled or Disabled Veteran Exemption? Property Owners who qualify for an Over 65 Exemption, a Disabled Exemption, or a Disabled Veteran Exemption have the option to pay their current taxes due on their homestead in four installments."
+    }
+   },
+   "pagesChecked": 30,
+   "errors": [
+    "403 https://www.yoakumhospital.org/about-ych/tax-district/",
+    "403 https://dewitt.propertytaxpayments.net/search"
+   ]
+  },
+  "Dickens": {
+   "county": "Dickens",
+   "website": "http://www.co.dickens.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Dimmitt": {
+   "county": "Dimmitt",
+   "website": "http://www.dimmitcounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    },
+    "discount": {
+     "url": "https://dimmit-cad.org/wp-content/uploads/2026/10/2026-TAX-HEADER.pdf",
+     "quote": "5000 DISABLED VET = SEE TABLE CITY OF M&O = .4900 OVER-65 LOCAL OPTION = $3,000 BIG WELLS I&S = DISABLED VET = SEE TABLE (CBW) TAX RATE = .4900 WINTERGARDEN M&O = .004247 GROUND WATER I&S = DISABLED VET = SEE TABLE CONS DISTRICT (WSD) TAX RATE = .004247 DIMMIT REGIONAL HOSPITAL M&O = .163160 DISTRICT (RHD) I&S = DISABLED VET = SEE TABLE TAX RATE = .163160 • 20% Homestead is from Market Value; but NO less than $5,000"
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "405 https://swp.paymentsgateway.net/co/default.aspx?pg_api_login_id=lYzDfLe1El",
+    "404 https://www.dimmitcounty.org/government/departments/government/departments/tax_assessor_collector.php",
+    "TypeError https://www.county.org/About-Texas-Counties/About-Texas-County-Officials/%E2%80%8BTexas-Tax-Assessor-Collector",
+    "404 https://www.dimmitcounty.org/government/departments/Document_center/Department/Tax%20Assessor%20Collector/Tax-Summary-4.docx?t=202104130926100",
+    "404 https://www.dimmitcounty.org/government/departments/Tax%20Summary%202024.docx?t=202410071017310"
+   ]
+  },
+  "Donley": {
+   "county": "Donley",
+   "website": "http://www.co.donley.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 30,
+   "errors": []
+  },
+  "Duval": {
+   "county": "Duval",
+   "website": "https://www.co.duval.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 29,
+   "errors": [
+    "403 https://www.co.duval.tx.us/page/ducal.County.Tax.Assessor-Collector"
+   ]
+  },
+  "Eastland": {
+   "county": "Eastland",
+   "website": "http://www.eastlandcountytexas.com/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 16,
+   "errors": []
+  },
+  "Ector": {
+   "county": "Ector",
+   "website": "http://www.co.ector.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 34,
+   "errors": []
+  },
+  "Edwards": {
+   "county": "Edwards",
+   "website": "https://www.co.edwards.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 10,
+   "errors": []
+  },
+  "El Paso": {
+   "county": "El Paso",
+   "website": "http://www.epcounty.com/taxoffice/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": [
+    "404 http://www.epcounty.com/taxoffice/"
+   ]
+  },
+  "Ellis": {
+   "county": "Ellis",
+   "website": "https://ellistaxoffice.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://ellistaxoffice.com/property-tax-payment-deadlines/",
+     "quote": "The first payment on quarter payment plans for Over-65 and disability homestead accounts is due on or before this date.."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Erath": {
+   "county": "Erath",
+   "website": "http://www.co.erath.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "403 http://www.co.erath.tx.us/"
+   ]
+  },
+  "Falls": {
+   "county": "Falls",
+   "website": "https://www.co.falls.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 39,
+   "errors": [
+    "403 https://falls.propertytaxpayments.net/"
+   ]
+  },
+  "Fannin": {
+   "county": "Fannin",
+   "website": "http://www.co.fannin.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Fayette": {
+   "county": "Fayette",
+   "website": "http://www.co.fayette.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.fayette.tx.us/upload/page/1751/docs/JP/DRP%20Repeal.pdf",
+     "quote": "Q: What happens if I defaulted on my installment plan? A: You will still owe the surcharge and will remain suspended until September 1, 2019 unless you comply with your installment agreement."
+    }
+   },
+   "pagesChecked": 47,
+   "errors": []
+  },
+  "Fisher": {
+   "county": "Fisher",
+   "website": "https://www.fishercounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 45,
+   "errors": []
+  },
+  "Floyd": {
+   "county": "Floyd",
+   "website": "https://www.co.floyd.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 15,
+   "errors": []
+  },
+  "Foard": {
+   "county": "Foard",
+   "website": "https://www.foardcounty.texas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 16,
+   "errors": []
+  },
+  "Fort Bend": {
+   "county": "Fort Bend",
+   "website": "http://www.fortbendcountytx.gov",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Franklin": {
+   "county": "Franklin",
+   "website": "http://www.co.franklin.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.franklin.tx.us/page/franklin.County.Assessor.Collector",
+     "quote": "Quarterly Payment Schedule ."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.harrisoncountytexas.gov/upload/page/1868/docs/approval_of_proposed_tax_rate.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1868/docs/2023_propsed_tax_rate.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1868/docs/truth_in_taxation_summary%202023.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/1868/docs/Tax/notice_of_public_hearing_for_franklin_county.pdf"
+   ]
+  },
+  "Freestone": {
+   "county": "Freestone",
+   "website": "http://www.co.freestone.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 47,
+   "errors": []
+  },
+  "Frio": {
+   "county": "Frio",
+   "website": "http://www.co.frio.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 29,
+   "errors": []
+  },
+  "Gaines": {
+   "county": "Gaines",
+   "website": "http://www.co.gaines.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 43,
+   "errors": [
+    "CERT_HAS_EXPIRED https://gaines.truthintaxation.com/property-search"
+   ]
+  },
+  "Galveston": {
+   "county": "Galveston",
+   "website": "http://www.galcotax.com/",
+   "halfPayment": "offered",
+   "evidence": {
+    "half": {
+     "url": "https://www.galvestoncountytx.gov/our-county/tax-assessor-collector/tax-office-events-deadlines",
+     "quote": "November 30, 2026 First half of 2026 property taxes due if split/half pay participant."
+    }
+   },
+   "pagesChecked": 25,
+   "errors": [
+    "404 http://www.galvestoncountytx.gov/to/Documents/2020%20CCISD%20Tax%20Rate%20Worksheet.pdf",
+    "404 http://www.galvestoncountytx.gov/to/SiteAssets/Pages/TruthInTaxation/FISD%202020%20Tax%20Rate%20Worksheets.pdf",
+    "404 http://www.galvestoncountytx.gov/to/Documents/2020%20Tax%20Rate%20Worksheets%20GALVESTON%20COUNTY%20MUD%2039.PDF",
+    "404 http://www.galvestoncountytx.gov/to/Documents/2020%20Tax%20Rate%20Worksheets%20GALVESTON%20COUNTY%20MUD%2068.PDF",
+    "404 http://www.bli-tax.com/galveston-county-mud-68"
+   ]
+  },
+  "Garza": {
+   "county": "Garza",
+   "website": "http://www.garzacounty.net/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://garzacad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Gillespie": {
+   "county": "Gillespie",
+   "website": "http://www.gillespiecounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 44,
+   "errors": []
+  },
+  "Glasscock": {
+   "county": "Glasscock",
+   "website": "http://www.co.glasscock.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": [
+    "UND_ERR_CONNECT_TIMEOUT http://tax.co.glasscock.tx.us/"
+   ]
+  },
+  "Goliad": {
+   "county": "Goliad",
+   "website": "http://www.co.goliad.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 42,
+   "errors": []
+  },
+  "Gonzales": {
+   "county": "Gonzales",
+   "website": "http://www.co.gonzales.tx.us/",
+   "halfPayment": "offered",
+   "evidence": {
+    "half": {
+     "url": "https://www.co.gonzales.tx.us/page/gonzales.County.Assessor.Collector",
+     "quote": "Half Payment Option - November 30 & June 30."
+    },
+    "quarter": {
+     "url": "https://www.co.gonzales.tx.us/page/gonzales.County.Assessor.Collector",
+     "quote": "Pay by mail - All payments MUST be USPS POSTMARKED (cancellation stamped) by January 31st, or the due date for eligible half payments/quarter payments, to avoid penalty and interest.."
+    }
+   },
+   "pagesChecked": 2,
+   "errors": []
+  },
+  "Gray": {
+   "county": "Gray",
+   "website": "http://www.co.gray.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://graycad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 42,
+   "errors": [
+    "403 https://gray.propertytaxpayments.net/"
+   ]
+  },
+  "Grayson": {
+   "county": "Grayson",
+   "website": "http://www.co.grayson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 33,
+   "errors": [
+    "403 https://grayson.propertytaxpayments.net/landing-page-en-us"
+   ]
+  },
+  "Gregg": {
+   "county": "Gregg",
+   "website": "http://www.greggcounty.texas.gov",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://greggcounty.texas.gov/departments/tax-assessor-collector/property-tax-calendar",
+     "quote": "The first payment on quarter payment plans for over sixty-five and disability homestead accounts is due on or before this date.."
+    },
+    "discount": {
+     "url": "https://greggcounty.texas.gov/departments/tax-assessor-collector/tax-statement-information",
+     "quote": "Out of these entities the following offer a 3% October, 2% November, 1% December Discount :."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "ERR_TLS_CERT_ALTNAME_INVALID http://www.greggcounty.texas.gov"
+   ]
+  },
+  "Grimes": {
+   "county": "Grimes",
+   "website": "https://grimescountytexas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.officialpayments.com/pc_whocanipay.jsp",
+     "quote": "• Installment Agreement Payment."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "500 https://www.officialpayments.com/pc_ma_dash_login.jsp?from=index.jsp"
+   ]
+  },
+  "Guadalupe": {
+   "county": "Guadalupe",
+   "website": "http://www.co.guadalupe.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://guadalupead.org/wp-content/uploads/2026/09/Application-For-TLO.pdf",
+     "quote": "Do you or your spouse own an interest in property on which delinquent tax is not deferred or being paid under an installment agreement? YES NO 15."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "UND_ERR_CONNECT_TIMEOUT http://www.co.guadalupe.tx.us/"
+   ]
+  },
+  "Hale": {
+   "county": "Hale",
+   "website": "http://www.halecounty.org",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 33,
+   "errors": [
+    "404 https://www.halecounty.org/Order%20to%20Pay%20Attorney",
+    "403 https://cms2.revize.com/revize/security/index.jsp?webspace=halecountynew&filename=/county_offices/tax_accessor_collector.php"
+   ]
+  },
+  "Hall": {
+   "county": "Hall",
+   "website": "https://www.co.hall.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 27,
+   "errors": []
+  },
+  "Hamilton": {
+   "county": "Hamilton",
+   "website": "http://www.co.hamilton.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": [
+    "403 http://www.co.hamilton.tx.us/"
+   ]
+  },
+  "Hansford": {
+   "county": "Hansford",
+   "website": "http://www.co.hansford.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 29,
+   "errors": [
+    "403 https://hansford.propertytaxpayments.net/"
+   ]
+  },
+  "Hardeman": {
+   "county": "Hardeman",
+   "website": "https://www.co.hardeman.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 48,
+   "errors": []
+  },
+  "Hardin": {
+   "county": "Hardin",
+   "website": "http://www.co.hardin.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://hardin-cad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 49,
+   "errors": []
+  },
+  "Harris": {
+   "county": "Harris",
+   "website": "http://www.hctax.net/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "http://www.hctax.net/",
+     "quote": "Property Tax Overview Statements and Receipts Pay Online Payment Options Property Transaction Appointment Search Delinquent Account Payment Installment Plan Tax Breaks & Exemptions Manufactured Homes Overpayments Delinquent Property Tax Sales Workshops Resources Commercial Portfolio Tax Rate Information Property Tax Database FAQ Forms ."
+    },
+    "prepay": {
+     "url": "http://www.hctax.net/About/Announcements/Press%20Releases/HCTO_HCAD%20Press%20Release.pdf",
+     "quote": "Property owners may also now apply for a Prepayment Plan on MyHarrisCountyTax.com , which enables homeowners to make smaller monthly contributions toward their 2026 property tax bill in advance."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Harrison": {
+   "county": "Harrison",
+   "website": "https://www.harrisoncountytexas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Hartley": {
+   "county": "Hartley",
+   "website": "http://www.co.hartley.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 49,
+   "errors": []
+  },
+  "Haskell": {
+   "county": "Haskell",
+   "website": null,
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 1,
+   "errors": [
+    "no website in the Comptroller directory"
+   ]
+  },
+  "Hays": {
+   "county": "Hays",
+   "website": "https://www.hayscountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": [
+    "403 https://www.hayscountytx.gov/"
+   ]
+  },
+  "Hemphill": {
+   "county": "Hemphill",
+   "website": "http://www.co.hemphill.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Henderson": {
+   "county": "Henderson",
+   "website": "https://www.henderson-county.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://henderson-cad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Hidalgo": {
+   "county": "Hidalgo",
+   "website": "https://www.hidalgocounty.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "TypeError https://secure.go2gov.net/pay/public/hidalgoebd/welcome.faces"
+   ]
+  },
+  "Hill": {
+   "county": "Hill",
+   "website": "http://www.hilltax.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Hockley": {
+   "county": "Hockley",
+   "website": "https://www.co.hockley.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": [
+    "403 https://hockley.propertytaxpayments.net/"
+   ]
+  },
+  "Hood": {
+   "county": "Hood",
+   "website": "https://www.hoodcounty.texas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": [
+    "404 https://www.hoodcounty.texas.gov/Documents/How%20Do%20I/Find/Tax%20Rate%20Information/ADOPTED%20TAX%20RATES%202021_202110121323380101.pdf",
+    "403 https://cms3.revize.com/revize/security/index.jsp?webspace=hoodcounty&filename=/how_do_i/pay/index.php",
+    "403 https://cms3.revize.com/revize/security/index.jsp?webspace=hoodcounty&filename=/government/tax_assessor_collector/home.php"
+   ]
+  },
+  "Hopkins": {
+   "county": "Hopkins",
+   "website": "http://www.hopkinscountytx.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE http://taxsales.lgbs.com/"
+   ]
+  },
+  "Houston": {
+   "county": "Houston",
+   "website": "http://www.houstoncountytaxoffice.com/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Howard": {
+   "county": "Howard",
+   "website": "http://www.co.howard.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Hudspeth": {
+   "county": "Hudspeth",
+   "website": "http://www.co.hudspeth.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 29,
+   "errors": []
+  },
+  "Hunt": {
+   "county": "Hunt",
+   "website": null,
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 1,
+   "errors": [
+    "no website in the Comptroller directory"
+   ]
+  },
+  "Hutchinson": {
+   "county": "Hutchinson",
+   "website": "http://www.co.hutchinson.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Irion": {
+   "county": "Irion",
+   "website": "http://www.co.irion.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Jack": {
+   "county": "Jack",
+   "website": "https://www.jackcounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 16,
+   "errors": [
+    "CERT_HAS_EXPIRED https://www.jackcounty.org/"
+   ]
+  },
+  "Jackson": {
+   "county": "Jackson",
+   "website": "http://www.co.jackson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 43,
+   "errors": []
+  },
+  "Jasper": {
+   "county": "Jasper",
+   "website": "http://www.co.jasper.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 19,
+   "errors": []
+  },
+  "Jeff Davis": {
+   "county": "Jeff Davis",
+   "website": "https://www.jeffdaviscounty.texas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 38,
+   "errors": [
+    "405 https://urldefense.proofpoint.com/v2/url?u=https-3A__swp.paymentsgateway.net_co_default.aspx-3Fpg-5Fapi-5Flogin-5Fid-3D3362E5B8E0&d=DwMCaQ&c=euGZstcaTDllvimEN8b7jXrwqOf-v5A_CdpgnVfiiMM&r=WV6bwhNR9-4BFK2d5E3eQJeH87teuXSWsSMTSynse3DhOeZwMXCIqfmNRKbpT4XB&m=_t9JXlwoIAph8LwyhW1titIrRfuzL6IpPAmiiE0Hh9sEAP5CYnSkkjn5cFLeGKN4&s=977_oshru_8n5ErORPmj6Fr_yVm10SWe_HmTE2nWpQg&e="
+   ]
+  },
+  "Jefferson": {
+   "county": "Jefferson",
+   "website": "http://www.jeffcotax.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://jeffcotax.com/property-tax/property-tax-payment-options/",
+     "quote": "Installment Plans for Taxpayers over 65 Years Old or Disabled &#8211; &#8220;Quarter Pay&#8221; The Quarter-Payment Plan is available to qualified Residential Property Owners who have a Homestead Exemption and also have an Over 65 or Disabled Exemption."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 http://window.state.tx.us/taxinfo/hotel/faqhotel.html"
+   ]
+  },
+  "Jim Hogg": {
+   "county": "Jim Hogg",
+   "website": "https://www.jimhoggcountytax.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 38,
+   "errors": []
+  },
+  "Jim Wells": {
+   "county": "Jim Wells",
+   "website": "http://www.co.jim-wells.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 6,
+   "errors": [
+    "404 http://county.org/texas-county-government/texas-county-officials/Pages/Tax-Assessor-Collector.aspx"
+   ]
+  },
+  "Johnson": {
+   "county": "Johnson",
+   "website": "http://www.johnsoncountytaxoffice.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.johnsoncountytaxoffice.org/faq",
+     "quote": "Property owners who qualify for an over 65 exemption, a disabled exemption, or a disabled veteran’s exemption have the option to pay their current taxes due on their home in four installments."
+    },
+    "partial": {
+     "url": "https://www.johnsoncountytaxoffice.org/faq",
+     "quote": "Do You Accept Partial Payments? ."
+    }
+   },
+   "pagesChecked": 37,
+   "errors": [
+    "404 https://www.johnsoncountytaxoffice.org/truth-in-taxation-body-members",
+    "403 https://johnsoncounty.propertytaxpayments.net/cads-links"
+   ]
+  },
+  "Jones": {
+   "county": "Jones",
+   "website": "http://www.co.jones.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 45,
+   "errors": []
+  },
+  "Karnes": {
+   "county": "Karnes",
+   "website": "http://www.co.karnes.tx.us/",
+   "halfPayment": "offered",
+   "evidence": {
+    "half": {
+     "url": "https://www.co.karnes.tx.us/page/karnes.County.Assessor.Collector",
+     "quote": "All of the 2025 tax statements are due by January 31, 2025 unless the parcel is in the 1/2 payment or 1/4 payment status.. . . . . 1/2 payment is for any taxpayer, any type of property, current tax ONLY. Half is due by November 30 and the remaining is due no later than June 30."
+    }
+   },
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Kaufman": {
+   "county": "Kaufman",
+   "website": "http://www.kaufmancounty.net/247/Tax-Assessor",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Kendall": {
+   "county": "Kendall",
+   "website": "http://www.co.kendall.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://kendallad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    },
+    "discount": {
+     "url": "https://kendallad.org/important-information-about-your-tax-bill/",
+     "quote": "3% if paid in October, 2% if paid in November and 1% if paid in December.."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Kenedy": {
+   "county": "Kenedy",
+   "website": "https://www.kenedycountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 39,
+   "errors": []
+  },
+  "Kent": {
+   "county": "Kent",
+   "website": "https://www.co.kent.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 27,
+   "errors": []
+  },
+  "Kerr": {
+   "county": "Kerr",
+   "website": "http://www.co.kerr.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "ENOTFOUND http://www.co.kerr.tx.us/"
+   ]
+  },
+  "Kimble": {
+   "county": "Kimble",
+   "website": "http://www.co.kimble.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "King": {
+   "county": "King",
+   "website": "http://www.co.king.tx.us/page/king.Assessor.Collector",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 36,
+   "errors": []
+  },
+  "Kinney": {
+   "county": "Kinney",
+   "website": "http://www.co.kinney.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 36,
+   "errors": []
+  },
+  "Kleberg": {
+   "county": "Kleberg",
+   "website": "https://www.co.kleberg.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "partial": {
+     "url": "https://govpay.net/kleberg-county-texas-jp3",
+     "quote": "No Partial payments are allowed online."
+    }
+   },
+   "pagesChecked": 14,
+   "errors": [
+    "ERR_TLS_CERT_ALTNAME_INVALID https://gov-pay.vnddev.com/",
+    "404 http://gov-pay.vnddev.com/contact-us/"
+   ]
+  },
+  "Knox": {
+   "county": "Knox",
+   "website": "http://www.knoxcountytexas.org",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 30,
+   "errors": []
+  },
+  "La Salle": {
+   "county": "La Salle",
+   "website": "https://lasallecountytxtax.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Lamar": {
+   "county": "Lamar",
+   "website": "http://www.co.lamar.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://lamarcad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 47,
+   "errors": []
+  },
+  "Lamb": {
+   "county": "Lamb",
+   "website": "http://www.co.lamb.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "CERT_HAS_EXPIRED http://lamb.truthintaxation.com/"
+   ]
+  },
+  "Lampasas": {
+   "county": "Lampasas",
+   "website": "http://www.co.lampasas.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 38,
+   "errors": []
+  },
+  "Lavaca": {
+   "county": "Lavaca",
+   "website": "http://www.co.lavaca.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Lee": {
+   "county": "Lee",
+   "website": "http://www.leetax.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Leon": {
+   "county": "Leon",
+   "website": "http://www.co.leon.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Liberty": {
+   "county": "Liberty",
+   "website": "http://www.co.liberty.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.liberty.tx.us/page/liberty.County.Assessor.Collector",
+     "quote": "ONLY taxpayers with an Over-65 or Disabled Person Exemption may pay current taxes on their homestead residence in four installments without penalty or interest; however, the taxpayer MUST request the quarter payments in writing and MUST pay at least: ."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "403 https://liberty.propertytaxpayments.net/landing-page-en-us"
+   ]
+  },
+  "Limestone": {
+   "county": "Limestone",
+   "website": "http://www.co.limestone.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 5,
+   "errors": [
+    "503 http://www.limestonetexas-tax.com/Appraisal/PublicAccess/"
+   ]
+  },
+  "Lipscomb": {
+   "county": "Lipscomb",
+   "website": "http://www.co.lipscomb.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "404 https://www.co.lipscomb.tx.us/upload/page/4344/images/Request%20for%20Written%20Statement%20Deliquent%20Taxes%20for%20Tax%20Sale.pdf"
+   ]
+  },
+  "Live Oak": {
+   "county": "Live Oak",
+   "website": "http://www.co.live-oak.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Llano": {
+   "county": "Llano",
+   "website": "http://www.co.llano.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 3,
+   "errors": []
+  },
+  "Loving": {
+   "county": "Loving",
+   "website": "https://www.co.loving.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 30,
+   "errors": [
+    "404 https://www.co.loving.tx.us/upload/page/9458/Truth%20in%20Taxation%20Worksheets%202022.pdf"
+   ]
+  },
+  "Lubbock": {
+   "county": "Lubbock",
+   "website": "https://www.lubbockcounty.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 20,
+   "errors": []
+  },
+  "Lynn": {
+   "county": "Lynn",
+   "website": "http://www.co.lynn.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 33,
+   "errors": []
+  },
+  "Madison": {
+   "county": "Madison",
+   "website": "http://www.madisontax.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    },
+    "discount": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/options.php",
+     "quote": "It allows for two types of discounts: October-November-December or 3-2-1."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Marion": {
+   "county": "Marion",
+   "website": "https://marioncountytaxoffice.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 37,
+   "errors": [
+    "404 https://comptroller.texas.gov/taxes/property-tax/docs/96-1728.pdf"
+   ]
+  },
+  "Martin": {
+   "county": "Martin",
+   "website": "http://www.co.martin.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 24,
+   "errors": []
+  },
+  "Mason": {
+   "county": "Mason",
+   "website": "http://www.co.mason.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 41,
+   "errors": []
+  },
+  "Matagorda": {
+   "county": "Matagorda",
+   "website": "http://www.co.matagorda.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Maverick": {
+   "county": "Maverick",
+   "website": "http://www.co.maverick.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": [
+    "404 http://www.co.maverick.tx.us/"
+   ]
+  },
+  "McCulloch": {
+   "county": "McCulloch",
+   "website": "http://www.co.mcculloch.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 28,
+   "errors": [
+    "TypeError https://www.county.org/About-Texas-Counties/About-Texas-County-Officials/%e2%80%8bTexas-Tax-Assessor-Collector"
+   ]
+  },
+  "McLennan": {
+   "county": "McLennan",
+   "website": "http://www.co.mclennan.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 2,
+   "errors": [
+    "403 http://www.co.mclennan.tx.us/"
+   ]
+  },
+  "McMullen": {
+   "county": "McMullen",
+   "website": "http://www.mcmullencounty.org/county-tax-assessorcollector/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://mcmullencad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Medina": {
+   "county": "Medina",
+   "website": "http://www.medinacountytexas.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 30,
+   "errors": []
+  },
+  "Menard": {
+   "county": "Menard",
+   "website": "http://www.co.menard.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 43,
+   "errors": []
+  },
+  "Midland": {
+   "county": "Midland",
+   "website": "http://www.co.midland.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://midcad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Milam": {
+   "county": "Milam",
+   "website": "http://www.milamcounty.net/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "403 https://urldefense.proofpoint.com/v2/url?u=https-3A__milam.propertytaxpayments.net_&d=DwMFAg&c=euGZstcaTDllvimEN8b7jXrwqOf-v5A_CdpgnVfiiMM&r=uAEPf-Ze4hSfTWHrYJlbRFpaQ3lYKH7WHZoAsCgDeKU&m=_TGWtJWZXvxK2d90gqCP7JFct-dGOmcLA4qqZCWe3WSDNnXoqZBEvMZjB6g9-UuJ&s=QGYK0d4KzYjlEoLd54n7vNBmA4ST2NXv-5r_pb90eVE&e=",
+    "403 https://urldefense.proofpoint.com/v2/url?u=https-3A__milam.propertytaxpayments.net&d=DwQFAg&c=euGZstcaTDllvimEN8b7jXrwqOf-v5A_CdpgnVfiiMM&r=jbpnqJP2naIv6QZg1mZQJp_BN6-ExhOpS0WnFZVUP-o&m=6MdLhFJTcdPF8V0SS78nbdCd5UWStDb7LM6I6qDsvs8&s=NGSo3HO7Hpu5sYTF8RSRJRWfgqZt4M_2xtpK2Qe4Le4&e=",
+    "TypeError https://www.trafficpayment.com/SelectCCity.aspx?cid=291&cname=Milam+County&sid=44&sname=Texas"
+   ]
+  },
+  "Mills": {
+   "county": "Mills",
+   "website": "http://www.co.mills.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.millscountytx.gov/upload/page/0097/docs/truth%20in%20taxation%20summary%202013%20for%20county"
+   ]
+  },
+  "Mitchell": {
+   "county": "Mitchell",
+   "website": "https://www.co.mitchell.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 33,
+   "errors": []
+  },
+  "Montague": {
+   "county": "Montague",
+   "website": "http://www.co.montague.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.montague.tx.us/page/montague.TAC.PaymentOptions",
+     "quote": "Quarter Installments &#9650; Quarter installments allow individuals whose property qualifies for either the over-65, disabled person, or disabled veteran exemption to choose an installment payment option for the taxes due on the property in which the exemption is claimed per Sec."
+    },
+    "partial": {
+     "url": "https://www.co.montague.tx.us/page/montague.TAC.PaymentOptions",
+     "quote": "Partial Payments &#9650; We do accept partial payments, per Tax Code Section 31.07 Acceptance of a partial payment does not affect the date that the tax becomes delinquent."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "ECONNRESET https://tax.montaguetax.com/"
+   ]
+  },
+  "Montgomery": {
+   "county": "Montgomery",
+   "website": "https://www.mctotx.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.mctotx.org/property/tax_statements___online_payment.php",
+     "quote": "Quarter Payment Plan:."
+    },
+    "prepay": {
+     "url": "https://www.mctotx.org/property/tax_statements___online_payment.php",
+     "quote": "Pre-Payment Plan: ."
+    },
+    "partial": {
+     "url": "https://www.mctotx.org/property/property_tax_faqs.php",
+     "quote": "What if I can't pay the total tax amount? Do you accept partial payments? ."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "404 https://actweb.acttax.com/act_webdev/montgomery/index.jsp"
+   ]
+  },
+  "Moore": {
+   "county": "Moore",
+   "website": "http://www.co.moore.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://moorecad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Morris": {
+   "county": "Morris",
+   "website": "http://www.co.morris.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "http://www.morriscad.com/",
+     "quote": "If you are O65 or Disabled, you qualify for Quarter Pay; however, you must sign up annually."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Motley": {
+   "county": "Motley",
+   "website": "http://www.co.motley.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 3,
+   "errors": []
+  },
+  "Nacogdoches": {
+   "county": "Nacogdoches",
+   "website": "http://www.co.nacogdoches.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 1,
+   "errors": []
+  },
+  "Navarro": {
+   "county": "Navarro",
+   "website": "http://www.co.navarro.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 31,
+   "errors": []
+  },
+  "Newton": {
+   "county": "Newton",
+   "website": "http://www.co.newton.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Nolan": {
+   "county": "Nolan",
+   "website": "http://www.co.nolan.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 23,
+   "errors": []
+  },
+  "Nueces": {
+   "county": "Nueces",
+   "website": "http://www.nuecesco.com",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.nuecesco.com/county-services/tax-assessor-collector/faq-property-tax",
+     "quote": "4-Payment Option : (This option applies only to property the person occupies as a residence homestead and only to those persons who are considered disabled/or over 65 years of age) If, before January 1 st of the current tax year, you are disabled or 65 years of age and are qualified for the Over 65 or Disabled Homestead Exemptions , you may make your payments in four equal installments without incurring penalty and i"
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Ochiltree": {
+   "county": "Ochiltree",
+   "website": "http://www.co.ochiltree.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "http://www.ochiltreecad.org/Forms/GetDocument?fileName=MiscellaneousFiles\\1770133648_FAQ+-+WEBSITE+.pdf",
+     "quote": "If you cannot pay, you may check with the District office, and may find that you are eligible to set up an installment plan."
+    }
+   },
+   "pagesChecked": 31,
+   "errors": [
+    "404 http://www.ochiltreecad.org/effective_taxrate.htm"
+   ]
+  },
+  "Oldham": {
+   "county": "Oldham",
+   "website": "http://www.co.oldham.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Orange": {
+   "county": "Orange",
+   "website": "http://www.co.orange.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://orangecad.net/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Palo Pinto": {
+   "county": "Palo Pinto",
+   "website": "http://www.co.palo-pinto.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "500 https://secure.webfeepay.com/payment.php?content=home"
+   ]
+  },
+  "Panola": {
+   "county": "Panola",
+   "website": "http://www.co.panola.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Parker": {
+   "county": "Parker",
+   "website": "https://www.parkercountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 31,
+   "errors": []
+  },
+  "Parmer": {
+   "county": "Parmer",
+   "website": "https://parmercounty.texas.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Pecos": {
+   "county": "Pecos",
+   "website": "http://www.co.pecos.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 34,
+   "errors": []
+  },
+  "Polk": {
+   "county": "Polk",
+   "website": "https://polk-tax.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 49,
+   "errors": [
+    "404 https://comptroller.texas.gov/taxes/property-tax/docs/96-1728.pdf"
+   ]
+  },
+  "Potter": {
+   "county": "Potter",
+   "website": "http://www.co.potter.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 10,
+   "errors": []
+  },
+  "Presidio": {
+   "county": "Presidio",
+   "website": "http://www.co.presidio.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Rains": {
+   "county": "Rains",
+   "website": "http://www.co.rains.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://rainscad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Randall": {
+   "county": "Randall",
+   "website": "https://www.randallcounty.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.randallcounty.gov/DocumentCenter/View/179/Important-Tax-Dates-PDF",
+     "quote": "For taxpayers who are 65 or older, disabled or a veteran, the first property tax Installment Plan payment is due on or before January 31 along with the application."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "403 https://randallcounty.propertytaxpayments.net/search?",
+    "UND_ERR_CONNECT_TIMEOUT https://taxpayer.randallcounty.com/taxweb/"
+   ]
+  },
+  "Reagan": {
+   "county": "Reagan",
+   "website": "https://www.co.reagan.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Real": {
+   "county": "Real",
+   "website": "http://www.co.real.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.real.tx.us/page/real.County.Assessor.Collector",
+     "quote": "Quarterly Payment Contract ."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "403 https://real.propertytaxpayments.net/landing-page-en-us",
+    "403 http://real.propertytaxpayments.net/",
+    "403 https://real.propertytaxpayments.net/"
+   ]
+  },
+  "Red River": {
+   "county": "Red River",
+   "website": "http://www.co.red-river.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 40,
+   "errors": [
+    "403 https://redriver.propertytaxpayments.net/"
+   ]
+  },
+  "Reeves": {
+   "county": "Reeves",
+   "website": "http://www.reevescounty.org",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 17,
+   "errors": []
+  },
+  "Refugio": {
+   "county": "Refugio",
+   "website": "http://www.co.refugio.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Roberts": {
+   "county": "Roberts",
+   "website": "http://www.co.roberts.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "404 https://www.co.roberts.tx.us/upload/page/9355/Tax%20rate%20worksheet%20Roberts%20County.pdf",
+    "404 https://www.co.roberts.tx.us/upload/page/9355/Tax%20rate%20worksheet%20Roberts%20County%20FMLR.pdf",
+    "404 https://www.co.roberts.tx.us/upload/page/9355/Tax%20rate%20worksheet%20City%20of%20Miami.pdf",
+    "404 https://www.co.roberts.tx.us/upload/page/9355/Tax%20rate%20worksheet%20ESD.pdf"
+   ]
+  },
+  "Robertson": {
+   "county": "Robertson",
+   "website": "https://www.co.robertson.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://robertsoncad.com/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Rockwall": {
+   "county": "Rockwall",
+   "website": "http://www.rockwallcountytexas.com/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Runnels": {
+   "county": "Runnels",
+   "website": "https://www.runnelscounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.runnelscounty.org/upload/page/6004/2026/Ballinger%20Memorial%20Hospital%20Dist/BMH%20Notice%20About%202026%20Tax%20Rates.pdf"
+   ]
+  },
+  "Rusk": {
+   "county": "Rusk",
+   "website": "https://www.ruskcountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Sabine": {
+   "county": "Sabine",
+   "website": "http://www.co.sabine.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "San Augustine": {
+   "county": "San Augustine",
+   "website": "http://www.co.san-augustine.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": [
+    "405 https://swp.paymentsgateway.net/co/default.aspx?pg_api_login_id=%20byPRvq7PH",
+    "405 https://swp.paymentsgateway.net/co/default.aspx?pg_api_login_id=byPRvq7PH",
+    "TypeError https://www.county.org/About-Texas-Counties/About-Texas-County-Officials/%e2%80%8bTexas-Tax-Assessor-Collector",
+    "404 https://www.co.san-augustine.tx.us/upload/page/10651/2023%20City%20Tax%20Rates.pdf",
+    "404 https://www.co.san-augustine.tx.us/upload/page/10651/2023%20Hospital%20Tax%20Rates.pdf"
+   ]
+  },
+  "San Jacinto": {
+   "county": "San Jacinto",
+   "website": "http://www.co.san-jacinto.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 44,
+   "errors": [
+    "CERT_HAS_EXPIRED http://www.sjc-tax.us/"
+   ]
+  },
+  "San Patricio": {
+   "county": "San Patricio",
+   "website": "http://www.co.san-patricio.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "San Saba": {
+   "county": "San Saba",
+   "website": "http://www.co.san-saba.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "http://www.sansabacad.org/",
+     "quote": "Quarterly Payments - 09/16/2024."
+    }
+   },
+   "pagesChecked": 29,
+   "errors": []
+  },
+  "Schleicher": {
+   "county": "Schleicher",
+   "website": "https://www.schleichercounty.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 35,
+   "errors": [
+    "UND_ERR_CONNECT_TIMEOUT http://tax.co.schleicher.tx.us/"
+   ]
+  },
+  "Scurry": {
+   "county": "Scurry",
+   "website": "http://www.co.scurry.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.co.scurry.tx.us/upload/page/7081/COUNTY%202023%20NOTICE%20OF%20MEETING%20TO%20ADOPT.pdf"
+   ]
+  },
+  "Shackelford": {
+   "county": "Shackelford",
+   "website": "https://www.shackelfordcounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://shackelfordcad.com/calendar",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 31,
+   "errors": [
+    "404 http://www.county.org/texas-county-government/texas-county-officials/Pages/Tax-Assessor-Collector.aspx"
+   ]
+  },
+  "Shelby": {
+   "county": "Shelby",
+   "website": "http://www.co.shelby.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.shelbycad.com/property-tax-law-deadlines-1",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Sherman": {
+   "county": "Sherman",
+   "website": "http://www.co.sherman.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 41,
+   "errors": [
+    "403 https://sherman.propertytaxpayments.net/"
+   ]
+  },
+  "Smith": {
+   "county": "Smith",
+   "website": "http://www.smith-county.com/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 39,
+   "errors": [
+    "403 https://smith.propertytaxpayments.net/truth-in-taxation-body-members",
+    "403 https://smith.propertytaxpayments.net/truth-in-taxation-summary-en-us",
+    "403 https://publictax.smith-county.com/truth-in-taxation-summary-en-us"
+   ]
+  },
+  "Somervell": {
+   "county": "Somervell",
+   "website": "http://www.somervell.co/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 6,
+   "errors": []
+  },
+  "Starr": {
+   "county": "Starr",
+   "website": "http://www.co.starr.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    },
+    "discount": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/options.php",
+     "quote": "It allows for two types of discounts: October-November-December or 3-2-1."
+    }
+   },
+   "pagesChecked": 37,
+   "errors": [
+    "404 http://starr.cira.state.tx.us/upload/page/0083/docs/TAXSALE-7-1-2025.pdf",
+    "404 http://starr.cira.state.tx.us/upload/page/0083/docs/Tax%20Worksheets/Final%202024%20Co.%20MO%20TNT.pdf",
+    "404 http://starr.cira.state.tx.us/upload/page/0083/docs/Tax%20Worksheets/Final%202024%20Co.%20IS%20TNT.pdf",
+    "404 http://starr.cira.state.tx.us/upload/page/0083/docs/Tax%20Worksheets/Final%202024%20DD%20TNT.pdf",
+    "404 http://starr.cira.state.tx.us/upload/page/0083/docs/Tax%20Worksheets/Final%202024%20FMFC%20TNT.pdf"
+   ]
+  },
+  "Stephens": {
+   "county": "Stephens",
+   "website": "http://www.co.stephens.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Sterling": {
+   "county": "Sterling",
+   "website": "http://www.co.sterling.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 38,
+   "errors": []
+  },
+  "Stonewall": {
+   "county": "Stonewall",
+   "website": "http://www.stonewallcounty.org",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.harrisoncountytexas.gov/upload/page/9145/2023%20Tax/haskell_isd_2023.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/9145/2023%20Tax/rotan_isd_2023.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/9145/2023%20Tax/hamlin_isd_2023.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/9145/2023%20Tax/rule_isd_2023.pdf",
+    "404 https://www.harrisoncountytexas.gov/upload/page/9145/2023%20Tax/2023_aisd_tax_rate_ad.pdf"
+   ]
+  },
+  "Sutton": {
+   "county": "Sutton",
+   "website": "http://www.co.sutton.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [
+    "404 https://www.co.sutton.tx.us/upload/page/7311/FY25-26%20Notice%20of%20Public%20Hearing%20on%20Tax%20Increase%202.pdf",
+    "404 https://www.co.sutton.tx.us/upload/page/7311/2025%20Tax%20Rate%20Calculation-FMFC.pdf",
+    "404 https://www.co.sutton.tx.us/upload/page/7311/2025%20Tax%20Rate%20Calculation-General.pdf",
+    "404 https://www.co.sutton.tx.us/upload/page/7311/2025%20Cert.%20of%20Tax%20Roll-FMFC.pdf",
+    "404 https://www.co.sutton.tx.us/upload/page/7311/2025%20Cert.%20of%20Tax%20Roll-General.pdf"
+   ]
+  },
+  "Swisher": {
+   "county": "Swisher",
+   "website": "http://www.co.swisher.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Tarrant": {
+   "county": "Tarrant",
+   "website": "https://www.tarrantcounty.com/en/tax.html",
+   "halfPayment": "offered",
+   "evidence": {
+    "half": {
+     "url": "https://www.tarrantcountytx.gov/en/tax/property-tax/Important-Dates.html",
+     "quote": "This is the last day to make the second payment on the half payment option.. . . JULY 1."
+    },
+    "quarter": {
+     "url": "https://www.tarrantcountytx.gov/en/tax/property-tax/Important-Dates.html",
+     "quote": "The first payment on quarter payment plans for Over-65 and disability homestead accounts is due on or before this date.."
+    }
+   },
+   "pagesChecked": 14,
+   "errors": [
+    "403 https://www.tax.tarrantcountytx.gov/search",
+    "ENOTFOUND https://taxonline.tarrantcounty.com/TaxPayer/Search/",
+    "ENOTFOUND https://taxonline.tarrantcounty.com/TaxPayer/TaxEstimator",
+    "403 https://www.tax.tarrantcountytx.gov/Search/",
+    "403 https://www.tax.tarrantcountytx.gov/TaxEstimator"
+   ]
+  },
+  "Taylor": {
+   "county": "Taylor",
+   "website": "http://www.taylorcounty.texas.gov",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": [
+    "CERT_HAS_EXPIRED https://taylor.truthintaxation.com/"
+   ]
+  },
+  "Terrell": {
+   "county": "Terrell",
+   "website": "http://www.co.terrell.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 34,
+   "errors": [
+    "403 https://www.co.terrell.tx.us/page/terrell.Tax.Rate"
+   ]
+  },
+  "Terry": {
+   "county": "Terry",
+   "website": "http://www.co.terry.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Throckmorton": {
+   "county": "Throckmorton",
+   "website": "http://www.throckmortoncounty.org",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 32,
+   "errors": []
+  },
+  "Titus": {
+   "county": "Titus",
+   "website": "http://www.co.titus.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://titus-cad.org/tax_calendar/",
+     "quote": "Last day for homeowners or qualified businesses whose properties were damaged in a disaster within a designated disaster area to pay one quarter of taxes if using installment payment option (Sec."
+    }
+   },
+   "pagesChecked": 40,
+   "errors": []
+  },
+  "Tom Green": {
+   "county": "Tom Green",
+   "website": "http://www.tomgreencountytx.gov",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 33,
+   "errors": []
+  },
+  "Travis": {
+   "county": "Travis",
+   "website": "https://tax-office.traviscountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://tax-office.traviscountytx.gov/properties/taxes/delinquent/installment",
+     "quote": "Residence homestead installment agreement."
+    }
+   },
+   "pagesChecked": 42,
+   "errors": [
+    "TypeError https://secure.go2gov.net/pay/public/tctc/welcome.faces"
+   ]
+  },
+  "Trinity": {
+   "county": "Trinity",
+   "website": "http://www.co.trinity.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 34,
+   "errors": [
+    "404 https://comptroller.texas.gov/taxes/hotel/airbnb-faq.php"
+   ]
+  },
+  "Tyler": {
+   "county": "Tyler",
+   "website": "http://www.co.tyler.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/pay/index.php",
+     "quote": "You may have the option to set up an installment plan."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Upshur": {
+   "county": "Upshur",
+   "website": "http://www.countyofupshur.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://upshur-cad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Upton": {
+   "county": "Upton",
+   "website": "http://www.co.upton.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://acipayonline.com/pc_whocanipay.jsp",
+     "quote": "• Installment Agreement Payment."
+    }
+   },
+   "pagesChecked": 27,
+   "errors": []
+  },
+  "Uvalde": {
+   "county": "Uvalde",
+   "website": "https://www.uvaldecounty.gov/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 44,
+   "errors": []
+  },
+  "Val Verde": {
+   "county": "Val Verde",
+   "website": "http://www.valverdecounty.texas.gov",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE http://www.lgbs.com/property-tax-sales/"
+   ]
+  },
+  "Van Zandt": {
+   "county": "Van Zandt",
+   "website": "http://www.vanzandtcounty.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Victoria": {
+   "county": "Victoria",
+   "website": "http://www.vctx.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 9,
+   "errors": [
+    "404 https://actweb.acttax.com/victoria/victoria/portfolio/login.jsp"
+   ]
+  },
+  "Walker": {
+   "county": "Walker",
+   "website": "http://www.co.walker.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://walkercad.org/pay-taxes/",
+     "quote": "Quarterly payments that are made according to Section 31.031 of the Texas Property Tax Code are not considered delinquent.."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Waller": {
+   "county": "Waller",
+   "website": "http://www.co.waller.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.waller.tx.us/page/TAC.PropertyTax",
+     "quote": "Property tax code provides: Section 31.031 (a) if before the delinquency date an individual who is disabled or at least 65 years of age or a veteran and is qualified for an exemption under section 11.13(c) pays at least one-fourth of a taxing unit's taxes imposed on property that the person owns and occupies as a residence homestead, accompanied by notice to the taxing unit that the person will pay the remaining taxe"
+    }
+   },
+   "pagesChecked": 45,
+   "errors": [
+    "403 https://www.co.waller.tx.us/page/open/4775/0/2026%20City%20of%20Hempstead%20TAX%20RATE%20WORKSHEET.pdf"
+   ]
+  },
+  "Ward": {
+   "county": "Ward",
+   "website": "https://www.wardcountytax.org/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 37,
+   "errors": []
+  },
+  "Washington": {
+   "county": "Washington",
+   "website": "http://www.co.washington.tx.us",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 50,
+   "errors": []
+  },
+  "Webb": {
+   "county": "Webb",
+   "website": "http://www.webbcountytx.gov/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.webbcountytx.gov/803/Payment-Options-for-Property-Taxes",
+     "quote": "Quarter-Payment Plan."
+    },
+    "prepay": {
+     "url": "https://www.webbcountytx.gov/803/Payment-Options-for-Property-Taxes",
+     "quote": "The Pre-Payment Plan allows Homeowners and Business Owners without a mortgage escrow account to pre-pay their taxes in monthly installments through September 15th of each tax year without penalty or interest."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Wharton": {
+   "county": "Wharton",
+   "website": "http://www.co.wharton.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.co.wharton.tx.us/page/Wharton.TaxAssessorFAQ",
+     "quote": "Excludes quarterly payments previously set up AND 1 st payment made."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Wheeler": {
+   "county": "Wheeler",
+   "website": "http://www.co.wheeler.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 21,
+   "errors": []
+  },
+  "Wichita": {
+   "county": "Wichita",
+   "website": "http://www.wichitatax.com",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 26,
+   "errors": [
+    "403 http://www.wichitatax.com"
+   ]
+  },
+  "Wilbarger": {
+   "county": "Wilbarger",
+   "website": "http://www.co.wilbarger.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Willacy": {
+   "county": "Willacy",
+   "website": "http://www.co.willacy.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://willacycad.org/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Williamson": {
+   "county": "Williamson",
+   "website": "http://www.wilcotx.gov/taxoffice",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.wcad.org/property-tax-law-deadlines/",
+     "quote": "Last day for homeowners or qualified businesses whose properties were damaged in a disaster within a designated disaster area to pay the first installment for taxes with February 1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": [
+    "403 http://www.wilcotx.gov/taxoffice"
+   ]
+  },
+  "Wilson": {
+   "county": "Wilson",
+   "website": "http://www.wilsoncountytx.gov",
+   "halfPayment": "offered",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.wilsoncountytx.gov/page/wilson.TaxPaymentPlans",
+     "quote": "Quarter-Payment Plan ."
+    },
+    "discount": {
+     "url": "https://www.wilsoncountytx.gov/page/wilson.TaxPaymentPlans",
+     "quote": "• 3% discount if the full amount is paid in October.."
+    },
+    "half": {
+     "url": "https://www.wilsoncountytx.gov/page/wilson.TaxPaymentPlans",
+     "quote": "The half-payment plan is available to ALL taxpayers and business owners for both real property and business personal property accounts. 1st half due by November 30th; 2nd half due by June 30th."
+    }
+   },
+   "pagesChecked": 50,
+   "errors": [],
+   "verifiedByHand": true
+  },
+  "Winkler": {
+   "county": "Winkler",
+   "website": "http://www.co.winkler.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 31,
+   "errors": []
+  },
+  "Wise": {
+   "county": "Wise",
+   "website": "http://www.co.wise.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://tax.co.wise.tx.us/",
+     "quote": "QUALIFING HOMESTEAD & OVER 65/DISABLED ACCOUNTS: IF YOU ELECT TO PAY QUARTER PAYMENTS VIA OUR WEBSITE, PLEASE SEND NOTICE TO TAXOFFICE@CO.WISE.TX.US, AFTER PAYMENT IS MADE FOR ADDITIONAL DOCUMENTS NEEDED TO PROCESS AGREEMENT.."
+    },
+    "partial": {
+     "url": "https://tax.co.wise.tx.us/faq",
+     "quote": "7 - Do you accept partial payments? ."
+    }
+   },
+   "pagesChecked": 26,
+   "errors": []
+  },
+  "Wood": {
+   "county": "Wood",
+   "website": "https://www.woodcountytax.com/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://www.woodcountytax.com/news.html",
+     "quote": "Quarter Pay Notices ."
+    }
+   },
+   "pagesChecked": 39,
+   "errors": [
+    "403 https://woodcountytx.governmentwindow.com/tax.html"
+   ]
+  },
+  "Yoakum": {
+   "county": "Yoakum",
+   "website": "http://www.co.yoakum.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://comptroller.texas.gov/taxes/property-tax/calendars/deadlines.php",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 30,
+   "errors": []
+  },
+  "Young": {
+   "county": "Young",
+   "website": "http://www.co.young.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 25,
+   "errors": []
+  },
+  "Zapata": {
+   "county": "Zapata",
+   "website": "http://www.co.zapata.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {
+    "quarter": {
+     "url": "https://zapatacad.com/calendar/",
+     "quote": "1 delinquency dates if using installment payment option."
+    }
+   },
+   "pagesChecked": 49,
+   "errors": [
+    "405 https://swp.paymentsgateway.net/co/default.aspx?pg_api_login_id=ol8o778JFN"
+   ]
+  },
+  "Zavala": {
+   "county": "Zavala",
+   "website": "http://www.co.zavala.tx.us/",
+   "halfPayment": "unknown",
+   "evidence": {},
+   "pagesChecked": 42,
+   "errors": [
+    "404 https://comptroller.texas.gov/taxes/property-tax/faqs.php"
+   ]
+  }
+ }
+}

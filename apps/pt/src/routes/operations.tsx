@@ -19,6 +19,7 @@ import { ProtestRow } from "@/components/admin/ProtestRow";
 import { AdminCaseProgressModal } from "@/components/AdminCaseProgressModal";
 import { AdminCountyMailbox } from "@/components/AdminCountyMailbox";
 import { AdminAppointments } from "@/components/AdminAppointments";
+import { AdminCountyTaxRules } from "@/components/AdminCountyTaxRules";
 import { VerificationQueue } from "@/components/VerificationQueue";
 import { LoadingLine } from "@/components/LoadingLine";
 import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/operations")({
   component: Operations,
 });
 
-type Tab = "cases" | "verification" | "mail" | "appointments";
+type Tab = "cases" | "verification" | "mail" | "appointments" | "tax_rules";
 type Contact = { id: string; email: string | null; name: string | null };
 const CLOSED: ProtestStatus[] = ["resolved"];
 
@@ -58,7 +59,9 @@ function Operations() {
         ? "appointments"
         : typeof window !== "undefined" && /[?&]tab=verification\b/.test(window.location.search)
           ? "verification"
-          : "cases",
+          : typeof window !== "undefined" && /[?&]tab=tax_rules\b/.test(window.location.search)
+            ? "tax_rules"
+            : "cases",
   );
   const [toReview, setToReview] = useState(0);
   useEffect(() => {
@@ -93,7 +96,7 @@ function Operations() {
         <div>
           <h1 className="mt-2 font-serif text-3xl font-semibold">Operations</h1>
           <p className="text-sm text-muted-foreground">
-            Protest cases, the county mailbox and appointments.
+            Protest cases, the county mailbox, appointments and county tax payment rules.
           </p>
         </div>
         <RequestApprovalButton ctx={staffCtx} />
@@ -115,6 +118,7 @@ function Operations() {
               ["verification", toReview ? `Verification (${toReview})` : "Verification"],
               ["mail", "County Mail"],
               ["appointments", "Appointments"],
+              ["tax_rules", "County Tax Rules"],
             ] as const
           ).map(([k, label]) => (
             <button
@@ -134,6 +138,7 @@ function Operations() {
       {tab === "verification" && <VerificationQueue onCount={setToReview} />}
       {tab === "mail" && <AdminCountyMailbox />}
       {tab === "appointments" && <AdminAppointments />}
+      {tab === "tax_rules" && <AdminCountyTaxRules />}
     </div>
   );
 }
