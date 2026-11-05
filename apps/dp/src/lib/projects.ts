@@ -255,6 +255,16 @@ export async function setActiveProject(projectId: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function renameProject(projectId: string, name: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ name: name.trim() })
+    .eq("id", projectId)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("That project could not be renamed.");
+}
+
 // Deleting the project row cascades to every child table (permits,
 // checklist, notifications, documents, review comments, city
 // communications, engagement requests — all declared `on delete cascade`

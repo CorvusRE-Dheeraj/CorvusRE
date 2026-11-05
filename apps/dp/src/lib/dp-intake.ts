@@ -79,6 +79,8 @@ export type DpIntakeState = {
    *  project row created at signup */
   sessionId: string;
   track?: "permitting" | "design";
+  /** the client's own name for the project, asked before the property */
+  projectName?: string;
   property: PropertyInfo;
   project: ProjectDefinition;
   design: DesignRequirements;

@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { getActiveDesignRequest } from "@/lib/design-requests";
+import { getActiveDesignRequest, designRequestName } from "@/lib/design-requests";
 import { scopeLabel } from "@/lib/design";
 
 // Shared by every page in the dashboard's Design section — the same "most
@@ -38,13 +38,15 @@ export function EmptyDesign() {
 
 // One-line context so each Design page says which project it's about.
 export function designSubtitle(dr: {
+  project_name?: string | null;
   scope: string | null;
   sector: string | null;
   building_area: string | null;
   address: string | null;
   city: string | null;
 }): string {
-  return `${dr.address ?? dr.city ?? "Design project"} · ${scopeLabel((dr.scope ?? undefined) as never)} · ${dr.sector ?? "commercial"} · ${dr.building_area ?? "?"} sf`;
+  const where = dr.project_name?.trim() && (dr.address ?? dr.city);
+  return `${designRequestName(dr)}${where ? ` · ${where}` : ""} · ${scopeLabel((dr.scope ?? undefined) as never)} · ${dr.sector ?? "commercial"} · ${dr.building_area ?? "?"} sf`;
 }
 
 export function downloadText(filename: string, text: string, type = "text/plain") {
@@ -57,6 +59,6 @@ export function downloadText(filename: string, text: string, type = "text/plain"
   URL.revokeObjectURL(url);
 }
 
-export function fileSlug(dr: { address: string | null }): string {
-  return (dr.address ?? "project").replace(/[^\w]+/g, "-").slice(0, 40);
+export function fileSlug(dr: { project_name?: string | null; address: string | null }): string {
+  return (dr.project_name?.trim() || dr.address || "project").replace(/[^\w]+/g, "-").slice(0, 40);
 }

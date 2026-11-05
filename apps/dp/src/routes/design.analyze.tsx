@@ -128,8 +128,22 @@ function DesignAnalyze() {
       </div>
 
       {step === 0 && (
-        <Section title="Property" subtitle="Where is the project?">
+        <Section title="Property" subtitle="Name your project, then tell us where it is.">
           <div className="grid gap-4">
+            <Field
+              label="Project name"
+              required
+              hint="Your own name for this project — you can change it later in Projects."
+            >
+              <input
+                className={inputCls}
+                aria-label="Project name"
+                placeholder="e.g. Celina Retail Center"
+                maxLength={120}
+                value={state.projectName ?? ""}
+                onChange={(e) => patch({ projectName: e.target.value })}
+              />
+            </Field>
             <Field
               label="Property address or city / region"
               required
@@ -163,7 +177,9 @@ function DesignAnalyze() {
           <div className="mt-6 flex justify-end">
             <button
               className="btn-accent disabled:opacity-50"
-              disabled={!state.property.address && !state.property.city}
+              disabled={
+                !state.projectName?.trim() || (!state.property.address && !state.property.city)
+              }
               onClick={() => go(1)}
             >
               Continue <ArrowRight className="h-4 w-4" />

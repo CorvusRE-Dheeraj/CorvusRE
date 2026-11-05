@@ -181,6 +181,7 @@ export async function listAllProjects(): Promise<AdminProjectRow[]> {
 
 export type AdminDesignRow = {
   id: string;
+  project_name: string | null;
   address: string | null;
   city: string | null;
   scope: string | null;
@@ -196,7 +197,7 @@ export async function listAllDesignRequests(): Promise<AdminDesignRow[]> {
   const { data, error } = await supabase
     .from("design_requests")
     .select(
-      "id, address, city, scope, sector, stage, consultation_requested_at, consultation_phone, consultation_best_time, created_at",
+      "id, project_name, address, city, scope, sector, stage, consultation_requested_at, consultation_phone, consultation_best_time, created_at",
     )
     .order("created_at", { ascending: false })
     .limit(300);

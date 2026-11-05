@@ -12,8 +12,10 @@ import { test, expect } from "@playwright/test";
 test("design brief wizard walks a guest to a locked brief", async ({ page }) => {
   await page.goto("./design/analyze", { waitUntil: "networkidle" });
 
-  // Step 1: Property
+  // Step 1: Property — the project name is required before Continue
   await page.getByLabel("Property address").fill("123 Test Street, Denton, TX 76201");
+  await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await page.getByLabel("Project name").fill("Denton Test Project");
   await page.getByRole("button", { name: "Continue" }).click();
 
   // Step 2: Type of project — Sector is no longer a user choice (CorvusDP is

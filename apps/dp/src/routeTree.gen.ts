@@ -30,6 +30,7 @@ import { Route as PermittingIndexRouteImport } from './routes/permitting.index'
 import { Route as PermittingAnalyzeRouteImport } from './routes/permitting.analyze'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
 import { Route as DashboardLayoutApprovalsRouteImport } from './routes/dashboard/_layout.approvals'
+import { Route as DashboardLayoutChatRouteImport } from './routes/dashboard/_layout.chat'
 import { Route as DashboardLayoutChecklistRouteImport } from './routes/dashboard/_layout.checklist'
 import { Route as DashboardLayoutCityRouteImport } from './routes/dashboard/_layout.city'
 import { Route as DashboardLayoutComplianceRouteImport } from './routes/dashboard/_layout.compliance'
@@ -50,6 +51,7 @@ import { Route as DashboardLayoutNotificationsRouteImport } from './routes/dashb
 import { Route as DashboardLayoutPermitsRouteImport } from './routes/dashboard/_layout.permits'
 import { Route as DashboardLayoutPortalRouteImport } from './routes/dashboard/_layout.portal'
 import { Route as DashboardLayoutPrepareRouteImport } from './routes/dashboard/_layout.prepare'
+import { Route as DashboardLayoutProjectsRouteImport } from './routes/dashboard/_layout.projects'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutReviewsRouteImport } from './routes/dashboard/_layout.reviews'
 import { Route as DashboardLayoutRfisRouteImport } from './routes/dashboard/_layout.rfis'
@@ -165,6 +167,11 @@ const DashboardLayoutApprovalsRoute =
     path: '/approvals',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutChatRoute = DashboardLayoutChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutChecklistRoute =
   DashboardLayoutChecklistRouteImport.update({
     id: '/checklist',
@@ -278,6 +285,11 @@ const DashboardLayoutPrepareRoute = DashboardLayoutPrepareRouteImport.update({
   path: '/prepare',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutProjectsRoute = DashboardLayoutProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutReferralsRoute =
   DashboardLayoutReferralsRouteImport.update({
     id: '/referrals',
@@ -342,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/design/': typeof DesignIndexRoute
   '/permitting/': typeof PermittingIndexRoute
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/chat': typeof DashboardLayoutChatRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
@@ -362,6 +375,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/rfis': typeof DashboardLayoutRfisRoute
@@ -392,6 +406,7 @@ export interface FileRoutesByTo {
   '/design': typeof DesignIndexRoute
   '/permitting': typeof PermittingIndexRoute
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/chat': typeof DashboardLayoutChatRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
@@ -412,6 +427,7 @@ export interface FileRoutesByTo {
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/rfis': typeof DashboardLayoutRfisRoute
@@ -444,6 +460,7 @@ export interface FileRoutesById {
   '/design/': typeof DesignIndexRoute
   '/permitting/': typeof PermittingIndexRoute
   '/dashboard/_layout/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/_layout/chat': typeof DashboardLayoutChatRoute
   '/dashboard/_layout/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/_layout/city': typeof DashboardLayoutCityRoute
   '/dashboard/_layout/compliance': typeof DashboardLayoutComplianceRoute
@@ -464,6 +481,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/_layout/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/_layout/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/_layout/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/_layout/rfis': typeof DashboardLayoutRfisRoute
@@ -497,6 +515,7 @@ export interface FileRouteTypes {
     | '/design/'
     | '/permitting/'
     | '/dashboard/approvals'
+    | '/dashboard/chat'
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/compliance'
@@ -517,6 +536,7 @@ export interface FileRouteTypes {
     | '/dashboard/permits'
     | '/dashboard/portal'
     | '/dashboard/prepare'
+    | '/dashboard/projects'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
     | '/dashboard/rfis'
@@ -547,6 +567,7 @@ export interface FileRouteTypes {
     | '/design'
     | '/permitting'
     | '/dashboard/approvals'
+    | '/dashboard/chat'
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/compliance'
@@ -567,6 +588,7 @@ export interface FileRouteTypes {
     | '/dashboard/permits'
     | '/dashboard/portal'
     | '/dashboard/prepare'
+    | '/dashboard/projects'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
     | '/dashboard/rfis'
@@ -598,6 +620,7 @@ export interface FileRouteTypes {
     | '/design/'
     | '/permitting/'
     | '/dashboard/_layout/approvals'
+    | '/dashboard/_layout/chat'
     | '/dashboard/_layout/checklist'
     | '/dashboard/_layout/city'
     | '/dashboard/_layout/compliance'
@@ -618,6 +641,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/permits'
     | '/dashboard/_layout/portal'
     | '/dashboard/_layout/prepare'
+    | '/dashboard/_layout/projects'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/reviews'
     | '/dashboard/_layout/rfis'
@@ -800,6 +824,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutApprovalsRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/chat': {
+      id: '/dashboard/_layout/chat'
+      path: '/chat'
+      fullPath: '/dashboard/chat'
+      preLoaderRoute: typeof DashboardLayoutChatRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/checklist': {
       id: '/dashboard/_layout/checklist'
       path: '/checklist'
@@ -940,6 +971,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutPrepareRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/projects': {
+      id: '/dashboard/_layout/projects'
+      path: '/projects'
+      fullPath: '/dashboard/projects'
+      preLoaderRoute: typeof DashboardLayoutProjectsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/referrals': {
       id: '/dashboard/_layout/referrals'
       path: '/referrals'
@@ -1001,6 +1039,7 @@ declare module '@tanstack/react-router' {
 
 interface DashboardLayoutRouteChildren {
   DashboardLayoutApprovalsRoute: typeof DashboardLayoutApprovalsRoute
+  DashboardLayoutChatRoute: typeof DashboardLayoutChatRoute
   DashboardLayoutChecklistRoute: typeof DashboardLayoutChecklistRoute
   DashboardLayoutCityRoute: typeof DashboardLayoutCityRoute
   DashboardLayoutComplianceRoute: typeof DashboardLayoutComplianceRoute
@@ -1021,6 +1060,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutPermitsRoute: typeof DashboardLayoutPermitsRoute
   DashboardLayoutPortalRoute: typeof DashboardLayoutPortalRoute
   DashboardLayoutPrepareRoute: typeof DashboardLayoutPrepareRoute
+  DashboardLayoutProjectsRoute: typeof DashboardLayoutProjectsRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutReviewsRoute: typeof DashboardLayoutReviewsRoute
   DashboardLayoutRfisRoute: typeof DashboardLayoutRfisRoute
@@ -1034,6 +1074,7 @@ interface DashboardLayoutRouteChildren {
 
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutApprovalsRoute: DashboardLayoutApprovalsRoute,
+  DashboardLayoutChatRoute: DashboardLayoutChatRoute,
   DashboardLayoutChecklistRoute: DashboardLayoutChecklistRoute,
   DashboardLayoutCityRoute: DashboardLayoutCityRoute,
   DashboardLayoutComplianceRoute: DashboardLayoutComplianceRoute,
@@ -1054,6 +1095,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutPermitsRoute: DashboardLayoutPermitsRoute,
   DashboardLayoutPortalRoute: DashboardLayoutPortalRoute,
   DashboardLayoutPrepareRoute: DashboardLayoutPrepareRoute,
+  DashboardLayoutProjectsRoute: DashboardLayoutProjectsRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutReviewsRoute: DashboardLayoutReviewsRoute,
   DashboardLayoutRfisRoute: DashboardLayoutRfisRoute,
