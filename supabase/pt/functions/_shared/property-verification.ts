@@ -65,6 +65,8 @@ export const GENERATED_DOCUMENT_TYPES = new Set([
   "Signed Appointment of Agent",
   "Signed Evidence Declaration",
   "Settlement Agreement — Signed",
+  // a payment receipt says nothing about who owns the property
+  "Tax Payment Receipt",
 ]);
 
 const AI_TOOLS =

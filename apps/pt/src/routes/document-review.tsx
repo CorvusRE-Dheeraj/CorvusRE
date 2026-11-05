@@ -280,7 +280,7 @@ function DocumentReview() {
               },
               documentId,
             );
-            toast.success("Tax bill saved. Track it under Dashboard → Tax Bills.");
+            toast.success("Tax bill saved. Track it under Dashboard → Pay Taxes.");
           } catch (err) {
             console.error(err);
             toast.error("Property saved, but the tax bill couldn't be tracked.");
@@ -294,7 +294,7 @@ function DocumentReview() {
               documentId,
             );
             await recordRefund(bill.id, { amount: eff.refundAmount ?? undefined });
-            toast.success("Refund saved. Track it under Dashboard → Tax Bills.");
+            toast.success("Refund saved. Track it under Dashboard → Pay Taxes.");
           } catch (err) {
             console.error(err);
             toast.error("Property saved, but the refund couldn't be tracked.");
@@ -622,10 +622,10 @@ function DocumentReview() {
                   <div className="mt-4 flex gap-2">
                     {isBillOrRefund ? (
                       <Link
-                        to="/dashboard/tax-bills"
+                        to="/dashboard/pay-taxes"
                         className="btn-primary btn-primary-hover text-sm py-2"
                       >
-                        View Tax Bills
+                        View Pay Taxes
                       </Link>
                     ) : isBpp ? (
                       // Signed-in only route — an unauthenticated click bounces

@@ -86,7 +86,7 @@ export async function buildDeadlineEvents(
       admin
         .from("tax_bills")
         .select(
-          "id, property_id, tax_year, amount_due, due_date, penalty_date, paid_at, refund_amount, refund_expected_at, refund_received_at",
+          "id, property_id, tax_year, amount_due, due_date, penalty_date, paid_at, status, installments, refund_amount, refund_expected_at, refund_received_at",
         )
         .eq("user_id", userId),
       admin
@@ -176,14 +176,31 @@ export async function buildDeadlineEvents(
     const address =
       (propertyById.get(bill.property_id as string)?.address as string) ?? "your property";
     const yearLabel = bill.tax_year ? ` (${bill.tax_year})` : "";
-    if (bill.due_date) {
+    const billPaid = !!bill.paid_at || bill.status === "paid";
+    // On an installment plan (Pay Taxes tab) each installment is its own
+    // deadline, reminded separately; the single due date no longer applies.
+    const installments = Array.isArray(bill.installments)
+      ? (bill.installments as { label: string; dueDate: string; amount: number | null; paidAt?: string | null }[])
+      : [];
+    for (const inst of installments) {
+      if (!inst?.dueDate) continue;
+      events.push({
+        key: `tax-installment:${id}:${inst.label}`,
+        date: toIsoDate(inst.dueDate),
+        title: `${inst.label} of property tax due${yearLabel} — ${address}`,
+        subject: short(`${inst.label} due${yearLabel}`, address),
+        amount: inst.amount ?? null,
+        resolved: billPaid || !!inst.paidAt,
+      });
+    }
+    if (bill.due_date && installments.length === 0) {
       events.push({
         key: `tax-due:bill:${id}`,
         date: toIsoDate(bill.due_date as string),
         title: `Tax bill due${yearLabel} — ${address}`,
         subject: short(`Tax bill due${yearLabel}`, address),
         amount: bill.amount_due as number | null,
-        resolved: !!bill.paid_at,
+        resolved: billPaid,
       });
     }
     if (bill.penalty_date) {
@@ -194,7 +211,7 @@ export async function buildDeadlineEvents(
         title: `Penalty date${yearLabel} — ${address}`,
         subject: short(`Penalty date${yearLabel}`, address),
         amount: null,
-        resolved: !!bill.paid_at || isPast(date, todayIso),
+        resolved: billPaid || isPast(date, todayIso),
       });
     }
     if (bill.refund_expected_at) {
