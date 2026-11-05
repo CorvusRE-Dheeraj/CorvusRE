@@ -17,6 +17,7 @@ import {
   Layers,
   ClipboardCheck,
   Bell,
+  MessageCircle,
   ChevronDown,
   Building2,
   Check,
@@ -96,6 +97,7 @@ const PERMITTING_SUBGROUPS: NavSubgroup[] = [
 ];
 
 const ACCOUNT_ITEMS: NavLink[] = [
+  { to: "/dashboard/chat", label: "Project Chat", icon: MessageCircle },
   { to: "/dashboard/documents", label: "Documents", icon: FolderOpen },
   { to: "/dashboard/notifications", label: "Alerts", icon: Bell },
 ];

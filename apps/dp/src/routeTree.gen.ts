@@ -30,6 +30,7 @@ import { Route as PermittingIndexRouteImport } from './routes/permitting.index'
 import { Route as PermittingAnalyzeRouteImport } from './routes/permitting.analyze'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
 import { Route as DashboardLayoutApprovalsRouteImport } from './routes/dashboard/_layout.approvals'
+import { Route as DashboardLayoutChatRouteImport } from './routes/dashboard/_layout.chat'
 import { Route as DashboardLayoutChecklistRouteImport } from './routes/dashboard/_layout.checklist'
 import { Route as DashboardLayoutCityRouteImport } from './routes/dashboard/_layout.city'
 import { Route as DashboardLayoutComplianceRouteImport } from './routes/dashboard/_layout.compliance'
@@ -166,6 +167,11 @@ const DashboardLayoutApprovalsRoute =
     path: '/approvals',
     getParentRoute: () => DashboardLayoutRoute,
   } as any)
+const DashboardLayoutChatRoute = DashboardLayoutChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutChecklistRoute =
   DashboardLayoutChecklistRouteImport.update({
     id: '/checklist',
@@ -348,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/design/': typeof DesignIndexRoute
   '/permitting/': typeof PermittingIndexRoute
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/chat': typeof DashboardLayoutChatRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
@@ -399,6 +406,7 @@ export interface FileRoutesByTo {
   '/design': typeof DesignIndexRoute
   '/permitting': typeof PermittingIndexRoute
   '/dashboard/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/chat': typeof DashboardLayoutChatRoute
   '/dashboard/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/city': typeof DashboardLayoutCityRoute
   '/dashboard/compliance': typeof DashboardLayoutComplianceRoute
@@ -452,6 +460,7 @@ export interface FileRoutesById {
   '/design/': typeof DesignIndexRoute
   '/permitting/': typeof PermittingIndexRoute
   '/dashboard/_layout/approvals': typeof DashboardLayoutApprovalsRoute
+  '/dashboard/_layout/chat': typeof DashboardLayoutChatRoute
   '/dashboard/_layout/checklist': typeof DashboardLayoutChecklistRoute
   '/dashboard/_layout/city': typeof DashboardLayoutCityRoute
   '/dashboard/_layout/compliance': typeof DashboardLayoutComplianceRoute
@@ -506,6 +515,7 @@ export interface FileRouteTypes {
     | '/design/'
     | '/permitting/'
     | '/dashboard/approvals'
+    | '/dashboard/chat'
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/compliance'
@@ -557,6 +567,7 @@ export interface FileRouteTypes {
     | '/design'
     | '/permitting'
     | '/dashboard/approvals'
+    | '/dashboard/chat'
     | '/dashboard/checklist'
     | '/dashboard/city'
     | '/dashboard/compliance'
@@ -609,6 +620,7 @@ export interface FileRouteTypes {
     | '/design/'
     | '/permitting/'
     | '/dashboard/_layout/approvals'
+    | '/dashboard/_layout/chat'
     | '/dashboard/_layout/checklist'
     | '/dashboard/_layout/city'
     | '/dashboard/_layout/compliance'
@@ -810,6 +822,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/dashboard/approvals'
       preLoaderRoute: typeof DashboardLayoutApprovalsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
+    '/dashboard/_layout/chat': {
+      id: '/dashboard/_layout/chat'
+      path: '/chat'
+      fullPath: '/dashboard/chat'
+      preLoaderRoute: typeof DashboardLayoutChatRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
     '/dashboard/_layout/checklist': {
@@ -1020,6 +1039,7 @@ declare module '@tanstack/react-router' {
 
 interface DashboardLayoutRouteChildren {
   DashboardLayoutApprovalsRoute: typeof DashboardLayoutApprovalsRoute
+  DashboardLayoutChatRoute: typeof DashboardLayoutChatRoute
   DashboardLayoutChecklistRoute: typeof DashboardLayoutChecklistRoute
   DashboardLayoutCityRoute: typeof DashboardLayoutCityRoute
   DashboardLayoutComplianceRoute: typeof DashboardLayoutComplianceRoute
@@ -1054,6 +1074,7 @@ interface DashboardLayoutRouteChildren {
 
 const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutApprovalsRoute: DashboardLayoutApprovalsRoute,
+  DashboardLayoutChatRoute: DashboardLayoutChatRoute,
   DashboardLayoutChecklistRoute: DashboardLayoutChecklistRoute,
   DashboardLayoutCityRoute: DashboardLayoutCityRoute,
   DashboardLayoutComplianceRoute: DashboardLayoutComplianceRoute,

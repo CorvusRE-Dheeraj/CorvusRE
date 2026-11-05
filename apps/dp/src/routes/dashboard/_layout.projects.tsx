@@ -24,6 +24,7 @@ import {
 } from "@/lib/design-requests";
 import { scopeLabel } from "@/lib/design";
 import { dateShort } from "@/lib/format";
+import { myUnreadCounts } from "@/lib/project-chat";
 import { Section, inputCls, humanize, Pill } from "@/components/dp-ui";
 
 // Everything the client owns in one place, reached from the account menu:
@@ -137,6 +138,22 @@ function List({ loading, empty, items }: { loading: boolean; empty: string; item
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (items.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return <ul className="grid gap-2">{items}</ul>;
+}
+
+/** Opens this project's Project Chat; shows unread replies from the team. */
+function ChatLink({ kind, id }: { kind: "permitting" | "design"; id: string }) {
+  const { user } = useAuth();
+  const unread = useQuery({
+    queryKey: ["project-chat-unread", user?.id],
+    queryFn: myUnreadCounts,
+    enabled: !!user?.id,
+  });
+  const n = unread.data?.[id] ?? 0;
+  return (
+    <Link to="/dashboard/chat" search={{ type: kind, id }} className={linkBtn}>
+      Chat{n > 0 ? ` (${n} new)` : ""}
+    </Link>
+  );
 }
 
 const linkBtn =
@@ -330,6 +347,7 @@ function PermittingItem({
       >
         Open
       </button>
+      <ChatLink kind="permitting" id={p.id} />
       <Confirm
         label="Mark completed"
         confirmLabel="Confirm — mark completed"
@@ -387,6 +405,7 @@ function DesignItem({
       >
         Open
       </button>
+      <ChatLink kind="design" id={d.id} />
       <Confirm
         label="Delete"
         confirmLabel="Confirm delete"
@@ -416,6 +435,7 @@ function ArchivedProjectItem({
       <button className={linkBtn} disabled={busy} onClick={() => run(() => reopenProject(p.id))}>
         Reopen
       </button>
+      <ChatLink kind="permitting" id={p.id} />
       <Confirm
         label="Delete"
         confirmLabel="Confirm delete"
@@ -442,6 +462,7 @@ function ArchivedDesignItem({
       detail={`Design · ${scopeLabel((d.scope ?? undefined) as never)} · Completed ${d.completed_at ? dateShort(d.completed_at) : ""}`}
       pills={<Pill tone="green">Completed</Pill>}
     >
+      <ChatLink kind="design" id={d.id} />
       <Confirm
         label="Delete"
         confirmLabel="Confirm delete"

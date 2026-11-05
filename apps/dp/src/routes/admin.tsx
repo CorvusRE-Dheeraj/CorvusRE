@@ -42,6 +42,7 @@ import {
 import { dateShort, daysUntil } from "@/lib/format";
 import { Section, Pill, Stat, Field, inputCls, humanize } from "@/components/dp-ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
+import { AdminProjectChat, useAdminChatUnread } from "@/components/AdminProjectChat";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Admin — CorvusDP" }] }),
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/admin")({
 type Tab =
   | "projects"
   | "design"
+  | "chat"
   | "engagements"
   | "permits"
   | "documents"
@@ -65,6 +67,7 @@ type Tab =
 const TABS: Tab[] = [
   "projects",
   "design",
+  "chat",
   "engagements",
   "permits",
   "documents",
@@ -114,6 +117,7 @@ function Admin() {
     });
   }, [user, loading, nav]);
 
+  const chatUnread = useAdminChatUnread(authorized === true);
   const projects = useQuery<AdminProjectRow[]>({
     queryKey: ["admin", "projects"],
     queryFn: listAllProjects,
@@ -210,6 +214,11 @@ function Admin() {
             }`}
           >
             {t}
+            {t === "chat" && chatUnread > 0 && (
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                {chatUnread}
+              </span>
+            )}
             {t === "engagements" && pendingEngagements > 0 && (
               <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
                 {pendingEngagements}
@@ -289,6 +298,8 @@ function Admin() {
             />
           </Section>
         )}
+
+        {tab === "chat" && <AdminProjectChat />}
 
         {tab === "engagements" && (
           <Section
