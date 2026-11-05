@@ -1,0 +1,42 @@
+name: Uptime check
+
+# Every 15 minutes: the live site pages and both Supabase back ends must
+# answer. A failed run is GitHub's alert — it emails the repository's
+# notification recipients. The publishable keys below are the same public
+# keys the site itself ships (see deploy.yml).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Site pages and back ends answer
+        shell: bash
+        run: |
+          fail=0
+          check() {
+            local name="$1" url="$2"; shift 2
+            local code
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$@" "$url" || echo 000)
+              [ "$code" = "200" ] && break
+              sleep 10
+            done
+            if [ "$code" = "200" ]; then echo "OK    $name"; else echo "DOWN  $name ($code) $url"; fail=1; fi
+          }
+          check "Home"               https://corvusre.com/
+          check "CorvusPT"           https://corvusre.com/corvuspt/
+          check "CorvusDP"           https://corvusre.com/corvusdp/
+          check "Sign-in app"        https://corvusre.com/auth/
+          check "CorvusPT back end"  https://iotzuhuajbsxxuccuihn.supabase.co/auth/v1/health \
+            -H "apikey: sb_publishable_RpyqtM6EeGiT7qc3FyN5Iw_vm0aiuM3"
+          check "CorvusDP back end"  https://xzhilwwlfajxhklkiteb.supabase.co/auth/v1/health \
+            -H "apikey: sb_publishable_zR_OjbkQ3Nto25iGKdX9mg_jRbUDWVF"
+          exit $fail

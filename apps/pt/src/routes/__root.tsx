@@ -18,6 +18,7 @@ import {
   logClientError,
   isStaleBuildError,
   canReloadFresh,
+  isPageLeaving,
   reloadFresh,
   stripFreshParam,
 } from "../lib/client-errors";
@@ -81,15 +82,19 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   // A deploy replaced this page's code while the tab was open — fetch the
   // fresh version instead of showing an error (see isStaleBuildError).
   const [updating] = useState(() => isStaleBuildError(error) && canReloadFresh());
+  // The page is already navigating away (see isPageLeaving) — not a failure.
+  const [leaving] = useState(() => isStaleBuildError(error) && isPageLeaving());
   useEffect(() => {
+    if (leaving) return;
     if (updating) {
       reloadFresh();
       return;
     }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
     void logClientError(ref, error);
-  }, [error, ref, updating]);
+  }, [error, ref, updating, leaving]);
 
+  if (leaving) return null;
   if (updating) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -184,6 +189,13 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        {/* Baseline policy that cannot break third-party scripts (Maps, Stripe,
+            Supabase): no plug-ins, no <base> hijack, HTTPS only. A full CSP
+            needs response headers, which GitHub Pages cannot send. */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="object-src 'none'; base-uri 'self'; upgrade-insecure-requests"
+        />
         <script
           // Clickjacking guard: on the live site, never render inside another
           // site's frame (GitHub Pages can't send X-Frame-Options). Then

@@ -1,9 +1,8 @@
 import { FieldError, emailError, requiredError, useTouched } from "@/components/FieldError";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { CalendarCheck, Video } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +32,13 @@ import {
 // pick a time, tell us who you are, done. What's open is decided server-side
 // (appointment-slots) — 60-minute visits, Mon–Fri 10 AM–2 PM Central, 2 days' notice,
 // no holidays, no double booking.
+// The date picker (react-day-picker) only loads when the booking dialog opens —
+// this component sits in the site header, so a static import put the whole
+// library in every page's first download.
+const Calendar = lazy(() =>
+  import("@/components/ui/calendar").then((m) => ({ default: m.Calendar })),
+);
+
 export function ScheduleAppointment({
   trigger = "card",
   buttonLabel = "Schedule",
@@ -303,19 +309,23 @@ export function ScheduleAppointment({
                     1. Pick a day
                   </div>
                   {slots ? (
-                    <Calendar
-                      mode="single"
-                      selected={date ? fromIsoLocal(date) : undefined}
-                      onSelect={(d) => {
-                        setDate(d ? toIsoLocal(d) : null);
-                        setSlot(null);
-                      }}
-                      disabled={(d) => !availableDates.has(toIsoLocal(d))}
-                      defaultMonth={slots.from ? fromIsoLocal(slots.from) : undefined}
-                      startMonth={slots.from ? fromIsoLocal(slots.from) : undefined}
-                      endMonth={slots.to ? fromIsoLocal(slots.to) : undefined}
-                      className="rounded-md border border-border"
-                    />
+                    <Suspense
+                      fallback={<div className="h-72 w-full animate-pulse rounded-md bg-muted" />}
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={date ? fromIsoLocal(date) : undefined}
+                        onSelect={(d) => {
+                          setDate(d ? toIsoLocal(d) : null);
+                          setSlot(null);
+                        }}
+                        disabled={(d) => !availableDates.has(toIsoLocal(d))}
+                        defaultMonth={slots.from ? fromIsoLocal(slots.from) : undefined}
+                        startMonth={slots.from ? fromIsoLocal(slots.from) : undefined}
+                        endMonth={slots.to ? fromIsoLocal(slots.to) : undefined}
+                        className="rounded-md border border-border"
+                      />
+                    </Suspense>
                   ) : loadError ? (
                     <div className="text-sm text-destructive">
                       {loadError}{" "}

@@ -18,6 +18,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
+import { sendReminderSms } from "../_shared/telnyx.ts";
 import { buildDeadlineEvents } from "../_shared/deadline-events.ts";
 import { alertTarget, inAlertWindow, minutesLeft, type AlertKind } from "../_shared/alert-time.ts";
 
@@ -58,9 +59,6 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
   const appUrl = appBaseUrl();
   const admin = createClient(supabaseUrl, serviceKey);
 
@@ -200,25 +198,11 @@ Deno.serve(async (req: Request) => {
           if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
           emailsSent++;
         } else {
-          if (!twilioSid || !twilioToken || !twilioFrom) {
-            throw new Error("SMS provider not configured (TWILIO_*)");
-          }
           const body =
             `CorvusPT — about an hour left: ` +
             toSend.map((d) => line(d, nowMs)).join(" ") +
             ` ${appUrl}/dashboard/calendar`;
-          const res = await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({ To: profile.phone as string, From: twilioFrom, Body: body }),
-            },
-          );
-          if (!res.ok) throw new Error(`Twilio ${res.status}: ${await res.text()}`);
+          await sendReminderSms(profile.phone as string, body);
           smsSent++;
         }
         await admin.from("reminder_sends").upsert(

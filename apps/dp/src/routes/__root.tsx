@@ -8,10 +8,17 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import {
+  canReloadFresh,
+  isPageLeaving,
+  isStaleBuildError,
+  reloadFresh,
+  stripFreshParam,
+} from "../lib/stale-build";
 import { SiteNav, SiteFooter } from "../components/SiteChrome";
 import { AuthProvider } from "../lib/auth";
 import { Toaster } from "../components/ui/sonner";
@@ -42,9 +49,27 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  // A deploy replaced this page's code while the tab was open — fetch the
+  // fresh version instead of showing an error (see lib/stale-build.ts).
+  const [updating] = useState(() => isStaleBuildError(error) && canReloadFresh());
+  const [leaving] = useState(() => isStaleBuildError(error) && isPageLeaving());
   useEffect(() => {
+    if (leaving) return;
+    if (updating) {
+      reloadFresh();
+      return;
+    }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+  }, [error, updating, leaving]);
+
+  if (leaving) return null;
+  if (updating) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Updating CorvusDP to the latest version…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -119,6 +144,13 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        {/* Baseline policy that cannot break third-party scripts (Maps, Stripe,
+            Supabase): no plug-ins, no <base> hijack, HTTPS only. A full CSP
+            needs response headers, which GitHub Pages cannot send. */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="object-src 'none'; base-uri 'self'; upgrade-insecure-requests"
+        />
         <script dangerouslySetInnerHTML={{ __html: FRAME_GUARD }} />
         <HeadContent />
       </head>
@@ -137,6 +169,7 @@ const BARE_PATHS = new Set(["/dashboard/track-station"]);
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  useEffect(stripFreshParam, []);
 
   if (BARE_PATHS.has(pathname)) {
     return (

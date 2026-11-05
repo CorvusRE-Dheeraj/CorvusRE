@@ -28,17 +28,16 @@
 // gets spammed with near-identical messages the same morning).
 //
 // Email requires RESEND_API_KEY (already configured — same key every other
-// transactional email here uses). SMS requires TWILIO_ACCOUNT_SID /
-// TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER, which are NOT configured yet as of
-// this writing — until they are, a user who turns SMS on simply accumulates
-// per-run failures here (logged, never silently claimed as sent) rather
-// than the whole run breaking; the Settings UI also disables the SMS toggle
-// until a phone number is on file, and is labeled "coming soon" until this
-// function can actually reach a provider.
+// transactional email here uses). SMS goes through Telnyx (_shared/telnyx.ts
+// sendReminderSms), the same account marketing texts use; until its 10DLC
+// registration is approved a send fails and is logged per run, never claimed
+// as sent. The Settings UI keeps the SMS toggle "coming soon" until then. A
+// STOP reply turns deadline_reminders_sms off (handlers/marketing-events).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appBaseUrl } from "../_shared/app-url.ts";
 import { isServiceRoleRequest, serviceRoleOnlyResponse } from "../_shared/service-role-only.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
+import { sendReminderSms } from "../_shared/telnyx.ts";
 import { buildDeadlineEvents, type DeadlineEvent } from "../_shared/deadline-events.ts";
 
 const corsHeaders = {
@@ -85,9 +84,6 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const resendKey = Deno.env.get("RESEND_API_KEY");
-  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const twilioFrom = Deno.env.get("TWILIO_FROM_NUMBER");
   const appUrl = appBaseUrl();
   const admin = createClient(supabaseUrl, serviceKey);
 
@@ -237,11 +233,6 @@ Deno.serve(async (req: Request) => {
           if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
           emailsSent++;
         } else {
-          if (!twilioSid || !twilioToken || !twilioFrom) {
-            throw new Error(
-              "SMS provider not configured (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER)",
-            );
-          }
           const body =
             toSend.length === 1
               ? `CorvusPT: ${shortSubject(toSend[0])}. Details: ${appUrl}/dashboard/calendar`
@@ -249,18 +240,7 @@ Deno.serve(async (req: Request) => {
                 toSend.map((d) => `${d.title} (${OFFSET_LABEL[d.offsetDays]})`).join("; ") +
                 `. Details: ${appUrl}/dashboard/calendar`;
 
-          const res = await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({ To: profile.phone as string, From: twilioFrom, Body: body }),
-            },
-          );
-          if (!res.ok) throw new Error(`Twilio ${res.status}: ${await res.text()}`);
+          await sendReminderSms(profile.phone as string, body);
           smsSent++;
         }
 
