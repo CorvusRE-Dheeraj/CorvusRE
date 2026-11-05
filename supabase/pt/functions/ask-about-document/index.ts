@@ -1,5 +1,6 @@
 // Deploy via CLI: `supabase functions deploy ask-about-document`.
 // Requires the GEMINI_API_KEY secret (shared with classify-document).
+import { limitCaller } from "../_shared/require-user.ts";
 import { PROSE_STYLE, BULLET_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
@@ -14,6 +15,8 @@ const corsHeaders = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "ask-about-document", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { question, context, conversational, personaName } = await req.json();

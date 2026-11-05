@@ -10,6 +10,7 @@
 // Never invents a category outside the list it was given, and a document
 // that doesn't clearly fit any of them comes back uncategorized rather than
 // forced into the closest-sounding one.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -30,6 +31,8 @@ Rules:
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "categorize-evidence-upload", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { items, documents } = await req.json();

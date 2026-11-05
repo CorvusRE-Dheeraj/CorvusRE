@@ -5,6 +5,33 @@
 //   const who = await requireUser(req, corsHeaders);
 //   if (who instanceof Response) return who;
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { rateLimit, rateLimitUser } from "./rate-limit.ts";
+
+/**
+ * Usage cap for AI functions that guest pages (the free AI report, the Ask
+ * AI widget) also call, so they can't require sign-in: a signed-in caller
+ * gets a generous per-account allowance, anyone else a tighter per-IP one.
+ * Without it the public anon key alone could run up the Gemini bill.
+ *
+ *   const limited = await limitCaller(req, "site-gis", corsHeaders);
+ *   if (limited) return limited;
+ */
+export async function limitCaller(
+  req: Request,
+  fn: string,
+  corsHeaders: Record<string, string>,
+  { guest = 40, user = 300 }: { guest?: number; user?: number } = {},
+): Promise<Response | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (token && token !== Deno.env.get("SUPABASE_ANON_KEY")) {
+    const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      auth: { persistSession: false },
+    });
+    const { data } = await client.auth.getUser(token);
+    if (data?.user) return rateLimitUser(data.user.id, fn, user, corsHeaders);
+  }
+  return rateLimit(req, fn, guest, corsHeaders);
+}
 
 export async function requireUser(
   req: Request,

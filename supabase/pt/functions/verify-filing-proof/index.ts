@@ -12,6 +12,7 @@
 // concrete mismatch (no signature visible, a stale-looking year) for the
 // customer to notice before they confirm, same "AI advises, human decides"
 // discipline as every other AI feature in this app.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -74,6 +75,8 @@ function referenceNumber(v: unknown): string | null {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "verify-filing-proof", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { property, documents } = await req.json();

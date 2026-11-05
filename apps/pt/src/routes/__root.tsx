@@ -176,14 +176,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Same guard in apps/dp's root, apps/identity/index.html and apps/home/index.html.
+const FRAME_GUARD =
+  "if(location.hostname==='corvusre.com'&&window.top!==window.self){document.documentElement.style.visibility='hidden';try{window.top.location.replace(location.href)}catch(e){}}";
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
         <script
-          // Re-apply a saved dark-mode choice before first paint (no flash of light).
+          // Clickjacking guard: on the live site, never render inside another
+          // site's frame (GitHub Pages can't send X-Frame-Options). Then
+          // re-apply a saved dark-mode choice before first paint.
           dangerouslySetInnerHTML={{
             __html:
+              FRAME_GUARD +
               "try{if(localStorage.getItem('corvuspt.theme')==='dark')document.documentElement.classList.add('dark');var z=localStorage.getItem('corvuspt.textSize');if(z&&z!=='100')document.documentElement.style.fontSize=z+'%'}catch(e){}",
           }}
         />

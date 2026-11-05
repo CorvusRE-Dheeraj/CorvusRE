@@ -7,6 +7,7 @@
 // it, and how the owner can confirm the real figure. The output is a
 // reference document the owner reviews and edits — it is explicitly NOT
 // verified data and is never fed back into a module as a real input.
+import { limitCaller } from "../_shared/require-user.ts";
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
@@ -33,6 +34,8 @@ ${PROSE_STYLE}`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "generate-data-sheet", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { moduleId, moduleLabel, moduleResult, caseContext } = await req.json();

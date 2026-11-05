@@ -7,6 +7,7 @@
 // file (a photo of a pet, an unrelated PDF, a notice from outside Texas) fast,
 // with a clear reason, instead of quietly wasting a full OCR pass and surfacing
 // a confusing all-nulls confirm screen.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -29,6 +30,8 @@ Return ONLY a JSON object: {"isValid":true|false,"cadName":"..."|null,"reason":"
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "validate-document", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { fileName, mimeType, dataUrl } = await req.json();

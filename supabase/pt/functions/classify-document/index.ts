@@ -6,6 +6,7 @@
 // sign-in, matching the app's existing "before you even sign in" design. Known
 // tradeoff: an unauthenticated endpoint calling a rate-limited free API could be
 // abused for quota exhaustion; the client already caps uploads at 15MB.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -81,6 +82,8 @@ const SCHEMA_HINT = `{"documentType":"...","ownerName":null,"propertyName":null,
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "classify-document", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { fileName, mimeType, dataUrl } = await req.json();

@@ -8,6 +8,7 @@
 // whatever real analysis has already run (Module 1's opportunity read,
 // Module 2's strategy, comps count) — a factual profile a customer or staff
 // member can skim, not a new analysis and not an assumptions aid.
+import { limitCaller } from "../_shared/require-user.ts";
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
@@ -32,6 +33,8 @@ ${PROSE_STYLE}`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "generate-property-summary", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { property, analysis } = await req.json();

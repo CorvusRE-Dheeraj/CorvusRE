@@ -10,6 +10,14 @@
     />
     <!-- A login form has nothing for search results. -->
     <meta name="robots" content="noindex" />
+    <!-- Clickjacking guard: on the live site, never render the sign-in form
+         inside another site's frame (GitHub Pages can't send X-Frame-Options). -->
+    <script>
+      if (location.hostname === "corvusre.com" && window.top !== window.self) {
+        document.documentElement.style.visibility = "hidden";
+        try { window.top.location.replace(location.href); } catch (e) {}
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

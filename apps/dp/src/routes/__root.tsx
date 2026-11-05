@@ -110,10 +110,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Clickjacking guard: on the live site, never render inside another site's
+// frame (GitHub Pages can't send X-Frame-Options). Same as apps/pt's root.
+const FRAME_GUARD =
+  "if(location.hostname==='corvusre.com'&&window.top!==window.self){document.documentElement.style.visibility='hidden';try{window.top.location.replace(location.href)}catch(e){}}";
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: FRAME_GUARD }} />
         <HeadContent />
       </head>
       <body>
