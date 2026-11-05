@@ -55,6 +55,16 @@ export function designRequestName(dr: {
   return dr.project_name?.trim() || dr.address || dr.city || "Design project";
 }
 
+export async function renameDesignRequest(id: string, name: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("design_requests")
+    .update({ project_name: name.trim() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("That project could not be renamed.");
+}
+
 export async function saveDesignRequest(userId: string, intake: DpIntakeState): Promise<string> {
   const brief = generateDesignBrief(intake.design);
   const { data, error } = await supabase

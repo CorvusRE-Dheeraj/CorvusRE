@@ -50,6 +50,7 @@ import { Route as DashboardLayoutNotificationsRouteImport } from './routes/dashb
 import { Route as DashboardLayoutPermitsRouteImport } from './routes/dashboard/_layout.permits'
 import { Route as DashboardLayoutPortalRouteImport } from './routes/dashboard/_layout.portal'
 import { Route as DashboardLayoutPrepareRouteImport } from './routes/dashboard/_layout.prepare'
+import { Route as DashboardLayoutProjectsRouteImport } from './routes/dashboard/_layout.projects'
 import { Route as DashboardLayoutReferralsRouteImport } from './routes/dashboard/_layout.referrals'
 import { Route as DashboardLayoutReviewsRouteImport } from './routes/dashboard/_layout.reviews'
 import { Route as DashboardLayoutRfisRouteImport } from './routes/dashboard/_layout.rfis'
@@ -278,6 +279,11 @@ const DashboardLayoutPrepareRoute = DashboardLayoutPrepareRouteImport.update({
   path: '/prepare',
   getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutProjectsRoute = DashboardLayoutProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardLayoutRoute,
+} as any)
 const DashboardLayoutReferralsRoute =
   DashboardLayoutReferralsRouteImport.update({
     id: '/referrals',
@@ -362,6 +368,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/rfis': typeof DashboardLayoutRfisRoute
@@ -412,6 +419,7 @@ export interface FileRoutesByTo {
   '/dashboard/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/rfis': typeof DashboardLayoutRfisRoute
@@ -464,6 +472,7 @@ export interface FileRoutesById {
   '/dashboard/_layout/permits': typeof DashboardLayoutPermitsRoute
   '/dashboard/_layout/portal': typeof DashboardLayoutPortalRoute
   '/dashboard/_layout/prepare': typeof DashboardLayoutPrepareRoute
+  '/dashboard/_layout/projects': typeof DashboardLayoutProjectsRoute
   '/dashboard/_layout/referrals': typeof DashboardLayoutReferralsRoute
   '/dashboard/_layout/reviews': typeof DashboardLayoutReviewsRoute
   '/dashboard/_layout/rfis': typeof DashboardLayoutRfisRoute
@@ -517,6 +526,7 @@ export interface FileRouteTypes {
     | '/dashboard/permits'
     | '/dashboard/portal'
     | '/dashboard/prepare'
+    | '/dashboard/projects'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
     | '/dashboard/rfis'
@@ -567,6 +577,7 @@ export interface FileRouteTypes {
     | '/dashboard/permits'
     | '/dashboard/portal'
     | '/dashboard/prepare'
+    | '/dashboard/projects'
     | '/dashboard/referrals'
     | '/dashboard/reviews'
     | '/dashboard/rfis'
@@ -618,6 +629,7 @@ export interface FileRouteTypes {
     | '/dashboard/_layout/permits'
     | '/dashboard/_layout/portal'
     | '/dashboard/_layout/prepare'
+    | '/dashboard/_layout/projects'
     | '/dashboard/_layout/referrals'
     | '/dashboard/_layout/reviews'
     | '/dashboard/_layout/rfis'
@@ -940,6 +952,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardLayoutPrepareRouteImport
       parentRoute: typeof DashboardLayoutRoute
     }
+    '/dashboard/_layout/projects': {
+      id: '/dashboard/_layout/projects'
+      path: '/projects'
+      fullPath: '/dashboard/projects'
+      preLoaderRoute: typeof DashboardLayoutProjectsRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
     '/dashboard/_layout/referrals': {
       id: '/dashboard/_layout/referrals'
       path: '/referrals'
@@ -1021,6 +1040,7 @@ interface DashboardLayoutRouteChildren {
   DashboardLayoutPermitsRoute: typeof DashboardLayoutPermitsRoute
   DashboardLayoutPortalRoute: typeof DashboardLayoutPortalRoute
   DashboardLayoutPrepareRoute: typeof DashboardLayoutPrepareRoute
+  DashboardLayoutProjectsRoute: typeof DashboardLayoutProjectsRoute
   DashboardLayoutReferralsRoute: typeof DashboardLayoutReferralsRoute
   DashboardLayoutReviewsRoute: typeof DashboardLayoutReviewsRoute
   DashboardLayoutRfisRoute: typeof DashboardLayoutRfisRoute
@@ -1054,6 +1074,7 @@ const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
   DashboardLayoutPermitsRoute: DashboardLayoutPermitsRoute,
   DashboardLayoutPortalRoute: DashboardLayoutPortalRoute,
   DashboardLayoutPrepareRoute: DashboardLayoutPrepareRoute,
+  DashboardLayoutProjectsRoute: DashboardLayoutProjectsRoute,
   DashboardLayoutReferralsRoute: DashboardLayoutReferralsRoute,
   DashboardLayoutReviewsRoute: DashboardLayoutReviewsRoute,
   DashboardLayoutRfisRoute: DashboardLayoutRfisRoute,
