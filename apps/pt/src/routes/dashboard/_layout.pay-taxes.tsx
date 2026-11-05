@@ -519,13 +519,59 @@ function PlanCell({ row }: { row: PayTaxesRow }) {
     return (
       <span className="text-sm font-medium text-success">✓ {eligible.map(short).join(", ")}</span>
     );
-  if (toConfirm.length > 0)
+  if (row.settings?.halfPayment === "not_offered")
+    return (
+      <span className="text-xs text-muted-foreground">
+        No half-payment option in {row.county} County
+      </span>
+    );
+  if (toConfirm.length > 0 || row.settings?.halfPayment === "unknown" || !row.settings)
     return (
       <span className="text-xs text-muted-foreground" title={TO_CONFIRM}>
         To confirm with county
       </span>
     );
   return <span className="text-xs text-muted-foreground">None on file</span>;
+}
+
+// What the county tax office's own website says about splitting the bill —
+// the evidence behind "offered" / "not offered", or why it's still unknown.
+function HalfPaymentFinding({ row }: { row: PayTaxesRow }) {
+  const s = row.settings;
+  const offered = row.plans.some((p) => p.plan.kind === "half");
+  if (offered && !s?.halfPaymentQuote) return null;
+  const checked = s?.rulesCheckedAt ? ` (checked ${fmtDate(s.rulesCheckedAt)})` : "";
+  const link = s?.halfPaymentUrl ? (
+    <a
+      href={s.halfPaymentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-accent underline underline-offset-2"
+    >
+      county tax office page
+    </a>
+  ) : null;
+  return (
+    <div className="mb-2 rounded-lg bg-secondary/40 p-3 text-sm">
+      <span className="font-semibold">
+        Half-payment (split) option in {row.county ? `${row.county} County` : "this county"}:{" "}
+      </span>
+      {offered || s?.halfPayment === "offered" ? (
+        <>offered{checked}.</>
+      ) : s?.halfPayment === "not_offered" ? (
+        <>not offered{checked}.</>
+      ) : (
+        <>
+          the county tax office&apos;s website doesn&apos;t say{checked}. {TO_CONFIRM}.
+        </>
+      )}
+      {s?.halfPaymentQuote && (
+        <p className="mt-1 text-muted-foreground">
+          &ldquo;{s.halfPaymentQuote}&rdquo; — {link}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function HistoryBars({ row }: { row: PayTaxesRow }) {
@@ -975,6 +1021,7 @@ function PropertyTaxDetail({
       </Section>
 
       <Section title="Payment plans" icon={<SplitSquareHorizontal className="h-4 w-4" />}>
+        <HalfPaymentFinding row={row} />
         {row.plans.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No payment plans on file for {row.county ?? "this county"}. {TO_CONFIRM}.

@@ -57,6 +57,14 @@ export type CountyTaxSettings = {
   notes: string | null;
   sourceUrl: string | null;
   updatedAt: string | null;
+  // What the county tax office's own site says about the half-payment (split)
+  // option — see scripts/build-tx-payment-plans.mjs. Optional so hand-built
+  // settings (tests, the admin form) needn't carry it.
+  halfPayment?: "offered" | "not_offered" | "unknown";
+  halfPaymentQuote?: string | null;
+  halfPaymentUrl?: string | null;
+  otherOptions?: Record<string, { url: string; quote: string }>;
+  rulesCheckedAt?: string | null;
 };
 
 export const REQUIREMENT_LABEL: Record<string, string> = {
@@ -568,7 +576,7 @@ export async function listCountyTaxSettings(): Promise<CountyTaxSettings[]> {
   const { data, error } = await supabase
     .from("county_tax_settings")
     .select(
-      "county, payment_portal_url, account_url_template, account_pattern, delinquency_month_day, notes, source_url, updated_at",
+      "county, payment_portal_url, account_url_template, account_pattern, delinquency_month_day, notes, source_url, updated_at, half_payment, half_payment_quote, half_payment_url, other_options, rules_checked_at",
     )
     .order("county");
   if (error) throw error;
@@ -581,6 +589,11 @@ export async function listCountyTaxSettings(): Promise<CountyTaxSettings[]> {
     notes: r.notes as string | null,
     sourceUrl: r.source_url as string | null,
     updatedAt: r.updated_at as string | null,
+    halfPayment: (r.half_payment as CountyTaxSettings["halfPayment"]) ?? "unknown",
+    halfPaymentQuote: r.half_payment_quote as string | null,
+    halfPaymentUrl: r.half_payment_url as string | null,
+    otherOptions: (r.other_options as CountyTaxSettings["otherOptions"]) ?? {},
+    rulesCheckedAt: r.rules_checked_at as string | null,
   }));
 }
 
@@ -615,6 +628,13 @@ export async function saveCountyTaxSettings(s: CountyTaxSettings, userId: string
     delinquency_month_day: s.delinquencyMonthDay || "02-01",
     notes: s.notes || null,
     source_url: s.sourceUrl || null,
+    ...(s.halfPayment
+      ? {
+          half_payment: s.halfPayment,
+          half_payment_quote: s.halfPaymentQuote || null,
+          half_payment_url: s.halfPaymentUrl || null,
+        }
+      : {}),
     updated_at: new Date().toISOString(),
     updated_by: userId,
   });

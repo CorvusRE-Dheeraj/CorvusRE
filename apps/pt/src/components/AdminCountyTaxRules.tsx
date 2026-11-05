@@ -169,9 +169,20 @@ export function AdminCountyTaxRules() {
           </button>
         </div>
         <p className="mb-2 text-xs text-muted-foreground">
-          Counties not listed fall back to the tax office website in the Comptroller&apos;s
-          directory.
+          All 254 counties, from each tax office&apos;s own website (rebuilt by
+          scripts/build-tx-payment-plans.mjs). Half-payment: <em>offered</em> / <em>not offered</em>{" "}
+          come with the county&apos;s own sentence; <em>unknown</em> means the site doesn&apos;t say
+          — call the office and set it here. No payment portal → the Comptroller directory&apos;s
+          tax office website is used.
         </p>
+        <div className="mb-2 flex flex-wrap gap-2 text-xs">
+          {(["offered", "not_offered", "unknown"] as const).map((k) => (
+            <span key={k} className="rounded-full bg-secondary px-2 py-0.5">
+              {k.replace("_", " ")}:{" "}
+              {settings.filter((s) => (s.halfPayment ?? "unknown") === k).length}
+            </span>
+          ))}
+        </div>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-secondary/60 text-xs uppercase tracking-wide text-muted-foreground">
@@ -180,6 +191,7 @@ export function AdminCountyTaxRules() {
                 <th className="px-3 py-2">Payment portal</th>
                 <th className="px-3 py-2">Account deep link</th>
                 <th className="px-3 py-2">Delinquent from</th>
+                <th className="px-3 py-2">Half-payment</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -196,6 +208,30 @@ export function AdminCountyTaxRules() {
                       {s.accountUrlTemplate ?? "—"}
                     </td>
                     <td className="px-3 py-2">{s.delinquencyMonthDay}</td>
+                    <td className="max-w-[16rem] px-3 py-2 text-xs">
+                      <span
+                        className={
+                          s.halfPayment === "offered"
+                            ? "font-semibold text-success"
+                            : s.halfPayment === "not_offered"
+                              ? "font-semibold"
+                              : "text-muted-foreground"
+                        }
+                      >
+                        {(s.halfPayment ?? "unknown").replace("_", " ")}
+                      </span>
+                      {s.halfPaymentUrl && (
+                        <a
+                          href={s.halfPaymentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={s.halfPaymentQuote ?? undefined}
+                          className="ml-1 text-accent underline"
+                        >
+                          evidence
+                        </a>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <button
                         type="button"
@@ -519,6 +555,38 @@ function SettingsEditor({
           onChange={(e) => set("delinquencyMonthDay", e.target.value)}
         />
       </label>
+      <label className="grid gap-1 text-sm">
+        Half-payment (split) option
+        <select
+          className={input}
+          value={s.halfPayment ?? "unknown"}
+          onChange={(e) => set("halfPayment", e.target.value as CountyTaxSettings["halfPayment"])}
+        >
+          <option value="offered">Offered</option>
+          <option value="not_offered">Not offered</option>
+          <option value="unknown">Unknown — to be confirmed</option>
+        </select>
+      </label>
+      <label className="grid gap-1 text-sm">
+        Evidence page URL
+        <input
+          className={input}
+          value={s.halfPaymentUrl ?? ""}
+          onChange={(e) => set("halfPaymentUrl", e.target.value)}
+        />
+      </label>
+      <label className="grid gap-1 text-sm sm:col-span-2">
+        Evidence (the county&apos;s own words, or &quot;Confirmed by phone with … on …&quot;)
+        <input
+          className={input}
+          value={s.halfPaymentQuote ?? ""}
+          onChange={(e) => set("halfPaymentQuote", e.target.value)}
+        />
+      </label>
+      <p className="text-xs text-muted-foreground sm:col-span-2">
+        Setting &quot;Offered&quot; here records the finding; add a Half-Payment Plan for the county
+        above so owners see the installments.
+      </p>
       <label className="grid gap-1 text-sm sm:col-span-2">
         Payment portal URL
         <input

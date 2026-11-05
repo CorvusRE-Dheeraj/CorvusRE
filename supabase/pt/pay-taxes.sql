@@ -144,3 +144,16 @@ insert into public.county_tax_settings (county, payment_portal_url, account_url_
   ('Dallas', 'https://www.dallascounty.org/departments/tax/', null, null,
    'Accepts partial payments in any amount at any time.', 'https://www.dallascounty.org/departments/tax/payment-arrangements.php')
 on conflict (county) do nothing;
+
+-- 2026-11-05: research for all 254 counties (apps/pt/scripts/build-tx-payment-plans.mjs
+-- reads each tax office's own site). half_payment: what the county's site says
+-- about the §31.03 split payment — 'offered' / 'not_offered' (an explicit
+-- statement) / 'unknown' (the site says nothing either way → owners see "to be
+-- confirmed"). The quote + page are kept as the evidence; other_options holds
+-- the quarter/installment, partial-payment, discount and pre-pay findings.
+alter table public.county_tax_settings add column if not exists half_payment text not null default 'unknown'
+  check (half_payment in ('offered', 'not_offered', 'unknown'));
+alter table public.county_tax_settings add column if not exists half_payment_quote text;
+alter table public.county_tax_settings add column if not exists half_payment_url text;
+alter table public.county_tax_settings add column if not exists other_options jsonb not null default '{}';
+alter table public.county_tax_settings add column if not exists rules_checked_at date;
