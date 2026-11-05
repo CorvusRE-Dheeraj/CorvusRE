@@ -6,6 +6,8 @@ import { generateDesignBrief, type DesignBrief } from "./design";
 export type DesignRequestRow = {
   id: string;
   user_id: string | null;
+  /** the client's own name for the project; older rows have none */
+  project_name?: string | null;
   address: string | null;
   city: string | null;
   county: string | null;
@@ -44,6 +46,15 @@ export type DesignRequestRow = {
   updated_at: string;
 };
 
+/** What to call a design project: the client's name for it, else where it is. */
+export function designRequestName(dr: {
+  project_name?: string | null;
+  address: string | null;
+  city: string | null;
+}): string {
+  return dr.project_name?.trim() || dr.address || dr.city || "Design project";
+}
+
 export async function saveDesignRequest(userId: string, intake: DpIntakeState): Promise<string> {
   const brief = generateDesignBrief(intake.design);
   const { data, error } = await supabase
@@ -51,6 +62,7 @@ export async function saveDesignRequest(userId: string, intake: DpIntakeState): 
     .insert({
       user_id: userId,
       session_id: intake.sessionId,
+      project_name: intake.projectName?.trim() || null,
       address: intake.property.address ?? null,
       city: intake.property.city ?? null,
       county: intake.property.county ?? null,

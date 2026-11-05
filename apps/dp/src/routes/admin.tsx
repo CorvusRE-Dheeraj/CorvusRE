@@ -254,9 +254,18 @@ function Admin() {
             subtitle="Advance a request through concept → development → final drawings once the design team is engaged."
           >
             <Table
-              cols={["Location", "Scope", "Sector", "Consultation", "Stage", "Created", ""]}
+              cols={["Project", "Scope", "Sector", "Consultation", "Stage", "Created", ""]}
               rows={(design.data ?? []).map((d) => [
-                d.address ?? d.city ?? "—",
+                d.project_name ? (
+                  <span key="p" className="text-sm">
+                    <span className="font-medium">{d.project_name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {d.address ?? d.city ?? "—"}
+                    </span>
+                  </span>
+                ) : (
+                  (d.address ?? d.city ?? "—")
+                ),
                 humanize(d.scope),
                 humanize(d.sector),
                 d.consultation_requested_at ? (

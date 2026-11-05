@@ -23,6 +23,7 @@ import {
   listArchivedDesignRequests,
   setActiveDesignRequest,
   deleteDesignRequest,
+  designRequestName,
   type DesignRequestRow,
 } from "@/lib/design-requests";
 import { scopeLabel } from "@/lib/design";
@@ -367,7 +368,7 @@ function ArchivedDesignItem({
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
       <div>
-        <div className="font-medium">{d.address ?? d.city ?? "Design request"}</div>
+        <div className="font-medium">{designRequestName(d)}</div>
         <div className="text-xs text-muted-foreground">
           Design · {scopeLabel((d.scope ?? undefined) as never)} · Completed{" "}
           {d.completed_at ? dateShort(d.completed_at) : ""}
@@ -412,7 +413,7 @@ function DesignRequestRowItem({
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
       <div>
         <div className="flex items-center gap-2 font-medium">
-          {d.address ?? d.city ?? "Design request"}
+          {designRequestName(d)}
           {active && <Pill tone="green">Active on dashboard</Pill>}
         </div>
         <div className="text-xs text-muted-foreground">

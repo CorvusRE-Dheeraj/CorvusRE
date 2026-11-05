@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { getMyProfile } from "@/lib/profile";
 import {
   approveDesignBrief,
+  designRequestName,
   requestDesignConsultation,
   DESIGN_STAGE_LABEL,
   type DesignStage,
@@ -71,6 +72,7 @@ function DesignDashboard() {
       `Generated ${new Date().toLocaleString()}`,
       ``,
       `PROJECT`,
+      ...(dr.project_name ? [`  Name: ${dr.project_name}`] : []),
       `  Location: ${dr.address ?? dr.city ?? "—"}`,
       `  Scope: ${scopeLabel((dr.scope ?? undefined) as never)}`,
       `  Sector: ${dr.sector ?? "—"}`,
@@ -149,8 +151,8 @@ function DesignDashboard() {
   return (
     <div className="grid gap-5">
       <Section
-        title={dr.address ?? dr.city ?? "Design project"}
-        subtitle={`${scopeLabel((dr.scope ?? undefined) as never)} · ${dr.sector ?? "commercial"} · ${dr.building_area ?? "?"} sf`}
+        title={designRequestName(dr)}
+        subtitle={`${dr.project_name?.trim() && (dr.address ?? dr.city) ? `${dr.address ?? dr.city} · ` : ""}${scopeLabel((dr.scope ?? undefined) as never)} · ${dr.sector ?? "commercial"} · ${dr.building_area ?? "?"} sf`}
         right={
           <div className="flex items-center gap-2">
             {dr.approved_at && <Pill tone="green">Approved {dateShort(dr.approved_at)}</Pill>}
@@ -356,8 +358,8 @@ function ConsultationDialog({
         <DialogHeader>
           <DialogTitle>Schedule an initial consultation call</DialogTitle>
           <DialogDescription>
-            Our design team will call you to talk through {dr.address ?? "your project"}. You'll get
-            an email confirming the request.
+            Our design team will call you to talk through {designRequestName(dr)}. You'll get an
+            email confirming the request.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
