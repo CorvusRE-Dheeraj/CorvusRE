@@ -26,6 +26,7 @@ import { TooltipProvider } from "../components/ui/tooltip";
 import { AppShell } from "../components/AppShell";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { ProfileGate } from "../components/ProfileGate";
+import { SignedInGate } from "../components/SignedInGate";
 
 function NotFoundComponent() {
   return (
@@ -176,9 +177,11 @@ function RootComponent() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <TooltipProvider delayDuration={200}>
-            <main id="main-content">
-              <Outlet />
-            </main>
+            <SignedInGate>
+              <main id="main-content">
+                <Outlet />
+              </main>
+            </SignedInGate>
             <Toaster />
           </TooltipProvider>
         </AuthProvider>
@@ -201,23 +204,25 @@ function RootComponent() {
               instead of leaving a gap between it and the end of the
               document — on tall pages this has no effect, the footer just
               sits after the (taller) content as always. */}
-          <div className="flex min-h-screen flex-col">
-            <div className="print:hidden">
-              <SiteNav />
+          <SignedInGate>
+            <div className="flex min-h-screen flex-col">
+              <div className="print:hidden">
+                <SiteNav />
+              </div>
+              <main id="main-content" className="flex-1">
+                <AppShell>
+                  <Outlet />
+                </AppShell>
+              </main>
+              <div className="print:hidden">
+                <SiteFooter />
+              </div>
             </div>
-            <main id="main-content" className="flex-1">
-              <AppShell>
-                <Outlet />
-              </AppShell>
-            </main>
             <div className="print:hidden">
-              <SiteFooter />
+              <AskAiWidget />
             </div>
-          </div>
-          <div className="print:hidden">
-            <AskAiWidget />
-          </div>
-          <ProfileGate />
+            <ProfileGate />
+          </SignedInGate>
           <Toaster />
         </TooltipProvider>
       </AuthProvider>
