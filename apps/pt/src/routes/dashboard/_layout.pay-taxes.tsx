@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   Landmark,
+  Layers,
   Receipt,
   SplitSquareHorizontal,
   Upload,
@@ -44,6 +45,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { PageHero, heroButton } from "@/components/PageHero";
+import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
 
 export const Route = createFileRoute("/dashboard/_layout/pay-taxes")({
   // property: the property whose details are open — in the URL so Back
@@ -99,6 +101,9 @@ function PayTaxes() {
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [payRow, setPayRow] = useState<PayTaxesRow | null>(null);
+  // Add many properties (and their tax bills) at once: a spreadsheet, a PDF
+  // or a Podio app — the same import the Properties page uses.
+  const [importing, setImporting] = useState(false);
   const [filters, setFilters] = useState({ county: "", status: "", plan: "", year: "" });
 
   async function reload() {
@@ -179,6 +184,9 @@ function PayTaxes() {
         tone="teal"
         subtitle="Every property's tax bill, deadline, payment plan and the county's own payment page — in one place."
       >
+        <button type="button" onClick={() => setImporting(true)} className={heroButton}>
+          <Layers className="h-4 w-4" /> Add Properties
+        </button>
         <Link to="/intake" className={heroButton}>
           <Upload className="h-4 w-4" /> Upload Tax Bill
         </Link>
@@ -196,6 +204,9 @@ function PayTaxes() {
           <p className="mt-1 text-muted-foreground">
             Add a property and its tax bills, deadlines and payment options show up here.
           </p>
+          <button type="button" onClick={() => setImporting(true)} className="btn-accent mt-4">
+            Add properties — spreadsheet, PDF or Podio
+          </button>
         </div>
       ) : (
         <>
@@ -213,6 +224,19 @@ function PayTaxes() {
       )}
 
       {payRow && <PayConfirm row={payRow} onClose={() => setPayRow(null)} />}
+      {importing && user && (
+        <ImportPropertiesModal
+          userId={user.id}
+          forTaxBills
+          onImported={() =>
+            reload().catch((err) => toast.error(getErrorMessage(err, "Could not refresh.")))
+          }
+          onClose={() => {
+            setImporting(false);
+            reload().catch(() => undefined);
+          }}
+        />
+      )}
       {openRow && user && (
         <PropertyTaxDetail
           row={openRow}

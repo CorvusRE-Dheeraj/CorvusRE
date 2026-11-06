@@ -16,6 +16,7 @@ import {
   buildRows,
   enrichRow,
   commitRows,
+  hasBill,
   markInFileDuplicates,
   type ImportRow,
 } from "@/lib/bulk-property-import";
@@ -36,11 +37,20 @@ const FIELD_LABEL: Record<ColumnTarget, string> = {
   improvementValue: "Improvement value",
   totalValue: "Total value",
   taxYear: "Tax year",
+  taxAmountDue: "Tax amount due",
+  paymentDueDate: "Tax due date",
+  taxAmountPaid: "Amount paid",
   ignore: "— ignore —",
 };
 
 // Each row's status in plain words — what will happen to it.
 function rowBadge(r: ImportRow): { label: string; tone: string; hint: string | null } {
+  if (r.status === "duplicate" && r.existingId && hasBill(r.values))
+    return {
+      label: "Tax bill will be added",
+      tone: "bg-success/15 text-success",
+      hint: "The property is already in your account — its tax bill from this file is recorded on it.",
+    };
   if (r.status === "duplicate" && r.existingId)
     return {
       label: "Already in your account",
@@ -79,30 +89,47 @@ export function ImportPropertiesModal({
   userId,
   onImported,
   onClose,
+  forTaxBills = false,
 }: {
   userId: string;
   onImported: (properties: PropertyRecord[]) => void;
   onClose: () => void;
+  /** opened from Pay Taxes: wording leads with tax bills */
+  forTaxBills?: boolean;
 }) {
+  const [readingPdf, setReadingPdf] = useState(false);
   const [step, setStep] = useState<Step>("pick");
   const [fileError, setFileError] = useState<string | null>(null);
   const [grid, setGrid] = useState<SpreadsheetGrid | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping[]>([]);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [result, setResult] = useState<{ added: number; dup: number; failed: number } | null>(null);
+  const [result, setResult] = useState<{
+    added: number;
+    dup: number;
+    bills: number;
+    failed: number;
+  } | null>(null);
 
   async function handleFile(file: File) {
     setFileError(null);
     let g: SpreadsheetGrid;
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
+    if (isPdf) setReadingPdf(true);
     try {
       g = await readSpreadsheet(file);
     } catch (err) {
       console.error(err);
       setFileError(
-        "Couldn't read that file. Use a .csv or .xlsx export with one property per row.",
+        err instanceof Error && /8 MB/.test(err.message)
+          ? err.message
+          : isPdf
+            ? "Couldn't read the properties in that PDF. Try a clearer copy, or upload a spreadsheet."
+            : "Couldn't read that file. Use a .csv or .xlsx export with one property per row.",
       );
       return;
+    } finally {
+      setReadingPdf(false);
     }
     if (g.headers.length === 0 || g.rows.length === 0) {
       setFileError("That file has no data rows.");
@@ -169,18 +196,21 @@ export function ImportPropertiesModal({
     setStep("importing");
     setProgress({
       done: 0,
-      total: rows.filter((r) => r.include && r.status !== "duplicate").length,
+      total: rows.filter(
+        (r) => r.include && (r.status !== "duplicate" || (r.existingId && hasBill(r.values))),
+      ).length,
     });
-    const { imported, duplicates, failed } = await commitRows(userId, rows, (done, total) =>
+    const { imported, duplicates, bills, failed } = await commitRows(userId, rows, (done, total) =>
       setProgress({ done, total }),
     );
-    setResult({ added: imported.length, dup: duplicates, failed });
+    setResult({ added: imported.length, dup: duplicates, bills, failed });
     setStep("done");
     onImported(imported);
     const parts = [`Added ${imported.length} propert${imported.length === 1 ? "y" : "ies"}.`];
+    if (bills > 0) parts.push(`Recorded ${bills} tax bill${bills === 1 ? "" : "s"}.`);
     if (duplicates > 0) parts.push(`${duplicates} already existed.`);
     if (failed > 0) parts.push(`${failed} failed.`);
-    (imported.length > 0 ? toast.success : toast.error)(parts.join(" "));
+    (imported.length > 0 || bills > 0 ? toast.success : toast.error)(parts.join(" "));
   }
 
   function editRow(idx: number, patch: Partial<ImportRow["values"]>) {
@@ -229,19 +259,28 @@ export function ImportPropertiesModal({
   const inAccount = rows.filter((r) => r.status === "duplicate" && r.existingId).length;
   const listedTwice = rows.filter((r) => r.status === "duplicate" && !r.existingId).length;
   const toAdd = rows.filter((r) => r.include && r.status !== "duplicate").length;
+  // Properties already in the account whose tax bill this file records.
+  const billUpdates = rows.filter(
+    (r) => r.include && r.status === "duplicate" && r.existingId && hasBill(r.values),
+  ).length;
   const enriching = step === "review" && progress.done < progress.total;
+  const showBills = rows.some((r) => hasBill(r.values));
 
   return (
     <Modal onClose={onClose} wide={step === "review" || step === "mapping"}>
-      <h3 className="font-serif text-xl font-semibold">Bulk Upload Properties</h3>
+      <h3 className="font-serif text-xl font-semibold">
+        {forTaxBills ? "Add Properties and Tax Bills" : "Bulk Upload Properties"}
+      </h3>
 
       {step === "pick" && (
         <div className="mt-4 grid gap-4">
           <p className="text-sm text-muted-foreground">
-            Upload an Excel or CSV file with one property per row, or import straight from Podio. AI
-            maps your columns to our fields, matches each address to the county appraisal district,
-            and flags anything that needs a look — nothing is saved until you confirm. Existing
-            properties are never added twice.
+            {forTaxBills
+              ? "Add many properties at once: upload an Excel or CSV file, a PDF (a tax statement or a list of properties), or import straight from Podio. Include the amount due, due date and amount paid to record each property's tax bill too."
+              : "Upload an Excel or CSV file, or a PDF list of properties, with one property per row — or import straight from Podio."}{" "}
+            AI maps your columns to our fields, matches each address to the county appraisal
+            district, and flags anything that needs a look — nothing is saved until you confirm.
+            Existing properties are never added twice.
           </p>
           <button type="button" onClick={downloadCsvTemplate} className="btn-outline text-sm w-fit">
             Download CSV Template
@@ -255,10 +294,14 @@ export function ImportPropertiesModal({
             <span className="font-medium">
               {isDragging ? "Drop to upload" : "Choose a file or drop it here"}
             </span>
-            <span className="text-muted-foreground text-xs">.xlsx, .xls, or .csv</span>
+            <span className="text-muted-foreground text-xs">
+              {readingPdf
+                ? "Reading your PDF with AI — this takes a few seconds…"
+                : ".xlsx, .xls, .csv or .pdf"}
+            </span>
             <input
               type="file"
-              accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -369,7 +412,7 @@ export function ImportPropertiesModal({
                   <span className="text-muted-foreground">{listedTwice} listed twice</span>
                 )}
               </div>
-              {toAdd === 0 && (
+              {toAdd === 0 && billUpdates === 0 && (
                 <p className="mt-1.5 text-muted-foreground">
                   Nothing new to add — these properties are already on your Properties list. Your
                   existing properties are unchanged.
@@ -390,6 +433,7 @@ export function ImportPropertiesModal({
                   <th className="hidden px-2 py-2 sm:table-cell">County</th>
                   <th className="hidden px-2 py-2 sm:table-cell">Account</th>
                   <th className="hidden px-2 py-2 sm:table-cell">Value</th>
+                  {showBills && <th className="hidden px-2 py-2 sm:table-cell">Tax bill</th>}
                 </tr>
               </thead>
               <tbody>
@@ -444,6 +488,8 @@ export function ImportPropertiesModal({
                             r.values.cad,
                             r.values.accountNumber && `Acct ${r.values.accountNumber}`,
                             r.values.totalValue != null && currency(r.values.totalValue),
+                            r.values.taxAmountDue != null &&
+                              `Tax due ${currency(r.values.taxAmountDue)}${r.values.paymentDueDate ? ` by ${r.values.paymentDueDate}` : ""}`,
                           ]
                             .filter(Boolean)
                             .join(" · ") || "No county match yet"}
@@ -488,6 +534,27 @@ export function ImportPropertiesModal({
                       <td className="hidden px-2 py-2.5 tabular-nums sm:table-cell">
                         {r.values.totalValue != null ? currency(r.values.totalValue) : "—"}
                       </td>
+                      {showBills && (
+                        <td className="hidden px-2 py-2.5 sm:table-cell">
+                          {r.values.taxAmountDue != null ? (
+                            <>
+                              {currency(r.values.taxAmountDue)} due
+                              {r.values.paymentDueDate && (
+                                <div className="text-[11px] text-muted-foreground">
+                                  by {r.values.paymentDueDate}
+                                </div>
+                              )}
+                              {r.values.taxAmountPaid != null && r.values.taxAmountPaid > 0 && (
+                                <div className="text-[11px] text-muted-foreground">
+                                  {currency(r.values.taxAmountPaid)} paid
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -499,7 +566,7 @@ export function ImportPropertiesModal({
             <button type="button" onClick={() => setStep("pick")} className="btn-outline">
               Start over
             </button>
-            {toAdd === 0 && !enriching ? (
+            {toAdd === 0 && billUpdates === 0 && !enriching ? (
               <button type="button" onClick={onClose} className="btn-accent">
                 Done — nothing new to add
               </button>
@@ -507,10 +574,12 @@ export function ImportPropertiesModal({
               <button
                 type="button"
                 onClick={runImport}
-                disabled={enriching || toAdd === 0}
+                disabled={enriching || (toAdd === 0 && billUpdates === 0)}
                 className="btn-accent disabled:opacity-60"
               >
-                Add {toAdd} propert{toAdd === 1 ? "y" : "ies"}
+                {toAdd > 0
+                  ? `Add ${toAdd} propert${toAdd === 1 ? "y" : "ies"}`
+                  : `Record ${billUpdates} tax bill${billUpdates === 1 ? "" : "s"}`}
               </button>
             )}
           </div>
@@ -535,7 +604,10 @@ export function ImportPropertiesModal({
         <div className="mt-4 grid gap-3">
           <p className="text-sm">
             Added <span className="font-medium text-success">{result.added}</span> propert
-            {result.added === 1 ? "y" : "ies"}.{result.dup > 0 && ` ${result.dup} already existed.`}
+            {result.added === 1 ? "y" : "ies"}.
+            {result.bills > 0 &&
+              ` Recorded ${result.bills} tax bill${result.bills === 1 ? "" : "s"}.`}
+            {result.dup > 0 && ` ${result.dup} already existed.`}
             {result.failed > 0 && ` ${result.failed} failed.`}
           </p>
           <div className="flex justify-end">

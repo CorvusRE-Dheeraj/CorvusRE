@@ -62,3 +62,22 @@ describe("suggestColumnMapping", () => {
     expect(parcel?.source).toBe("ai");
   });
 });
+
+describe("tax-bill column names", () => {
+  it("places common bill headers without AI", () => {
+    const m = deterministicMapping([
+      "Address",
+      "Amount Due",
+      "Due Date",
+      "Amount Paid",
+      "taxAmountDue",
+    ]);
+    expect(m.map((x) => x.field)).toEqual([
+      "address",
+      "taxAmountDue",
+      "paymentDueDate",
+      "taxAmountPaid",
+      "taxAmountDue",
+    ]);
+  });
+});
