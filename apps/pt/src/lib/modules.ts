@@ -120,7 +120,7 @@ export const MODULES: Module[] = [
     id: "evidence",
     n: 8,
     title: "AI Evidence Builder",
-    shortName: "Evidence Building",
+    shortName: "Evidence",
     question: "What evidence may provide the strongest support for a protest?",
     status: "Completed",
     teaser: "AI-prioritized evidence checklist for your protest packet.",
