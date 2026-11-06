@@ -403,6 +403,26 @@ Deno.serve(async (req: Request) => {
 // retried event isn't logged twice. invoice.paid (billing_reason
 // subscription_cycle) is a renewal; invoice.payment_failed a failed payment —
 // both need those two events enabled on the Stripe webhook endpoint.
+// The endpoint's API version decides the payload shape: since 2025-03-31
+// (basil) an invoice's subscription moved to parent.subscription_details and a
+// subscription's period end onto its items. Read both shapes.
+function invoiceSubscription(inv: Record<string, unknown>): string | null {
+  const flat = inv.subscription;
+  if (typeof flat === "string") return flat;
+  if (flat && typeof flat === "object" && typeof (flat as { id?: unknown }).id === "string") return (flat as { id: string }).id;
+  const parent = inv.parent as { subscription_details?: { subscription?: unknown } } | null | undefined;
+  const nested = parent?.subscription_details?.subscription;
+  if (typeof nested === "string") return nested;
+  if (nested && typeof nested === "object" && typeof (nested as { id?: unknown }).id === "string") return (nested as { id: string }).id;
+  return null;
+}
+function periodEnd(sub: Record<string, unknown>): number | null {
+  if (typeof sub.current_period_end === "number") return sub.current_period_end;
+  const items = (sub.items as { data?: { current_period_end?: unknown }[] } | undefined)?.data ?? [];
+  const ends = items.map((i) => i.current_period_end).filter((n): n is number => typeof n === "number");
+  return ends.length ? Math.max(...ends) : null;
+}
+
 async function logSubscriptionEvent(
   // deno-lint-ignore no-explicit-any
   db: any,
@@ -426,7 +446,7 @@ async function logSubscriptionEvent(
     const hadCancelKey = "cancel_at_period_end" in prev || "cancel_at" in prev;
     const wasCancel = !!prev.cancel_at_period_end || !!prev.cancel_at;
     if (hadCancelKey && nowCancel && !wasCancel) {
-      const at = (obj.cancel_at as number | null) ?? (obj.current_period_end as number | null);
+      const at = (obj.cancel_at as number | null) ?? periodEnd(obj);
       row = {
         kind: "cancel_scheduled",
         subId: obj.id as string,
@@ -439,12 +459,12 @@ async function logSubscriptionEvent(
     }
   } else if (event.type === "invoice.paid") {
     if (obj.billing_reason === "subscription_cycle") {
-      row = { kind: "renewed", subId: (obj.subscription as string) ?? null, amount: obj.amount_paid as number };
+      row = { kind: "renewed", subId: invoiceSubscription(obj), amount: obj.amount_paid as number };
     }
   } else if (event.type === "invoice.payment_failed") {
     row = {
       kind: "payment_failed",
-      subId: (obj.subscription as string) ?? null,
+      subId: invoiceSubscription(obj),
       amount: obj.amount_due as number,
       detail: `Attempt ${obj.attempt_count ?? 1}`,
     };
