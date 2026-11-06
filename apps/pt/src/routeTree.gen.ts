@@ -25,6 +25,7 @@ import { Route as IntakeRouteImport } from './routes/intake'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as OperationsRouteImport } from './routes/operations'
+import { Route as PaymentReminderRouteImport } from './routes/payment-reminder'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PropertyProtestRouteImport } from './routes/property-protest'
@@ -134,6 +135,11 @@ const MarketingRoute = MarketingRouteImport.update({
 const OperationsRoute = OperationsRouteImport.update({
   id: '/operations',
   path: '/operations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaymentReminderRoute = PaymentReminderRouteImport.update({
+  id: '/payment-reminder',
+  path: '/payment-reminder',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -313,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
   '/operations': typeof OperationsRoute
+  '/payment-reminder': typeof PaymentReminderRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -361,6 +368,7 @@ export interface FileRoutesByTo {
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
   '/operations': typeof OperationsRoute
+  '/payment-reminder': typeof PaymentReminderRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -409,6 +417,7 @@ export interface FileRoutesById {
   '/join': typeof JoinRoute
   '/marketing': typeof MarketingRoute
   '/operations': typeof OperationsRoute
+  '/payment-reminder': typeof PaymentReminderRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
@@ -459,6 +468,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/marketing'
     | '/operations'
+    | '/payment-reminder'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -507,6 +517,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/marketing'
     | '/operations'
+    | '/payment-reminder'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -554,6 +565,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/marketing'
     | '/operations'
+    | '/payment-reminder'
     | '/pricing'
     | '/privacy'
     | '/property-protest'
@@ -603,6 +615,7 @@ export interface RootRouteChildren {
   JoinRoute: typeof JoinRoute
   MarketingRoute: typeof MarketingRoute
   OperationsRoute: typeof OperationsRoute
+  PaymentReminderRoute: typeof PaymentReminderRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   PropertyProtestRoute: typeof PropertyProtestRoute
@@ -728,6 +741,13 @@ declare module '@tanstack/react-router' {
       path: '/operations'
       fullPath: '/operations'
       preLoaderRoute: typeof OperationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/payment-reminder': {
+      id: '/payment-reminder'
+      path: '/payment-reminder'
+      fullPath: '/payment-reminder'
+      preLoaderRoute: typeof PaymentReminderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -1008,6 +1028,7 @@ const rootRouteChildren: RootRouteChildren = {
   JoinRoute: JoinRoute,
   MarketingRoute: MarketingRoute,
   OperationsRoute: OperationsRoute,
+  PaymentReminderRoute: PaymentReminderRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   PropertyProtestRoute: PropertyProtestRoute,

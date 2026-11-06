@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BadgeCheck,
   CalendarClock,
+  CalendarPlus,
+  Download,
   ExternalLink,
   FileText,
   Landmark,
@@ -46,6 +48,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { PageHero, heroButton } from "@/components/PageHero";
 import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
+import {
+  downloadFile,
+  dueEvents,
+  dueEventsIcs,
+  summaryLine,
+  summaryPdf,
+} from "@/lib/pay-taxes-report";
 
 export const Route = createFileRoute("/dashboard/_layout/pay-taxes")({
   // property: the property whose details are open — in the URL so Back
@@ -57,6 +66,45 @@ export const Route = createFileRoute("/dashboard/_layout/pay-taxes")({
 });
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+type SortKey = "due" | "owner" | "county" | "status";
+const SORT_LABEL: Record<SortKey, string> = {
+  due: "Due date",
+  owner: "Owner",
+  county: "County",
+  status: "Payment status",
+};
+type FilterState = { county: string; status: string; plan: string; year: string; sort: SortKey };
+
+// Payment status order: what needs attention first.
+const STATUS_ORDER: Record<PayStatus, number> = {
+  overdue: 0,
+  unpaid: 1,
+  partial: 2,
+  initiated: 3,
+  verifying: 4,
+  paid: 5,
+};
+const byText = (a: string | null | undefined, b: string | null | undefined) =>
+  // blanks last
+  !a ? (b ? 1 : 0) : !b ? -1 : a.localeCompare(b, "en", { sensitivity: "base" });
+
+function sortRows(key: SortKey) {
+  // Due date (default): what needs attention first — overdue, then unpaid by
+  // next deadline, paid last. Every other sort falls back to that order.
+  const due = (a: PayTaxesRow, b: PayTaxesRow) =>
+    Number(b.flags.overdue) - Number(a.flags.overdue) ||
+    Number(a.status === "paid") - Number(b.status === "paid") ||
+    a.dueDate.localeCompare(b.dueDate);
+  return (a: PayTaxesRow, b: PayTaxesRow) =>
+    (key === "owner"
+      ? byText(a.property.ownerName, b.property.ownerName)
+      : key === "county"
+        ? byText(a.county, b.county)
+        : key === "status"
+          ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+          : 0) || due(a, b);
+}
 
 const fmtDate = (d: string | null | undefined) =>
   d
@@ -104,7 +152,14 @@ function PayTaxes() {
   // Add many properties (and their tax bills) at once: a spreadsheet, a PDF
   // or a Podio app — the same import the Properties page uses.
   const [importing, setImporting] = useState(false);
-  const [filters, setFilters] = useState({ county: "", status: "", plan: "", year: "" });
+  const [filters, setFilters] = useState<FilterState>({
+    county: "",
+    status: "",
+    plan: "",
+    year: "",
+    sort: "due",
+  });
+  const [exporting, setExporting] = useState(false);
 
   async function reload() {
     if (!user) return;
@@ -156,13 +211,7 @@ function PayTaxes() {
         (filters.plan === "enrolled" && r.flags.enrolled) ||
         (filters.plan === "none" && !r.flags.halfPayEligible && !r.flags.enrolled),
     )
-    // what needs attention first: overdue, then by next deadline
-    .sort(
-      (a, b) =>
-        Number(b.flags.overdue) - Number(a.flags.overdue) ||
-        Number(a.status === "paid") - Number(b.status === "paid") ||
-        a.dueDate.localeCompare(b.dueDate),
-    );
+    .sort(sortRows(filters.sort));
   const summary = portfolioSummary(rows);
   const counties = [...new Set(allRows.map((r) => r.county).filter(Boolean))].sort() as string[];
   const years = [
@@ -173,6 +222,31 @@ function PayTaxes() {
   ].sort((a, b) => b - a);
   const openRow = openId ? (allRows.find((r) => r.property.id === openId) ?? null) : null;
 
+  // The table as shown (filters + sort) as a one-page-per-~20-properties PDF.
+  async function downloadPdf() {
+    setExporting(true);
+    try {
+      const bytes = await summaryPdf(rows.map(summaryLine));
+      downloadFile(bytes, `Property-Tax-Summary-${today}.pdf`, "application/pdf");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Couldn't create the PDF."));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Every due date (and half-payment date where available) as a calendar file
+  // with alerts 30/15/7/2/1 days before and on the day; the same dates are on
+  // the CorvusPT Calendar, and email reminders go out on that schedule.
+  function addToCalendar() {
+    const events = dueEvents(rows.map(summaryLine));
+    downloadFile(dueEventsIcs(events), "property-tax-due-dates.ics", "text/calendar;charset=utf-8");
+    toast.success(`${events.length} due date${events.length === 1 ? "" : "s"} ready to add`, {
+      description:
+        "Open the downloaded file to add them to Google, Outlook or Apple Calendar — each has reminders 30, 15, 7, 2 and 1 days before and on the day.",
+    });
+  }
+
   const setOpen = (id: string | null) =>
     nav({ to: ".", search: id ? { property: id } : {}, resetScroll: false });
 
@@ -182,7 +256,7 @@ function PayTaxes() {
         icon={Landmark}
         title="Pay Taxes"
         tone="teal"
-        subtitle="Every property's tax bill, deadline, payment plan and the county's own payment page — in one place."
+        subtitle="Every property's tax bill, due date, payment plan and the county's own payment page — in one place."
       >
         <button type="button" onClick={() => setImporting(true)} className={heroButton}>
           <Layers className="h-4 w-4" /> Add Properties
@@ -190,6 +264,22 @@ function PayTaxes() {
         <Link to="/intake" className={heroButton}>
           <Upload className="h-4 w-4" /> Upload Tax Bill
         </Link>
+        <button
+          type="button"
+          onClick={downloadPdf}
+          disabled={loading || rows.length === 0 || exporting}
+          className={heroButton}
+        >
+          <Download className="h-4 w-4" /> {exporting ? "Preparing…" : "Download PDF"}
+        </button>
+        <button
+          type="button"
+          onClick={addToCalendar}
+          disabled={loading || rows.length === 0}
+          className={heroButton}
+        >
+          <CalendarPlus className="h-4 w-4" /> Add to Calendar
+        </button>
       </PageHero>
 
       {loading ? (
@@ -202,7 +292,7 @@ function PayTaxes() {
         <div className="card-elev mt-6 p-8 text-center">
           <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
           <p className="mt-1 text-muted-foreground">
-            Add a property and its tax bills, deadlines and payment options show up here.
+            Add a property and its tax bills, due dates and payment options show up here.
           </p>
           <button type="button" onClick={() => setImporting(true)} className="btn-accent mt-4">
             Add properties — spreadsheet, PDF or Podio
@@ -401,8 +491,8 @@ function Filters({
   counties,
   years,
 }: {
-  filters: { county: string; status: string; plan: string; year: string };
-  setFilters: (f: { county: string; status: string; plan: string; year: string }) => void;
+  filters: FilterState;
+  setFilters: (f: FilterState) => void;
   counties: string[];
   years: number[];
 }) {
@@ -457,11 +547,23 @@ function Filters({
         <option value="enrolled">On an installment plan</option>
         <option value="none">No plan</option>
       </select>
+      <select
+        aria-label="Sort by"
+        className={`${sel} sm:ml-auto`}
+        value={filters.sort}
+        onChange={(e) => setFilters({ ...filters, sort: e.target.value as SortKey })}
+      >
+        {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+          <option key={k} value={k}>
+            Sort: {SORT_LABEL[k]}
+          </option>
+        ))}
+      </select>
       {(filters.county || filters.status || filters.plan || filters.year) && (
         <button
           type="button"
           className="text-sm text-accent underline underline-offset-2"
-          onClick={() => setFilters({ county: "", status: "", plan: "", year: "" })}
+          onClick={() => setFilters({ county: "", status: "", plan: "", year: "", sort: filters.sort })}
         >
           Clear filters
         </button>
@@ -524,7 +626,7 @@ function DeadlineCell({ row, today }: { row: PayTaxesRow; today: string }) {
               ? "Due today"
               : `${days} days left`}
         {row.nextInstallment && row.status !== "paid" ? ` · ${row.nextInstallment.label}` : ""}
-        {row.dueDateIsStandard ? " · standard deadline" : ""}
+        {row.dueDateIsStandard ? " · standard due date" : ""}
       </div>
     </div>
   );
@@ -673,7 +775,7 @@ function PropertyTable({
             <th className="px-3 py-2.5 font-semibold">Tax year</th>
             <th className="px-3 py-2.5 font-semibold">5-yr history</th>
             <th className="px-3 py-2.5 font-semibold">Total tax</th>
-            <th className="px-3 py-2.5 font-semibold">Deadline</th>
+            <th className="px-3 py-2.5 font-semibold">Due date</th>
             <th className="px-3 py-2.5 font-semibold">Status</th>
             <th className="px-3 py-2.5 font-semibold">Tax notice</th>
             <th className="px-3 py-2.5 font-semibold">Payment plan</th>
@@ -683,7 +785,12 @@ function PropertyTable({
           {rows.map((row) => (
             <tr key={row.property.id} className="border-t border-border/60 align-top">
               <td className="max-w-[14rem] px-3 py-3">
-                <div className="truncate font-medium">{row.property.address}</div>
+                <div className="truncate font-medium" title={row.property.address}>
+                  {row.property.address}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  Owner: {row.property.ownerName ?? "Not on file"}
+                </div>
                 <Flags row={row} />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button
@@ -892,6 +999,10 @@ function PropertyTaxDetail({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-serif text-xl font-semibold">{property.address}</h3>
+          <p className="mt-0.5 text-sm">
+            <span className="text-muted-foreground">Owner:</span>{" "}
+            <span className="font-medium">{property.ownerName ?? "Not on file"}</span>
+          </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {row.county ?? "Unknown county"} County · Account {property.accountNumber ?? "—"} · Tax
             year {row.taxYear}
@@ -938,9 +1049,7 @@ function PropertyTaxDetail({
           <StatusChip row={row} />
         </Fact>
         <Fact label="Taxable value">{money(bill?.taxableValue ?? null)}</Fact>
-        <Fact
-          label={row.nextInstallment ? `Next: ${row.nextInstallment.label}` : "Payment deadline"}
-        >
+        <Fact label={row.nextInstallment ? `Next: ${row.nextInstallment.label}` : "Due date"}>
           {fmtDate(row.dueDate)}
         </Fact>
         <Fact label="Delinquent from">{fmtDate(row.delinquency)}</Fact>
@@ -1130,7 +1239,7 @@ function PropertyTaxDetail({
               {row.bill?.billKind === "revised"
                 ? "A revised tax statement is on file and replaces the original amount."
                 : "The amount here changes only when the county issues a revised tax statement — not on a proposed settlement."}{" "}
-              A pending protest doesn&apos;t change or suspend the payment deadline; confirm any
+              A pending protest doesn&apos;t change or suspend the payment due date; confirm any
               special arrangement with the county tax office.
             </p>
             <Link
@@ -1482,8 +1591,8 @@ function StatusForm({
         <input ref={fileRef} type="file" accept=".pdf,image/*" className="text-sm" />
       </label>
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        This is recorded as reported by you. &quot;Overdue&quot; is set automatically from the
-        deadline; a payment shows as verified only once the county confirms it.
+        This is recorded as reported by you. &quot;Overdue&quot; is set automatically from the due
+        date; a payment shows as verified only once the county confirms it.
       </p>
       <button
         type="submit"
@@ -1536,7 +1645,7 @@ function AddBillForm({
         <Link to="/intake" className="text-accent underline underline-offset-2">
           Upload the tax bill
         </Link>{" "}
-        (AI reads the amount and deadline; you review it before it&apos;s saved), or enter it:
+        (AI reads the amount and due date; you review it before it&apos;s saved), or enter it:
       </p>
       <form onSubmit={submit} className="mt-2 flex flex-wrap items-end gap-2">
         <input

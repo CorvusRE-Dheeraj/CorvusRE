@@ -410,7 +410,9 @@ export function buildPayTaxesRow(input: {
   const delinquency = bill?.penaltyDate ?? delinquencyDate(taxYear, settings);
   const standardDue = standardDueDate(taxYear, settings);
   const dueDate = bill?.dueDate ?? (!bill ? property.paymentDueDate : null) ?? standardDue;
-  const status = billStatus(bill, todayIso, delinquency);
+  // No bill on file, but the owner said it's paid (a reminder's "Already paid").
+  const status: PayStatus =
+    !bill && property.paidAt ? "paid" : billStatus(bill, todayIso, delinquency);
 
   const plans = planEligibility(property, input.plans, taxYear, totalTax);
   const halfPay = plans.find((p) => p.plan.kind === "half") ?? null;

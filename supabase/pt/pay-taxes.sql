@@ -157,3 +157,38 @@ alter table public.county_tax_settings add column if not exists half_payment_quo
 alter table public.county_tax_settings add column if not exists half_payment_url text;
 alter table public.county_tax_settings add column if not exists other_options jsonb not null default '{}';
 alter table public.county_tax_settings add column if not exists rules_checked_at date;
+
+-- Payment reminders (2026-11-06): the "Already paid" / "Remind me later"
+-- buttons in a tax payment reminder email (send-deadline-reminders →
+-- /payment-reminder → payment-reminder-action). A link is a random token that
+-- names one user and one payment event (deadline-events.ts keys). Service role
+-- only — no client policies.
+create table if not exists public.payment_reminder_links (
+  token text primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  event_key text not null,
+  event_date date not null,
+  title text not null,
+  amount numeric,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+create index if not exists payment_reminder_links_expires on public.payment_reminder_links (expires_at);
+alter table public.payment_reminder_links enable row level security;
+
+-- "Remind me later": no reminders for that payment until snoozed_until (24h),
+-- then one follow-up (reminded_at set when sent).
+create table if not exists public.payment_reminder_snoozes (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  event_key text not null,
+  snoozed_until timestamptz not null,
+  reminded_at timestamptz,
+  primary key (user_id, event_key)
+);
+alter table public.payment_reminder_snoozes enable row level security;
+
+-- Hourly: snoozed payment reminders whose 24 hours are up (send-deadline-
+-- reminders with {"mode":"snoozes"}), plus a sweep of expired links. Same
+-- Authorization header as the daily send-deadline-reminders job.
+-- select cron.schedule('payment-reminder-snoozes', '25 * * * *', <copy of the
+--   send-deadline-reminders command with body '{"mode":"snoozes"}'>);
