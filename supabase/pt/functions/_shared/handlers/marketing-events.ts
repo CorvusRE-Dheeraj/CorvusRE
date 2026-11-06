@@ -153,8 +153,17 @@ export async function handleSms(req: Request): Promise<Response> {
     const { data: leads } = await db.from("marketing_leads").select("id, phone, assigned_to, company, full_name, email").not("phone", "is", null).limit(5000);
     const lead = (leads ?? []).find((l) => (l.phone ?? "").replace(/\D/g, "").slice(-10) === digits);
     await db.from("marketing_messages").insert({ lead_id: lead?.id ?? null, channel: "sms", direction: "in", provider: "telnyx", provider_id: String(p.id ?? "") || null, from_address: from, body: text.slice(0, 1600), status: "received" });
-    if (!lead) return json({ ok: true, matched: false });
     const word = text.toLowerCase().replace(/[^a-z]/g, "");
+    // Customers' own reminder texts: STOP turns SMS off in their Settings
+    // (notification_prefs.deadline_reminders_sms), START turns it back on.
+    if (STOP_WORDS.includes(word) || START_WORDS.includes(word)) {
+      const { data: people } = await db.from("profiles").select("id, phone, notification_prefs").not("phone", "is", null).limit(10000);
+      for (const u of (people ?? []).filter((x) => (x.phone ?? "").replace(/\D/g, "").slice(-10) === digits)) {
+        const prefs = { ...((u.notification_prefs as Record<string, unknown>) ?? {}), deadline_reminders_sms: !STOP_WORDS.includes(word) };
+        await db.from("profiles").update({ notification_prefs: prefs }).eq("id", u.id);
+      }
+    }
+    if (!lead) return json({ ok: true, matched: false });
     if (STOP_WORDS.includes(word)) {
       await db.from("marketing_leads").update({ sms_consent: "withdrawn", consent_source: `Replied ${text.toUpperCase().slice(0, 12)}` }).eq("id", lead.id);
       await db.from("marketing_followups").update({ status: "skipped", completed_at: now(), stop_reason: "Opted out of texts" }).eq("lead_id", lead.id).eq("channel", "sms").in("status", ["pending", "draft"]);

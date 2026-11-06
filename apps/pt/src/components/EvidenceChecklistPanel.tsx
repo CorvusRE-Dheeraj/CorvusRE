@@ -31,7 +31,7 @@ import {
 // Reused straight from the AI Report page's own Module 8 detail view — the
 // exact same per-item row (expand, upload, existing-files list), not a
 // second copy that could drift from it.
-import { EvidenceCategoryRow } from "@/routes/ai-report";
+import { EvidenceCategoryRow } from "@/components/ai-report/bits";
 
 // The genuine Module 8 checklist + AI-categorized upload, embedded inline
 // on View Case (CaseDetailModal's EvidenceStatusCard / CorvusGuidancePanel)

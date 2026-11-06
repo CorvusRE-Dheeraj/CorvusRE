@@ -8,6 +8,7 @@
 // The simulator may only cite the case facts passed in `context` — never an
 // invented sale or number. The debrief follows the advisory tone; stronger
 // answers are drafts in the owner's own voice.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 import {
@@ -92,6 +93,8 @@ async function gemini(
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "hearing-simulator", corsHeaders);
+  if (limited) return limited;
   try {
     const body = await req.json();
     const apiKey = Deno.env.get("GEMINI_API_KEY");

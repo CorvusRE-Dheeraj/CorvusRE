@@ -3,7 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./supabase", () => ({ supabase: {} }));
 
-import { canReloadFresh, errorMessage, isStaleBuildError, newErrorRef } from "./client-errors";
+import {
+  canReloadFresh,
+  errorMessage,
+  isPageLeaving,
+  isStaleBuildError,
+  newErrorRef,
+} from "./client-errors";
 
 describe("isStaleBuildError", () => {
   it("recognizes a missing route file after a deploy, in each browser's wording", () => {
@@ -44,5 +50,15 @@ describe("error reference and message", () => {
     expect(errorMessage(new TypeError("boom"))).toBe("TypeError: boom");
     expect(errorMessage("plain")).toBe("plain");
     expect(errorMessage({ code: 1 })).toBe('{"code":1}');
+  });
+});
+
+describe("isPageLeaving", () => {
+  it("is set while the page navigates away and cleared when it is restored", () => {
+    expect(isPageLeaving()).toBe(false);
+    window.dispatchEvent(new Event("pagehide"));
+    expect(isPageLeaving()).toBe(true);
+    window.dispatchEvent(new Event("pageshow"));
+    expect(isPageLeaving()).toBe(false);
   });
 });

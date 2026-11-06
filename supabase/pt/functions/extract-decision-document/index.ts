@@ -14,6 +14,7 @@
 // decision record, and a pending settlement offer awaiting the user's
 // signature. Both need the same real facts off the same kind of document,
 // so this is one function, not two.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -55,6 +56,8 @@ function normalize(v: string | null | undefined): string {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "extract-decision-document", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { caseContext, documents } = await req.json();

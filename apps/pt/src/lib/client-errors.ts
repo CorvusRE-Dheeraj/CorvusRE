@@ -41,6 +41,28 @@ export function isStaleBuildError(error: unknown): boolean {
   return STALE_BUILD_RE.test(errorMessage(error));
 }
 
+// Firefox cancels a code file that is still downloading when the page
+// navigates away and reports it as the same "error loading dynamically
+// imported module" — e.g. /sign-in sending the browser on to /auth/ while the
+// Ask AI widget is still loading. Every such report in client_errors
+// (2026-10/11) was this: the visitor was already leaving, nothing was broken.
+let leaving = false;
+if (typeof window !== "undefined") {
+  const mark = () => {
+    leaving = true;
+  };
+  window.addEventListener("beforeunload", mark);
+  window.addEventListener("pagehide", mark);
+  // Back/forward cache restores the page — it is no longer leaving.
+  window.addEventListener("pageshow", () => {
+    leaving = false;
+  });
+}
+
+export function isPageLeaving(): boolean {
+  return leaving;
+}
+
 // True when a fresh reload hasn't just been tried — so a genuinely missing
 // file can't send the page into a reload loop.
 export function canReloadFresh(): boolean {

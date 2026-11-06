@@ -1,3 +1,4 @@
+import { limitCaller } from "../_shared/require-user.ts";
 // Deploy via CLI: `supabase functions deploy site-gis`.
 // No secrets required — both upstream sources are free, public, keyless federal
 // GIS services. Proxied server-side (not called directly from the browser) purely
@@ -195,6 +196,8 @@ function fetchNearestRailMi(lat: number, lng: number): Promise<number | null> {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "site-gis", corsHeaders);
+  if (limited) return limited;
 
   const empty: SiteGisResult = {
     floodZone: null,

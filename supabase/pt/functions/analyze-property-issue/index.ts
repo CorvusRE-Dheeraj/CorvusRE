@@ -15,6 +15,7 @@
 // Every extracted field is clamped by _shared/property-issue.ts (category to
 // the table's enum, dates to real calendar dates) — the model never writes
 // straight into the row.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
 import {
@@ -60,6 +61,8 @@ Return ONLY JSON: {"fields":{"category":"...","title":"...","description":<strin
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "analyze-property-issue", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { property, issue, documents } = await req.json();

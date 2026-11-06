@@ -15,6 +15,7 @@
 // (reading the notice's real text, informed by the county's real reference
 // data the caller passes in from county-protest-info.ts) — grounded, but
 // not independently hard-verifiable the way the fields above are.
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -45,6 +46,8 @@ function normalize(v: string | null | undefined): string {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "extract-hearing-notice", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { caseContext, countyReference, documents } = await req.json();

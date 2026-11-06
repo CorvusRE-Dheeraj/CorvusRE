@@ -15,6 +15,7 @@
 // callers: PdfFormEditor.tsx's "Generate Suggested Reason" button (reads
 // only suggestedReason) and ai-report.tsx's Module 8 "Analyze My Evidence"
 // (reads the full analysis).
+import { limitCaller } from "../_shared/require-user.ts";
 import { PROSE_STYLE } from "../_shared/prose-style.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { withAdvisoryTone } from "../_shared/advisory-tone.ts";
@@ -61,6 +62,8 @@ ${PROSE_STYLE}`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "draft-protest-reason", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { property, documents } = await req.json();

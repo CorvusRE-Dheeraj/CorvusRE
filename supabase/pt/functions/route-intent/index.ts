@@ -4,6 +4,7 @@
 // No Supabase auth — this is a guest-accessible homepage feature, same known-risk
 // pattern already accepted for classify-document (rate-limited free API, no per-user
 // state at stake).
+import { limitCaller } from "../_shared/require-user.ts";
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 
 const corsHeaders = {
@@ -50,6 +51,8 @@ If nothing fits well, use /contact. Return ONLY a JSON object: {"destination":".
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const limited = await limitCaller(req, "route-intent", corsHeaders);
+  if (limited) return limited;
 
   try {
     const { query } = await req.json();

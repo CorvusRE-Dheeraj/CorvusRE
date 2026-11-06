@@ -30,6 +30,19 @@ export async function sendSms(to: string, text: string): Promise<{ id: string }>
   return { id: j.data.id };
 }
 
+/**
+ * A customer's own reminder text (deadline reminders, hour-before alerts) —
+ * only for users who turned SMS on in Settings. Throws with a clear reason
+ * (logged by the caller, never claimed as sent) when SMS isn't connected or
+ * the number isn't a valid US number.
+ */
+export async function sendReminderSms(phone: string | null | undefined, text: string): Promise<void> {
+  if (!smsConfigured()) throw new Error("SMS isn't connected yet (TELNYX_API_KEY / TELNYX_FROM / TELNYX_PUBLIC_KEY)");
+  const to = e164(phone);
+  if (!to) throw new Error("Phone number on file isn't a valid US number");
+  await sendSms(to, /reply stop/i.test(text) ? text : `${text} Reply STOP to opt out.`);
+}
+
 /** Verifies Telnyx's ed25519 webhook signature over "<timestamp>|<raw body>" (5-minute window). */
 export async function verifyTelnyx(signatureB64: string | null, timestamp: string | null, body: string): Promise<boolean> {
   const pk = Deno.env.get("TELNYX_PUBLIC_KEY");
