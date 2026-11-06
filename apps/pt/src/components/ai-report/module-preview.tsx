@@ -110,15 +110,18 @@ import {
 } from "./bits";
 import {
   AddCompForm,
-  compactCurrency,
   ComparableAdjustments,
-  comparableConfidenceReasoning,
   ComparableSelectionFunnel,
   ComparableTable,
   ComparableValueChart,
-  compLabel,
   CompsAdjustmentGrid,
 } from "./comps";
+import {
+  compactCurrency,
+  comparableConfidenceReasoning,
+  compLabel,
+  ZONING_ASPECT_KINDS,
+} from "./helpers";
 import { IncomeWorkspace } from "./income";
 import { Module1Content, Module2Content, Module5Content } from "./module-content";
 import { SavingsWorkspace } from "./savings";
@@ -132,7 +135,7 @@ import {
   SiteFactorRow,
   SiteMapThumb,
 } from "./visuals";
-import { ZONING_ASPECT_KINDS, ZoningClassificationTable, ZoningImpactCol } from "./zoning";
+import { ZoningClassificationTable, ZoningImpactCol } from "./zoning";
 
 // Part of the AI report page (src/routes/ai-report.tsx), split out of that
 // file unchanged. Group: module-preview.
@@ -2543,37 +2546,6 @@ export function ModuleQABox({
       </div>
     </div>
   );
-}
-
-export function scoreColor(score: number): string {
-  if (score >= 70) return "var(--success)";
-  if (score >= 40) return "var(--warning)";
-  return "var(--destructive)";
-}
-
-// A continuous version of scoreColor — smoothly interpolated (red at 0,
-// amber at 50, green at 100, everything in between blended) rather than
-// jumping abruptly at fixed 40/70 cutoffs, for the one place that read as
-// "graph-like" enough to want a real gradient: SpeedometerGauge. Uses CSS
-// color-mix() (same technique already used for the hub doors' glow tint)
-// so it blends the app's real theme tokens directly — correct in both light
-// and dark mode — rather than a hardcoded hex gradient.
-export function gradualScoreColor(score: number): string {
-  const s = Math.max(0, Math.min(100, score));
-  // Eased, not linear: a plain 0-50 linear blend put 25 at a 50/50 red/amber
-  // mix, which reads as orange, not red — the same problem a direct 2-stop
-  // red-green mix had at the other extreme (a muddy midpoint, no real
-  // yellow). Easing each half toward its own anchor (ease-in low, ease-out
-  // high) keeps 25 mostly red and 90 mostly green, while 50 still lands on
-  // pure amber — still one continuous curve, just not a straight line.
-  if (s <= 50) {
-    const t = s / 50;
-    const pct = t * t * t * 100;
-    return `color-mix(in oklch, var(--warning) ${pct}%, var(--destructive) ${100 - pct}%)`;
-  }
-  const t = (s - 50) / 50;
-  const pct = (1 - (1 - t) * (1 - t) * (1 - t)) * 100;
-  return `color-mix(in oklch, var(--success) ${pct}%, var(--warning) ${100 - pct}%)`;
 }
 
 // Every module's AI-generated takeaway line goes through this — a tinted,

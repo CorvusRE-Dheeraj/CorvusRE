@@ -1,74 +1,21 @@
 import { type ModuleResultMap } from "@/lib/ai-report-modules";
 import { type DocumentRecord } from "@/lib/documents";
-import { ICON_COLORS, type IconColor } from "@/lib/icon-colors";
+import { ICON_COLORS } from "@/lib/icon-colors";
 import {
   AlertTriangle,
   ArrowRight,
-  Building2,
   CheckCircle2,
   FileText,
-  HelpCircle,
-  MapPin,
   RefreshCw,
   Scale,
   Upload,
-  type LucideIcon,
 } from "lucide-react";
-import { ZONING_STATUS } from "./bits";
-
-// Part of the AI report page (src/routes/ai-report.tsx), split out of that
-// file unchanged. Group: zoning.
-export const ZONING_ASPECT_STATUS: Record<
-  ModuleResultMap["zoning"]["aspects"][number]["status"],
-  { label: string; cls: string; Icon: LucideIcon; iconCls: string }
-> = {
-  Confirmed: {
-    label: "Confirmed",
-    cls: "bg-success/15 text-success",
-    Icon: CheckCircle2,
-    iconCls: "text-success",
-  },
-  "Partial Data": {
-    label: "Partial",
-    cls: "bg-warning/20 text-warning-foreground",
-    Icon: AlertTriangle,
-    iconCls: "text-warning-foreground",
-  },
-  "Additional Data Needed": {
-    label: "Needs data",
-    cls: "bg-secondary text-muted-foreground",
-    Icon: HelpCircle,
-    iconCls: "text-muted-foreground",
-  },
-};
-
-export const ZONING_ASPECT_ICON: Record<string, LucideIcon> = {
-  "CAD Classification": FileText,
-  "Actual Use": Building2,
-  "Zoning District": MapPin,
-  "Permitted Use": CheckCircle2,
-};
-
-// Each aspect tile gets its own color from the app's shared icon palette
-// (icon-colors.ts) instead of all four sharing one flat muted gray — Permitted
-// Use gets the same success green the checkmark already uses a few lines down
-// for a "Matches" outcome, so approval reads the same color everywhere.
-export const ZONING_ASPECT_COLOR: Record<string, IconColor> = {
-  "CAD Classification": ICON_COLORS[6], // sky — official record/paperwork
-  "Actual Use": ICON_COLORS[2], // teal — the building itself
-  "Zoning District": ICON_COLORS[1], // violet — location/district
-  "Permitted Use": ICON_COLORS[5], // success green — approval
-};
-
-// The 4-column classification line-up from the spec's screenshot: the four
-// aspects are the columns, one value row, then a muted source / upload row.
-// The Permitted Use column also carries the overall consistent/mismatch mark.
-export const ZONING_ASPECT_KINDS = [
-  "CAD Classification",
-  "Actual Use",
-  "Zoning District",
-  "Permitted Use",
-] as const;
+import {
+  ZONING_ASPECT_COLOR,
+  ZONING_ASPECT_ICON,
+  ZONING_ASPECT_STATUS,
+  ZONING_STATUS,
+} from "./helpers";
 
 export function ZoningClassificationTable({
   aspects,

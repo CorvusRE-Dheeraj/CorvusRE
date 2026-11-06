@@ -22,170 +22,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { scoreColor } from "./module-preview";
-
-// Part of the AI report page (src/routes/ai-report.tsx), split out of that
-// file unchanged. Group: comps.
-// Compact "$4.8M"/"$120K" formatting for tight badge/axis labels where the
-// full currency() output (e.g. "$4,800,000") would overflow.
-export function compactCurrency(n: number): string {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1000)}K`;
-  return currency(n);
-}
-
-// Real 2-D scatter — Value Per Acre (Y) vs Land Size (X), the honest
-// per-unit substitute for a "$/SF vs. building size" plot: no building-SF
-// field exists anywhere in this pipeline (see valuePerAcre() below), but
-// legalAcreage and marketValue are both real CAD fields every comp already
-// carries. The subject renders as a larger, labeled accent dot among the
-// comps (muted) so where the subject sits in the market reads at a glance,
-// same visual language as CompsMap's subject/comp marker distinction.
-// Subject dot shape shared by both the 2-D and 1-D fallback charts below —
-// a larger accent-colored, labeled marker so the subject reads as visually
-// distinct from the comps regardless of which chart is showing.
-// Teal, reused straight from the Market Value module's own assigned icon
-// color (ICON_COLORS[2] in icon-colors.ts) — comps read as "this module's
-// color," not an invented chart palette.
-export const COMPS_DOT_COLOR = "#0d9488";
-// Sky blue, also an existing app tone (ICON_COLORS[6], already live on the
-// Income Value module) reused here as a "this one is you" highlight —
-// deliberately distinct from the comps' teal so the subject reads at a
-// glance, without inventing a color the app doesn't already use elsewhere.
-export const SUBJECT_DOT_COLOR = "#0284c7";
-
-export function compDotShape(props: { cx?: number; cy?: number }) {
-  return <circle cx={props.cx} cy={props.cy} r={7} fill={COMPS_DOT_COLOR} fillOpacity={0.7} />;
-}
-
-// Two-line "Subject / Property" label for the full 2-D plot, where there's
-// room above the dot for it.
-export function subjectDotShape(props: { cx?: number; cy?: number }) {
-  const cx = props.cx ?? 0;
-  const cy = props.cy ?? 0;
-  return (
-    <g>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={12}
-        fill={SUBJECT_DOT_COLOR}
-        stroke="var(--card)"
-        strokeWidth={2.5}
-      />
-      <text
-        x={cx}
-        y={cy - 25}
-        textAnchor="middle"
-        fontSize={11}
-        fontWeight={700}
-        fill={SUBJECT_DOT_COLOR}
-      >
-        Subject
-      </text>
-      <text
-        x={cx}
-        y={cy - 13}
-        textAnchor="middle"
-        fontSize={11}
-        fontWeight={700}
-        fill={SUBJECT_DOT_COLOR}
-      >
-        Property
-      </text>
-    </g>
-  );
-}
-
-// Compact single-line "Subject" label for the shorter 1-D fallback chart.
-export function subjectDotShapeCompact(props: { cx?: number; cy?: number }) {
-  const cx = props.cx ?? 0;
-  const cy = props.cy ?? 0;
-  return (
-    <g>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={9}
-        fill={SUBJECT_DOT_COLOR}
-        stroke="var(--card)"
-        strokeWidth={2.5}
-      />
-      <text
-        x={cx}
-        y={cy - 14}
-        textAnchor="middle"
-        fontSize={11}
-        fontWeight={700}
-        fill={SUBJECT_DOT_COLOR}
-      >
-        Subject
-      </text>
-    </g>
-  );
-}
-
-// Right-aligned "Subject / Property" label for Tier 3's distance chart,
-// where the subject sits at x=0 — the chart's own left edge — so a
-// centered label above the dot (like subjectDotShape) would clip against
-// the axis border. Text runs rightward from the dot instead.
-export function subjectDotShapeAtOrigin(props: { cx?: number; cy?: number }) {
-  const cx = props.cx ?? 0;
-  const cy = props.cy ?? 0;
-  return (
-    <g>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={12}
-        fill={SUBJECT_DOT_COLOR}
-        stroke="var(--card)"
-        strokeWidth={2.5}
-      />
-      <text
-        x={cx + 15}
-        y={cy - 4}
-        textAnchor="start"
-        fontSize={11}
-        fontWeight={700}
-        fill={SUBJECT_DOT_COLOR}
-      >
-        Subject
-      </text>
-      <text
-        x={cx + 15}
-        y={cy + 10}
-        textAnchor="start"
-        fontSize={11}
-        fontWeight={700}
-        fill={SUBJECT_DOT_COLOR}
-      >
-        Property
-      </text>
-    </g>
-  );
-}
-
-// Best real value available for a comp — tries marketValue first, then
-// appraisedValue, then landValue+improvementValue summed, all real CAD
-// fields on the same row. TrueProdigy is known-inconsistent about which of
-// these it actually populates for a given county/property (some rows carry
-// an appraised or land+improvement figure but a null marketValue) — this
-// widens which comps the CARD's own chart can plot without changing
-// computeComparableStats()'s stricter marketValue-only definition, which
-// still drives the actual $ figures (Market Value Range, Valuation Gap,
-// "Limited Comparable Data") since those feed the real protest argument.
-export function bestAvailableValue(c: {
-  marketValue: number | null;
-  appraisedValue?: number | null;
-  landValue?: number | null;
-  improvementValue?: number | null;
-}): number | null {
-  if (c.marketValue != null) return c.marketValue;
-  if (c.appraisedValue != null) return c.appraisedValue;
-  if (c.landValue != null && c.improvementValue != null) return c.landValue + c.improvementValue;
-  return null;
-}
+import {
+  COMP_FLAG_TONE,
+  bestAvailableValue,
+  compLabel,
+  compactCurrency,
+  formatAcres,
+  formatTransferDate,
+  scoreColor,
+  valuePerAcre,
+  COMPS_DOT_COLOR,
+  SUBJECT_DOT_COLOR,
+} from "./helpers";
 
 export function CompsValueScatter({
   subject,
@@ -649,52 +497,6 @@ export function CompsAdjustmentGrid({
   );
 }
 
-// Real, deterministic explanation of the confidence score — the same two
-// inputs computeComparableStats() itself blends (usable comp count, value
-// spread), phrased in a sentence — never AI-written, matching the
-// SupportingDataGrid/SourcesList convention already used for Module 1.
-export function comparableConfidenceReasoning(stats: ComparableStats): string | null {
-  if (stats.confidencePct == null || stats.indicated == null) return null;
-  const count = stats.selected.length;
-  const spreadPct =
-    stats.indicated.median > 0
-      ? Math.round(((stats.indicated.max - stats.indicated.min) / stats.indicated.median) * 100)
-      : null;
-  const countPhrase = `The ${count} selected comparable ${count === 1 ? "property" : "properties"}`;
-  const spreadPhrase =
-    spreadPct != null
-      ? spreadPct <= 20
-        ? "a tight value range"
-        : spreadPct <= 50
-          ? "a moderate value range"
-          : "a wide value range"
-      : null;
-  return spreadPhrase
-    ? `${countPhrase}, within ${spreadPhrase} (±${spreadPct}%), support this indicated value.`
-    : `${countPhrase} support this indicated value.`;
-}
-
-// A real deed date (see CompProperty.lastTransferDt), never a sale price —
-// formatted plainly so it can't be mistaken for one.
-export function formatTransferDate(v?: string | null): string | null {
-  if (!v) return null;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
-
-export function formatAcres(v?: number | null): string | null {
-  if (v == null) return null;
-  return `${v.toFixed(v < 1 ? 2 : 1)} ac`;
-}
-
-// $-per-acre, the real per-unit metric this data actually supports — not a
-// $/SF substitute, since no building-size field exists (see comps-analysis.ts).
-export function valuePerAcre(marketValue?: number | null, acreage?: number | null): number | null {
-  if (marketValue == null || !acreage || acreage < 0.05) return null;
-  return marketValue / acreage;
-}
-
 // Real per-comp comparison table — Property / Last Transfer / Land Size /
 // Assessed Value / $ per Acre / Distance / Similarity, all real fields (see
 // comps-analysis.ts). Each row expands on click (not hover, so it works on
@@ -708,22 +510,6 @@ export type PerCompVerdict = {
   reason: string;
   flags?: string[];
 };
-
-// Deterministic flags read as "less reliable"; the informational ones
-// ("Not a market sale" is true of every CAD comp) get a quieter style.
-export const COMP_FLAG_TONE: Record<string, string> = {
-  Stale: "bg-warning/20 text-warning-foreground",
-  Distant: "bg-warning/20 text-warning-foreground",
-  "Size mismatch": "bg-warning/20 text-warning-foreground",
-  "Type mismatch": "bg-warning/20 text-warning-foreground",
-  "Unverified price": "bg-destructive/15 text-destructive",
-};
-// "Comp 3 — 1001 Hwy66, TX": the same number everywhere a final comp shows.
-export function compLabel(c: RankedComp, numberOf?: Map<string, number>): string {
-  const n = numberOf?.get(c.key);
-  const addr = c.address || `Property #${c.pid}`;
-  return n != null ? `Comp ${n} — ${addr}` : addr;
-}
 
 export function ComparableTable({
   ranked,
@@ -1272,5 +1058,118 @@ export function AddCompForm({
         </button>
       </div>
     </div>
+  );
+}
+
+// Recharts dot shapes for the comparables charts (local to this file).
+function compDotShape(props: { cx?: number; cy?: number }) {
+  return <circle cx={props.cx} cy={props.cy} r={7} fill={COMPS_DOT_COLOR} fillOpacity={0.7} />;
+}
+
+// Two-line "Subject / Property" label for the full 2-D plot, where there's
+// room above the dot for it.
+function subjectDotShape(props: { cx?: number; cy?: number }) {
+  const cx = props.cx ?? 0;
+  const cy = props.cy ?? 0;
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={12}
+        fill={SUBJECT_DOT_COLOR}
+        stroke="var(--card)"
+        strokeWidth={2.5}
+      />
+      <text
+        x={cx}
+        y={cy - 25}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        fill={SUBJECT_DOT_COLOR}
+      >
+        Subject
+      </text>
+      <text
+        x={cx}
+        y={cy - 13}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        fill={SUBJECT_DOT_COLOR}
+      >
+        Property
+      </text>
+    </g>
+  );
+}
+
+// Compact single-line "Subject" label for the shorter 1-D fallback chart.
+function subjectDotShapeCompact(props: { cx?: number; cy?: number }) {
+  const cx = props.cx ?? 0;
+  const cy = props.cy ?? 0;
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={9}
+        fill={SUBJECT_DOT_COLOR}
+        stroke="var(--card)"
+        strokeWidth={2.5}
+      />
+      <text
+        x={cx}
+        y={cy - 14}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        fill={SUBJECT_DOT_COLOR}
+      >
+        Subject
+      </text>
+    </g>
+  );
+}
+
+// Right-aligned "Subject / Property" label for Tier 3's distance chart,
+// where the subject sits at x=0 — the chart's own left edge — so a
+// centered label above the dot (like subjectDotShape) would clip against
+// the axis border. Text runs rightward from the dot instead.
+function subjectDotShapeAtOrigin(props: { cx?: number; cy?: number }) {
+  const cx = props.cx ?? 0;
+  const cy = props.cy ?? 0;
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={12}
+        fill={SUBJECT_DOT_COLOR}
+        stroke="var(--card)"
+        strokeWidth={2.5}
+      />
+      <text
+        x={cx + 15}
+        y={cy - 4}
+        textAnchor="start"
+        fontSize={11}
+        fontWeight={700}
+        fill={SUBJECT_DOT_COLOR}
+      >
+        Subject
+      </text>
+      <text
+        x={cx + 15}
+        y={cy + 10}
+        textAnchor="start"
+        fontSize={11}
+        fontWeight={700}
+        fill={SUBJECT_DOT_COLOR}
+      >
+        Property
+      </text>
+    </g>
   );
 }

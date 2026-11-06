@@ -36,20 +36,18 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { compactCurrency } from "./comps";
+import {
+  INCOME_DOC_KINDS,
+  INCOME_VERDICT,
+  compactCurrency,
+  numOrNull,
+  toFormState,
+} from "./helpers";
+
 import { AiVerdictLine } from "./module-preview";
 import { ModuleAsyncState } from "./shared";
 import { AnalysisPipeline } from "./strategy";
 import { ZoningImpactCol } from "./zoning";
-
-// Part of the AI report page (src/routes/ai-report.tsx), split out of that
-// file unchanged. Group: income.
-// ── Module 7 (Income Value) ───────────────────────────────────────────────
-// Every figure rendered here is the deterministic result from
-// src/lib/income-approach.ts (computed from owner-confirmed data) — never an
-// AI value. The AI narrative (moduleData.income) only explains these.
-
-export const INCOME_DOC_KINDS = ["P&L", "Operating Statement", "Rent Roll", "Appraisal"] as const;
 
 // A recharts waterfall: Potential Income → −Vacancy → −Operating Expenses →
 // NOI → (÷ Cap Rate) → Indicated Value. Two stacked bars — a transparent
@@ -322,21 +320,6 @@ export function IncomeLadderPreview({
     </div>
   );
 }
-
-export const INCOME_VERDICT: Record<
-  "supports" | "does-not-support" | "inconclusive",
-  { label: string; cls: string }
-> = {
-  supports: { label: "Income Supports CAD Value", cls: "bg-success/10 text-success" },
-  "does-not-support": {
-    label: "Income Does Not Support CAD Value",
-    cls: "bg-accent/10 text-accent",
-  },
-  inconclusive: {
-    label: "Income Analysis Inconclusive",
-    cls: "bg-secondary text-muted-foreground",
-  },
-};
 
 export function IncomeVerdictBand({
   supports,
@@ -650,25 +633,6 @@ export type IncomeFormState = {
   rentableSqft: string;
   capRatePct: string;
   capRateSource: "appraisal" | "owner";
-};
-
-export function toFormState(a: IncomeAnalysis | null): IncomeFormState {
-  const s = (v: number | null | undefined) => (v != null ? String(v) : "");
-  return {
-    grossPotentialIncome: s(a?.grossPotentialIncome),
-    otherIncome: s(a?.otherIncome),
-    vacancyPct: s(a?.vacancyPct),
-    operatingExpenses: s(a?.operatingExpenses),
-    noiStated: s(a?.noiStated),
-    rentableSqft: s(a?.rentableSqft),
-    capRatePct: s(a?.capRatePct),
-    capRateSource: a?.capRateSource ?? "owner",
-  };
-}
-
-export const numOrNull = (v: string): number | null => {
-  const n = Number(v.replace(/[^0-9.-]/g, ""));
-  return v.trim() !== "" && Number.isFinite(n) ? n : null;
 };
 
 // The editable review form — pre-fills from AI-extracted document figures,

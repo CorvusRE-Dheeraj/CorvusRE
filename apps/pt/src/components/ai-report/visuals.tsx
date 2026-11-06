@@ -1,42 +1,32 @@
 import { useLeaflet } from "@/components/CompsMap";
 import { PropertyImage } from "@/components/PropertyImage";
-import { type HealthScoreResult } from "@/lib/ai-health-score";
 import { type ModuleResultMap } from "@/lib/ai-report-modules";
-import { type CompsResult } from "@/lib/cad-comps";
-import { computeComparableStats } from "@/lib/comps-analysis";
 import { type IconColor } from "@/lib/icon-colors";
 import { computeDepreciation } from "@/lib/improvement-condition";
-import { incomeSupportsCad, type IncomeApproach } from "@/lib/income-approach";
-import {
-  isItemNotApplicable,
-  isModuleNotApplicable,
-  type ModuleOverride,
-} from "@/lib/module-overrides";
-import { type Module } from "@/lib/modules";
-import { type SavingsAnalysis } from "@/lib/savings-analysis";
+import { isItemNotApplicable, type ModuleOverride } from "@/lib/module-overrides";
 import { type SiteFactor } from "@/lib/site-condition";
 import { type SiteGisResult } from "@/lib/site-gis";
 import {
-  Activity,
   AlertTriangle,
   ArrowDown,
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   DollarSign,
-  FileText,
   FileWarning,
   Home,
   Percent,
   Upload,
-  Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { ZONING_STATUS } from "./bits";
-import { compactCurrency } from "./comps";
+import {
+  BUILDING_CONDITION_TONE,
+  PIPELINE_STEPS,
+  SITE_FACTOR_STATUS_TONE,
+  compactCurrency,
+  scoreColor,
+} from "./helpers";
+
 import { SpeedometerGauge } from "./module-content";
-import { scoreColor } from "./module-preview";
-import { ModuleAsyncState } from "./shared";
 
 // Part of the AI report page (src/routes/ai-report.tsx), split out of that
 // file unchanged. Group: visuals.
@@ -215,13 +205,6 @@ export function ExecutiveStat({ label, value }: { label: string; value: string }
   );
 }
 
-export const SITE_FACTOR_STATUS_TONE: Record<SiteFactor["status"], string> = {
-  Confirmed: "bg-success/15 text-success",
-  "Partial Data": "bg-warning/15 text-warning-foreground",
-  "Additional Data Needed": "bg-secondary/60 text-muted-foreground",
-  "Not Applicable": "bg-secondary/60 text-muted-foreground",
-};
-
 // One row of Module 4's 14-factor table. status is server-enforced (see
 // enforceSiteFactorRealData) — this component just renders whatever it's
 // given, never re-decides Confirmed/Partial/Additional Data Needed itself.
@@ -369,13 +352,6 @@ export function SiteFactorNotApplicableTile({
     </div>
   );
 }
-
-export const BUILDING_CONDITION_TONE: Record<string, string> = {
-  Good: "bg-success/15 text-success",
-  Fair: "bg-warning/15 text-warning-foreground",
-  Poor: "bg-destructive/10 text-destructive",
-  Unknown: "bg-secondary/60 text-muted-foreground",
-};
 
 // One row of Module 5's Building Condition Overview. condition/hasPhoto/
 // notApplicable are server-enforced (see enforceBuildingComponentRealData)
@@ -589,18 +565,6 @@ export function ImprovementCardVisual({
   );
 }
 
-// The reference's 5-step explainer strip — purely describes a pipeline that
-// now genuinely exists (this module's own real photo-grounded assessment +
-// deterministic depreciation math), not a claim about this property. Fixed,
-// not data-driven — same spirit as a product diagram, not an AI output.
-export const PIPELINE_STEPS: { label: string; sub: string; icon: LucideIcon }[] = [
-  { label: "User Input", sub: "Building Data, Photos", icon: FileText },
-  { label: "AI Processing", sub: "Condition Analyzer", icon: Wrench },
-  { label: "Logic/Decision", sub: "Depreciation Model", icon: BarChart3 },
-  { label: "AI Output", sub: "Condition Assessment", icon: Activity },
-  { label: "Next Step", sub: "Apply to Value Model", icon: ArrowRight },
-];
-
 export function PipelineDiagram() {
   return (
     <div className="grid grid-cols-5 gap-1">
@@ -647,93 +611,6 @@ export function NumberBadge({
       {n}
     </span>
   );
-}
-
-export function moduleInsight(
-  m: Module,
-  moduleState: ModuleAsyncState | undefined,
-  compsMap: { data: CompsResult | null; loading: boolean },
-  estimated: { savings: number },
-  totalValue: number | null | undefined,
-  overrides: ModuleOverride[],
-  incomeComputed?: IncomeApproach,
-  savingsAnalysis?: SavingsAnalysis,
-): string | null {
-  if (m.id === "income") {
-    if (isModuleNotApplicable(overrides, "income")) return "Marked Not Applicable";
-    if (!incomeComputed?.complete) {
-      return incomeComputed?.dataComplete ? "Cap rate needed" : "Upload financials to unlock";
-    }
-    const supports =
-      (moduleState?.data as ModuleResultMap["income"] | undefined)?.supportsCadValue ??
-      incomeSupportsCad(incomeComputed);
-    return supports === "does-not-support"
-      ? "Income does not support CAD value"
-      : supports === "supports"
-        ? "Income supports CAD value"
-        : "Income analysis inconclusive";
-  }
-  if (m.id === "savings") {
-    if (estimated.savings <= 0) return null;
-    if (savingsAnalysis && !savingsAnalysis.sufficient) return "Additional data needed";
-    if (savingsAnalysis) {
-      return savingsAnalysis.netBenefit > 0
-        ? "Strong potential savings"
-        : "Marginal — review protest cost";
-    }
-    return "Strong Potential Savings";
-  }
-  if (!moduleState?.data) return null;
-  switch (m.id) {
-    case "health": {
-      const d = moduleState.data as HealthScoreResult;
-      return d.score >= 70
-        ? "Strong Opportunity"
-        : d.score >= 40
-          ? "Moderate Opportunity"
-          : "Limited Opportunity";
-    }
-    case "strategy": {
-      const d = moduleState.data as ModuleResultMap["strategy"];
-      if (d.strategies.length === 0) return null;
-      if (d.topStrategySummary) return d.topStrategySummary;
-      const top = d.strategies.slice(0, 2).map((s) => s.name);
-      return `AI recommends focus on ${top.join(" & ")}`;
-    }
-    case "comps": {
-      const stats = computeComparableStats(
-        compsMap.data?.subject ?? null,
-        compsMap.data?.comps ?? [],
-        totalValue,
-      );
-      if (stats.limitedData || stats.valuationGapPct == null) return null;
-      return stats.valuationGapPct > 0 ? "Potential Overvaluation" : "Fairly Valued";
-    }
-    case "site":
-    case "improvement": {
-      const d = moduleState.data as ModuleResultMap["site"] | ModuleResultMap["improvement"];
-      return d.priorityScore >= 70
-        ? "High Documentation Priority"
-        : d.priorityScore >= 40
-          ? "Moderate Documentation Priority"
-          : "Low Documentation Priority";
-    }
-    case "zoning": {
-      const d = moduleState.data as ModuleResultMap["zoning"];
-      return ZONING_STATUS[d.matches].label;
-    }
-    case "evidence": {
-      const d = moduleState.data as ModuleResultMap["evidence"];
-      const gaps = d.items.filter((i) => i.importance === "High" && i.availability === "Low");
-      return gaps.length > 0 ? "Focus Here First" : "Evidence Well Covered";
-    }
-    case "executive": {
-      const d = moduleState.data as ModuleResultMap["executive"];
-      return d.recommendedAction;
-    }
-    default:
-      return null;
-  }
 }
 
 // Full-bleed band flush with the card's own edges (the card is

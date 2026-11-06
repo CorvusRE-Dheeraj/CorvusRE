@@ -16,26 +16,22 @@ import { type PropertyRecord } from "@/lib/properties";
 import { protestOutcome } from "@/lib/protest-outcome";
 import { type ProtestRecord } from "@/lib/protests";
 import { classifyPropertyCategory, getAssessmentRatioInfo } from "@/lib/texas-tax-rates";
-import {
-  Activity,
-  AlertTriangle,
-  ArrowDown,
-  BarChart3,
-  CheckCircle2,
-  FileText,
-  Percent,
-  ShieldCheck,
-  Target,
-  TrendingUp,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
+import { AlertTriangle, ArrowDown, CheckCircle2, ShieldCheck, TrendingUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer } from "recharts";
 import { FactBox } from "./bits";
-import { AiVerdictLine, gradualScoreColor, scoreColor } from "./module-preview";
+import {
+  breakdownIcon,
+  evidenceStatusLabel,
+  gradualScoreColor,
+  scoreColor,
+  STRATEGY_FEATURE_THRESHOLD,
+  strategySlug,
+  strategyTier,
+} from "./helpers";
+import { AiVerdictLine } from "./module-preview";
 import { buildCompsSummary, ModuleAsyncState } from "./shared";
-import { StrategyDetail, StrategyRankList, strategySlug } from "./strategy";
+import { StrategyDetail, StrategyRankList } from "./strategy";
 import { BuildingComponentRow, ExecutiveStat } from "./visuals";
 
 // Part of the AI report page (src/routes/ai-report.tsx), split out of that
@@ -47,26 +43,6 @@ export function SkeletonVisual() {
       <div className="h-3 w-28 animate-pulse rounded bg-secondary/40" />
     </div>
   );
-}
-
-// Icon per Module 1 score-breakdown label — the fixed label set the edge
-// function validates against (BREAKDOWN_LABELS in ai-health-score/index.ts),
-// so this mapping is safe/exhaustive rather than guessing at free AI text.
-export function breakdownIcon(label: string): LucideIcon {
-  switch (label) {
-    case "CAD Valuation":
-      return FileText;
-    case "Comparable Properties":
-      return BarChart3;
-    case "Market Data":
-      return Percent;
-    case "Property Condition":
-      return Wrench;
-    case "Historical Valuation":
-      return Activity;
-    default:
-      return Target;
-  }
 }
 
 // Half-circle "speedometer" gauge — a full red→amber→green gradient scale
@@ -273,23 +249,6 @@ export function SourcesList({
       ))}
     </ul>
   );
-}
-
-// Module 1 — deliberately minimal. Earlier drafts put a full missing-items
-// checklist (per-item Upload/Link/Answer) directly in Module 1; feedback
-// after seeing it built was that the page had gotten too complicated for
-// what it needs to answer: "Should I protest? Why? What should I do next?"
-// The one action this module offers now is a straight hop into Module 8 (the
-// real evidence system) — no duplicate document list rendered here. "What
-// Corvus AI Checked" still reads Module 8's real per-item status for the
-// collapsed Detailed Analysis section, since that's real data worth keeping
-// available, just not surfaced as a whole extra workflow up front.
-export function evidenceStatusLabel(status: "Verified" | "Found" | "Missing"): string {
-  return status === "Verified"
-    ? "Reviewed"
-    : status === "Found"
-      ? "More Information Helpful"
-      : "Data Not Available";
 }
 
 export function Module1Content({
@@ -676,19 +635,6 @@ export function Stat({ label, value, tone }: { label: string; value: string; ton
       </div>
     </div>
   );
-}
-
-// Module 2 — same philosophy as Module 1's simplified layout: lead with the
-// plain recommendation, keep the full per-strategy breakdown (evidence
-// upload/answer per strategy, the ranked list) collapsed by default rather
-// than shown up front. Unlike Module 1 (one opportunity score), a property
-// can genuinely have more than one strategy worth pursuing at once, so the
-// headline card lists every strategy strong enough to feature — not just
-// the top-ranked one — rather than picking a single winner.
-export const STRATEGY_FEATURE_THRESHOLD = 40;
-
-export function strategyTier(score: number): string {
-  return score >= 70 ? "Strong" : score >= STRATEGY_FEATURE_THRESHOLD ? "Moderate" : "Limited";
 }
 
 export function Module2Content({
