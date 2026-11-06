@@ -49,6 +49,13 @@ import { Modal } from "@/components/Modal";
 import { PageHero, heroButton } from "@/components/PageHero";
 import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
 import {
+  TAX_HISTORY_SOURCE_LABEL,
+  fetchTaxHistory,
+  isFresh,
+  listTaxHistory,
+  type TaxHistory,
+} from "@/lib/cad-tax-history";
+import {
   downloadFile,
   dueEvents,
   dueEventsIcs,
@@ -160,6 +167,18 @@ function PayTaxes() {
     sort: "due",
   });
   const [exporting, setExporting] = useState(false);
+  // 5-year tax history from the appraisal district, per property (cached
+  // server-side for 30 days; anything missing is fetched in the background).
+  const [taxHistory, setTaxHistory] = useState<Map<string, TaxHistory>>(new Map());
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const historyTried = useRef(new Set<string>());
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
 
   async function reload() {
     if (!user) return;
@@ -171,6 +190,10 @@ function PayTaxes() {
       listProtests(user.id).catch(() => [] as ProtestRecord[]),
     ]);
     setProperties(props);
+    listTaxHistory(props.map((x) => x.id))
+      .then(setTaxHistory)
+      .catch(() => undefined)
+      .finally(() => setHistoryLoaded(true));
     setBills(b);
     setPlans(p);
     setSettings(s);
@@ -185,6 +208,32 @@ function PayTaxes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Fetch history for properties with nothing fresh cached, three at a time.
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const todo = properties.filter(
+      (p) => !historyTried.current.has(p.id) && !isFresh(taxHistory.get(p.id), p.accountNumber),
+    );
+    if (todo.length === 0) return;
+    for (const p of todo) historyTried.current.add(p.id);
+    const queue = [...todo];
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) {
+        const prop = p;
+        try {
+          const cadUrl = prop.cad
+            ? getCadRecordUrl({ cad: prop.cad, accountNumber: prop.accountNumber })
+            : null;
+          const h = await fetchTaxHistory(prop.id, cadUrl, prop.accountNumber);
+          if (mounted.current) setTaxHistory((m) => new Map(m).set(prop.id, h));
+        } catch {
+          // no history for this one — the column says so
+        }
+      }
+    };
+    void Promise.all([worker(), worker(), worker()]);
+  }, [properties, taxHistory, historyLoaded]);
+
   const today = todayIso();
   const allRows = useMemo(
     () =>
@@ -197,9 +246,10 @@ function PayTaxes() {
           protests,
           todayIso: today,
           taxYear: filters.year ? Number(filters.year) : undefined,
+          cadHistory: taxHistory.get(property.id) ?? null,
         }),
       ),
-    [properties, bills, plans, settings, protests, today, filters.year],
+    [properties, bills, plans, settings, protests, today, filters.year, taxHistory],
   );
   const rows = allRows
     .filter((r) => !filters.county || r.county === filters.county)
@@ -463,6 +513,7 @@ function HalfPayPanel({
                 <td className="px-4 py-2">
                   {money(row.totalTax)}
                   {row.totalTaxIsEstimate && <EstimateChip />}
+                  {row.totalTaxBasis === "cad" && <CadChip />}
                 </td>
                 <td className="px-4 py-2 font-semibold">{money(firstHalf.amount)}</td>
                 <td className="px-4 py-2 text-muted-foreground">
@@ -563,12 +614,27 @@ function Filters({
         <button
           type="button"
           className="text-sm text-accent underline underline-offset-2"
-          onClick={() => setFilters({ county: "", status: "", plan: "", year: "", sort: filters.sort })}
+          onClick={() =>
+            setFilters({ county: "", status: "", plan: "", year: "", sort: filters.sort })
+          }
         >
           Clear filters
         </button>
       )}
     </div>
+  );
+}
+
+// The tax for this year worked out from the appraisal district's certified
+// value × each taxing unit's adopted rate (no statement on file yet).
+function CadChip() {
+  return (
+    <span
+      className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800"
+      title="No tax statement on file — the appraisal district's certified value × each taxing unit's adopted rate"
+    >
+      From CAD
+    </span>
   );
 }
 
@@ -704,7 +770,7 @@ function HistoryBars({ row }: { row: PayTaxesRow }) {
   const pts = [...row.history]
     .filter((b) => b.taxYear != null && b.amountDue != null)
     .sort((a, b) => (a.taxYear ?? 0) - (b.taxYear ?? 0));
-  if (pts.length === 0) return <span className="text-xs text-muted-foreground">No bills yet</span>;
+  if (pts.length === 0) return <CadHistoryBars row={row} />;
   const max = Math.max(...pts.map((b) => b.amountDue as number));
   return (
     <div
@@ -723,6 +789,131 @@ function HistoryBars({ row }: { row: PayTaxesRow }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// No bills on file: the appraisal district's last five years instead.
+function CadHistoryBars({ row }: { row: PayTaxesRow }) {
+  const h = row.cadHistory;
+  if (!h) return <span className="text-xs text-muted-foreground">Loading…</span>;
+  const pts = h.years
+    .filter((y) => y.tax != null)
+    .slice(0, 5)
+    .reverse();
+  if (pts.length === 0)
+    return <span className="text-xs text-muted-foreground">No history found</span>;
+  const max = Math.max(...pts.map((y) => y.tax as number));
+  return (
+    <div
+      className="flex h-8 items-end gap-1"
+      title={[
+        "From the appraisal district:",
+        ...pts.map((y) => `${y.year}: ${currency(y.tax as number)}`),
+      ].join("\n")}
+    >
+      {pts.map((y) => (
+        <div key={y.year} className="flex flex-col items-center">
+          <div
+            className="w-3 rounded-t bg-sky-600"
+            style={{ height: `${Math.max(3, ((y.tax as number) / max) * 24)}px` }}
+          />
+          <div className="text-[10px] leading-none text-muted-foreground">
+            {String(y.year).slice(2)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The detail view's year-by-year table: value, rate and tax per year.
+function TaxHistorySection({ row }: { row: PayTaxesRow }) {
+  const h = row.cadHistory;
+  const years = h?.years.slice(0, 6) ?? [];
+  return (
+    <Section title="Tax history (last 5 years)" icon={<CalendarClock className="h-4 w-4" />}>
+      {!h ? (
+        <p className="text-sm text-muted-foreground">
+          Getting the history from the appraisal district…
+        </p>
+      ) : years.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          The appraisal district&apos;s site didn&apos;t show a value or tax history for this
+          account. Upload past tax statements to build it.
+        </p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-1.5">Tax year</th>
+                  <th className="py-1.5">Market value</th>
+                  <th className="py-1.5">Taxable value</th>
+                  <th className="py-1.5">Tax rate</th>
+                  <th className="py-1.5 text-right">Tax</th>
+                  <th className="py-1.5 text-right">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((y, i) => {
+                  const prev = years[i + 1];
+                  const pct =
+                    prev?.tax && y.tax != null && prev.year === y.year - 1
+                      ? ((y.tax - prev.tax) / prev.tax) * 100
+                      : null;
+                  return (
+                    <tr key={y.year} className="border-t border-border/60">
+                      <td className="py-1.5">
+                        {y.year}
+                        {y.year === row.taxYear && (
+                          <span className="ml-1 text-[11px] text-muted-foreground">current</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">{money(y.marketValue)}</td>
+                      <td className="py-1.5">{money(y.taxableValue ?? y.appraisedValue)}</td>
+                      <td
+                        className="py-1.5"
+                        title={y.units?.map((u) => `${u.name}: ${u.rate.toFixed(6)}`).join("\n")}
+                      >
+                        {y.rate != null ? `${y.rate.toFixed(4)}%` : "—"}
+                      </td>
+                      <td className="py-1.5 text-right font-medium">
+                        {y.tax != null ? currency(Math.round(y.tax)) : "—"}
+                        {!y.exact && y.tax != null && (
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            before exemptions
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`py-1.5 text-right text-xs ${pct == null ? "text-muted-foreground" : pct > 0 ? "text-destructive" : "text-success"}`}
+                      >
+                        {pct == null ? "—" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Source: {TAX_HISTORY_SOURCE_LABEL[h.source]}
+            {h.sourceUrl && (
+              <>
+                {" "}
+                —{" "}
+                <a href={h.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+                  view source
+                </a>
+              </>
+            )}
+            . Checked {fmtDate(h.retrievedAt)}. Your actual bill can differ (exemptions, special
+            districts); the tax statement is the official amount.
+          </p>
+        </>
+      )}
+    </Section>
   );
 }
 
@@ -823,6 +1014,7 @@ function PropertyTable({
               <td className="whitespace-nowrap px-3 py-3 font-semibold">
                 {money(row.totalTax)}
                 {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
+                {row.totalTaxBasis === "cad" && <CadChip />}
                 {row.amountPaid > 0 && row.status !== "paid" && (
                   <div className="text-xs font-normal text-muted-foreground">
                     {money(row.outstanding)} left
@@ -872,6 +1064,7 @@ function PayConfirm({ row, onClose }: { row: PayTaxesRow; onClose: () => void })
           <div className="text-xl font-bold">
             {money(amount)}
             {row.totalTaxIsEstimate && <EstimateChip />}
+            {row.totalTaxBasis === "cad" && <CadChip />}
           </div>
         </div>
         <div className="rounded-lg bg-secondary/50 p-3">
@@ -1042,6 +1235,7 @@ function PropertyTaxDetail({
         <Fact label="Total tax">
           {money(row.totalTax)}
           {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
+          {row.totalTaxBasis === "cad" && <CadChip />}
         </Fact>
         <Fact label="Paid">{money(row.amountPaid)}</Fact>
         <Fact label="Outstanding">{row.status === "paid" ? money(0) : money(row.outstanding)}</Fact>
@@ -1255,6 +1449,7 @@ function PropertyTaxDetail({
         )}
       </Section>
 
+      <TaxHistorySection row={row} />
       <Section title="Payment history" icon={<Receipt className="h-4 w-4" />}>
         {row.history.length === 0 ? (
           <p className="text-sm text-muted-foreground">No tax bills on file yet.</p>

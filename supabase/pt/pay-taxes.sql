@@ -192,3 +192,26 @@ alter table public.payment_reminder_snoozes enable row level security;
 -- Authorization header as the daily send-deadline-reminders job.
 -- select cron.schedule('payment-reminder-snoozes', '25 * * * *', <copy of the
 --   send-deadline-reminders command with body '{"mode":"snoozes"}'>);
+
+-- 5-year tax history per property (2026-11-06), from the appraisal district —
+-- written only by the property-tax-history edge function (service role),
+-- cached 30 days. years = [{year, marketValue, appraisedValue, taxableValue,
+-- rate, tax, exact, units}], newest first. source: collin_open_data |
+-- cad_page | none. Read by the owner, account members and admins.
+create table if not exists public.property_tax_history (
+  property_id uuid primary key references public.properties (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  account_number text,
+  years jsonb not null default '[]',
+  source text not null default 'none',
+  source_url text,
+  retrieved_at timestamptz not null default now()
+);
+alter table public.property_tax_history enable row level security;
+drop policy if exists "Owners and members read tax history" on public.property_tax_history;
+create policy "Owners and members read tax history" on public.property_tax_history
+  for select to authenticated
+  using ((select auth.uid()) = user_id or public.member_access(user_id, property_id, false) or (select public.is_admin()));
+revoke all on public.property_tax_history from anon;
+grant select on public.property_tax_history to authenticated;
+grant all on public.property_tax_history to service_role;

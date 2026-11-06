@@ -6,6 +6,7 @@ import { CURRENT_TAX_YEAR } from "./tax-calendar";
 import type { PropertyRecord } from "./properties";
 import type { TaxBillRecord } from "./tax-bills";
 import type { ProtestRecord } from "./protests";
+import { historyTaxFor, type TaxHistory } from "./cad-tax-history";
 
 // The Pay Taxes tab: per-property tax obligations, deadlines, county payment
 // links and county-specific payment plans. County rules live in
@@ -336,6 +337,12 @@ export type PayTaxesRow = {
   history: PayTaxBill[]; // newest first, up to 5 tax years
   totalTax: number | null;
   totalTaxIsEstimate: boolean;
+  // where totalTax came from: the bill, the property's own snapshot, the
+  // appraisal district (certified value × adopted rates — tax-history.ts), or
+  // our estimate (value × the county's typical rate)
+  totalTaxBasis: "bill" | "snapshot" | "cad" | "estimate" | null;
+  // the appraisal district's year-by-year history, when loaded
+  cadHistory: TaxHistory | null;
   amountPaid: number;
   outstanding: number | null;
   dueDate: string;
@@ -373,6 +380,7 @@ export function buildPayTaxesRow(input: {
   protests: ProtestRecord[];
   todayIso: string;
   taxYear?: number;
+  cadHistory?: TaxHistory | null;
 }): PayTaxesRow {
   const { property, todayIso } = input;
   const county = countyName(property.cad);
@@ -395,11 +403,15 @@ export function buildPayTaxesRow(input: {
 
   const official = bill?.amountDue ?? null;
   const snapshot = !bill && property.taxAmountDue != null ? property.taxAmountDue : null;
+  const fromCad =
+    official == null && snapshot == null
+      ? (historyTaxFor(input.cadHistory ?? undefined, taxYear)?.tax ?? null)
+      : null;
   const estimate =
-    official == null && snapshot == null && property.totalValue
+    official == null && snapshot == null && fromCad == null && property.totalValue
       ? Math.round(property.totalValue * getEffectiveTaxRate(property.cad))
       : null;
-  const totalTax = official ?? snapshot ?? estimate;
+  const totalTax = official ?? snapshot ?? fromCad ?? estimate;
   const amountPaid =
     bill?.amountPaid ??
     (bill?.installments ?? []).reduce(
@@ -448,7 +460,18 @@ export function buildPayTaxesRow(input: {
     bill,
     history: [...byYear.values()].slice(0, 5),
     totalTax,
-    totalTaxIsEstimate: official == null && snapshot == null,
+    totalTaxIsEstimate: official == null && snapshot == null && fromCad == null,
+    totalTaxBasis:
+      official != null
+        ? "bill"
+        : snapshot != null
+          ? "snapshot"
+          : fromCad != null
+            ? "cad"
+            : estimate != null
+              ? "estimate"
+              : null,
+    cadHistory: input.cadHistory ?? null,
     amountPaid,
     outstanding:
       totalTax != null ? Math.max(0, Math.round((totalTax - amountPaid) * 100) / 100) : null,

@@ -15,6 +15,7 @@ export type SummaryLine = {
   taxYear: number;
   totalTax: number | null;
   totalIsEstimate: boolean;
+  totalFromCad: boolean; // appraisal district value × adopted rates, no statement yet
   dueDate: string;
   halfPay: HalfPayState;
   firstHalf: Installment | null;
@@ -56,6 +57,7 @@ export function summaryLine(row: PayTaxesRow): SummaryLine {
     taxYear: row.taxYear,
     totalTax: row.totalTax,
     totalIsEstimate: row.totalTaxIsEstimate && row.totalTax != null,
+    totalFromCad: row.totalTaxBasis === "cad",
     // the bill's own due date (an installment plan's next date lives in the half columns)
     dueDate: row.bill?.dueDate ?? row.property.paymentDueDate ?? row.dueDate,
     halfPay,
@@ -131,7 +133,7 @@ export function reportCells(l: SummaryLine): string[] {
     l.address,
     l.owner ?? "—",
     l.county ?? "—",
-    `${usd(l.totalTax)}${l.totalIsEstimate ? "*" : ""}`,
+    `${usd(l.totalTax)}${l.totalIsEstimate ? "*" : l.totalFromCad ? "‡" : ""}`,
     fmtLongDate(l.dueDate),
     HALF_LABEL[l.halfPay],
     halfCell(l.firstHalf, "amount"),
@@ -189,7 +191,7 @@ export async function summaryPdf(
       .replace(/[‘’]/g, "'")
       .replace(/[“”]/g, '"')
       .replace(/[–—]/g, "-")
-      .replace(/[^\t\n\r\x20-\x7E\xA0-\xFF†]/g, "");
+      .replace(/[^\t\n\r\x20-\x7E\xA0-\xFF†‡]/g, "");
   const wrap = (text: string, w: number, f = font): string[] => {
     const out: string[] = [];
     let cur = "";
@@ -332,6 +334,9 @@ export async function summaryPdf(
   const notes = [
     totals.estimated > 0
       ? `* Estimate (${totals.estimated} propert${totals.estimated === 1 ? "y" : "ies"}): assessed value x the county's typical tax rate - upload the tax statement for the official amount.`
+      : null,
+    lines.some((l) => l.totalFromCad)
+      ? "‡ From the appraisal district: the certified value x each taxing unit's adopted rate (no tax statement on file yet; exemptions can lower the bill)."
       : null,
     "Half-payment: Yes = the county's split-payment option applies; N/A / Not available = the property must be paid in full by the tax due date.",
     lines.some((l) => l.halfPay === "to_confirm")

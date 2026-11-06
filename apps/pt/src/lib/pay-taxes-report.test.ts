@@ -185,3 +185,64 @@ describe("calendar", () => {
     expect(ics).toContain("UID:tax-due-p2-2026@corvusre.com");
   });
 });
+
+describe("appraisal district history", () => {
+  const history = {
+    propertyId: "p2",
+    accountNumber: "1149803",
+    source: "collin_open_data" as const,
+    sourceUrl: null,
+    retrievedAt: "2026-11-06T00:00:00Z",
+    years: [
+      {
+        year: 2026,
+        marketValue: 489198,
+        appraisedValue: 489198,
+        taxableValue: 489198,
+        rate: 1.610619,
+        tax: 7879.12,
+        exact: true,
+      },
+      {
+        year: 2025,
+        marketValue: 487735,
+        appraisedValue: 487735,
+        taxableValue: 487735,
+        rate: 1.613771,
+        tax: 7870.93,
+        exact: true,
+      },
+    ],
+  };
+
+  it("uses the CAD-calculated tax for the year instead of an estimate", () => {
+    const r = buildPayTaxesRow({
+      property: property({ id: "p2", cad: "Collin Central Appraisal District" }),
+      bills: [],
+      plans: [],
+      settings: [],
+      protests: [],
+      todayIso: "2026-11-06",
+      cadHistory: history,
+    });
+    expect(r.totalTax).toBe(7879.12);
+    expect(r.totalTaxBasis).toBe("cad");
+    expect(r.totalTaxIsEstimate).toBe(false);
+    const l = summaryLine(r);
+    expect(reportCells(l)[4]).toBe("$7,879.12‡");
+  });
+
+  it("a real bill still wins over the CAD history", () => {
+    const r = buildPayTaxesRow({
+      property: property({ id: "p2" }),
+      bills: [bill({ propertyId: "p2", amountDue: 8000 })],
+      plans: [],
+      settings: [],
+      protests: [],
+      todayIso: "2026-11-06",
+      cadHistory: history,
+    });
+    expect(r.totalTax).toBe(8000);
+    expect(r.totalTaxBasis).toBe("bill");
+  });
+});
