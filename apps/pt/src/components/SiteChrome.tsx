@@ -80,10 +80,15 @@ export function SiteNav() {
   // nav on every signed-in page except "/" and a few auth/admin routes (see
   // shouldShowShell) — skip injecting a second "Dashboard" link here on those
   // pages so the two rows don't repeat the same entry right on top of each other.
+  // Signed in, "Pay Taxes" opens the Pay Taxes dashboard itself, not the
+  // public /tax-payment page that describes it.
+  const signedInNav = NAV.map((l) =>
+    l.to === "/tax-payment" ? ({ to: "/dashboard/pay-taxes", label: l.label } as const) : l,
+  );
   const baseNavItems = signedIn
     ? shouldShowShell(pathname)
-      ? NAV
-      : [NAV[0], { to: "/dashboard", label: "Dashboard" } as const, ...NAV.slice(1)]
+      ? signedInNav
+      : [signedInNav[0], { to: "/dashboard", label: "Dashboard" } as const, ...signedInNav.slice(1)]
     : NAV;
   // Beta testers only — same "beta" plan gate as the profile dropdown's
   // "Beta Feedback" link, just surfaced in the main nav too, right next to
