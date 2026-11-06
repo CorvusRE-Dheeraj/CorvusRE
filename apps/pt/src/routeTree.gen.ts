@@ -35,6 +35,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as TicketFeedbackRouteImport } from './routes/ticket-feedback'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
@@ -187,6 +188,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TicketFeedbackRoute = TicketFeedbackRouteImport.update({
+  id: '/ticket-feedback',
+  path: '/ticket-feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
   path: '/unsubscribe',
@@ -329,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
@@ -378,6 +385,7 @@ export interface FileRoutesByTo {
   '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
@@ -427,6 +435,7 @@ export interface FileRoutesById {
   '/support': typeof SupportRoute
   '/tax-payment': typeof TaxPaymentRoute
   '/terms': typeof TermsRoute
+  '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
   '/dashboard/_layout/acquisition': typeof DashboardLayoutAcquisitionRoute
@@ -478,6 +487,7 @@ export interface FileRouteTypes {
     | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/ticket-feedback'
     | '/unsubscribe'
     | '/dashboard'
     | '/dashboard/acquisition'
@@ -527,6 +537,7 @@ export interface FileRouteTypes {
     | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/ticket-feedback'
     | '/unsubscribe'
     | '/dashboard/acquisition'
     | '/dashboard/agreements'
@@ -575,6 +586,7 @@ export interface FileRouteTypes {
     | '/support'
     | '/tax-payment'
     | '/terms'
+    | '/ticket-feedback'
     | '/unsubscribe'
     | '/dashboard/_layout'
     | '/dashboard/_layout/acquisition'
@@ -625,6 +637,7 @@ export interface RootRouteChildren {
   SupportRoute: typeof SupportRoute
   TaxPaymentRoute: typeof TaxPaymentRoute
   TermsRoute: typeof TermsRoute
+  TicketFeedbackRoute: typeof TicketFeedbackRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   DashboardLayoutRoute: typeof DashboardLayoutRouteWithChildren
 }
@@ -811,6 +824,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ticket-feedback': {
+      id: '/ticket-feedback'
+      path: '/ticket-feedback'
+      fullPath: '/ticket-feedback'
+      preLoaderRoute: typeof TicketFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/unsubscribe': {
@@ -1038,6 +1058,7 @@ const rootRouteChildren: RootRouteChildren = {
   SupportRoute: SupportRoute,
   TaxPaymentRoute: TaxPaymentRoute,
   TermsRoute: TermsRoute,
+  TicketFeedbackRoute: TicketFeedbackRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   DashboardLayoutRoute: DashboardLayoutRouteWithChildren,
 }

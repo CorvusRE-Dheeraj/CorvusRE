@@ -73,7 +73,7 @@ export type PropertyRecord = {
   verificationNote?: string | null;
 };
 
-type PropertyRow = {
+export type PropertyRow = {
   id: string;
   address: string;
   cad: string | null;
@@ -107,6 +107,11 @@ type PropertyRow = {
 };
 
 function fromRow(row: PropertyRow): PropertyRecord {
+  return propertyFromRow(row);
+}
+
+// A raw properties row (e.g. from a staff RPC returning to_jsonb(row)) as the app's record.
+export function propertyFromRow(row: PropertyRow): PropertyRecord {
   return {
     id: row.id,
     address: tidyAddress(row.address),

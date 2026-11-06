@@ -1,6 +1,7 @@
 // Deploy via CLI: `supabase functions deploy create-billing-portal-session`.
 // Uses its own portal configuration (see portalConfiguration below), so the
 // Stripe Dashboard's default portal settings no longer apply here.
+import { portalConfiguration } from "../_shared/billing-portal.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
@@ -10,28 +11,6 @@ import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 // commitment that only the app enforces (cancel-property-subscription,
 // ../_shared/commitment.ts). Created once per Stripe account (test and live
 // are separate) and found again by its metadata tag.
-const PORTAL_TAG = "corvuspt-no-cancel-v1";
-async function portalConfiguration(stripe: Stripe): Promise<string> {
-  const existing = await stripe.billingPortal.configurations.list({ active: true, limit: 100 });
-  const found = existing.data.find((c) => c.metadata?.corvuspt === PORTAL_TAG);
-  if (found) return found.id;
-  const created = await stripe.billingPortal.configurations.create({
-    business_profile: {
-      headline: "CorvusPT billing",
-      privacy_policy_url: "https://corvusre.com/corvuspt/privacy",
-      terms_of_service_url: "https://corvusre.com/corvuspt/terms",
-    },
-    features: {
-      customer_update: { enabled: true, allowed_updates: ["email", "address", "phone", "tax_id"] },
-      invoice_history: { enabled: true },
-      payment_method_update: { enabled: true },
-      subscription_cancel: { enabled: false },
-      subscription_update: { enabled: false },
-    },
-    metadata: { corvuspt: PORTAL_TAG },
-  });
-  return created.id;
-}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

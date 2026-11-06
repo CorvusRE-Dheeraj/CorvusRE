@@ -5,6 +5,8 @@
 //   refund                 refund a property's latest subscription payment
 //   agreement_change       void a signed agreement so the customer signs again
 //   automation_permission  turn a marketing automation on / off
+//   subscription_override  waive a property's plan commitment and end its subscription
+//                          (at period end, or now) — outside the cancellation policy
 // Only a Super Admin DECIDES; an approval is then executed here (Stripe for
 // refunds and discounts, apply_approved_change() for the rest) and recorded in
 // the shared history with the approval it used.
@@ -24,8 +26,12 @@ const corsHeaders = {
 };
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: corsHeaders });
 
-type Kind = "access_change" | "pricing_exception" | "refund" | "agreement_change" | "automation_permission";
-const KINDS: Kind[] = ["access_change", "pricing_exception", "refund", "agreement_change", "automation_permission"];
+type Kind = "access_change" | "pricing_exception" | "refund" | "agreement_change" | "automation_permission" | "subscription_override";
+const KINDS: Kind[] = ["access_change", "pricing_exception", "refund", "agreement_change", "automation_permission", "subscription_override"];
+const OVERRIDE_LABEL: Record<string, string> = {
+  end_at_period_end: "waive the commitment — end at the end of the current billing period",
+  end_now: "waive the commitment — end the subscription now",
+};
 const ROLE_LABEL: Record<string, string> = {
   marketing_admin: "Marketing Admin",
   marketing_supervisor: "Marketing Supervisor",
@@ -112,6 +118,23 @@ async function shape(db: SupabaseClient, kind: Kind, p: Record<string, unknown>)
       title: `Refund ${cents ? usd(cents) : "the latest payment in full"} — ${who.email} · ${prop.address}`,
     };
   }
+  if (kind === "subscription_override") {
+    const { data: prop } = await db
+      .from("properties")
+      .select("id, address, user_id, stripe_subscription_id")
+      .eq("id", String(p.property_id ?? ""))
+      .maybeSingle();
+    if (!prop || prop.user_id !== who.id) throw new Error("Pick one of this customer's properties");
+    if (!prop.stripe_subscription_id) throw new Error("That property has no subscription");
+    const action = String(p.action ?? "");
+    if (!OVERRIDE_LABEL[action]) throw new Error("Pick what to do with the subscription");
+    return {
+      profile: who.id,
+      property: prop.id,
+      payload: { email: who.email, action, property_address: prop.address },
+      title: `Subscription override: ${OVERRIDE_LABEL[action]} — ${who.email} · ${prop.address}`,
+    };
+  }
   // agreement_change: void the customer's current signed copy
   const agreement = String(p.agreement ?? "");
   let recordId = p.record_id ? String(p.record_id) : null;
@@ -174,6 +197,32 @@ async function execute(db: SupabaseClient, a: Approval, decidedBy: string) {
     await db.rpc("log_record_event", {
       p_department: "shared", p_entity_type: "pricing", p_entity_id: ex.id, p_action: "pricing_exception_applied",
       p_summary: `Pricing exception: ${a.title}${appliedTo ? " — applied to the current subscription" : " — applies at checkout"}`,
+      p_profile: a.target_profile, p_property: a.target_property, p_after: result, p_approval: a.id, p_actor: decidedBy,
+    });
+    return result;
+  }
+  if (a.kind === "subscription_override") {
+    const { data: sp } = await db.from("properties").select("stripe_subscription_id, address").eq("id", a.target_property!).single();
+    if (!sp?.stripe_subscription_id) throw new Error("The property no longer has a subscription");
+    const { stripe, mode } = await stripeFor(a.target_profile!);
+    const action = (a.payload as { action: string }).action;
+    const sub = action === "end_now"
+      ? await stripe.subscriptions.cancel(sp.stripe_subscription_id, { prorate: false })
+      : await (async () => {
+          // a scheduled commitment end (cancel_at) is cleared first — Stripe
+          // takes one of cancel_at / cancel_at_period_end, not both
+          const cur = await stripe.subscriptions.retrieve(sp.stripe_subscription_id);
+          if (cur.cancel_at && !cur.cancel_at_period_end) {
+            await stripe.subscriptions.update(cur.id, { cancel_at: "" as unknown as number });
+          }
+          return await stripe.subscriptions.update(cur.id, { cancel_at_period_end: true });
+        })();
+    const endsAt = action === "end_now" ? new Date().toISOString() : new Date(sub.current_period_end * 1000).toISOString();
+    const result = { subscription: sub.id, status: sub.status, ends_at: endsAt, stripe_mode: mode };
+    await db.from("approval_requests").update({ status: "executed", executed_at: new Date().toISOString(), result }).eq("id", a.id);
+    await db.rpc("log_record_event", {
+      p_department: "shared", p_entity_type: "subscription", p_entity_id: null, p_action: "subscription_override",
+      p_summary: `Subscription override (${OVERRIDE_LABEL[action]}) — ${sp.address}; ends ${endsAt.slice(0, 10)}`,
       p_profile: a.target_profile, p_property: a.target_property, p_after: result, p_approval: a.id, p_actor: decidedBy,
     });
     return result;

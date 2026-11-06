@@ -642,6 +642,9 @@ export function RequestApprovalDialog({
   const [role, setRole] = useState<string>("support_admin");
   const [enabled, setEnabled] = useState(true);
   const [autoKey, setAutoKey] = useState("");
+  const [overrideAction, setOverrideAction] = useState<"end_at_period_end" | "end_now">(
+    "end_at_period_end",
+  );
   const [autos, setAutos] = useState<AutomationPermission[]>([]);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -657,7 +660,11 @@ export function RequestApprovalDialog({
     try {
       const r = await lookupCustomer(email);
       setFound(r);
-      setPropertyId(kind === "refund" ? (r.properties.find((p) => p.subscribed)?.id ?? "") : "");
+      setPropertyId(
+        kind === "refund" || kind === "subscription_override"
+          ? (r.properties.find((p) => p.subscribed)?.id ?? "")
+          : "",
+      );
       setRecordId("");
     } catch (e) {
       setFound(null);
@@ -682,6 +689,8 @@ export function RequestApprovalDialog({
         return { email, role, enabled };
       case "automation_permission":
         return { key: autoKey, enabled };
+      case "subscription_override":
+        return { email, property_id: propertyId, action: overrideAction };
     }
   };
   const submit = async (decideNow: boolean) => {
@@ -761,6 +770,40 @@ export function RequestApprovalDialog({
               )}
             </div>
           </div>
+        )}
+        {kind === "subscription_override" && found && (
+          <>
+            <label className="grid gap-1">
+              <span className="font-medium">Property</span>
+              <select
+                className={input}
+                value={propertyId}
+                onChange={(e) => setPropertyId(e.target.value)}
+              >
+                <option value="">Choose…</option>
+                {found.properties
+                  .filter((p) => p.subscribed)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.address}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="grid gap-1">
+              <span className="font-medium">Override</span>
+              <select
+                className={input}
+                value={overrideAction}
+                onChange={(e) => setOverrideAction(e.target.value as typeof overrideAction)}
+              >
+                <option value="end_at_period_end">
+                  Waive the commitment — end at the end of this billing period
+                </option>
+                <option value="end_now">Waive the commitment — end the subscription now</option>
+              </select>
+            </label>
+          </>
         )}
         {(kind === "pricing_exception" || kind === "refund") && found && (
           <label className="grid gap-1">

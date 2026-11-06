@@ -375,6 +375,13 @@ Deno.serve(async (req: Request) => {
     // All other event types are intentionally ignored but still return 200 below so
     // Stripe doesn't keep retrying events we don't act on.
 
+    // Subscription history for Customer Support (renewals, cancellations,
+    // failed payments — public.subscription_events). Best effort: a logging
+    // problem never fails the webhook.
+    await logSubscriptionEvent(adminClient, event).catch((err) =>
+      console.error("subscription_events log failed", err),
+    );
+
     return new Response(JSON.stringify({ received: true }), { status: 200, headers: corsHeaders });
   } catch (err) {
     if (err instanceof StripeUnavailable) {
@@ -391,3 +398,78 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+// One row per meaningful billing moment, keyed by the Stripe event id so a
+// retried event isn't logged twice. invoice.paid (billing_reason
+// subscription_cycle) is a renewal; invoice.payment_failed a failed payment —
+// both need those two events enabled on the Stripe webhook endpoint.
+async function logSubscriptionEvent(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  event: Stripe.Event,
+): Promise<void> {
+  type Row = {
+    kind: "started" | "renewed" | "payment_failed" | "cancel_scheduled" | "cancel_reverted" | "canceled";
+    subId: string | null;
+    amount?: number | null;
+    detail?: string | null;
+  };
+  let row: Row | null = null;
+  const obj = event.data.object as unknown as Record<string, unknown>;
+  const prev = (event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes ?? {};
+  if (event.type === "customer.subscription.created") {
+    row = { kind: "started", subId: obj.id as string };
+  } else if (event.type === "customer.subscription.deleted") {
+    row = { kind: "canceled", subId: obj.id as string };
+  } else if (event.type === "customer.subscription.updated") {
+    const nowCancel = !!obj.cancel_at_period_end || !!obj.cancel_at;
+    const hadCancelKey = "cancel_at_period_end" in prev || "cancel_at" in prev;
+    const wasCancel = !!prev.cancel_at_period_end || !!prev.cancel_at;
+    if (hadCancelKey && nowCancel && !wasCancel) {
+      const at = (obj.cancel_at as number | null) ?? (obj.current_period_end as number | null);
+      row = {
+        kind: "cancel_scheduled",
+        subId: obj.id as string,
+        detail: at ? `Ends ${new Date(at * 1000).toISOString().slice(0, 10)}` : null,
+      };
+    } else if (hadCancelKey && !nowCancel && wasCancel) {
+      row = { kind: "cancel_reverted", subId: obj.id as string };
+    } else if ("status" in prev && obj.status === "past_due") {
+      row = { kind: "payment_failed", subId: obj.id as string, detail: "Subscription went past due" };
+    }
+  } else if (event.type === "invoice.paid") {
+    if (obj.billing_reason === "subscription_cycle") {
+      row = { kind: "renewed", subId: (obj.subscription as string) ?? null, amount: obj.amount_paid as number };
+    }
+  } else if (event.type === "invoice.payment_failed") {
+    row = {
+      kind: "payment_failed",
+      subId: (obj.subscription as string) ?? null,
+      amount: obj.amount_due as number,
+      detail: `Attempt ${obj.attempt_count ?? 1}`,
+    };
+  }
+  if (!row || !row.subId) return;
+  const { data: prop } = await db
+    .from("properties")
+    .select("id, user_id")
+    .eq("stripe_subscription_id", row.subId)
+    .maybeSingle();
+  const { data: bpp } = prop
+    ? { data: null }
+    : await db.from("bpp_accounts").select("user_id").eq("stripe_subscription_id", row.subId).maybeSingle();
+  const profileId = (prop?.user_id ?? bpp?.user_id ?? null) as string | null;
+  if (!profileId) return;
+  await db.from("subscription_events").upsert(
+    {
+      profile_id: profileId,
+      property_id: (prop?.id as string | undefined) ?? null,
+      stripe_subscription_id: row.subId,
+      kind: row.kind,
+      amount_cents: row.amount ?? null,
+      detail: row.detail ?? null,
+      stripe_event_id: event.id,
+    },
+    { onConflict: "stripe_event_id", ignoreDuplicates: true },
+  );
+}
