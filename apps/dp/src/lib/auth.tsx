@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/lib/supabase";
@@ -8,6 +16,7 @@ import { invokeEdgeFunction } from "@/lib/edge-functions";
 import { stableUser } from "@/lib/auth-user";
 import { tryBridgeFromIdentity } from "@/lib/login-bridge";
 import { mustSignInAgain, sendToSwitchSignIn } from "@/lib/door-switch";
+import { IdleWarningDialog } from "@/components/IdleWarningDialog";
 
 type AuthState = {
   user: User | null;
@@ -21,6 +30,9 @@ const AuthContext = createContext<AuthState>({ user: null, session: null, loadin
 // browser tab shouldn't stay authenticated forever), independent of the Supabase
 // session's own JWT expiry/refresh.
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
+// At the 60-minute mark the user is asked first (IdleWarningDialog): stay or
+// sign out. No answer within this window signs them out. Same as CorvusPT.
+const IDLE_GRACE_MS = 2 * 60 * 1000;
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
 // Shared with CorvusPT's own auth.tsx (was "corvusdp.lastActivityAt") --
 // both keys already live in the same-origin localStorage regardless of the
@@ -57,6 +69,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ user: null, session: null, loading: true });
   const nav = useNavigate();
   const signingOutRef = useRef(false);
+  // The "about to be signed out" warning: when the automatic sign-out happens.
+  const [idleDeadline, setIdleDeadline] = useState<number | null>(null);
+  const warningRef = useRef(false);
+  const showWarning = useCallback((deadline: number | null) => {
+    warningRef.current = deadline !== null;
+    setIdleDeadline(deadline);
+  }, []);
+  const idleSignOut = useCallback(async () => {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    showWarning(null);
+    await supabase.auth.signOut();
+    nav({
+      to: "/sign-in",
+      search: {
+        reason: "You were signed out after 60 minutes of inactivity, for your security.",
+      },
+    });
+  }, [nav, showWarning]);
+  const stayIdle = useCallback(() => {
+    showWarning(null);
+    markActivity(); // also closes the warning in this browser's other tabs
+  }, [showWarning]);
+  // Same order as the menu's Sign out (SiteChrome): go home first, then sign
+  // out, so the auth listener doesn't win the race and land on /sign-in.
+  const signOutFromWarning = useCallback(async () => {
+    signingOutRef.current = true;
+    showWarning(null);
+    try {
+      await Promise.race([nav({ to: "/" }), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    } finally {
+      await supabase.auth.signOut();
+    }
+  }, [nav, showWarning]);
 
   useEffect(() => {
     // Signed in for CorvusPT, now opening CorvusDP: sign in again (see
@@ -168,10 +214,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     signingOutRef.current = false;
+    showWarning(null);
     markActivity();
 
+    // While the warning is up, only its buttons count — otherwise the mouse
+    // press on "Sign out" would itself reset the clock and close the dialog.
+    function onActivity() {
+      if (!warningRef.current) markActivity();
+    }
+
     function handleStorageActivityPing(e: StorageEvent) {
-      if (e.key === LAST_ACTIVITY_KEY) signingOutRef.current = false;
+      if (e.key === LAST_ACTIVITY_KEY) {
+        signingOutRef.current = false;
+        // "Stay signed in" chosen in another tab.
+        if (warningRef.current && msSinceLastActivity() < IDLE_TIMEOUT_MS) showWarning(null);
+      }
       // Another door's tab (or this door in another tab) just signed out --
       // this tab's own onAuthStateChange SIGNED_OUT branch above will fire
       // once this completes, which is what actually clears state/redirects.
@@ -183,16 +240,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    async function checkIdle() {
-      if (signingOutRef.current || msSinceLastActivity() < IDLE_TIMEOUT_MS) return;
-      signingOutRef.current = true;
-      await supabase.auth.signOut();
-      nav({
-        to: "/sign-in",
-        search: {
-          reason: "You were signed out after 60 minutes of inactivity, for your security.",
-        },
-      });
+    function checkIdle() {
+      if (signingOutRef.current) return;
+      const idle = msSinceLastActivity();
+      if (idle < IDLE_TIMEOUT_MS) {
+        if (warningRef.current) showWarning(null);
+        return;
+      }
+      // Back after a long absence: past the grace window there is nobody to
+      // ask — sign out straight away.
+      if (idle >= IDLE_TIMEOUT_MS + IDLE_GRACE_MS) {
+        void idleSignOut();
+        return;
+      }
+      if (!warningRef.current) showWarning(Date.now() - idle + IDLE_TIMEOUT_MS + IDLE_GRACE_MS);
     }
 
     function onVisibilityChange() {
@@ -201,20 +262,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("storage", handleStorageActivityPing);
     ACTIVITY_EVENTS.forEach((event) =>
-      window.addEventListener(event, markActivity, { passive: true }),
+      window.addEventListener(event, onActivity, { passive: true }),
     );
     const interval = window.setInterval(checkIdle, IDLE_CHECK_INTERVAL_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.removeEventListener("storage", handleStorageActivityPing);
-      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, markActivity));
+      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, onActivity));
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [userId, nav]);
+  }, [userId, showWarning, idleSignOut]);
 
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={state}>
+      {children}
+      {idleDeadline !== null && state.user && (
+        <IdleWarningDialog
+          deadline={idleDeadline}
+          onStay={stayIdle}
+          onSignOut={() => void signOutFromWarning()}
+          onExpire={() => void idleSignOut()}
+        />
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

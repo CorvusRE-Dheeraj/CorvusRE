@@ -18,6 +18,7 @@ import { stableUser } from "@/lib/auth-user";
 import { listMyWorkspaces, type Workspace } from "@/lib/account-members";
 import { setActiveWorkspace } from "@/lib/active-account";
 import { mustSignInAgain, sendToSwitchSignIn } from "@/lib/door-switch";
+import { IdleWarningDialog } from "@/components/IdleWarningDialog";
 
 type AuthState = {
   user: User | null;
@@ -64,6 +65,9 @@ const savedWorkspace = (userId: string): string | null => {
 // not user presence — Supabase auto-refreshes that in the background well
 // inside 60 minutes, so it can never substitute for this).
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
+// At the 60-minute mark the user is asked first (IdleWarningDialog): stay or
+// sign out. No answer within this window signs them out.
+const IDLE_GRACE_MS = 2 * 60 * 1000;
 // Checked well inside the timeout itself so the actual sign-out never lags
 // noticeably behind the real 60-minute mark, while still cheap to run.
 const IDLE_CHECK_INTERVAL_MS = 30 * 1000;
@@ -114,6 +118,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guards against the interval tick and the visibilitychange check both
   // firing the sign-out within the same idle window.
   const signingOutRef = useRef(false);
+  // The "about to be signed out" warning: when the automatic sign-out happens.
+  const [idleDeadline, setIdleDeadline] = useState<number | null>(null);
+  const warningRef = useRef(false);
+  const showWarning = useCallback((deadline: number | null) => {
+    warningRef.current = deadline !== null;
+    setIdleDeadline(deadline);
+  }, []);
+  const idleSignOut = useCallback(async () => {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    showWarning(null);
+    await supabase.auth.signOut();
+    nav({
+      to: "/sign-in",
+      search: {
+        reason: "You were signed out after 60 minutes of inactivity, for your security.",
+      },
+    });
+  }, [nav, showWarning]);
+  const stayIdle = useCallback(() => {
+    showWarning(null);
+    markActivity(); // also closes the warning in this browser's other tabs
+  }, [showWarning]);
+  // Same order as the menu's Sign out (SiteChrome): go home first, then sign
+  // out, so the auth listener doesn't win the race and land on /sign-in.
+  const signOutFromWarning = useCallback(async () => {
+    signingOutRef.current = true;
+    showWarning(null);
+    try {
+      await Promise.race([nav({ to: "/" }), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    } finally {
+      await supabase.auth.signOut();
+    }
+  }, [nav, showWarning]);
 
   useEffect(() => {
     // Signed in for CorvusDP, now opening CorvusPT: sign in again (see
@@ -219,14 +257,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     signingOutRef.current = false;
+    showWarning(null);
     // Arriving here — a fresh interactive sign-in, or just reopening/
     // reloading the app on an already-valid session — is itself a real
     // activity signal, so this always starts a clean 60-minute clock rather
     // than risking an immediate sign-out from a stale leftover timestamp.
     markActivity();
 
+    // While the warning is up, only its buttons count — otherwise the mouse
+    // press on "Sign out" would itself reset the clock and close the dialog.
+    function onActivity() {
+      if (!warningRef.current) markActivity();
+    }
+
     function handleStorageActivityPing(e: StorageEvent) {
-      if (e.key === LAST_ACTIVITY_KEY) signingOutRef.current = false;
+      if (e.key === LAST_ACTIVITY_KEY) {
+        signingOutRef.current = false;
+        // "Stay signed in" chosen in another tab.
+        if (warningRef.current && msSinceLastActivity() < IDLE_TIMEOUT_MS) showWarning(null);
+      }
       // Another door signed out (or this door did, in another tab) -- this
       // tab's own onAuthStateChange SIGNED_OUT branch above fires once this
       // completes, which is what actually clears state/redirects.
@@ -244,16 +293,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // happens to check first. supabase.auth.signOut()'s default scope
     // revokes the session everywhere at once, so every tab of a truly idle
     // browser ends up here at roughly the same real 60-minute mark anyway.
-    async function checkIdle() {
-      if (signingOutRef.current || msSinceLastActivity() < IDLE_TIMEOUT_MS) return;
-      signingOutRef.current = true;
-      await supabase.auth.signOut();
-      nav({
-        to: "/sign-in",
-        search: {
-          reason: "You were signed out after 60 minutes of inactivity, for your security.",
-        },
-      });
+    function checkIdle() {
+      if (signingOutRef.current) return;
+      const idle = msSinceLastActivity();
+      if (idle < IDLE_TIMEOUT_MS) {
+        if (warningRef.current) showWarning(null);
+        return;
+      }
+      // Back after a long absence (a sleeping laptop): past the grace window
+      // there is nobody to ask — sign out straight away.
+      if (idle >= IDLE_TIMEOUT_MS + IDLE_GRACE_MS) {
+        void idleSignOut();
+        return;
+      }
+      if (!warningRef.current) showWarning(Date.now() - idle + IDLE_TIMEOUT_MS + IDLE_GRACE_MS);
     }
     // Catches a backgrounded/throttled tab whose setInterval got suspended
     // for longer than the check interval — re-checks the real elapsed time
@@ -265,18 +318,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("storage", handleStorageActivityPing);
     ACTIVITY_EVENTS.forEach((event) =>
-      window.addEventListener(event, markActivity, { passive: true }),
+      window.addEventListener(event, onActivity, { passive: true }),
     );
     const interval = window.setInterval(checkIdle, IDLE_CHECK_INTERVAL_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.removeEventListener("storage", handleStorageActivityPing);
-      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, markActivity));
+      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, onActivity));
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [userId, nav]);
+  }, [userId, showWarning, idleSignOut]);
 
   // Team access: the owner accounts this user can work in, and which one
   // they're in. Validated against live membership on every load, so a
@@ -342,7 +395,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [effectiveUser, state, ws, setWorkspace],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {idleDeadline !== null && state.user && (
+        <IdleWarningDialog
+          deadline={idleDeadline}
+          onStay={stayIdle}
+          onSignOut={() => void signOutFromWarning()}
+          onExpire={() => void idleSignOut()}
+        />
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
