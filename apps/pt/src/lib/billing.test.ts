@@ -25,6 +25,7 @@ const {
   isCustomPricedValue,
   isLaunchDiscountActive,
   checkoutDiscountFor,
+  annualFirstYearPrice,
 } = await import("./billing");
 
 describe("getMyBilling", () => {
@@ -68,10 +69,20 @@ describe("startPropertyCheckout", () => {
     expect(mockInvoke).toHaveBeenCalledWith("create-checkout-session", {
       propertyId: "prop-1",
       tier: "owner_managed",
+      interval: "year",
       successPath: `${import.meta.env.BASE_URL}dashboard/properties?checkout=success`,
       cancelPath: `${import.meta.env.BASE_URL}dashboard/properties`,
     });
     expect(window.location.href).toBe("https://checkout.stripe.com/session/abc");
+  });
+
+  it("sends the monthly choice when the customer picks monthly", async () => {
+    mockInvoke.mockResolvedValue({ url: "https://checkout.stripe.com/session/m" });
+    await startPropertyCheckout("prop-1", "corvusrf_managed", { interval: "month" });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "create-checkout-session",
+      expect.objectContaining({ tier: "corvusrf_managed", interval: "month" }),
+    );
   });
 
   it("throws instead of redirecting when Stripe returns no URL", async () => {
@@ -140,36 +151,34 @@ describe("bracketForValue / isCustomPricedValue", () => {
 });
 
 describe("propertyMonthlyPrice / propertyAnnualPrice", () => {
-  it("is $299/mo, billed as $3,588/yr, for both tiers", () => {
-    expect(propertyMonthlyPrice("owner_managed", "upTo5m", false)).toBe(299);
-    expect(propertyAnnualPrice("owner_managed", "upTo5m", false)).toBe(3588);
+  it("is $199/mo Owner-Managed and $299/mo Corvus-Managed; annual list is 12x", () => {
+    expect(propertyMonthlyPrice("owner_managed", "upTo5m", false)).toBe(199);
+    expect(propertyMonthlyPrice("corvusrf_managed", "upTo5m", false)).toBe(299);
+    expect(propertyAnnualPrice("owner_managed", "upTo5m", false)).toBe(2388);
     expect(propertyAnnualPrice("corvusrf_managed", "upTo5m", false)).toBe(3588);
   });
 
+  it("takes 50% off the first year when paid annually: $1,194 and $1,794", () => {
+    expect(annualFirstYearPrice("owner_managed")).toBe(1194);
+    expect(annualFirstYearPrice("corvusrf_managed")).toBe(1794);
+  });
+
   it("discounts 15% for an additional property in the same bracket", () => {
-    // 299 * 0.85 = 254.15/mo -> 3049.80/yr
-    expect(propertyMonthlyPrice("owner_managed", "upTo5m", true)).toBeCloseTo(254.15, 5);
-    expect(propertyAnnualPrice("owner_managed", "upTo5m", true)).toBeCloseTo(3049.8, 5);
+    // 199 * 0.85 = 169.15/mo -> 2029.80/yr
+    expect(propertyMonthlyPrice("owner_managed", "upTo5m", true)).toBeCloseTo(169.15, 5);
+    expect(propertyAnnualPrice("owner_managed", "upTo5m", true)).toBeCloseTo(2029.8, 5);
   });
 });
 
 describe("checkoutDiscountFor", () => {
-  const beforeDeadline = new Date("2027-01-31T12:00:00Z");
-  // Feb 1 2027 00:00 US Central = 06:00 UTC
-  const atDeadline = new Date("2027-02-01T06:00:00Z");
-
-  it("gives the 50% first-year launch discount only before Feb 1 2027", () => {
-    expect(isLaunchDiscountActive(beforeDeadline)).toBe(true);
-    expect(isLaunchDiscountActive(atDeadline)).toBe(false);
-    expect(checkoutDiscountFor(false, beforeDeadline)).toEqual({ kind: "launch", percentOff: 0.5 });
-    expect(checkoutDiscountFor(false, atDeadline)).toBeNull();
+  it("gives the 50% first-year discount to annual payers only, with no deadline", () => {
+    expect(isLaunchDiscountActive()).toBe(true);
+    expect(checkoutDiscountFor(false, "year")).toEqual({ kind: "launch", percentOff: 0.5 });
+    expect(checkoutDiscountFor(false, "month")).toBeNull();
   });
 
-  it("gives franchise owners 50% off instead of (not on top of) the launch discount", () => {
-    expect(checkoutDiscountFor(true, beforeDeadline)).toEqual({
-      kind: "franchise",
-      percentOff: 0.5,
-    });
-    expect(checkoutDiscountFor(true, atDeadline)).toEqual({ kind: "franchise", percentOff: 0.5 });
+  it("gives franchise owners 50% off instead of (not on top of) the annual discount", () => {
+    expect(checkoutDiscountFor(true, "year")).toEqual({ kind: "franchise", percentOff: 0.5 });
+    expect(checkoutDiscountFor(true, "month")).toEqual({ kind: "franchise", percentOff: 0.5 });
   });
 });

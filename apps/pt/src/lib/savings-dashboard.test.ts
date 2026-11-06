@@ -66,7 +66,7 @@ describe("getProtestCost", () => {
   it("prices an unsubscribed property at the Owner-Managed plan", () => {
     const c = getProtestCost({ ...none, accountPlan: "free_ai_review" });
     expect(c.status).toBe("not_subscribed");
-    expect(c.total).toBe(299 * 12);
+    expect(c.total).toBe(199 * 12);
   });
 
   it("uses Stripe's figure for an active subscription and adds other expenses", () => {

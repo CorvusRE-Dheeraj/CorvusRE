@@ -31,10 +31,13 @@ import {
   startPropertyCheckout,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
+  planPriceLines,
   type MySubscription,
   type PlanValue,
   type Tier,
+  type BillingInterval,
 } from "@/lib/billing";
+import { BillingIntervalToggle, CommitmentNote } from "@/components/BillingChoice";
 import { getComps, type CompsResult } from "@/lib/cad-comps";
 import { cadLookup, cadLookupByAccount, type CadRecord } from "@/lib/cad-lookup";
 import { getCaseNextAction, type CaseNextAction } from "@/lib/case-next-action";
@@ -518,6 +521,7 @@ function Report() {
   // here — see handleSubscribeToProperty — rather than sending the user off
   // to the Properties list to find this same property again).
   const [subscribingTier, setSubscribingTier] = useState<Tier | null>(null);
+  const [checkoutInterval, setCheckoutInterval] = useState<BillingInterval>("month");
   const [checkoutPreview, setCheckoutPreview] = useState<{
     property: PropertyRecord;
     tier: Tier;
@@ -1210,7 +1214,7 @@ function Report() {
   async function continueToCheckout(property: PropertyRecord, tier: Tier) {
     setSubscribingTier(tier);
     try {
-      await startPropertyCheckout(property.id, tier, { newTab: true });
+      await startPropertyCheckout(property.id, tier, { newTab: true, interval: checkoutInterval });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not start checkout. Please try again.",
@@ -3410,7 +3414,7 @@ function Report() {
                       >
                         {subscribingTier === tier
                           ? "Redirecting…"
-                          : `Subscribe — ${tier === "owner_managed" ? "Owner-Managed" : "Expert/Managed Help"} $${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/mo, billed annually`}
+                          : `Subscribe — ${TIER_LABEL[tier]}, ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}/month`}
                       </button>
                     );
                   })}
@@ -3822,6 +3826,19 @@ function Report() {
             <div className="mt-4">
               <CasePreviewFor property={checkoutPreview.property} />
             </div>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <BillingIntervalToggle value={checkoutInterval} onChange={setCheckoutInterval} />
+              <span className="text-sm">
+                <span className="font-semibold">
+                  {planPriceLines(checkoutPreview.tier, checkoutInterval).amount}
+                </span>{" "}
+                {planPriceLines(checkoutPreview.tier, checkoutInterval).unit} ·{" "}
+                <span className="text-muted-foreground">
+                  {planPriceLines(checkoutPreview.tier, checkoutInterval).detail}
+                </span>
+              </span>
+            </div>
+            <CommitmentNote className="mt-3" />
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button onClick={() => setCheckoutPreview(null)} className="btn-outline">
                 Not now

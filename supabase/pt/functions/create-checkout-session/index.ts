@@ -16,11 +16,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import {
-  annualUnitAmountCents,
   bracketForValue,
+  isBillingInterval,
   isCustomPricedValue,
   isTier,
+  PRICING_VERSION,
   subscriptionProductName,
+  unitAmountCents,
+  type BillingInterval,
   type Tier,
 } from "../_shared/pricing.ts";
 import { bestCheckoutCoupon, type PricingException } from "../_shared/discounts.ts";
@@ -37,12 +40,16 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { propertyId, tier, successPath, cancelPath } = (await req.json()) as {
+    const { propertyId, tier, successPath, cancelPath, interval: rawInterval } = (await req.json()) as {
       propertyId?: string;
       tier?: Tier;
       successPath?: string;
       cancelPath?: string;
+      interval?: BillingInterval;
     };
+    // Monthly (12-month commitment) or annual upfront; annual when not given,
+    // so an older client keeps its previous behaviour.
+    const interval: BillingInterval = isBillingInterval(rawInterval) ? rawInterval : "year";
     if (!isTier(tier)) {
       return new Response(
         JSON.stringify({ error: "tier must be owner_managed or corvusrf_managed" }),
@@ -139,7 +146,7 @@ Deno.serve(async (req: Request) => {
     // hosted billing portal (product name only); also set as the subscription
     // description for portals/emails that surface it. See ../_shared/pricing.ts.
     const address = ((property.address as string | null) ?? "").trim();
-    const unitAmount = annualUnitAmountCents(tier, bracket, isAdditionalInBracket);
+    const unitAmount = unitAmountCents(tier, bracket, interval, isAdditionalInBracket);
     const name = subscriptionProductName(tier, bracket, address, isAdditionalInBracket);
 
     const { data: profile } = await adminClient
@@ -151,8 +158,8 @@ Deno.serve(async (req: Request) => {
     const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
     const origin = req.headers.get("origin") ?? new URL(req.url).origin;
 
-    // Billed annually: Checkout shows the full $3,588/yr, then the launch or
-    // franchise coupon as its own line (see ../_shared/discounts.ts).
+    // Checkout shows the full price, then the annual first-year 50% (annual
+    // only) or the franchise coupon as its own line (see ../_shared/discounts.ts).
     // ...or a Super-Admin-approved pricing exception for this customer /
     // property, when it's the bigger discount (see staff-approvals).
     const { data: exceptions } = await adminClient
@@ -167,6 +174,7 @@ Deno.serve(async (req: Request) => {
       stripe,
       profile?.is_franchise_owner === true,
       (exceptions?.[0] as PricingException | undefined) ?? null,
+      interval,
     );
 
     const session = await stripe.checkout.sessions.create({
@@ -177,7 +185,7 @@ Deno.serve(async (req: Request) => {
           price_data: {
             currency: "usd",
             unit_amount: unitAmount,
-            recurring: { interval: "year" },
+            recurring: { interval },
             product_data: { name, metadata: { tier, bracket } },
           },
         },
@@ -188,9 +196,18 @@ Deno.serve(async (req: Request) => {
       customer_email: profile?.stripe_customer_id ? undefined : (user.email ?? undefined),
       subscription_data: {
         ...(address ? { description: address } : {}),
-        metadata: { tier, bracket, propertyId },
+        metadata: { tier, bracket, propertyId, interval, pricing: PRICING_VERSION },
       },
-      metadata: { tier, bracket, propertyId },
+      metadata: { tier, bracket, propertyId, interval },
+      // The commitment, stated on Stripe's own payment page before paying.
+      custom_text: {
+        submit: {
+          message:
+            interval === "month"
+              ? "Monthly plan with a 12-month commitment. You can give 60 days' notice to cancel once 13 months are complete."
+              : "One payment for 12 months. Renews yearly; you can turn off renewal at any time from Manage Billing.",
+        },
+      },
       success_url: `${origin}${safePath(successPath, "/dashboard/properties?checkout=success")}`,
       cancel_url: `${origin}${safePath(cancelPath, "/dashboard/properties")}`,
     });

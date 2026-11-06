@@ -34,7 +34,7 @@ const QUESTION_ICON: Record<(typeof ROLE_QUESTIONS)[number]["key"], typeof Searc
 };
 
 // The three lanes side by side: Free Property Review → Owner-Managed
-// CorvusPT → Expert/Managed Help, each saying plainly who files, who appears
+// CorvusPT → Corvus-Managed, each saying plainly who files, who appears
 // and who talks to the county. See lib/service-lanes.ts.
 export function ServiceLanes({ showCta = true }: { showCta?: boolean }) {
   return (

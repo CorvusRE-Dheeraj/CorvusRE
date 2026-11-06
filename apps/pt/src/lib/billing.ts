@@ -22,11 +22,13 @@ export type Tier = "owner_managed" | "corvusrf_managed";
 // can't import from src/lib).
 export const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "Expert/Managed Help",
+  corvusrf_managed: "Corvus-Managed",
 };
 
-// Property pricing (Oct 2026 revision): one fixed plan for properties up to
-// $5M — $299/mo, billed annually as $3,588/yr — and custom pricing at $5M+.
+// Property pricing (Nov 2026 revision): Owner-Managed $199/mo and
+// Corvus-Managed $299/mo for properties under $5M, paid monthly (12-month
+// commitment, lib/commitment.ts) or as one annual payment with 50% off the
+// first year; custom pricing at $5M+.
 // The real amount charged is computed by create-checkout-session (Stripe
 // price_data, not a fixed Price ID) — these numbers are for display/estimate
 // only, kept in sync by hand with supabase/pt/functions/_shared/pricing.ts
@@ -34,15 +36,17 @@ export const TIER_LABEL: Record<Tier, string> = {
 export type PropertyValueBracket = "upTo5m";
 
 export const VALUE_BRACKETS: { value: PropertyValueBracket; label: string }[] = [
-  { value: "upTo5m", label: "$1M - $5M" },
+  { value: "upTo5m", label: "Under $5M" },
 ];
 
-// Monthly-equivalent list price; charged x12 once a year. Both tiers share
-// it — the revised pricing sets one price regardless of who files.
+// Monthly list price. Annual = 12x, with the first year 50% off.
 export const TIER_BRACKET_PRICES: Record<Tier, Record<PropertyValueBracket, number>> = {
-  owner_managed: { upTo5m: 299 },
+  owner_managed: { upTo5m: 199 },
   corvusrf_managed: { upTo5m: 299 },
 };
+
+// How a subscription is paid — mirrors _shared/pricing.ts BillingInterval.
+export type BillingInterval = "month" | "year";
 
 // The pre-revision monthly brackets. Grandfathered subscriptions still carry
 // these bracket keys and prices — kept only so the Billing page can label
@@ -85,27 +89,47 @@ export function propertyAnnualPrice(
   return Math.round(propertyMonthlyPrice(tier, bracket, isAdditionalInBracket) * 12 * 100) / 100;
 }
 
-// 50% off the first year for anyone who subscribes before Feb 1 2027
-// (midnight US Central). Franchise owners instead get 50% off for as long as
-// they subscribe. The two don't stack — see _shared/discounts.ts, which
-// applies whichever one as a Stripe coupon at checkout.
+// Paying the year upfront takes 50% off the first year — a standing offer,
+// annual only (the "launch" kind keeps its name for existing callers).
+// Franchise owners instead get 50% off for as long as they subscribe. The two
+// don't stack — see _shared/discounts.ts, which applies whichever one as a
+// Stripe coupon at checkout.
 export const LAUNCH_DISCOUNT = 0.5;
-export const LAUNCH_DISCOUNT_DEADLINE = new Date("2027-02-01T06:00:00Z");
 export const FRANCHISE_DISCOUNT = 0.5;
 
-export function isLaunchDiscountActive(now: Date = new Date()): boolean {
-  return now < LAUNCH_DISCOUNT_DEADLINE;
+/** The annual first-year discount no longer expires; kept for callers. */
+export function isLaunchDiscountActive(): boolean {
+  return true;
 }
 
 export type CheckoutDiscount = { kind: "franchise" | "launch"; percentOff: number };
 
 export function checkoutDiscountFor(
   isFranchiseOwner: boolean,
-  now: Date = new Date(),
+  interval: BillingInterval = "year",
 ): CheckoutDiscount | null {
   if (isFranchiseOwner) return { kind: "franchise", percentOff: FRANCHISE_DISCOUNT };
-  if (isLaunchDiscountActive(now)) return { kind: "launch", percentOff: LAUNCH_DISCOUNT };
+  if (interval === "year") return { kind: "launch", percentOff: LAUNCH_DISCOUNT };
   return null;
+}
+
+/** First-year price when paid annually upfront (list x12, 50% off). */
+export function annualFirstYearPrice(tier: Tier, bracket: PropertyValueBracket = "upTo5m"): number {
+  return TIER_BRACKET_PRICES[tier][bracket] * 12 * (1 - LAUNCH_DISCOUNT);
+}
+
+const priceUsd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+/** The two ways to pay, as plain lines for one plan. */
+export function planPriceLines(tier: Tier, interval: BillingInterval) {
+  const monthly = TIER_BRACKET_PRICES[tier].upTo5m;
+  return interval === "month"
+    ? { amount: priceUsd(monthly), unit: "/month", detail: "12-month plan" }
+    : {
+        amount: priceUsd(annualFirstYearPrice(tier)),
+        unit: "first year",
+        detail: `Save 50% by paying upfront · then ${priceUsd(monthly * 12)}/year`,
+      };
 }
 
 // 1st property in a bracket is full price; every additional property a
@@ -211,8 +235,8 @@ export async function resumeBppSubscription(bppAccountId: string): Promise<void>
 
 export const PLAN_OPTIONS: { value: PlanValue; label: string }[] = [
   { value: "free_ai_review", label: "Free AI Review" },
-  { value: "owner_managed", label: "Owner-Managed CorvusPT ($299/mo/property, billed annually)" },
-  { value: "corvusrf_managed", label: "Expert/Managed Help ($299/mo/property, billed annually)" },
+  { value: "owner_managed", label: "Owner-Managed CorvusPT ($199/mo per property)" },
+  { value: "corvusrf_managed", label: "Corvus-Managed ($299/mo per property)" },
   { value: "beta", label: "Beta (free, full access)" },
 ];
 
@@ -251,7 +275,7 @@ export async function getMyBilling(userId: string): Promise<BillingInfo> {
 export async function startPropertyCheckout(
   propertyId: string,
   tier: Tier,
-  options?: { newTab?: boolean },
+  options?: { newTab?: boolean; interval?: BillingInterval },
 ): Promise<void> {
   const newTabHandle = options?.newTab ? window.open("", "_blank") : null;
   try {
@@ -259,6 +283,7 @@ export async function startPropertyCheckout(
     const { url } = await invokeEdgeFunction<{ url: string }>("create-checkout-session", {
       propertyId,
       tier,
+      interval: options?.interval ?? "year",
       successPath: `${basePath}dashboard/properties?checkout=success`,
       cancelPath: `${basePath}dashboard/properties`,
     });
@@ -299,13 +324,17 @@ export async function openBillingPortal(options?: { newTab?: boolean }): Promise
 // Cancels exactly one property's own subscription — trivial now that each
 // property has its own (see cancel-property-subscription/index.ts): no more
 // bracket-quantity guessing about which property actually loses coverage.
-export async function cancelPropertySubscription(propertyId: string): Promise<void> {
-  await invokeEdgeFunction<{ ok: boolean }>(
+// Monthly plans under the Nov 2026 pricing can only be cancelled in their
+// notice window (lib/commitment.ts) — the server refuses otherwise, with a
+// message naming the dates. Returns when the plan will end.
+export async function cancelPropertySubscription(
+  propertyId: string,
+): Promise<{ endsAt: string | null }> {
+  const r = await invokeEdgeFunction<{ ok: boolean; endsAt?: string | null }>(
     "resume-subscription?action=cancel-property-subscription",
-    {
-      propertyId,
-    },
+    { propertyId },
   );
+  return { endsAt: r.endsAt ?? null };
 }
 
 // Undoes a scheduled cancel-at-period-end on one property's own subscription,

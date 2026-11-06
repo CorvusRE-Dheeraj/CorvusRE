@@ -35,7 +35,7 @@ export const Route = createFileRoute("/dashboard/_layout/billing")({
 
 const TIER_LABEL: Record<string, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "Expert/Managed Help",
+  corvusrf_managed: "Corvus-Managed",
 };
 
 const BRACKET_LABEL: Record<string, string> = Object.fromEntries(
@@ -44,6 +44,11 @@ const BRACKET_LABEL: Record<string, string> = Object.fromEntries(
     b.label,
   ]),
 );
+
+// Scheduled to end: renewal turned off (annual), or notice given on a
+// monthly plan (cancel_at set by cancel-property-subscription).
+const isEnding = (s: { cancelAtPeriodEnd: boolean; cancelAt?: string | null }) =>
+  s.cancelAtPeriodEnd || !!s.cancelAt;
 
 // A subscription's list price per billing interval (pre-discount), looked up
 // from whichever bracket table its bracket string actually belongs to —
@@ -147,26 +152,40 @@ function Billing() {
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
-  // Same immediate cancel the Properties/BPP Accounts page uses (cancel-
-  // property-subscription/cancel-bpp-subscription end the Stripe subscription
-  // now, not at period end) — keyed by the subscription's own propertyId or
-  // bppAccountId, so it only ever works for a subscription still linked to a
-  // live subject. On success drop it from the list; the list-my-subscriptions
-  // filter would exclude it on the next load anyway.
+  // Same cancel the Properties/BPP Accounts pages use, keyed by the
+  // subscription's own propertyId or bppAccountId. BPP subscriptions end now;
+  // property plans end at a date (cancel-property-subscription) and stay
+  // listed with it until then.
   async function handleCancel(s: MySubscription, label: string) {
     if (!s.propertyId && !s.bppAccountId) return;
     const subjectWord = s.bppAccountId ? "BPP account" : "property";
     const ok = await confirmDialog(
-      `Cancel the subscription for ${label}? It ends immediately — you'll lose paid AI Report ` +
-        `access and the ability to request a new protest filing for this ${subjectWord}.`,
+      s.bppAccountId
+        ? `Cancel the subscription for ${label}? It ends immediately — you'll lose paid access for this ${subjectWord}.`
+        : `Cancel the plan for ${label}? You keep full access until it ends — at the end of the year you've paid for, or 60 days after your notice on a monthly plan.`,
     );
     if (!ok) return;
     setBusyId(s.id);
     try {
-      if (s.bppAccountId) await cancelBppSubscription(s.bppAccountId);
-      else await cancelPropertySubscription(s.propertyId!);
-      toast.success("Subscription canceled.");
-      setSubs((prev) => prev.filter((x) => x.id !== s.id));
+      if (s.bppAccountId) {
+        await cancelBppSubscription(s.bppAccountId);
+        toast.success("Subscription canceled.");
+        setSubs((prev) => prev.filter((x) => x.id !== s.id));
+      } else {
+        // Property plans now end at a date (period end, or 60 days' notice on a
+        // monthly plan) instead of immediately — keep it listed with that date.
+        const { endsAt } = await cancelPropertySubscription(s.propertyId!);
+        toast.success(
+          endsAt
+            ? `Your plan will end on ${new Date(endsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
+            : "Your plan won't renew.",
+        );
+        setSubs((prev) =>
+          prev.map((x) =>
+            x.id === s.id ? { ...x, cancelAt: endsAt, cancelAtPeriodEnd: !endsAt } : x,
+          ),
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not cancel this subscription.");
     } finally {
@@ -200,7 +219,7 @@ function Billing() {
   // (it still appears in the list below, with its own end date). Property
   // plans are annual and BPP/grandfathered ones monthly, so the total is
   // normalized to a yearly figure. List price, before any coupon.
-  const billingSubs = subs.filter((s) => !s.cancelAtPeriodEnd);
+  const billingSubs = subs.filter((s) => !isEnding(s));
   const annualTotalCents = billingSubs.reduce(
     (sum, s) => sum + (s.amountCents ?? 0) * (s.interval === "year" ? 1 : 12),
     0,
@@ -386,13 +405,13 @@ function Billing() {
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span
                       className={`badge-soft ${
-                        s.cancelAtPeriodEnd ? "bg-secondary text-muted-foreground" : ""
+                        isEnding(s) ? "bg-secondary text-muted-foreground" : ""
                       }`}
                     >
-                      {s.cancelAtPeriodEnd ? "Canceling" : (STATUS_LABEL[s.status] ?? s.status)}
+                      {isEnding(s) ? "Canceling" : (STATUS_LABEL[s.status] ?? s.status)}
                     </span>
                     <span className="text-muted-foreground">
-                      {s.cancelAtPeriodEnd
+                      {isEnding(s)
                         ? `Ends ${fmtDate(s.cancelAt ?? s.currentPeriodEnd)}`
                         : s.currentPeriodEnd
                           ? `Renews ${fmtDate(s.currentPeriodEnd)}`
@@ -401,7 +420,7 @@ function Billing() {
                     </span>
                   </div>
 
-                  {s.cancelAtPeriodEnd && (
+                  {isEnding(s) && (
                     <p className="text-muted-foreground mt-2 text-[11px]">
                       You've already canceled this. It stays active until{" "}
                       {fmtDate(s.cancelAt ?? s.currentPeriodEnd)}, then ends on its own — no further
@@ -411,7 +430,7 @@ function Billing() {
 
                   <div className="border-border mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                     {prop || bpp ? (
-                      s.cancelAtPeriodEnd ? (
+                      isEnding(s) ? (
                         <button
                           onClick={() => handleResume(s)}
                           disabled={busyId === s.id}
@@ -441,7 +460,7 @@ function Billing() {
                         >
                           {openingPortal
                             ? "Opening…"
-                            : s.cancelAtPeriodEnd
+                            : isEnding(s)
                               ? "View in billing portal"
                               : "Cancel in billing portal"}
                         </button>

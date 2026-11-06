@@ -33,8 +33,9 @@ import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import { sendPurchaseConfirmationEmail } from "../_shared/purchase-email.ts";
 import {
-  annualUnitAmountCents,
   bracketForValue,
+  PRICING_VERSION,
+  unitAmountCents,
   isTier,
   legacyBracketForValue,
   legacyMonthlyUnitAmountCents,
@@ -122,7 +123,11 @@ Deno.serve(async (req: Request) => {
     // monthly on the old 3-bracket prices — keep it that way on a tier switch
     // rather than silently converting it to an annual bill. Discounts
     // (launch/franchise coupons) live on the subscription, so they carry over.
-    const isLegacyMonthly = item.price.recurring?.interval === "month";
+    // Monthly plans under the Nov 2026 pricing are tagged metadata.pricing
+    // (create-checkout-session) and keep their monthly interval at the new
+    // tier's current price; untagged monthly ones are the old brackets.
+    const interval = item.price.recurring?.interval === "month" ? "month" : "year";
+    const isLegacyMonthly = interval === "month" && subscription.metadata?.pricing !== PRICING_VERSION;
     const totalValue = property.total_value as number | null;
     const bracket = isLegacyMonthly ? legacyBracketForValue(totalValue) : bracketForValue(totalValue);
 
@@ -143,7 +148,7 @@ Deno.serve(async (req: Request) => {
     const address = ((property.address as string | null) ?? "").trim();
     const unitAmount = isLegacyMonthly
       ? legacyMonthlyUnitAmountCents(tier, legacyBracketForValue(totalValue), isAdditionalInBracket)
-      : annualUnitAmountCents(tier, bracketForValue(totalValue), isAdditionalInBracket);
+      : unitAmountCents(tier, bracketForValue(totalValue), interval, isAdditionalInBracket);
     const name = subscriptionProductName(tier, bracket, address, isAdditionalInBracket);
 
     // Unlike Checkout Sessions' line_items[].price_data (which accepts an
@@ -156,7 +161,7 @@ Deno.serve(async (req: Request) => {
     const newPrice = await stripe.prices.create({
       currency: "usd",
       unit_amount: unitAmount,
-      recurring: { interval: isLegacyMonthly ? "month" : "year" },
+      recurring: { interval },
       product_data: { name, metadata: { tier, bracket } },
     });
 

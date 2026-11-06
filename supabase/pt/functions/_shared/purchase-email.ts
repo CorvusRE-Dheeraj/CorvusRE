@@ -14,6 +14,7 @@ import {
   type Tier,
   type Bracket,
   type BppBracket,
+  PRICING_VERSION,
 } from "./pricing.ts";
 
 // Real-estate and BPP brackets are differently-shaped strings ("under2m" vs
@@ -81,6 +82,8 @@ export async function sendPurchaseConfirmationEmail(
     const isAnnual = subscription.items.data[0]?.price.recurring?.interval === "year";
     const rateLabel = isAnnual ? "Your plan price (billed annually)" : "Your monthly rate going forward";
     const rateSuffix = isAnnual ? "/yr" : "/mo";
+    // Monthly plans under the Nov 2026 pricing carry a 12-month commitment (./commitment.ts).
+    const committed = !isAnnual && subscription.metadata?.pricing === PRICING_VERSION;
     const discountNames = (subscription.discounts ?? [])
       .map((d) => (typeof d === "object" ? d.coupon?.name : null))
       .filter((n): n is string => !!n);
@@ -138,7 +141,7 @@ export async function sendPurchaseConfirmationEmail(
               <td style="padding:16px 32px 32px 32px;">
                 <p style="margin:0; font-size:12.5px; line-height:1.6; color:#8592a6;">
                   ${isCredit ? "This credit is applied to your account and will reduce the amount due on your next invoice — it is not a direct refund to your card." : "This charge will appear on your card statement from CorvusPT."}
-                  You can review or cancel this subscription any time from your CorvusPT dashboard's Billing page.
+                  ${committed ? "Your plan has a 12-month commitment. Once 13 months are complete you can give 60 days' notice to cancel from your CorvusPT dashboard's Billing page." : "You can review or cancel this subscription any time from your CorvusPT dashboard's Billing page."}
                 </p>
               </td>
             </tr>

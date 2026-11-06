@@ -56,7 +56,8 @@ update public.properties set plan_tier = plan_tier where subscription_status is 
 create or replace function public.marketing_monthly_price(p_tier text, p_bracket text) returns numeric
 language sql immutable as $$
   select case
-    when p_bracket = 'upTo5m' then 299
+    -- Nov 2026 pricing: Owner-Managed $199, Corvus-Managed $299 a month.
+    when p_bracket = 'upTo5m' then case p_tier when 'owner_managed' then 199 else 299 end
     when p_tier = 'corvusrf_managed' then case p_bracket when 'under2m' then 199 when 'mid2m10m' then 499 when 'over10m' then 799 else 299 end
     else case p_bracket when 'under2m' then 99 when 'mid2m10m' then 299 when 'over10m' then 499 else 299 end
   end;

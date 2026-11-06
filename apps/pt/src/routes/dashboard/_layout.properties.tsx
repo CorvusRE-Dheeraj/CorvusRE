@@ -24,14 +24,16 @@ import {
   bracketForValue,
   formatMoney,
   isCustomPricedValue,
-  isLaunchDiscountActive,
-  propertyAnnualPrice,
+  annualFirstYearPrice,
+  planPriceLines,
   TIER_BRACKET_PRICES,
   TIER_LABEL,
   type BillingInfo,
+  type BillingInterval,
   type BulkSubResult,
   type Tier,
 } from "@/lib/billing";
+import { BillingIntervalToggle, CommitmentNote } from "@/components/BillingChoice";
 import { stripeConfigured } from "@/lib/stripe";
 import { BulkSubscribeModal } from "@/components/BulkSubscribeModal";
 import { PaymentsModeChip } from "@/components/PaymentsModeChip";
@@ -289,6 +291,7 @@ function Properties() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState<{ propertyId: string; tier: Tier } | null>(null);
+  const [checkoutInterval, setCheckoutInterval] = useState<BillingInterval>("month");
   // The property the "Protest Property" button opened the plan chooser for.
   const [protestingProperty, setProtestingProperty] = useState<PropertyRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -447,7 +450,7 @@ function Properties() {
   async function handleSubscribe(p: PropertyRecord, tier: Tier) {
     setSubscribing({ propertyId: p.id, tier });
     try {
-      await startPropertyCheckout(p.id, tier, { newTab: true });
+      await startPropertyCheckout(p.id, tier, { newTab: true, interval: checkoutInterval });
       toast.info(
         "Stripe checkout opened in a new tab. Finish paying there, then come back to this tab.",
       );
@@ -464,18 +467,17 @@ function Properties() {
   // each property has its own (see cancel-property-subscription/index.ts).
   async function handleCancelSubscription(p: PropertyRecord) {
     const confirmed = await confirmDialog(
-      `Cancel the subscription for ${p.address}? You'll lose paid AI Report access and the ability to request a new protest filing for this property. This takes effect immediately, not at the end of the billing period.`,
+      `Cancel the plan for ${p.address}? You keep full access until it ends — at the end of the year you've paid for, or 60 days after your notice on a monthly plan.`,
     );
     if (!confirmed) return;
     setCancelingId(p.id);
     try {
-      await cancelPropertySubscription(p.id);
-      toast.success("Subscription canceled.");
-      // Reflects immediately rather than waiting on the customer.
-      // subscription.deleted webhook round trip; the webhook confirms the
-      // same value a moment later (idempotent, not a conflict).
-      setProperties((prev) =>
-        prev.map((x) => (x.id === p.id ? { ...x, subscriptionStatus: "canceled" } : x)),
+      const { endsAt } = await cancelPropertySubscription(p.id);
+      // The plan stays active until it ends; the webhook records the end date.
+      toast.success(
+        endsAt
+          ? `Your plan will end on ${new Date(endsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. You keep full access until then.`
+          : "Your plan won't renew. You keep full access until the end of the period you've paid for.",
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not cancel this subscription.");
@@ -1445,7 +1447,10 @@ function Properties() {
               </div>
             ) : (
               <>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="mt-5 flex justify-center">
+                  <BillingIntervalToggle value={checkoutInterval} onChange={setCheckoutInterval} />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {(
                     [
                       {
@@ -1469,23 +1474,37 @@ function Properties() {
                         <div className="text-sm font-semibold text-foreground">
                           {TIER_LABEL[tier]}
                         </div>
-                        <div className="mt-1 font-serif text-2xl font-bold">
-                          ${formatMoney(TIER_BRACKET_PRICES[tier][bracket])}
-                          <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Billed annually — $
-                          {propertyAnnualPrice(tier, bracket, false).toLocaleString("en-US")}/yr
-                        </div>
+                        {(() => {
+                          const price = planPriceLines(tier, checkoutInterval);
+                          return (
+                            <>
+                              <div className="mt-1 font-serif text-3xl font-bold">
+                                {price.amount}
+                                <span className="ml-1 text-sm font-normal text-muted-foreground">
+                                  {price.unit}
+                                </span>
+                              </div>
+                              <div
+                                className={`text-xs ${checkoutInterval === "year" ? "font-medium text-success" : "text-muted-foreground"}`}
+                              >
+                                {price.detail}
+                              </div>
+                            </>
+                          );
+                        })()}
                         <p className="mt-2 flex-1 text-xs text-muted-foreground">{tagline}</p>
                         {(() => {
-                          const yearly = TIER_BRACKET_PRICES[tier][bracket] * 12;
+                          const yearly =
+                            checkoutInterval === "year"
+                              ? annualFirstYearPrice(tier, bracket)
+                              : TIER_BRACKET_PRICES[tier][bracket] * 12;
                           const est = protestingProperty.estimatedSavings;
                           if (est == null || est <= 0 || est >= yearly) return null;
                           return (
                             <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-                              Heads up: this plan costs about {currency(yearly)} a year, but the
-                              estimated tax saving for this property is only {currency(est)} a year.
+                              Heads up: this plan costs about {currency(yearly)} in its first year,
+                              but the estimated tax saving for this property is only {currency(est)}{" "}
+                              a year.
                             </p>
                           );
                         })()}
@@ -1503,15 +1522,10 @@ function Properties() {
                     );
                   })}
                 </div>
-                {isLaunchDiscountActive() && (
-                  <p className="mt-4 rounded-md border border-accent/40 bg-accent/10 p-2 text-xs">
-                    50% off your first year — applied at checkout for sign-ups before February 1,
-                    2027. Verified franchise owners get 50% off instead, every year.
-                  </p>
-                )}
-                <p className="mt-4 text-[11px] text-muted-foreground">
-                  You'll be taken to Stripe to start the annual subscription for this property. You
-                  can cancel anytime from this page.
+                <CommitmentNote className="mt-4" />
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  You'll finish payment on Stripe's secure page. Verified franchise owners get 50%
+                  off every year instead.
                 </p>
               </>
             )}

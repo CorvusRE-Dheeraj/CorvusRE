@@ -1,16 +1,12 @@
 // The two CorvusPT pricing discounts, applied as real Stripe coupons (not
-// baked into the unit amount) so Checkout shows the full $3,588/yr list price
-// with the discount as its own line. Mirrors src/lib/billing.ts's
-// LAUNCH_DISCOUNT_DEADLINE / checkoutDiscountFor, which the UI uses to
-// display the same rule.
+// baked into the unit amount) so Checkout shows the full list price with the
+// discount as its own line. Mirrors src/lib/billing.ts's checkoutDiscountFor,
+// which the UI uses to display the same rule.
 //
 // They don't stack — a franchise owner gets the franchise discount (50%
-// forever), which already covers what the launch offer (50% of the first
-// year) would have given them.
+// forever), which already covers what the annual first-year offer (50% of
+// the first year) would have given them.
 import Stripe from "npm:stripe@17";
-
-// Midnight Feb 1 2027, US Central (CST, UTC-6).
-export const LAUNCH_DISCOUNT_DEADLINE = new Date("2027-02-01T06:00:00Z");
 
 type CouponDef = {
   id: string;
@@ -24,12 +20,15 @@ type CouponDef = {
 // "once" on an annual subscription = the first invoice = the first year.
 // redeem_by makes Stripe itself refuse the coupon after the deadline, as a
 // backstop to the date check in checkoutCouponFor.
-const LAUNCH_COUPON: CouponDef = {
-  id: "corvuspt_launch_first_year_50",
-  name: "Launch offer — 50% off your first year",
+// Nov 2026 pricing: paying the year upfront takes 50% off the first year —
+// a standing offer (no deadline), annual subscriptions only. Replaces the
+// launch coupon (corvuspt_launch_first_year_50), which had a Feb 2027
+// deadline; a new id so the old coupon's redeem_by doesn't carry over.
+const ANNUAL_FIRST_YEAR_COUPON: CouponDef = {
+  id: "corvuspt_annual_first_year_50",
+  name: "Paid annually — 50% off your first year",
   percent_off: 50,
   duration: "once",
-  redeem_by: Math.floor(LAUNCH_DISCOUNT_DEADLINE.getTime() / 1000),
 };
 
 const FRANCHISE_COUPON: CouponDef = {
@@ -76,10 +75,10 @@ export type CheckoutDiscountKind = "franchise" | "launch";
 
 export function checkoutDiscountKind(
   isFranchiseOwner: boolean,
-  now: Date = new Date(),
+  interval: "month" | "year" = "year",
 ): CheckoutDiscountKind | null {
   if (isFranchiseOwner) return "franchise";
-  if (now < LAUNCH_DISCOUNT_DEADLINE) return "launch";
+  if (interval === "year") return "launch"; // the annual first-year 50%
   return null;
 }
 
@@ -87,10 +86,14 @@ export function checkoutDiscountKind(
 export async function checkoutCouponFor(
   stripe: Stripe,
   isFranchiseOwner: boolean,
+  interval: "month" | "year" = "year",
 ): Promise<{ kind: CheckoutDiscountKind; couponId: string } | null> {
-  const kind = checkoutDiscountKind(isFranchiseOwner);
+  const kind = checkoutDiscountKind(isFranchiseOwner, interval);
   if (!kind) return null;
-  const couponId = await ensureCoupon(stripe, kind === "franchise" ? FRANCHISE_COUPON : LAUNCH_COUPON);
+  const couponId = await ensureCoupon(
+    stripe,
+    kind === "franchise" ? FRANCHISE_COUPON : ANNUAL_FIRST_YEAR_COUPON,
+  );
   return { kind, couponId };
 }
 
@@ -117,10 +120,11 @@ export async function bestCheckoutCoupon(
   stripe: Stripe,
   isFranchiseOwner: boolean,
   exception: PricingException | null,
+  interval: "month" | "year" = "year",
 ): Promise<{ kind: CheckoutDiscountKind | "exception"; couponId: string } | null> {
-  const standard = checkoutDiscountKind(isFranchiseOwner);
+  const standard = checkoutDiscountKind(isFranchiseOwner, interval);
   if (exception && Number(exception.percent_off) >= (standard ? 50 : 0)) {
     return { kind: "exception", couponId: await ensureCoupon(stripe, exceptionCouponDef(exception)) };
   }
-  return checkoutCouponFor(stripe, isFranchiseOwner);
+  return checkoutCouponFor(stripe, isFranchiseOwner, interval);
 }

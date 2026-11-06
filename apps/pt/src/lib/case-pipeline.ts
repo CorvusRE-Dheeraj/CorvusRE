@@ -34,7 +34,7 @@ export type NextAction = {
   dueDate: string | null; // YYYY-MM-DD
   dueLabel: string | null; // what the date is ("Protest deadline", "Hearing"…)
   urgency: Urgency;
-  // Who has to act: the owner, or CorvusPT's team (Expert/Managed Help).
+  // Who has to act: the owner, or CorvusPT's team (Corvus-Managed).
   owner: "you" | "corvus";
   // Where in View Case the action lives (see ANCHOR_TAB in
   // CaseDetailModal.tsx); "start" means there's no case yet.
@@ -51,7 +51,7 @@ export type PipelineInput = {
   notice: NoticeFiling | null; // the Notice of Protest's submission row
   protestDeadline: string | null;
   cadName: string | null;
-  managed: boolean; // Expert/Managed Help — CorvusPT files and appears
+  managed: boolean; // Corvus-Managed — CorvusPT files and appears
   today: string; // YYYY-MM-DD, local
 };
 

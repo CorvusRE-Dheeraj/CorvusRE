@@ -9,7 +9,7 @@ export const Route = createFileRoute("/how-it-works")({
       {
         name: "description",
         content:
-          "See how CorvusPT works: a free AI property review, then either protest it yourself with Owner-Managed CorvusPT or have our team file and represent you with Expert/Managed Help.",
+          "See how CorvusPT works: a free AI property review, then either protest it yourself with Owner-Managed CorvusPT or have our team file and represent you with Corvus-Managed.",
       },
       { property: "og:title", content: "How CorvusPT works" },
       {
@@ -45,7 +45,7 @@ const STEPS = [
   {
     n: 5,
     t: "You File — or Our Team Does",
-    d: "With Owner-Managed CorvusPT, you file, attend the hearing and talk to the county, using the evidence and step-by-step instructions the AI prepares. With Expert/Managed Help, CorvusPT's team files, talks to the county and represents you — and nothing is settled without your approval.",
+    d: "With Owner-Managed CorvusPT, you file, attend the hearing and talk to the county, using the evidence and step-by-step instructions the AI prepares. With Corvus-Managed, CorvusPT's team files, talks to the county and represents you — and nothing is settled without your approval.",
   },
   {
     n: 6,

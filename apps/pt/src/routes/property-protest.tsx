@@ -15,7 +15,7 @@ export const Route = createFileRoute("/property-protest")({
       {
         name: "description",
         content:
-          "AI-driven Texas real property protest: comp analysis, evidence packet and deadline tracking — file it yourself with Owner-Managed CorvusPT, or have our team file and represent you with Expert/Managed Help.",
+          "AI-driven Texas real property protest: comp analysis, evidence packet and deadline tracking — file it yourself with Owner-Managed CorvusPT, or have our team file and represent you with Corvus-Managed.",
       },
       { property: "og:title", content: "AI-driven Texas Property Protest" },
       { property: "og:description", content: "AI evidence. You file it — or our team does." },
@@ -113,7 +113,7 @@ function Page() {
     "AI reviews CAD value against comparable sales and equity comps.",
     "AI Evidence Builder assembles a hearing-ready packet.",
     "Owner-Managed CorvusPT: you file and attend the hearing, with AI-prepared evidence and step-by-step instructions.",
-    "Expert/Managed Help: CorvusPT's team files, communicates with the county, and represents you at the hearing.",
+    "Corvus-Managed: CorvusPT's team files, communicates with the county, and represents you at the hearing.",
     "Deadline engine tracks your protest window automatically.",
   ];
   return (
@@ -125,7 +125,7 @@ function Page() {
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
           AI handles research, comps, and evidence. Then you choose who files: you, with
-          Owner-Managed CorvusPT, or CorvusPT&apos;s team, with Expert/Managed Help — which handles
+          Owner-Managed CorvusPT, or CorvusPT&apos;s team, with Corvus-Managed — which handles
           filing, county communication, hearings, and settlement.
         </p>
         <ul className="mt-6 grid gap-3">
