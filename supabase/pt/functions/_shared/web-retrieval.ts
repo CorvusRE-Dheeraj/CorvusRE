@@ -134,6 +134,69 @@ export async function readOfficialSite(
   return { pages, pdfs };
 }
 
+// A second hop: links on the pages already read (not just the home page) whose
+// text or URL matches `follow` — for a topic that sits one level deeper, like a
+// "Withdraw a protest" form linked from the protest page. Same site only; adds
+// at most `maxPages` pages and `maxPdfs` PDFs to the given arrays.
+export async function followDeeper(
+  startUrl: string,
+  pages: FetchedPage[],
+  pdfs: FetchedPdf[],
+  follow: RegExp,
+  opts: { maxPages?: number; maxPdfs?: number; prefer?: RegExp } = {},
+): Promise<void> {
+  const maxPages = opts.maxPages ?? 3;
+  const maxPdfs = opts.maxPdfs ?? 2;
+  const start = new URL(startUrl.startsWith("http") ? startUrl : `https://${startUrl}`);
+  const seen = new Set<string>([...pages.map((p) => p.url), ...pdfs.map((p) => p.url)]);
+  let addedPages = 0;
+  let addedPdfs = 0;
+  // Links matching `prefer` (e.g. /withdraw/) are read first, so a generic match
+  // like "Forms" never takes the slot a withdrawal form needed.
+  const pref = opts.prefer;
+  const links = pages
+    .flatMap((p) => p.links)
+    .map((l, i) => ({ l, rank: pref && (pref.test(l.label) || pref.test(l.url)) ? 0 : 1, i }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((x) => x.l);
+  for (const l of links) {
+    if (addedPages >= maxPages && addedPdfs >= maxPdfs) break;
+    if (l.url.startsWith("mailto:") || seen.has(l.url)) continue;
+    if (!(follow.test(l.label) || follow.test(l.url))) continue;
+    let url: URL;
+    try {
+      url = new URL(l.url);
+    } catch {
+      continue;
+    }
+    if (!sameSite(url, start)) continue;
+    seen.add(l.url);
+    if (/\.pdf(\?|$)/i.test(l.url)) {
+      if (addedPdfs >= maxPdfs) continue;
+      const r = await get(l.url, MAX_PDF_BYTES);
+      if (r && (r.type.includes("pdf") || /\.pdf/i.test(l.url))) {
+        pdfs.push({ url: l.url, base64: toBase64(r.bytes) });
+        addedPdfs++;
+      }
+    } else {
+      if (addedPages >= maxPages) continue;
+      const r = await get(l.url, MAX_HTML_BYTES);
+      if (!r) continue;
+      if (r.type.includes("pdf")) {
+        if (addedPdfs < maxPdfs) {
+          pdfs.push({ url: l.url, base64: toBase64(r.bytes) });
+          addedPdfs++;
+        }
+        continue;
+      }
+      if (!r.type.includes("html")) continue;
+      const html = new TextDecoder().decode(r.bytes);
+      pages.push({ url: l.url, text: htmlToText(html).slice(0, MAX_TEXT_PER_PAGE), links: extractLinks(html, url) });
+      addedPages++;
+    }
+  }
+}
+
 // Everything that was actually fetched, for checking the AI's answers against.
 export function corpus(pages: FetchedPage[]): { text: string; urls: Set<string>; emails: Set<string> } {
   const urls = new Set<string>();

@@ -7,6 +7,7 @@ import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { currency, updateIntake } from "@/lib/intake-store";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WithdrawProtestDialog } from "@/components/WithdrawProtestDialog";
 
 export const Route = createFileRoute("/property-protest")({
   head: () => ({
@@ -29,6 +30,11 @@ function Page() {
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  // Withdraw Protest: open for one property (from its card) or with a picker.
+  const [withdraw, setWithdraw] = useState<{ open: boolean; propertyId: string | null }>({
+    open: false,
+    propertyId: null,
+  });
 
   useEffect(() => {
     if (!user) {
@@ -72,9 +78,18 @@ function Page() {
               with a protest on file.
             </p>
           </div>
-          <Link to="/dashboard/properties" className="btn-outline">
-            Manage All Properties
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setWithdraw({ open: true, propertyId: null })}
+            >
+              Withdraw a Protest
+            </button>
+            <Link to="/dashboard/properties" className="btn-outline">
+              Manage All Properties
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4">
@@ -84,9 +99,16 @@ function Page() {
               property={p}
               protest={protests.find((pr) => pr.propertyId === p.id)!}
               delay={Math.min(i, 8) * 60}
+              onWithdraw={() => setWithdraw({ open: true, propertyId: p.id })}
             />
           ))}
         </div>
+        <WithdrawProtestDialog
+          open={withdraw.open}
+          onOpenChange={(open) => setWithdraw((w) => ({ ...w, open }))}
+          properties={protestedProperties}
+          initialPropertyId={withdraw.propertyId}
+        />
       </div>
     );
   }
@@ -163,10 +185,12 @@ function ProtestedPropertyCard({
   property,
   protest,
   delay,
+  onWithdraw,
 }: {
   property: PropertyRecord;
   protest: ProtestRecord;
   delay: number;
+  onWithdraw: () => void;
 }) {
   const nav = useNavigate();
   const { status, label } = getPropertyProtestStatus(property, [protest]);
@@ -205,6 +229,9 @@ function ProtestedPropertyCard({
         </Link>
         <button type="button" onClick={goToModules} className="btn-outline">
           Property Summary
+        </button>
+        <button type="button" onClick={onWithdraw} className="btn-outline text-destructive">
+          Withdraw Protest
         </button>
       </div>
     </div>
