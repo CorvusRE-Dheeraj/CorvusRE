@@ -35,7 +35,9 @@ test("pricing page renders the three lanes, and savings protection", async ({ pa
     page.getByText("Tailored based on property value, portfolio size, and requirements."),
   ).toBeVisible();
   await expect(page.getByRole("main").getByText("Coming soon")).toHaveCount(0);
-  await expect(page.getByRole("main").getByRole("link", { name: "Talk to Our Team" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "Talk to Our Team" }),
+  ).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Franchise owners: 50% off" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "CorvusPT Savings Protection" })).toBeVisible();

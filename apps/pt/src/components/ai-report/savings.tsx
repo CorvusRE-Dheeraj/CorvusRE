@@ -1,12 +1,11 @@
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { EvidenceImpactCard, EvidenceImpactContext } from "@/components/EvidenceImpactCard";
 import { currency } from "@/lib/intake-store";
-import { type ProtestCost, type ProtestCostLine } from "@/lib/protest-cost";
+import { type ProtestCost } from "@/lib/protest-cost";
 import { type SavingsAnalysis, type SavingsTaxInputs } from "@/lib/savings-analysis";
 import {
   EVIDENCE_LABEL,
   SCENARIO_COPY,
-  type EvidenceStrength,
   type SavingsFinding,
   type SavingsNextStep,
 } from "@/lib/savings-dashboard";
@@ -17,28 +16,23 @@ import {
   BarChart3,
   Building2,
   DollarSign,
-  FileText,
   Home,
   Receipt,
   TrendingDown,
-  type LucideIcon,
 } from "lucide-react";
 import { useContext, useEffect, useState } from "react";
-import { compactCurrency } from "./comps";
+import {
+  COST_KIND_LABEL,
+  FINDING_ICON,
+  SAVINGS_CONF_STYLE,
+  SAVINGS_DISCLAIMER,
+  STRENGTH_LABEL,
+  STRENGTH_STYLE,
+  compactCurrency,
+  savingsToForm,
+} from "./helpers";
+
 import { FormulaIcon } from "./visuals";
-
-// Part of the AI report page (src/routes/ai-report.tsx), split out of that
-// file unchanged. Group: savings.
-// ── Module 9 (Estimated Savings) ─────────────────────────────────────────
-// Every figure here is the deterministic result from
-// src/lib/savings-analysis.ts — no AI value anywhere, identical on every
-// refresh.
-
-export const SAVINGS_CONF_STYLE: Record<SavingsAnalysis["financialConfidence"], string> = {
-  High: "bg-success/15 text-success",
-  Moderate: "bg-warning/20 text-warning-foreground",
-  Limited: "bg-secondary text-muted-foreground",
-};
 
 export function ConfPill({ level }: { level: SavingsAnalysis["financialConfidence"] }) {
   return (
@@ -113,9 +107,6 @@ export function SavingsCardVisual({ a }: { a: SavingsAnalysis }) {
     </div>
   );
 }
-
-export const SAVINGS_DISCLAIMER =
-  "Estimated savings are based on the current valuation and tax assumptions available to CorvusPT. Actual savings depend on the final value the county sets and the applicable tax rates, exemptions, and taxable-value rules.";
 
 export function SavingsSummaryList({ a }: { a: SavingsAnalysis }) {
   const rows: [string, string][] = [
@@ -236,12 +227,6 @@ export function SavingsScenarioCards({ a }: { a: SavingsAnalysis }) {
   );
 }
 
-export const COST_KIND_LABEL: Record<ProtestCostLine["kind"], string> = {
-  annual: "Annual",
-  one_time: "One-time",
-  additional: "Additional",
-};
-
 // Savings − protest cost = net benefit, from the owner's real plan (see
 // protest-cost.ts). The ratio, cost breakdown and the hypothetical
 // multi-year figure stay under "Financial details".
@@ -320,15 +305,6 @@ export type SavingsFormState = {
   exemptionsTotal: string;
   protestCostOverride: string;
   projectionYears: string;
-};
-export const savingsToForm = (t: SavingsTaxInputs | null): SavingsFormState => {
-  const s = (v: number | null | undefined) => (v != null ? String(v) : "");
-  return {
-    taxableValue: s(t?.taxableValue),
-    exemptionsTotal: s(t?.exemptionsTotal),
-    protestCostOverride: s(t?.protestCostOverride),
-    projectionYears: s(t?.projectionYears),
-  };
 };
 
 export function SavingsTaxDetailsForm({
@@ -496,22 +472,6 @@ export function SavingsViewDetails({ a }: { a: SavingsAnalysis }) {
     </details>
   );
 }
-
-export const FINDING_ICON: Record<SavingsFinding["key"], LucideIcon> = {
-  comps: BarChart3,
-  property: Building2,
-  documents: FileText,
-};
-export const STRENGTH_STYLE: Record<EvidenceStrength, string> = {
-  Strong: "bg-success/15 text-success",
-  Limited: "bg-secondary text-muted-foreground",
-  Missing: "bg-warning/15 text-warning-foreground",
-};
-export const STRENGTH_LABEL: Record<EvidenceStrength, string> = {
-  Strong: "Strong evidence",
-  Limited: "Limited evidence",
-  Missing: "Evidence missing",
-};
 
 // Current vs estimated value as two simple bars; "See Valuation Range"
 // overlays the comparable range on the estimate.

@@ -27,10 +27,11 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useContext } from "react";
-import { compactCurrency, CompsValueScatter } from "./comps";
+import { CompsValueScatter } from "./comps";
+import { breakdownIcon, compactCurrency, moduleInsight, scoreColor } from "./helpers";
 import { IncomeCardVisual, IncomeLadderPreview } from "./income";
-import { breakdownIcon, SkeletonVisual, SpeedometerGauge } from "./module-content";
-import { scoreColor } from "./module-preview";
+import { SkeletonVisual, SpeedometerGauge } from "./module-content";
+
 import { SavingsCardVisual } from "./savings";
 import { ModuleAsyncState } from "./shared";
 import { StrategyRankList } from "./strategy";
@@ -41,7 +42,6 @@ import {
   ImprovementCardVisual,
   InsightBanner,
   MiniMeter,
-  moduleInsight,
   NumberBadge,
   SiteImpactChain,
   SiteMapThumb,

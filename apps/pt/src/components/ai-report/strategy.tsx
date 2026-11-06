@@ -3,33 +3,11 @@ import { type StrategyEntry } from "@/lib/ai-report-modules";
 import { type DocumentRecord } from "@/lib/documents";
 import { type IconColor } from "@/lib/icon-colors";
 import { MODULES } from "@/lib/modules";
-import { ArrowRight, RefreshCw, Target, Upload, type LucideIcon } from "lucide-react";
+import { ArrowRight, RefreshCw, Upload, type LucideIcon } from "lucide-react";
 import { Fragment, useState } from "react";
-import { scoreColor } from "./module-preview";
+import { scoreColor, strategyIcon, strategySlug } from "./helpers";
+
 import { MiniMeter, NumberBadge } from "./visuals";
-
-// Part of the AI report page (src/routes/ai-report.tsx), split out of that
-// file unchanged. Group: strategy.
-// Icon for a ranked strategy — reuses the Module's own icon for the 5 fixed
-// strategies (so "Comparable Sales" shows the same icon as the Market Value
-// module card, etc.) via relatedModules; falls back to a generic icon for an
-// AI-added "Other: ..." strategy, which doesn't map to any of Modules 3-7.
-export function strategyIcon(s: StrategyEntry): LucideIcon {
-  const relatedId = s.relatedModules[0];
-  const mod = relatedId ? MODULES.find((mm) => mm.id === relatedId) : undefined;
-  return mod?.icon ?? Target;
-}
-
-// Stable per-strategy key for tagging uploaded evidence (documents.document_type,
-// see handleUploadEvidence in Report()) and storing the free-text evidence-gate
-// answer (IntakeState.strategyAnswers) — derived from the AI's own strategy name
-// so no separate id/lookup table is needed.
-export function strategySlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 // Compact ranked row for the card preview — used by both ModuleVisual's
 // "strategy" case and StrategyDetail's header below. Row order itself

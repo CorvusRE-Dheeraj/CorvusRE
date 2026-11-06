@@ -6,13 +6,8 @@ import { type UnavailableReason, type UnavailableRecord } from "@/lib/evidence-u
 import { type IconColor } from "@/lib/icon-colors";
 import { MODULES } from "@/lib/modules";
 import { type DocumentStatus } from "@/lib/protest-reason";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  HelpCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckCircle2, ChevronDown, type LucideIcon } from "lucide-react";
+import { DOCUMENT_STATUS_TONE, ZONING_STATUS } from "./helpers";
 
 // Part of the AI report page (src/routes/ai-report.tsx), split out of that
 // file unchanged. Group: bits.
@@ -261,19 +256,6 @@ export function EvidenceCategoryRow({
   );
 }
 
-// Module 8's per-document AI status — see analyzeEvidence() in
-// protest-reason.ts. "Duplicate" is the one value never AI-decided (a real
-// SHA-256 match, computed before the AI ever sees the documents), but reads
-// the same way here since the badge is just reflecting whatever status the
-// document ended up with.
-export const DOCUMENT_STATUS_TONE: Record<DocumentStatus, string> = {
-  Accepted: "bg-success/15 text-success",
-  "Needs Review": "bg-warning/15 text-warning-foreground",
-  "Incorrect Document": "bg-destructive/10 text-destructive",
-  Duplicate: "bg-secondary/60 text-muted-foreground",
-  "Additional Information Needed": "bg-accent/15 text-accent",
-};
-
 export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
   return (
     <span
@@ -283,27 +265,6 @@ export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
     </span>
   );
 }
-
-export const ZONING_STATUS = {
-  consistent: {
-    Icon: CheckCircle2,
-    color: "text-success",
-    bg: "bg-success/10",
-    label: "Classification Consistent",
-  },
-  inconsistent: {
-    Icon: AlertTriangle,
-    color: "text-destructive",
-    bg: "bg-destructive/10",
-    label: "Possible Mismatch",
-  },
-  uncertain: {
-    Icon: HelpCircle,
-    color: "text-warning-foreground",
-    bg: "bg-warning/15",
-    label: "Uncertain — Needs Review",
-  },
-} as const;
 
 export function ZoningBadge({ matches }: { matches: keyof typeof ZONING_STATUS }) {
   const { Icon, color, bg, label } = ZONING_STATUS[matches];
