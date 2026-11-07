@@ -983,21 +983,23 @@ function PropertyTable({
                   Owner: {row.property.ownerName ?? "Not on file"}
                 </div>
                 <Flags row={row} />
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                {/* one row: Pay Taxes + View side by side keeps each table row short */}
+                <div className="mt-2 flex flex-nowrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => onPay(row)}
                     disabled={!row.link}
-                    className="btn-accent whitespace-nowrap text-xs disabled:opacity-50"
+                    className="btn-accent whitespace-nowrap !px-3 !py-1.5 text-xs disabled:opacity-50"
                   >
                     Pay Taxes
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpen(row.property.id)}
-                    className="btn-outline whitespace-nowrap text-xs"
+                    aria-label={`View details for ${row.property.address}`}
+                    className="btn-outline whitespace-nowrap !px-3 !py-1.5 text-xs"
                   >
-                    View Details
+                    View
                   </button>
                 </div>
               </td>
