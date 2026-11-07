@@ -635,21 +635,35 @@ export type StaffRole = {
   isMarketingAdmin: boolean;
   isSupportAdmin: boolean;
   isOperationsAdmin: boolean;
+  isBdAdmin: boolean;
   isSupervisor: boolean;
 };
 export async function getStaffRole(userId: string): Promise<StaffRole> {
   const { data } = await supabase
     .from("profiles")
-    .select("is_admin, marketing_admin, support_admin, operations_admin, marketing_supervisor")
+    .select(
+      "is_admin, marketing_admin, support_admin, operations_admin, marketing_supervisor, bd_admin",
+    )
     .eq("id", userId)
     .maybeSingle();
   return {
+    isBdAdmin: !!data?.bd_admin,
     isSuperAdmin: !!data?.is_admin,
     isMarketingAdmin: !!data?.marketing_admin,
     isSupportAdmin: !!data?.support_admin,
     isOperationsAdmin: !!data?.operations_admin,
     isSupervisor: !!data?.is_admin || (!!data?.marketing_admin && !!data?.marketing_supervisor),
   };
+}
+
+/** Super Admin only (enforced in the database). */
+export async function setBdAdmin(userId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_bd_role", {
+    target: userId,
+    p_role: "bd_admin",
+    enabled,
+  });
+  if (error) throw error;
 }
 
 /** Super Admin only (enforced in the database). */

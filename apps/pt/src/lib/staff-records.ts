@@ -292,7 +292,9 @@ export type ApprovalKind =
   | "refund"
   | "agreement_change"
   | "automation_permission"
-  | "subscription_override";
+  | "subscription_override"
+  | "proposal_exception"
+  | "partner_payout";
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   pricing_exception: "Pricing exception",
@@ -301,6 +303,8 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   automation_permission: "Automation permission",
   access_change: "Access change",
   subscription_override: "Subscription-term override",
+  proposal_exception: "Proposal exception",
+  partner_payout: "Partner payout",
 };
 
 export type Approval = {

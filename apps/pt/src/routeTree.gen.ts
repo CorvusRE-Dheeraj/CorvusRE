@@ -17,6 +17,7 @@ import { Route as AdminManageRouteImport } from './routes/admin-manage'
 import { Route as AiReportRouteImport } from './routes/ai-report'
 import { Route as AppointmentRouteImport } from './routes/appointment'
 import { Route as BppRenditionRouteImport } from './routes/bpp-rendition'
+import { Route as BusinessDevelopmentRouteImport } from './routes/business-development'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DocumentReviewRouteImport } from './routes/document-review'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -30,6 +31,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PropertyProtestRouteImport } from './routes/property-protest'
 import { Route as PropertyTaxManagementRouteImport } from './routes/property-tax-management'
+import { Route as ProposalRouteImport } from './routes/proposal'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SupportRouteImport } from './routes/support'
@@ -98,6 +100,11 @@ const BppRenditionRoute = BppRenditionRouteImport.update({
   path: '/bpp-rendition',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BusinessDevelopmentRoute = BusinessDevelopmentRouteImport.update({
+  id: '/business-development',
+  path: '/business-development',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -161,6 +168,11 @@ const PropertyProtestRoute = PropertyProtestRouteImport.update({
 const PropertyTaxManagementRoute = PropertyTaxManagementRouteImport.update({
   id: '/property-tax-management',
   path: '/property-tax-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProposalRoute = ProposalRouteImport.update({
+  id: '/proposal',
+  path: '/proposal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -317,6 +329,7 @@ export interface FileRoutesByFullPath {
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
+  '/business-development': typeof BusinessDevelopmentRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -330,6 +343,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
+  '/proposal': typeof ProposalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -367,6 +381,7 @@ export interface FileRoutesByTo {
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
+  '/business-development': typeof BusinessDevelopmentRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -380,6 +395,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
+  '/proposal': typeof ProposalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -417,6 +433,7 @@ export interface FileRoutesById {
   '/ai-report': typeof AiReportRoute
   '/appointment': typeof AppointmentRoute
   '/bpp-rendition': typeof BppRenditionRoute
+  '/business-development': typeof BusinessDevelopmentRoute
   '/contact': typeof ContactRoute
   '/document-review': typeof DocumentReviewRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -430,6 +447,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
+  '/proposal': typeof ProposalRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -469,6 +487,7 @@ export interface FileRouteTypes {
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
+    | '/business-development'
     | '/contact'
     | '/document-review'
     | '/forgot-password'
@@ -482,6 +501,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
+    | '/proposal'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -519,6 +539,7 @@ export interface FileRouteTypes {
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
+    | '/business-development'
     | '/contact'
     | '/document-review'
     | '/forgot-password'
@@ -532,6 +553,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
+    | '/proposal'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -568,6 +590,7 @@ export interface FileRouteTypes {
     | '/ai-report'
     | '/appointment'
     | '/bpp-rendition'
+    | '/business-development'
     | '/contact'
     | '/document-review'
     | '/forgot-password'
@@ -581,6 +604,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/property-protest'
     | '/property-tax-management'
+    | '/proposal'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -619,6 +643,7 @@ export interface RootRouteChildren {
   AiReportRoute: typeof AiReportRoute
   AppointmentRoute: typeof AppointmentRoute
   BppRenditionRoute: typeof BppRenditionRoute
+  BusinessDevelopmentRoute: typeof BusinessDevelopmentRoute
   ContactRoute: typeof ContactRoute
   DocumentReviewRoute: typeof DocumentReviewRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
@@ -632,6 +657,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   PropertyProtestRoute: typeof PropertyProtestRoute
   PropertyTaxManagementRoute: typeof PropertyTaxManagementRoute
+  ProposalRoute: typeof ProposalRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
   SupportRoute: typeof SupportRoute
@@ -698,6 +724,13 @@ declare module '@tanstack/react-router' {
       path: '/bpp-rendition'
       fullPath: '/bpp-rendition'
       preLoaderRoute: typeof BppRenditionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/business-development': {
+      id: '/business-development'
+      path: '/business-development'
+      fullPath: '/business-development'
+      preLoaderRoute: typeof BusinessDevelopmentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -789,6 +822,13 @@ declare module '@tanstack/react-router' {
       path: '/property-tax-management'
       fullPath: '/property-tax-management'
       preLoaderRoute: typeof PropertyTaxManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/proposal': {
+      id: '/proposal'
+      path: '/proposal'
+      fullPath: '/proposal'
+      preLoaderRoute: typeof ProposalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -1040,6 +1080,7 @@ const rootRouteChildren: RootRouteChildren = {
   AiReportRoute: AiReportRoute,
   AppointmentRoute: AppointmentRoute,
   BppRenditionRoute: BppRenditionRoute,
+  BusinessDevelopmentRoute: BusinessDevelopmentRoute,
   ContactRoute: ContactRoute,
   DocumentReviewRoute: DocumentReviewRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
@@ -1053,6 +1094,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   PropertyProtestRoute: PropertyProtestRoute,
   PropertyTaxManagementRoute: PropertyTaxManagementRoute,
+  ProposalRoute: ProposalRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
   SupportRoute: SupportRoute,

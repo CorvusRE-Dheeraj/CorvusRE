@@ -57,6 +57,7 @@ export function SiteNav() {
   const [isMarketing, setIsMarketing] = useState(false);
   const [isSupport, setIsSupport] = useState(false);
   const [isOperations, setIsOperations] = useState(false);
+  const [isBd, setIsBd] = useState(false);
   // null = not checked yet (never prompts). Only ever gates a soft nudge
   // (the sign-out prompt, the follow-up email), never blocks anything itself, so a
   // failed check just leaves it null and nothing fires — same "fail open"
@@ -115,6 +116,7 @@ export function SiteNav() {
         setIsMarketing(r.isSuperAdmin || r.isMarketingAdmin);
         setIsSupport(r.isSuperAdmin || r.isSupportAdmin);
         setIsOperations(r.isSuperAdmin || r.isOperationsAdmin);
+        setIsBd(r.isSuperAdmin || r.isBdAdmin);
       })
       .catch((err) => {
         console.error("Could not check admin status:", err);
@@ -122,6 +124,7 @@ export function SiteNav() {
         setIsMarketing(false);
         setIsSupport(false);
         setIsOperations(false);
+        setIsBd(false);
       });
   }, [user]);
 
@@ -402,6 +405,15 @@ export function SiteNav() {
                       className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
                     >
                       Customer Support
+                    </Link>
+                  )}
+                  {isBd && (
+                    <Link
+                      to="/business-development"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-md px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      Business Development
                     </Link>
                   )}
                   {isOperations && (

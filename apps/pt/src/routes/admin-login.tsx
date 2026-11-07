@@ -45,7 +45,8 @@ function AdminLogin() {
         !role.isSuperAdmin &&
         !role.isMarketingAdmin &&
         !role.isSupportAdmin &&
-        !role.isOperationsAdmin
+        !role.isOperationsAdmin &&
+        !role.isBdAdmin
       ) {
         await supabase.auth.signOut();
         setError("Not authorized.");
@@ -59,7 +60,9 @@ function AdminLogin() {
             ? "/operations"
             : role.isMarketingAdmin
               ? "/marketing"
-              : "/support",
+              : role.isBdAdmin
+                ? "/business-development"
+                : "/support",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");

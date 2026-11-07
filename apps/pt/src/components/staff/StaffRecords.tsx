@@ -691,6 +691,8 @@ export function RequestApprovalDialog({
         return { key: autoKey, enabled };
       case "subscription_override":
         return { email, property_id: propertyId, action: overrideAction };
+      default:
+        return {};
     }
   };
   const submit = async (decideNow: boolean) => {
@@ -739,11 +741,14 @@ export function RequestApprovalDialog({
             value={kind}
             onChange={(e) => (setKind(e.target.value as ApprovalKind), setFound(null))}
           >
-            {(Object.keys(APPROVAL_KIND_LABEL) as ApprovalKind[]).map((k) => (
-              <option key={k} value={k}>
-                {APPROVAL_KIND_LABEL[k]}
-              </option>
-            ))}
+            {(Object.keys(APPROVAL_KIND_LABEL) as ApprovalKind[])
+              // requested from their own Business Development screens
+              .filter((k) => k !== "proposal_exception" && k !== "partner_payout")
+              .map((k) => (
+                <option key={k} value={k}>
+                  {APPROVAL_KIND_LABEL[k]}
+                </option>
+              ))}
           </select>
         </label>
         {needsCustomer && (
