@@ -6,6 +6,7 @@ import { getErrorMessage } from "@/lib/error-message";
 import { getStaffRole } from "@/lib/marketing";
 import { supabase } from "@/lib/supabase";
 import { plainCitations } from "@/lib/tax-updates";
+import { OwnerAlertQueue } from "@/components/OwnerAlertQueue";
 
 // CorvusPT Regulatory Watch — staff only. generate-tax-updates checks the
 // official Texas sources daily; every NEW change it judges material for
@@ -59,6 +60,7 @@ const STATUS_LABEL: Record<string, string> = {
 export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null }) {
   const { user } = useAuth();
   const [staff, setStaff] = useState(false);
+  const [isSuper, setSuper] = useState(false);
   const [alerts, setAlerts] = useState<TaxAlert[] | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -91,6 +93,7 @@ export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null
       const isStaff =
         r.isSuperAdmin || r.isMarketingAdmin || r.isSupportAdmin || r.isOperationsAdmin;
       setStaff(isStaff);
+      setSuper(r.isSuperAdmin);
       if (isStaff) load();
     });
   }, [user, load]);
@@ -135,6 +138,8 @@ export function TaxRegulatoryWatch({ lastChecked }: { lastChecked: string | null
           {open.length ? `${open.length} to review` : "No open alerts"}
         </span>
       </div>
+
+      <OwnerAlertQueue isSuperAdmin={isSuper} />
 
       {open.length === 0 && (
         <p className="text-sm text-muted-foreground">

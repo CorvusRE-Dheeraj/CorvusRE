@@ -33,6 +33,10 @@ export type NotificationPrefs = {
   // Email when the weekly assessment monitor (monitor-assessments) finds a
   // changed county value. On by default; only an explicit false turns it off.
   assessmentAlertsEmail: boolean;
+  // Email when a Texas property-tax rule change that affects the owner's
+  // properties is published (tax-owner-alerts). On by default; the alert is
+  // always in the app (Texas Tax Updates) either way.
+  taxRuleAlertsEmail: boolean;
 };
 
 // The only offsets send-deadline-reminders ever sends at — also this app's
@@ -47,6 +51,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   deadlineReminderOffsets: [...DEADLINE_REMINDER_OFFSETS],
   deadlineHourAlert: true,
   assessmentAlertsEmail: true,
+  taxRuleAlertsEmail: true,
 };
 
 export type MyProfile = {
@@ -71,6 +76,7 @@ type ProfileRow = {
     deadline_reminder_offsets?: number[];
     deadline_hour_alert?: boolean;
     assessment_alerts_email?: boolean;
+    tax_rule_alerts_email?: boolean;
   } | null;
 };
 
@@ -105,6 +111,9 @@ export async function getMyProfile(userId: string): Promise<MyProfile> {
       assessmentAlertsEmail:
         row.notification_prefs?.assessment_alerts_email ??
         DEFAULT_NOTIFICATION_PREFS.assessmentAlertsEmail,
+      taxRuleAlertsEmail:
+        row.notification_prefs?.tax_rule_alerts_email ??
+        DEFAULT_NOTIFICATION_PREFS.taxRuleAlertsEmail,
     },
   };
 }
@@ -135,6 +144,8 @@ export async function updateNotificationPrefs(
   if (prefs.deadlineHourAlert !== undefined) merged.deadline_hour_alert = prefs.deadlineHourAlert;
   if (prefs.assessmentAlertsEmail !== undefined)
     merged.assessment_alerts_email = prefs.assessmentAlertsEmail;
+  if (prefs.taxRuleAlertsEmail !== undefined)
+    merged.tax_rule_alerts_email = prefs.taxRuleAlertsEmail;
 
   const { error } = await supabase
     .from("profiles")

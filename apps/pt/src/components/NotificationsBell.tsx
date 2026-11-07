@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { listProperties } from "@/lib/properties";
 import { listProtests } from "@/lib/protests";
 import { listReminders } from "@/lib/reminders";
+import { myRuleAlerts } from "@/lib/tax-rule-alerts";
 
 type Item = { key: string; text: string; when: string; to: string; days: number };
 
@@ -49,10 +50,11 @@ export function NotificationsBell() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [props, protests, reminders] = await Promise.all([
+        const [props, protests, reminders, ruleAlerts] = await Promise.all([
           listProperties(user.id),
           listProtests(user.id),
           listReminders(user.id),
+          myRuleAlerts().catch(() => []),
         ]);
         if (cancelled) return;
         const out: Item[] = [];
@@ -92,6 +94,18 @@ export function NotificationsBell() {
               to: "/dashboard/calendar",
               days: d,
             });
+        }
+        // Texas rule changes that affect this owner's properties (unread, last 30 days)
+        for (const a of ruleAlerts) {
+          const age = -daysUntil(a.createdAt);
+          if (a.readAt || age > 30) continue;
+          out.push({
+            key: `rule-${a.deliveryId}`,
+            text: `${a.affectsOpenCase ? "Affects your open case: " : "Rule change: "}${a.title}`,
+            when: a.effectiveDate ? `Effective ${a.effectiveDate}` : "New",
+            to: "/dashboard/tax-updates",
+            days: -1,
+          });
         }
         setItems(out.sort((a, b) => a.days - b.days));
       } catch {

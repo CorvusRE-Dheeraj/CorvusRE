@@ -133,6 +133,22 @@ function Settings() {
     }
   }
 
+  async function handleTaxRuleAlertsChange(value: boolean) {
+    if (!user) return;
+    const prev = notificationPrefs;
+    setNotificationPrefs({ ...prev, taxRuleAlertsEmail: value });
+    setSavingPrefs(true);
+    try {
+      await updateNotificationPrefs(user.id, { taxRuleAlertsEmail: value });
+      toast.success("Notification preferences updated.");
+    } catch (err) {
+      setNotificationPrefs(prev);
+      toast.error(err instanceof Error ? err.message : "Could not save your preference.");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
+
   async function handleAssessmentAlertsChange(value: boolean) {
     if (!user) return;
     const prev = notificationPrefs;
@@ -440,6 +456,29 @@ function Settings() {
               className="h-4 w-4 rounded border-input"
             />
             Email me when an assessment changes
+          </label>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-8 card-elev p-6">
+          <h2 className="font-semibold">Texas Rule Changes</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Corvus AI watches the official Texas sources every day. When a property-tax rule changes
+            in a way that affects your properties — deadlines, protest procedures, evidence,
+            hearings, arbitration — you get an alert that says what changed, which of your
+            properties it touches and what to do, with the official source. Alerts always appear in
+            Texas Tax Updates; email is optional.
+          </p>
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notificationPrefs.taxRuleAlertsEmail}
+              disabled={savingPrefs}
+              onChange={(e) => handleTaxRuleAlertsChange(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Email me about rule changes that affect my properties
           </label>
         </div>
       )}
