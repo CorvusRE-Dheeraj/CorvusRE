@@ -516,6 +516,65 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     code: ["ZONECLASS", "ZONEDESC"],
     description: ["ZONEDESC"],
   },
+  // ── Metro counties, batch 1 ──
+  {
+    city: "El Paso",
+    county: "el paso",
+    url: "https://gis.elpasotexas.gov/dev/rest/services/Planning/Zoning/FeatureServer/0",
+    bbox: [-106.636, 31.623, -106.199, 32.002],
+    code: ["LABEL", "ZONELABEL", "ZONE_"],
+  },
+  {
+    city: "Edinburg",
+    county: "hidalgo",
+    url: "https://services7.arcgis.com/z3I4HxFCWafiHSiG/arcgis/rest/services/COE_ZONING_DISTRICTS/FeatureServer/0",
+    bbox: [-98.229, 26.245, -98.095, 26.455],
+    code: ["CODE"],
+    description: ["DISTRICT"],
+    ordinance: ["REZONING_ORDINANCE"],
+  },
+  {
+    city: "Brownsville",
+    county: "cameron",
+    url: "https://services2.arcgis.com/6oaLMZEZlktbQpyi/arcgis/rest/services/Zoning_District_Boundaries_view/FeatureServer/0",
+    bbox: [-97.648, 25.839, -97.272, 26.217],
+    code: ["Z_Cat"],
+    description: ["COMMENTS"],
+    ordinance: ["ORDINANCE_"],
+  },
+  {
+    city: "Harlingen",
+    county: "cameron",
+    url: "https://services3.arcgis.com/gSCPzHZGMdbiljnH/arcgis/rest/services/City_of_Harlingen_Zoning_Map/FeatureServer/2",
+    bbox: [-97.796, 26.057, -97.615, 26.279],
+    code: ["Zone"],
+  },
+  {
+    city: "Corpus Christi",
+    county: "nueces",
+    url: "https://services.arcgis.com/0J4ZNc4NaTguvRy0/arcgis/rest/services/OpenData/FeatureServer/48",
+    bbox: [-97.756, 27.466, -96.967, 27.919],
+    // TAG2023 = the 2023 Unified Development Code district; TAG = the old one
+    code: ["TAG2023", "TAG"],
+    ordinance: ["ORDINANCE_", "ORDINANCE1"],
+  },
+  {
+    city: "Lubbock",
+    county: "lubbock",
+    url: "https://services2.arcgis.com/eYXun6c1pgy8Qpta/arcgis/rest/services/NewZoning_UDC/FeatureServer/0",
+    bbox: [-102.037, 33.442, -101.743, 33.711],
+    code: ["ZoningActual"],
+    ordinance: ["OrdinanceNumber"],
+  },
+  {
+    city: "Laredo",
+    county: "webb",
+    url: "https://services3.arcgis.com/h9QEFLHkUI1SIRs7/arcgis/rest/services/OL_Zoning_Districts/FeatureServer/163",
+    bbox: [-99.751, 27.365, -99.33, 27.748],
+    code: ["Zoning", "ZONE_CODE"],
+    description: ["DEFINITION"],
+    ordinance: ["ZONE_ORDIN", "ZORDINANCE"],
+  },
   // ── next county ──
 ];
 
