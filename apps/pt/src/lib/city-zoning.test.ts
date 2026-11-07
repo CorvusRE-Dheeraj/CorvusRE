@@ -62,6 +62,10 @@ describe("city zoning", () => {
     expect(a?.link).toBe("https://publicrecords.cityofallen.org/x");
     expect(zoningLabel(a!)).toBe("DD (DOWNTOWN DISTRICT) · City of Allen zoning map");
     expect(zoningFromAttributes(layer("Allen"), { Zoning: " " })).toBeNull();
+    // Carrollton wraps codes in parentheses
+    expect(zoningFromAttributes(layer("Carrollton"), { Zoning: "(SF-12/20)" })?.code).toBe(
+      "SF-12/20",
+    );
     // "PD" is a real district (Planned Development), not a placeholder
     expect(zoningFromAttributes(layer("Richardson"), { ZONECLASS: "PD" })?.code).toBe("PD");
   });
@@ -92,6 +96,9 @@ describe("deed records", () => {
     expect(c.clerk).toBe("Collin County Clerk");
     expect(c.searchUrl("SMITH JOHN")).toBe(
       "https://collin.tx.publicsearch.us/results?department=RP&searchType=quickSearch&searchValue=SMITH%20JOHN",
+    );
+    expect(clerkRecordsFor("Dallas Central Appraisal District")?.homeUrl).toBe(
+      "https://dallas.tx.publicsearch.us/",
     );
     expect(clerkRecordsFor("Loving County Appraisal District")).toBeNull();
   });

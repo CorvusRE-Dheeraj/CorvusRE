@@ -134,6 +134,80 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     ordinance: ["SUP_ORD"],
     link: ["OrdinanceLink"],
   },
+  // ── Dallas County (Richardson and Sachse are listed above) ──
+  {
+    city: "Dallas",
+    county: "dallas",
+    url: "https://services2.arcgis.com/rwnOSbfKSwyTBcwN/arcgis/rest/services/Dallas_Zoning/FeatureServer/15",
+    bbox: [-97.001, 32.606, -96.464, 33.031],
+    code: ["ZONE_DIST", "LONG_ZONE_DIST"],
+    description: ["COMMON_NAME"],
+    planned: ["PD_NUM"],
+    ordinance: ["ORD_NUM"],
+  },
+  {
+    city: "Irving",
+    county: "dallas",
+    url: "https://services3.arcgis.com/OfsJXUlu8pSkbl7B/arcgis/rest/services/Planning_and_Zoning/FeatureServer/5",
+    bbox: [-97.035, 32.771, -96.888, 32.955],
+    code: ["BaseDistrict", "District"],
+    description: ["Use_"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "Garland",
+    county: "dallas",
+    url: "https://maps2.garlandtx.gov/server1/rest/services/PLANNING/ZONING/MapServer/0",
+    bbox: [-96.708, 32.829, -96.53, 32.987],
+    code: ["GDC_ZONING", "BASEZONING"],
+    ordinance: ["ORD_NO"],
+  },
+  {
+    city: "Carrollton",
+    county: "dallas",
+    url: "https://maps.cityofcarrollton.com/arcserver/rest/services/Webmaps/Zoning/MapServer/132",
+    bbox: [-96.959, 32.917, -96.835, 33.056],
+    code: ["Zoning"],
+    planned: ["PD_Num"],
+    ordinance: ["Ordinance", "Ord1"],
+    link: ["Website"],
+  },
+  {
+    city: "Rowlett",
+    county: "dallas",
+    url: "https://emap.rowlett.com/arcgis/rest/services/OnlineServices/ZoningInfo/MapServer/0",
+    bbox: [-96.595, 32.867, -96.5, 32.977],
+    code: ["ZoningType"],
+    description: ["Zoing_Description"],
+  },
+  {
+    city: "DeSoto",
+    county: "dallas",
+    url: "https://services8.arcgis.com/QHqdbIhWBJLlMbGN/arcgis/rest/services/Zoning_DeSoto/FeatureServer/0",
+    bbox: [-96.909, 32.565, -96.821, 32.648],
+    code: ["ZONECLASS", "Zone_Code"],
+    description: ["COLOR_CODE"],
+  },
+  {
+    city: "Cedar Hill",
+    county: "dallas",
+    url: "https://services2.arcgis.com/c4jK8v4C9UDiTgJU/arcgis/rest/services/CHZoning/FeatureServer/0",
+    bbox: [-97.021, 32.535, -96.89, 32.64],
+    // ZONECLASS is a numeric color class here; ZONEDESC holds the district code
+    code: ["ZONEDESC"],
+    planned: ["PD_NUM"],
+    ordinance: ["ORD_NUM"],
+    link: ["ZONELINK"],
+  },
+  {
+    city: "Farmers Branch",
+    county: "dallas",
+    url: "https://services1.arcgis.com/rrMt0tlqg3eYOL0M/arcgis/rest/services/Zoning_public/FeatureServer/0",
+    bbox: [-96.939, 32.895, -96.821, 32.953],
+    code: ["ZONECLASS"],
+    description: ["ZONEDESC"],
+    planned: ["CITYPDDIST"],
+  },
 ];
 
 export type CityZoning = {
@@ -152,7 +226,11 @@ function pick(attrs: Record<string, unknown>, fields: string[] | undefined): str
   for (const f of fields ?? []) {
     const v = attrs[f];
     if (v == null) continue;
-    const s = String(v).trim();
+    // Carrollton wraps codes in parentheses: "(SF-12/20)"
+    const s = String(v)
+      .trim()
+      .replace(/^\((.*)\)$/, "$1")
+      .trim();
     if (!EMPTY.test(s)) return s;
   }
   return null;
