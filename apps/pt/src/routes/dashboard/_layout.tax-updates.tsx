@@ -52,6 +52,7 @@ import {
 } from "@/lib/tax-updates";
 import { EmptyState } from "@/components/EmptyState";
 import { TaxRegulatoryWatch } from "@/components/TaxRegulatoryWatch";
+import { TaxRuleAlerts } from "@/components/TaxRuleAlerts";
 import { getMyBilling } from "@/lib/billing";
 import { getStaffRole } from "@/lib/marketing";
 import { isPaidStatus } from "@/lib/subscription-status";
@@ -323,6 +324,8 @@ function TaxUpdates() {
           </div>
         </div>
       </div>
+
+      <TaxRuleAlerts />
 
       <TaxRegulatoryWatch lastChecked={report?.generatedAt ?? null} />
 

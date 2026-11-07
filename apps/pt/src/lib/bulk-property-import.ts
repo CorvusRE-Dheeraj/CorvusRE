@@ -6,6 +6,7 @@ import {
 } from "./properties";
 import { cadLookup, type CadRecord } from "./cad-lookup";
 import { parseNumber } from "./csv-import";
+import { supabase } from "./supabase";
 import {
   IMPORT_FIELDS,
   type ColumnMapping,
@@ -29,6 +30,10 @@ export type ImportRow = {
     improvementValue?: number;
     totalValue?: number;
     taxYear?: number;
+    // tax-bill columns (Pay Taxes)
+    taxAmountDue?: number;
+    paymentDueDate?: string; // YYYY-MM-DD
+    taxAmountPaid?: number;
   };
   flags: ImportFlag[];
   status: ImportRowStatus;
@@ -37,7 +42,36 @@ export type ImportRow = {
   cadOptions: CadRecord[] | null; // set when the address matched multiple CAD parcels
 };
 
-const NUMERIC: ImportField[] = ["landValue", "improvementValue", "totalValue", "taxYear"];
+const NUMERIC: ImportField[] = [
+  "landValue",
+  "improvementValue",
+  "totalValue",
+  "taxYear",
+  "taxAmountDue",
+  "taxAmountPaid",
+];
+
+/** "2027-01-31", "01/31/2027", "1/31/27", "Jan 31, 2027" → "2027-01-31"; null if not a date. */
+export function parseDueDate(raw: string): string | null {
+  const t = raw.trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return iso(+m[1], +m[2], +m[3]);
+  m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if (m) return iso(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[1], +m[2]);
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) || !/[a-z]/i.test(t)
+    ? null
+    : iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+function iso(y: number, mo: number, d: number): string | null {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 2000 || y > 2100) return null;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** True when the row carries anything for a tax bill. */
+export function hasBill(v: ImportRow["values"]): boolean {
+  return v.taxAmountDue != null || v.taxAmountPaid != null || !!v.paymentDueDate;
+}
 
 // Turn the raw grid + the confirmed column mapping into typed rows with
 // per-row flags. No network — findExistingProperty / cadLookup happen in
@@ -59,7 +93,15 @@ export function buildRows(grid: SpreadsheetGrid, mapping: ColumnMapping[]): Impo
       if (col == null) continue;
       const raw = (cells[col] ?? "").trim();
       if (!raw) continue;
-      if (NUMERIC.includes(field)) {
+      if (field === "paymentDueDate") {
+        const d = parseDueDate(raw);
+        if (d) sink[field] = d;
+        else
+          flags.push({
+            level: "warn",
+            message: `"${raw}" isn't a date we can read — due date skipped.`,
+          });
+      } else if (NUMERIC.includes(field)) {
         const n = parseNumber(raw);
         if (n == null) {
           flags.push({
@@ -186,20 +228,33 @@ function disagree(
 export type CommitResult = {
   imported: PropertyRecord[];
   duplicates: number;
+  /** tax bills added or updated from the file's bill columns */
+  bills: number;
   failed: number;
 };
 
 // Adds every included, non-duplicate row. addProperty is itself
 // dedupe-guarded, so a race that created the property between enrich and
 // commit still can't double it.
+// Adds every included, non-duplicate row. A row that already exists is
+// skipped as a property — but when it carries tax-bill columns its bill is
+// still recorded against the existing property.
 export async function commitRows(
   userId: string,
   rows: ImportRow[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<CommitResult> {
-  const toAdd = rows.filter((r) => r.include && r.status !== "duplicate" && r.values.address);
+  const toAdd = rows.filter(
+    (r) =>
+      r.include &&
+      r.values.address &&
+      (r.status !== "duplicate" || (r.existingId && hasBill(r.values))),
+  );
   const imported: PropertyRecord[] = [];
-  let duplicates = rows.filter((r) => r.include && r.status === "duplicate").length;
+  let duplicates = rows.filter(
+    (r) => r.include && r.status === "duplicate" && !hasBill(r.values),
+  ).length;
+  let bills = 0;
   let failed = 0;
 
   for (let i = 0; i < toAdd.length; i++) {
@@ -211,15 +266,68 @@ export async function commitRows(
         cad: r.values.cad,
         accountNumber: r.values.accountNumber,
       });
-      const property = await addProperty(userId, r.values);
+      const property = before ?? (await addProperty(userId, r.values));
       if (before) duplicates++;
       else imported.push(property);
+      if (hasBill(r.values)) {
+        await saveImportedBill(userId, property.id, r.values);
+        bills++;
+      }
     } catch (err) {
       console.error("Bulk import row failed:", err);
       failed++;
     }
   }
-  return { imported, duplicates, failed };
+  return { imported, duplicates, bills, failed };
+}
+
+// One tax bill per property and tax year: an existing bill for that year is
+// updated with the file's figures, otherwise a new one is added. Amount paid
+// is the owner's own figure — the status is user-reported, never "verified".
+export async function saveImportedBill(
+  userId: string,
+  propertyId: string,
+  v: ImportRow["values"],
+): Promise<void> {
+  const taxYear =
+    v.taxYear ??
+    (v.paymentDueDate ? Number(v.paymentDueDate.slice(0, 4)) - 1 : new Date().getFullYear());
+  const status =
+    v.taxAmountPaid != null && v.taxAmountPaid > 0
+      ? v.taxAmountDue != null && v.taxAmountPaid < v.taxAmountDue
+        ? "partial"
+        : "paid"
+      : "unpaid";
+  const fields: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    source: "import",
+  };
+  if (v.taxAmountDue != null) fields.amount_due = v.taxAmountDue;
+  if (v.paymentDueDate) fields.due_date = v.paymentDueDate;
+  if (v.taxAmountPaid != null) {
+    fields.amount_paid = v.taxAmountPaid;
+    fields.status = status;
+    fields.status_source = "user";
+  }
+  const { data: existing, error: findErr } = await supabase
+    .from("tax_bills")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("property_id", propertyId)
+    .eq("tax_year", taxYear)
+    .limit(1)
+    .maybeSingle();
+  if (findErr) throw findErr;
+  const { error } = existing
+    ? await supabase.from("tax_bills").update(fields).eq("id", existing.id)
+    : await supabase.from("tax_bills").insert({
+        user_id: userId,
+        property_id: propertyId,
+        tax_year: taxYear,
+        status: v.taxAmountPaid != null ? status : "unpaid",
+        ...fields,
+      });
+  if (error) throw error;
 }
 
 // ── Checks within the uploaded list itself ─────────────────────────────────

@@ -2887,6 +2887,19 @@ create policy "Signed-in users can read county procedures"
   to authenticated
   using (true);
 
+-- How each appraisal district says a protest is withdrawn (Nov 2026), read by
+-- AI off the district's own website by the protest-withdrawal edge function and
+-- cached for 30 days. rules is null when the site couldn't be read. Written and
+-- read only by that function (service role) — no client policies.
+create table if not exists public.county_withdrawal_rules (
+  county_code text primary key,
+  cad_name text not null,
+  website text not null,
+  rules jsonb,
+  retrieved_at timestamptz not null default now()
+);
+alter table public.county_withdrawal_rules enable row level security;
+
 -- =========================================================================
 -- County mailbox (Oct 2026): counties email CorvusPT's agent address
 -- (properties@srclandbuilding.com — on the Service Agreement and Form 50-162).

@@ -287,7 +287,14 @@ export async function listEvents(filter: {
 
 // ── approvals ───────────────────────────────────────────────────────────────
 export type ApprovalKind =
-  "access_change" | "pricing_exception" | "refund" | "agreement_change" | "automation_permission";
+  | "access_change"
+  | "pricing_exception"
+  | "refund"
+  | "agreement_change"
+  | "automation_permission"
+  | "subscription_override"
+  | "proposal_exception"
+  | "partner_payout";
 
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   pricing_exception: "Pricing exception",
@@ -295,6 +302,9 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
   agreement_change: "Agreement change",
   automation_permission: "Automation permission",
   access_change: "Access change",
+  subscription_override: "Subscription-term override",
+  proposal_exception: "Proposal exception",
+  partner_payout: "Partner payout",
 };
 
 export type Approval = {

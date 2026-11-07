@@ -4,6 +4,14 @@ import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { AdminSupportEscalations } from "@/components/AdminSupportEscalations";
+import { SupportDashboard } from "@/components/support/SupportDashboard";
+import { SupportCustomers, type CustomerFilter } from "@/components/support/SupportCustomers";
+import { SupportCustomerDetail } from "@/components/support/SupportCustomerDetail";
+import { SupportTickets, type TicketFilter } from "@/components/support/SupportTickets";
+import { SupportAiWorkspace } from "@/components/support/SupportAiWorkspace";
+import { SupportAnalytics } from "@/components/support/SupportAnalytics";
+import { SupportSettings } from "@/components/support/SupportSettings";
+import { listTeam, type TeamMember } from "@/lib/support-console";
 import { askAboutDocument } from "@/lib/document-ai";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/error-message";
@@ -31,7 +39,26 @@ import {
 // past conversations and onboarding to-dos. Support takes it from here
 // (subscription help, property onboarding, protest support); Marketing keeps
 // its history. Support Admins and Super Admins only.
+type ConsoleTab =
+  "dashboard" | "customers" | "tickets" | "handoffs" | "ai" | "analytics" | "settings";
+const TABS: ConsoleTab[] = [
+  "dashboard",
+  "customers",
+  "tickets",
+  "handoffs",
+  "ai",
+  "analytics",
+  "settings",
+];
+
 export const Route = createFileRoute("/support")({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { tab?: ConsoleTab; customer?: string; ticket?: string } => ({
+    tab: TABS.includes(s.tab as ConsoleTab) ? (s.tab as ConsoleTab) : undefined,
+    customer: typeof s.customer === "string" ? s.customer : undefined,
+    ticket: typeof s.ticket === "string" ? s.ticket : undefined,
+  }),
   head: () => ({
     meta: [{ title: "Customer Support — CorvusPT" }, { name: "robots", content: "noindex" }],
   }),
@@ -51,11 +78,17 @@ type Details = {
 function SupportPage() {
   const nav = useNavigate();
   const { user, loading } = useAuth();
+  const search = Route.useSearch();
   const [role, setRole] = useState<StaffRole | null>(null);
-  const [handoffs, setHandoffs] = useState<Handoff[] | null>(null);
-  const [details, setDetails] = useState<Map<string, Details>>(new Map());
-  const [tab, setTab] = useState<"open" | "mine" | "done" | "escalations">("open");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [supervisor, setSupervisor] = useState(false);
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [customerFilter, setCustomerFilter] = useState<CustomerFilter>("all");
+  const [ticketFilter, setTicketFilter] = useState<TicketFilter>("open");
+  const [newFor, setNewFor] = useState<{
+    profileId: string | null;
+    propertyId?: string | null;
+    subject?: string;
+  } | null>(null);
   const staffCtx = useStaffContext();
 
   useEffect(() => {
@@ -65,6 +98,131 @@ function SupportPage() {
       .then((r) => (r.isSupportAdmin || r.isSuperAdmin ? setRole(r) : nav({ to: "/admin-login" })))
       .catch(() => nav({ to: "/admin-login" }));
   }, [loading, user, nav]);
+  useEffect(() => {
+    if (!role) return;
+    listTeam()
+      .then((t) => {
+        setTeam(t);
+        const mine = t.find((m) => m.id === user?.id);
+        setSupervisor(!!role.isSuperAdmin || !!mine?.supervisor);
+      })
+      .catch(() => setTeam([]));
+  }, [role, user]);
+
+  const tab: ConsoleTab = search.tab ?? "dashboard";
+  const go = (p: { tab?: ConsoleTab; customer?: string; ticket?: string }) =>
+    nav({ to: "/support", search: { tab: p.tab ?? tab, customer: p.customer, ticket: p.ticket } });
+  if (!role || !user) return null;
+  const tabs: [ConsoleTab, string][] = [
+    ["dashboard", "Dashboard"],
+    ["customers", "Customers"],
+    ["tickets", "Tickets"],
+    ["handoffs", "Marketing handoffs"],
+    ["ai", "AI workspace"],
+    ["analytics", "Analytics"],
+    ...(role.isSuperAdmin ? ([["settings", "Settings"]] as [ConsoleTab, string][]) : []),
+  ];
+  return (
+    <div className="container-page py-8">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="badge-soft">Customer Support Admin</span>
+        {role.isSuperAdmin ? (
+          <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
+        ) : supervisor ? (
+          <span className="text-xs text-muted-foreground">Supervisor</span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
+          <p className="text-sm text-muted-foreground">
+            Customers, onboarding, tickets, property status, documents and billing help — in one
+            place.
+          </p>
+        </div>
+        <RequestApprovalButton ctx={staffCtx} />
+      </div>
+      <HandoffInbox ctx={staffCtx} department="support" />
+      <div className="mt-5 flex flex-wrap gap-1 border-b border-border" role="tablist">
+        {tabs.map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => go({ tab: k })}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === k ? "border-accent font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "dashboard" && (
+        <SupportDashboard
+          onTickets={(f) => (setTicketFilter(f), go({ tab: "tickets" }))}
+          onCustomers={(f) => (setCustomerFilter(f), go({ tab: "customers" }))}
+          onCustomer={(id) => go({ tab: "customers", customer: id })}
+          onTicket={(id) => go({ tab: "tickets", ticket: id })}
+        />
+      )}
+      {tab === "customers" &&
+        (search.customer ? (
+          <SupportCustomerDetail
+            key={search.customer}
+            profileId={search.customer}
+            team={team}
+            ctx={staffCtx}
+            onBack={() => go({ tab: "customers" })}
+            onTicket={(id) => go({ tab: "tickets", ticket: id })}
+            onNewTicket={(profileId, propertyId, subject) => {
+              setNewFor({ profileId, propertyId, subject });
+              go({ tab: "tickets" });
+            }}
+          />
+        ) : (
+          <SupportCustomers
+            me={user.id}
+            filter={customerFilter}
+            setFilter={setCustomerFilter}
+            onOpen={(id) => go({ tab: "customers", customer: id })}
+          />
+        ))}
+      {tab === "tickets" && (
+        <SupportTickets
+          me={user.id}
+          team={team}
+          filter={ticketFilter}
+          setFilter={setTicketFilter}
+          openId={search.ticket ?? null}
+          setOpenId={(id) => go({ tab: "tickets", ticket: id ?? undefined })}
+          onCustomer={(id) => go({ tab: "customers", customer: id })}
+          newFor={newFor}
+          clearNew={() => setNewFor(null)}
+        />
+      )}
+      {tab === "handoffs" && <Handoffs role={role} me={user.id} staffCtx={staffCtx} />}
+      {tab === "ai" && <SupportAiWorkspace />}
+      {tab === "analytics" && (
+        <SupportAnalytics
+          team={team}
+          isSupervisor={supervisor}
+          isSuper={!!role.isSuperAdmin}
+          onAssign={() => (setTicketFilter("open"), go({ tab: "tickets" }))}
+        />
+      )}
+      {tab === "settings" && role.isSuperAdmin && <SupportSettings />}
+    </div>
+  );
+}
+
+// Customers handed over from Marketing (an AI summary of their properties,
+// subscription, conversations and onboarding to-dos). The same customers are
+// in the Customers tab — one record each, linked by account.
+function Handoffs({ role, me, staffCtx }: { role: StaffRole; me: string; staffCtx: StaffContext }) {
+  const [handoffs, setHandoffs] = useState<Handoff[] | null>(null);
+  const [details, setDetails] = useState<Map<string, Details>>(new Map());
+  const [tab, setTab] = useState<"open" | "mine" | "done" | "escalations">("open");
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [h, d] = await Promise.all([
@@ -91,32 +249,15 @@ function SupportPage() {
         tab === "open"
           ? h.status === "open"
           : tab === "mine"
-            ? h.status !== "done" && h.assignedTo === user?.id
+            ? h.status !== "done" && h.assignedTo === me
             : h.status === "done",
       ),
-    [handoffs, tab, user],
+    [handoffs, tab, me],
   );
   if (!role) return null;
   const open = handoffs?.find((h) => h.id === openId) ?? null;
   return (
-    <div className="container-page py-8">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="badge-soft">Customer Support Admin</span>
-        {role.isSuperAdmin && (
-          <span className="text-xs text-muted-foreground">Viewing with Super Admin access</span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="mt-2 font-serif text-3xl font-semibold">Customer Support</h1>
-          <p className="text-sm text-muted-foreground">
-            New paying customers handed over from Marketing — onboard them and own their
-            subscription and protest support.
-          </p>
-        </div>
-        <RequestApprovalButton ctx={staffCtx} />
-      </div>
-      <HandoffInbox ctx={staffCtx} department="support" />
+    <div className="mt-2">
       <div
         className="mt-5 inline-flex rounded-md border border-border p-0.5 text-sm"
         role="tablist"
@@ -126,7 +267,7 @@ function SupportPage() {
             ["open", `New (${(handoffs ?? []).filter((h) => h.status === "open").length})`],
             [
               "mine",
-              `Mine (${(handoffs ?? []).filter((h) => h.status !== "done" && h.assignedTo === user?.id).length})`,
+              `Mine (${(handoffs ?? []).filter((h) => h.status !== "done" && h.assignedTo === me).length})`,
             ],
             ["done", "Onboarded"],
             ["escalations", "Escalations"],
@@ -188,13 +329,7 @@ function SupportPage() {
             })}
           </ul>
           {open ? (
-            <HandoffDetail
-              h={open}
-              d={details.get(open.id)}
-              me={user!.id}
-              reload={load}
-              ctx={staffCtx}
-            />
+            <HandoffDetail h={open} d={details.get(open.id)} me={me} reload={load} ctx={staffCtx} />
           ) : (
             <p className="card-elev p-6 text-sm text-muted-foreground">
               Pick a customer to see their handoff.

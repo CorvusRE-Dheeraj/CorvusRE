@@ -148,7 +148,7 @@ export type ProtestRecord = {
   cadEvidenceReceivedAt?: string | null;
 };
 
-type ProtestRow = {
+export type ProtestRow = {
   id: string;
   property_id: string | null;
   bpp_account_id: string | null;
@@ -200,6 +200,11 @@ const SELECT_COLUMNS =
   "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, hearing_link, hearing_phone, hearing_link_source, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_review_link, informal_review_phone, informal_review_location, informal_review_link_source, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
+  return protestFromRow(row);
+}
+
+// A raw protests row (e.g. from a staff RPC returning to_jsonb(row)) as the app's record.
+export function protestFromRow(row: ProtestRow): ProtestRecord {
   return {
     id: row.id,
     propertyId: row.property_id,

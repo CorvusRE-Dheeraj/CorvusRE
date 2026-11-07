@@ -12,6 +12,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../stripe-mode.ts";
+import { cancelDecision } from "../commitment.ts";
+import { PRICING_VERSION } from "../pricing.ts";
+
+const dateLabel = (d: Date) =>
+  d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -72,9 +77,37 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
-    await stripe.subscriptions.cancel(property.stripe_subscription_id);
+    const sub = await stripe.subscriptions.retrieve(property.stripe_subscription_id);
+    const interval = sub.items.data[0]?.price.recurring?.interval === "month" ? "month" : "year";
+    // The 12-month commitment applies to monthly plans under the Nov 2026
+    // pricing (../commitment.ts). Annual plans, and plans from before it,
+    // stop renewing and run to the end of the period already paid.
+    const committed = sub.metadata?.pricing === PRICING_VERSION && interval === "month";
+    const decision = committed
+      ? cancelDecision("month", new Date(sub.start_date * 1000))
+      : ({ allowed: true, endsAt: null, atPeriodEnd: true } as const);
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
+    if (!decision.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: `Your plan has a 12-month commitment. You can give notice to cancel from ${dateLabel(decision.windowOpens)} (until ${dateLabel(decision.windowCloses)}); the plan then ends 60 days later.`,
+          windowOpens: decision.windowOpens.toISOString(),
+          windowCloses: decision.windowCloses.toISOString(),
+        }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+    const updated = decision.atPeriodEnd
+      ? await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true })
+      : await stripe.subscriptions.update(sub.id, {
+          cancel_at: Math.floor(decision.endsAt!.getTime() / 1000),
+        });
+    const endsAt = updated.cancel_at ?? (updated.cancel_at_period_end ? updated.current_period_end : null);
+
+    return new Response(
+      JSON.stringify({ ok: true, endsAt: endsAt ? new Date(endsAt * 1000).toISOString() : null }),
+      { status: 200, headers: corsHeaders },
+    );
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),

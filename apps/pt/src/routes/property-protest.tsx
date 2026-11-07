@@ -7,6 +7,7 @@ import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { currency, updateIntake } from "@/lib/intake-store";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WithdrawProtestDialog } from "@/components/WithdrawProtestDialog";
 
 export const Route = createFileRoute("/property-protest")({
   head: () => ({
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/property-protest")({
       {
         name: "description",
         content:
-          "AI-driven Texas real property protest: comp analysis, evidence packet and deadline tracking — file it yourself with Owner-Managed CorvusPT, or have our team file and represent you with Expert/Managed Help.",
+          "AI-driven Texas real property protest: comp analysis, evidence packet and deadline tracking — file it yourself with Owner-Managed CorvusPT, or have our team file and represent you with Corvus-Managed.",
       },
       { property: "og:title", content: "AI-driven Texas Property Protest" },
       { property: "og:description", content: "AI evidence. You file it — or our team does." },
@@ -29,6 +30,11 @@ function Page() {
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  // Withdraw Protest: open for one property (from its card) or with a picker.
+  const [withdraw, setWithdraw] = useState<{ open: boolean; propertyId: string | null }>({
+    open: false,
+    propertyId: null,
+  });
 
   useEffect(() => {
     if (!user) {
@@ -72,9 +78,18 @@ function Page() {
               with a protest on file.
             </p>
           </div>
-          <Link to="/dashboard/properties" className="btn-outline">
-            Manage All Properties
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setWithdraw({ open: true, propertyId: null })}
+            >
+              Withdraw a Protest
+            </button>
+            <Link to="/dashboard/properties" className="btn-outline">
+              Manage All Properties
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4">
@@ -84,9 +99,16 @@ function Page() {
               property={p}
               protest={protests.find((pr) => pr.propertyId === p.id)!}
               delay={Math.min(i, 8) * 60}
+              onWithdraw={() => setWithdraw({ open: true, propertyId: p.id })}
             />
           ))}
         </div>
+        <WithdrawProtestDialog
+          open={withdraw.open}
+          onOpenChange={(open) => setWithdraw((w) => ({ ...w, open }))}
+          properties={protestedProperties}
+          initialPropertyId={withdraw.propertyId}
+        />
       </div>
     );
   }
@@ -113,7 +135,7 @@ function Page() {
     "AI reviews CAD value against comparable sales and equity comps.",
     "AI Evidence Builder assembles a hearing-ready packet.",
     "Owner-Managed CorvusPT: you file and attend the hearing, with AI-prepared evidence and step-by-step instructions.",
-    "Expert/Managed Help: CorvusPT's team files, communicates with the county, and represents you at the hearing.",
+    "Corvus-Managed: CorvusPT's team files, communicates with the county, and represents you at the hearing.",
     "Deadline engine tracks your protest window automatically.",
   ];
   return (
@@ -125,7 +147,7 @@ function Page() {
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
           AI handles research, comps, and evidence. Then you choose who files: you, with
-          Owner-Managed CorvusPT, or CorvusPT&apos;s team, with Expert/Managed Help — which handles
+          Owner-Managed CorvusPT, or CorvusPT&apos;s team, with Corvus-Managed — which handles
           filing, county communication, hearings, and settlement.
         </p>
         <ul className="mt-6 grid gap-3">
@@ -163,10 +185,12 @@ function ProtestedPropertyCard({
   property,
   protest,
   delay,
+  onWithdraw,
 }: {
   property: PropertyRecord;
   protest: ProtestRecord;
   delay: number;
+  onWithdraw: () => void;
 }) {
   const nav = useNavigate();
   const { status, label } = getPropertyProtestStatus(property, [protest]);
@@ -205,6 +229,9 @@ function ProtestedPropertyCard({
         </Link>
         <button type="button" onClick={goToModules} className="btn-outline">
           Property Summary
+        </button>
+        <button type="button" onClick={onWithdraw} className="btn-outline text-destructive">
+          Withdraw Protest
         </button>
       </div>
     </div>

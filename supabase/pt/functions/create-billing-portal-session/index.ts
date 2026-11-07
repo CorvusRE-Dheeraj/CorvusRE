@@ -1,9 +1,16 @@
 // Deploy via CLI: `supabase functions deploy create-billing-portal-session`.
-// Requires the Stripe Dashboard's Customer Portal settings to be saved at least once
-// (Settings > Billing > Customer Portal) or billingPortal.sessions.create errors out.
+// Uses its own portal configuration (see portalConfiguration below), so the
+// Stripe Dashboard's default portal settings no longer apply here.
+import { portalConfiguration } from "../_shared/billing-portal.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
+
+// The portal CorvusPT opens: cards, invoices and billing details only — no
+// cancelling or plan changes there, because monthly plans carry a 12-month
+// commitment that only the app enforces (cancel-property-subscription,
+// ../_shared/commitment.ts). Created once per Stripe account (test and live
+// are separate) and found again by its metadata tag.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,6 +76,7 @@ Deno.serve(async (req: Request) => {
     try {
       session = await stripe.billingPortal.sessions.create({
         customer: profile.stripe_customer_id,
+        configuration: await portalConfiguration(stripe),
         return_url: `${origin}${safePath}`,
       });
     } catch (e) {

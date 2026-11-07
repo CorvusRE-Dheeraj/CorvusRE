@@ -4,46 +4,16 @@ import { ChevronDown, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { readIntake, classifyAndStoreDocument, type IntakeState } from "@/lib/intake-store";
 import { useAuth } from "@/lib/auth";
-import { listProtests, type ProtestRecord, type ProtestStatus } from "@/lib/protests";
+import { listProtests, type ProtestRecord } from "@/lib/protests";
 import { listProperties, PROPERTIES_CHANGED_EVENT, type PropertyRecord } from "@/lib/properties";
 import { getPropertyProtestStatus, type ActionStatus } from "@/lib/portfolio-status";
 import { getMyBilling } from "@/lib/billing";
 import { useFileDrop } from "@/hooks/use-file-drop";
 import { ProtestAuthorizationFlow } from "@/components/ProtestAuthorizationFlow";
 import { isPaidStatus } from "@/lib/subscription-status";
-
-const STEP_LABELS = [
-  "Start",
-  "Identify County",
-  "Find Property",
-  "Upload Documents",
-  "AI Review",
-  "Choose Service",
-  "Prepare Filing",
-  "Submit",
-  "Track",
-  "Decision",
-  "Savings",
-] as const;
+import { STEP_LABELS, STATUS_RANK } from "@/lib/journey-steps";
 
 const TOTAL_STEPS = STEP_LABELS.length;
-
-// Steps 6-11 used to render permanently locked ("coming soon") because the
-// filing workflow they describe didn't exist yet. It does now — protests.status
-// moves through this exact pipeline (advanced by CorvusPT staff via the admin
-// panel), so those steps are driven by the signed-in user's real cases instead.
-const STATUS_RANK: Record<ProtestStatus, number> = {
-  requested: 1,
-  filed: 2,
-  under_review: 3,
-  offer_received: 3,
-  // A scheduled hearing is still the "Track" stage; Decision only completes once a decision exists.
-  hearing_scheduled: 3,
-  decision_received: 4,
-  appealing: 4,
-  arbitrating: 4,
-  resolved: 5,
-};
 
 // `locked` disables the action entirely and shows why on hover/focus — used
 // for a service that isn't open yet, as opposed to `protestLaunch`'s paid

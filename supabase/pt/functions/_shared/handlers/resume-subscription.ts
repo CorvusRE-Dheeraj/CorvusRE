@@ -64,9 +64,15 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
-    await stripe.subscriptions.update(property.stripe_subscription_id, {
-      cancel_at_period_end: false,
-    });
+    // Clears both kinds of scheduled end: turned-off renewal (annual), and a
+    // notice date on a monthly plan (cancel_at, set by cancel-property-subscription).
+    const current = await stripe.subscriptions.retrieve(property.stripe_subscription_id);
+    await stripe.subscriptions.update(
+      property.stripe_subscription_id,
+      current.cancel_at && !current.cancel_at_period_end
+        ? { cancel_at: "" }
+        : { cancel_at_period_end: false },
+    );
 
     // Update immediately rather than waiting on the customer.subscription.updated
     // webhook round trip, so the UI reflects this right away; the webhook will also

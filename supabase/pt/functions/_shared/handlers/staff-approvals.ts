@@ -5,6 +5,11 @@
 //   refund                 refund a property's latest subscription payment
 //   agreement_change       void a signed agreement so the customer signs again
 //   automation_permission  turn a marketing automation on / off
+//   proposal_exception     a Business Development proposal that departs from the
+//                          approved terms (custom discount, commitment, other terms)
+//   partner_payout         pay a referral partner's recorded commission
+//   subscription_override  waive a property's plan commitment and end its subscription
+//                          (at period end, or now) — outside the cancellation policy
 // Only a Super Admin DECIDES; an approval is then executed here (Stripe for
 // refunds and discounts, apply_approved_change() for the rest) and recorded in
 // the shared history with the approval it used.
@@ -24,18 +29,25 @@ const corsHeaders = {
 };
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: corsHeaders });
 
-type Kind = "access_change" | "pricing_exception" | "refund" | "agreement_change" | "automation_permission";
-const KINDS: Kind[] = ["access_change", "pricing_exception", "refund", "agreement_change", "automation_permission"];
+type Kind = "access_change" | "pricing_exception" | "refund" | "agreement_change" | "automation_permission" | "subscription_override" | "proposal_exception" | "partner_payout";
+const KINDS: Kind[] = ["access_change", "pricing_exception", "refund", "agreement_change", "automation_permission", "subscription_override", "proposal_exception", "partner_payout"];
+const OVERRIDE_LABEL: Record<string, string> = {
+  end_at_period_end: "waive the commitment — end at the end of the current billing period",
+  end_now: "waive the commitment — end the subscription now",
+};
 const ROLE_LABEL: Record<string, string> = {
   marketing_admin: "Marketing Admin",
   marketing_supervisor: "Marketing Supervisor",
   support_admin: "Customer Support Admin",
+  support_supervisor: "Customer Support Supervisor",
+  bd_admin: "Business Development Admin",
+  bd_supervisor: "Business Development Supervisor",
   operations_admin: "Operations Admin",
   is_admin: "Super Admin",
 };
 const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
-type Staff = { id: string; email: string; is_admin: boolean; marketing_admin: boolean; support_admin: boolean; operations_admin: boolean };
+type Staff = { id: string; email: string; is_admin: boolean; marketing_admin: boolean; support_admin: boolean; operations_admin: boolean; bd_admin?: boolean };
 type Approval = {
   id: string;
   kind: Kind;
@@ -49,7 +61,7 @@ type Approval = {
 };
 
 function departmentOf(s: Staff): string {
-  return s.is_admin ? "super_admin" : s.operations_admin ? "operations" : s.support_admin ? "support" : "marketing";
+  return s.is_admin ? "super_admin" : s.operations_admin ? "operations" : s.support_admin ? "support" : s.bd_admin ? "business_development" : "marketing";
 }
 
 async function findCustomer(db: SupabaseClient, email: unknown) {
@@ -68,6 +80,43 @@ async function shape(db: SupabaseClient, kind: Kind, p: Record<string, unknown>)
     const enabled = p.enabled === true;
     if (data.enabled === enabled) throw new Error(`${data.label} is already ${enabled ? "on" : "off"}`);
     return { profile: null, property: null, payload: { key: data.key, enabled }, title: `Turn ${enabled ? "on" : "off"}: ${data.label}` };
+  }
+  if (kind === "proposal_exception") {
+    const { data: pr } = await db
+      .from("bd_proposals")
+      .select("id, version, title, status, deviations, opportunity_id, bd_opportunities(title)")
+      .eq("id", String(p.proposal_id ?? ""))
+      .maybeSingle();
+    if (!pr) throw new Error("Pick the proposal");
+    if (!["draft", "pending_approval"].includes(pr.status as string)) throw new Error("Only a draft proposal can go for approval");
+    const devs = (Array.isArray(pr.deviations) ? pr.deviations : []) as { detail?: string }[];
+    if (devs.length === 0) throw new Error("This proposal follows the approved terms — no approval needed");
+    await db.from("bd_proposals").update({ status: "pending_approval" }).eq("id", pr.id);
+    const opp = (pr as unknown as { bd_opportunities?: { title?: string } }).bd_opportunities?.title ?? "opportunity";
+    return {
+      profile: null,
+      property: null,
+      payload: { proposal_id: pr.id, version: pr.version, deviations: devs },
+      title: `Proposal exception — ${opp} v${pr.version}: ${devs.map((d) => d.detail).filter(Boolean).join("; ").slice(0, 200)}`,
+    };
+  }
+  if (kind === "partner_payout") {
+    const { data: c } = await db
+      .from("bd_partner_commissions")
+      .select("id, amount, basis, status, partner_id, bd_partners(agreement_status, crm_accounts(name))")
+      .eq("id", String(p.commission_id ?? ""))
+      .maybeSingle();
+    if (!c) throw new Error("Pick the commission");
+    if (c.status !== "recorded") throw new Error("That commission isn't waiting for a payout request");
+    const partner = (c as unknown as { bd_partners?: { agreement_status?: string; crm_accounts?: { name?: string } } }).bd_partners;
+    if (partner?.agreement_status !== "signed") throw new Error("The partner has no signed agreement");
+    await db.from("bd_partner_commissions").update({ status: "payout_requested" }).eq("id", c.id);
+    return {
+      profile: null,
+      property: null,
+      payload: { commission_id: c.id, amount: c.amount, basis: c.basis },
+      title: `Partner payout — ${partner?.crm_accounts?.name ?? "partner"}: ${Number(c.amount).toLocaleString("en-US")} (${c.basis})`,
+    };
   }
   const who = await findCustomer(db, p.email);
   if (kind === "access_change") {
@@ -110,6 +159,23 @@ async function shape(db: SupabaseClient, kind: Kind, p: Record<string, unknown>)
       property: prop.id,
       payload: { email: who.email, amount_cents: cents, property_address: prop.address },
       title: `Refund ${cents ? usd(cents) : "the latest payment in full"} — ${who.email} · ${prop.address}`,
+    };
+  }
+  if (kind === "subscription_override") {
+    const { data: prop } = await db
+      .from("properties")
+      .select("id, address, user_id, stripe_subscription_id")
+      .eq("id", String(p.property_id ?? ""))
+      .maybeSingle();
+    if (!prop || prop.user_id !== who.id) throw new Error("Pick one of this customer's properties");
+    if (!prop.stripe_subscription_id) throw new Error("That property has no subscription");
+    const action = String(p.action ?? "");
+    if (!OVERRIDE_LABEL[action]) throw new Error("Pick what to do with the subscription");
+    return {
+      profile: who.id,
+      property: prop.id,
+      payload: { email: who.email, action, property_address: prop.address },
+      title: `Subscription override: ${OVERRIDE_LABEL[action]} — ${who.email} · ${prop.address}`,
     };
   }
   // agreement_change: void the customer's current signed copy
@@ -178,6 +244,51 @@ async function execute(db: SupabaseClient, a: Approval, decidedBy: string) {
     });
     return result;
   }
+  if (a.kind === "proposal_exception" || a.kind === "partner_payout") {
+    const at = new Date().toISOString();
+    if (a.kind === "proposal_exception") {
+      const id = (a.payload as { proposal_id: string }).proposal_id;
+      await db.from("bd_proposals").update({ status: "approved", approved_at: at, approval_id: a.id }).eq("id", id).eq("status", "pending_approval");
+    } else {
+      const id = (a.payload as { commission_id: string }).commission_id;
+      // approved for payment — paying it is done outside the platform and marked paid there
+      await db.from("bd_partner_commissions").update({ status: "approved", approval_id: a.id }).eq("id", id);
+    }
+    const result = { approved_at: at };
+    await db.from("approval_requests").update({ status: "executed", executed_at: at, result }).eq("id", a.id);
+    await db.rpc("log_record_event", {
+      p_department: "business_development", p_entity_type: a.kind === "proposal_exception" ? "proposal" : "partner", p_entity_id: null,
+      p_action: a.kind === "proposal_exception" ? "proposal_exception_approved" : "partner_payout_approved",
+      p_summary: `Approved: ${a.title}`, p_after: result, p_approval: a.id, p_actor: decidedBy,
+    });
+    return result;
+  }
+  if (a.kind === "subscription_override") {
+    const { data: sp } = await db.from("properties").select("stripe_subscription_id, address").eq("id", a.target_property!).single();
+    if (!sp?.stripe_subscription_id) throw new Error("The property no longer has a subscription");
+    const { stripe, mode } = await stripeFor(a.target_profile!);
+    const action = (a.payload as { action: string }).action;
+    const sub = action === "end_now"
+      ? await stripe.subscriptions.cancel(sp.stripe_subscription_id, { prorate: false })
+      : await (async () => {
+          // a scheduled commitment end (cancel_at) is cleared first — Stripe
+          // takes one of cancel_at / cancel_at_period_end, not both
+          const cur = await stripe.subscriptions.retrieve(sp.stripe_subscription_id);
+          if (cur.cancel_at && !cur.cancel_at_period_end) {
+            await stripe.subscriptions.update(cur.id, { cancel_at: "" as unknown as number });
+          }
+          return await stripe.subscriptions.update(cur.id, { cancel_at_period_end: true });
+        })();
+    const endsAt = action === "end_now" ? new Date().toISOString() : new Date(sub.current_period_end * 1000).toISOString();
+    const result = { subscription: sub.id, status: sub.status, ends_at: endsAt, stripe_mode: mode };
+    await db.from("approval_requests").update({ status: "executed", executed_at: new Date().toISOString(), result }).eq("id", a.id);
+    await db.rpc("log_record_event", {
+      p_department: "shared", p_entity_type: "subscription", p_entity_id: null, p_action: "subscription_override",
+      p_summary: `Subscription override (${OVERRIDE_LABEL[action]}) — ${sp.address}; ends ${endsAt.slice(0, 10)}`,
+      p_profile: a.target_profile, p_property: a.target_property, p_after: result, p_approval: a.id, p_actor: decidedBy,
+    });
+    return result;
+  }
   // refund: the latest paid invoice of the property's subscription
   const { data: prop } = await db.from("properties").select("stripe_subscription_id, address").eq("id", a.target_property!).single();
   if (!prop?.stripe_subscription_id) throw new Error("The property no longer has a subscription");
@@ -232,6 +343,11 @@ async function decide(db: SupabaseClient, me: Staff, id: string, approve: boolea
       failure = e instanceof Error ? e.message : String(e);
       await db.from("approval_requests").update({ status: "failed", error: failure }).eq("id", id);
     }
+  } else if (a.kind === "proposal_exception") {
+    // back to the author to change
+    await db.from("bd_proposals").update({ status: "draft" }).eq("id", a.payload?.proposal_id).eq("status", "pending_approval");
+  } else if (a.kind === "partner_payout") {
+    await db.from("bd_partner_commissions").update({ status: "rejected" }).eq("id", a.payload?.commission_id);
   }
   await db.rpc("notify_department", {
     p_department: "super_admin", p_owner: a.requested_by,
@@ -254,11 +370,11 @@ export async function handle(req: Request): Promise<Response> {
     const db = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: me } = await db
       .from("profiles")
-      .select("id, email, is_admin, marketing_admin, support_admin, operations_admin")
+      .select("id, email, is_admin, marketing_admin, support_admin, operations_admin, bd_admin")
       .eq("id", user.id)
       .single();
     const staff = me as Staff | null;
-    if (!staff || !(staff.is_admin || staff.marketing_admin || staff.support_admin || staff.operations_admin)) {
+    if (!staff || !(staff.is_admin || staff.marketing_admin || staff.support_admin || staff.operations_admin || staff.bd_admin)) {
       return json({ error: "not authorized" }, 403);
     }
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;

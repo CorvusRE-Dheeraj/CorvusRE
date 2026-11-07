@@ -33,6 +33,22 @@ export type DeadlineEvent = {
   time?: string | null;
 };
 
+// Keep in step with CURRENT_TAX_YEAR / standardTaxDueDate in src/lib/tax-calendar.ts.
+const CURRENT_TAX_YEAR = 2026;
+function standardTaxDueDate(taxYear: number): string {
+  const d = new Date(Date.UTC(taxYear + 1, 0, 31));
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// A property-tax payment deadline — a bill's due date, one installment of a
+// payment plan, or a property's own due date when it has no bill on file. These
+// get the payment reminder schedule (30/15/7/2/1/0 days, then past due) and the
+// "Remind me later" / "Already paid" buttons; see send-deadline-reminders.
+export function isPaymentEventKey(key: string): boolean {
+  return key.startsWith("tax-due:") || key.startsWith("tax-installment:");
+}
+
 // "1800 MARKET PLACE BLVD, IRVING, TX 75063-3903" -> "1800 Market Place Blvd"
 export function streetOnly(address: string): string {
   const street = address.split(",")[0].trim();
@@ -75,7 +91,7 @@ export async function buildDeadlineEvents(
     await Promise.all([
       admin
         .from("properties")
-        .select("id, address, protest_deadline, payment_due_date, tax_amount_due, paid_at")
+        .select("id, address, protest_deadline, payment_due_date, tax_amount_due, paid_at, tax_year")
         .eq("user_id", userId),
       admin
         .from("protests")
@@ -121,13 +137,22 @@ export async function buildDeadlineEvents(
         resolved: isPast(date, todayIso),
       });
     }
-    if (p.payment_due_date && !taxBillPropertyIds.has(id)) {
-      const date = toIsoDate(p.payment_due_date as string);
+    // No bill and no due date of its own: the statutory one (standardTaxDueDate
+    // in src/lib/tax-calendar.ts), so every property gets payment reminders.
+    if (
+      !taxBillPropertyIds.has(id) &&
+      (p.payment_due_date || ((p.tax_year as number | null) ?? CURRENT_TAX_YEAR) >= CURRENT_TAX_YEAR)
+    ) {
+      const standard = !p.payment_due_date;
+      const date = standard
+        ? standardTaxDueDate((p.tax_year as number | null) ?? CURRENT_TAX_YEAR)
+        : toIsoDate(p.payment_due_date as string);
+      const what = standard ? "Property tax due" : "Tax bill due";
       events.push({
         key: `tax-due:property:${id}`,
         date,
-        title: `Tax bill due — ${address}`,
-        subject: short("Tax bill due", address),
+        title: `${what} — ${address}`,
+        subject: short(what, address),
         amount: p.tax_amount_due as number | null,
         resolved: !!p.paid_at,
       });

@@ -7,8 +7,42 @@ vi.mock("./properties", () => ({
 vi.mock("./cad-lookup", () => ({
   cadLookup: vi.fn(),
 }));
+// Records tax_bills writes for the Pay Taxes import tests below.
+const billWrites: { op: string; row: Record<string, unknown> }[] = [];
+vi.mock("./supabase", () => {
+  const chain = (result: unknown) => {
+    const c: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "limit"]) c[m] = () => c;
+    c.maybeSingle = () => Promise.resolve({ data: result, error: null });
+    return c;
+  };
+  return {
+    supabase: {
+      from: () => ({
+        select: () => chain(null),
+        insert: (row: Record<string, unknown>) => {
+          billWrites.push({ op: "insert", row });
+          return Promise.resolve({ error: null });
+        },
+        update: (row: Record<string, unknown>) => ({
+          eq: () => {
+            billWrites.push({ op: "update", row });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    },
+  };
+});
 
-import { buildRows, enrichRow, commitRows, type ImportRow } from "./bulk-property-import";
+import {
+  buildRows,
+  enrichRow,
+  commitRows,
+  hasBill,
+  parseDueDate,
+  type ImportRow,
+} from "./bulk-property-import";
 import { addProperty, findExistingProperty } from "./properties";
 import { cadLookup } from "./cad-lookup";
 import type { ColumnMapping } from "./spreadsheet-import";
@@ -125,5 +159,65 @@ describe("commitRows", () => {
     expect(res.imported.map((p) => p.address)).toEqual(["A", "D"]);
     expect(res.duplicates).toBe(1); // the C row
     expect(addProperty).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Pay Taxes bill columns", () => {
+  it("reads due dates in the usual formats", () => {
+    expect(parseDueDate("2027-01-31")).toBe("2027-01-31");
+    expect(parseDueDate("01/31/2027")).toBe("2027-01-31");
+    expect(parseDueDate("1/31/27")).toBe("2027-01-31");
+    expect(parseDueDate("Jan 31, 2027")).toBe("2027-01-31");
+    expect(parseDueDate("31")).toBeNull();
+    expect(parseDueDate("soon")).toBeNull();
+  });
+
+  it("builds rows with amount due, due date and amount paid", () => {
+    const rows = buildRows(
+      {
+        headers: ["Address", "Amount Due", "Due Date", "Paid"],
+        rows: [["100 Main St, Austin, TX", "$12,500.50", "01/31/2027", "6,250"]],
+      },
+      [
+        { header: "Address", field: "address", source: "alias" },
+        { header: "Amount Due", field: "taxAmountDue", source: "alias" },
+        { header: "Due Date", field: "paymentDueDate", source: "alias" },
+        { header: "Paid", field: "taxAmountPaid", source: "alias" },
+      ],
+    );
+    expect(rows[0].values).toMatchObject({
+      taxAmountDue: 12500.5,
+      paymentDueDate: "2027-01-31",
+      taxAmountPaid: 6250,
+    });
+    expect(hasBill(rows[0].values)).toBe(true);
+  });
+
+  it("records the bill for a property already in the account instead of skipping it", async () => {
+    billWrites.length = 0;
+    vi.mocked(findExistingProperty).mockResolvedValue({ id: "p-1" } as never);
+    const row: ImportRow = {
+      rowNumber: 2,
+      values: { address: "100 Main St", taxYear: 2026, taxAmountDue: 9000, taxAmountPaid: 4500 },
+      flags: [],
+      status: "duplicate",
+      include: true,
+      existingId: "p-1",
+      cadOptions: null,
+    };
+    const r = await commitRows("u-1", [row]);
+    expect(r).toMatchObject({ imported: [], bills: 1, failed: 0 });
+    expect(addProperty).not.toHaveBeenCalledWith("u-1", expect.anything());
+    expect(billWrites[0]).toMatchObject({
+      op: "insert",
+      row: {
+        property_id: "p-1",
+        tax_year: 2026,
+        amount_due: 9000,
+        amount_paid: 4500,
+        status: "partial",
+        status_source: "user",
+      },
+    });
   });
 });

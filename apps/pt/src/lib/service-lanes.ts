@@ -52,7 +52,7 @@ export const SERVICE_LANES: ServiceLane[] = [
     name: "Owner-Managed CorvusPT",
     tagline: "You protest. Corvus AI prepares everything.",
     price: `${usd(MONTHLY)}/mo`,
-    priceNote: `per property, billed annually (${usd(MONTHLY * 12)}/yr)`,
+    priceNote: `per property, or pay yearly and save 50% on your first year`,
     buying:
       "All 10 AI modules, the AI Executive Protest Report and an evidence packet, filing instructions for your county, deadline tracking and hearing prep — for you to use yourself.",
     whoFiles:
@@ -75,7 +75,7 @@ export const SERVICE_LANES: ServiceLane[] = [
   },
   {
     id: "expert_managed",
-    name: "Expert/Managed Help",
+    name: "Corvus-Managed",
     tagline: "CorvusPT's team handles the protest for you.",
     price: `${usd(MANAGED_MONTHLY)}/mo or % of savings`,
     priceNote: "fixed annual price, or pay only from savings · $5M+ custom",

@@ -153,7 +153,7 @@ const F = { from: "2026-10-01", to: "2026-10-31" };
 describe("marketing analytics", () => {
   it("values a customer at annual list price, 15% off a 2nd property in the same plan", () => {
     expect(customerAcv([prop({}), prop({ createdAt: "2026-10-02T00:00:00Z" })])).toBe(
-      Math.round(299 * 12 + 299 * 12 * 0.85),
+      Math.round(199 * 12 + 199 * 12 * 0.85),
     );
     expect(customerAcv([prop({ subscriptionStatus: "canceled" })])).toBe(0);
   });
@@ -193,9 +193,9 @@ describe("marketing analytics", () => {
       subscriptions: 1,
       spend: 1000,
       cac: 1000,
-      revenue: 3588,
+      revenue: 2388,
     });
-    expect(k.romi).toBeCloseTo(2.588);
+    expect(k.romi).toBeCloseTo(1.388);
     expect(previousPeriod({ from: "2026-10-01", to: "2026-10-31" })).toMatchObject({
       from: "2026-08-31",
       to: "2026-09-30",
@@ -230,7 +230,7 @@ describe("marketing analytics", () => {
       customers: 1,
       spend: 500,
       cac: 500,
-      revenue: 3588,
+      revenue: 2388,
     });
     expect(r.engagement).toBe(0.5);
   });

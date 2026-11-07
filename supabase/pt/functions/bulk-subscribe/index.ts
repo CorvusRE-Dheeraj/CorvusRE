@@ -16,6 +16,7 @@ import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
 import {
   annualUnitAmountCents,
+  PRICING_VERSION,
   bracketForValue,
   isCustomPricedValue,
   isTier,
@@ -229,7 +230,9 @@ Deno.serve(async (req: Request) => {
           off_session: true,
           payment_behavior: "allow_incomplete",
           description: address || undefined,
-          metadata: { tier, bracket, propertyId },
+          // Bulk purchases are annual (paid upfront); tagged with the pricing
+          // version like single checkouts (see create-checkout-session).
+          metadata: { tier, bracket, propertyId, interval: "year", pricing: PRICING_VERSION },
           expand: ["latest_invoice.payment_intent"],
         });
 

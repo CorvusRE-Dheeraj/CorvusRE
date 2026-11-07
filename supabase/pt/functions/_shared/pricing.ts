@@ -17,23 +17,36 @@ export type LegacyBracket = "under2m" | "mid2m10m" | "over10m";
 
 export const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "Expert/Managed Help",
+  corvusrf_managed: "Corvus-Managed",
 };
 
 export const BRACKET_LABEL: Record<Bracket | LegacyBracket, string> = {
-  upTo5m: "$1M - $5M",
+  upTo5m: "Under $5M",
   under2m: "$0 - $2M",
   mid2m10m: "$2M - $10M",
   over10m: "$10M - $25M",
 };
 
-// Monthly-equivalent list price — CHARGED annually (x12, see
-// annualUnitAmountCents). Both tiers share it: the revised pricing sets one
-// price for the bracket regardless of who files.
+// Monthly list price (Nov 2026 pricing). Paid monthly, or as one annual
+// payment of 12x — with 50% off the first year when paid upfront (the
+// ANNUAL_FIRST_YEAR coupon in ./discounts.ts, so Checkout shows the full
+// price and the discount as its own line).
 export const TIER_BRACKET_PRICES: Record<Tier, Record<Bracket, number>> = {
-  owner_managed: { upTo5m: 299 },
+  owner_managed: { upTo5m: 199 },
   corvusrf_managed: { upTo5m: 299 },
 };
+
+// How a new subscription is paid. Monthly carries the 12-month commitment
+// (./commitment.ts); annual is paid upfront and renews after 12 months.
+export type BillingInterval = "month" | "year";
+export function isBillingInterval(v: unknown): v is BillingInterval {
+  return v === "month" || v === "year";
+}
+
+// Marks subscriptions created under the Nov 2026 pricing (Stripe subscription
+// metadata.pricing), so cancellation and plan switches can tell them from
+// grandfathered ones — a pre-revision subscription can also be monthly.
+export const PRICING_VERSION = "2026-11";
 
 export const LEGACY_TIER_BRACKET_PRICES: Record<Tier, Record<LegacyBracket, number>> = {
   owner_managed: { under2m: 99, mid2m10m: 299, over10m: 499 },
@@ -80,6 +93,18 @@ function applyAdditionalDiscount(baseCents: number, isAdditionalInBracket: boole
 // launch/franchise discounts are NOT baked in here — they're Stripe coupons
 // (see ./discounts.ts), so checkout shows the full $3,588 with the discount
 // as its own line.
+/** What one billing period costs: one month, or the full year (12x). */
+export function unitAmountCents(
+  tier: Tier,
+  bracket: Bracket,
+  interval: BillingInterval,
+  isAdditionalInBracket: boolean,
+): number {
+  return interval === "month"
+    ? applyAdditionalDiscount(Math.round(TIER_BRACKET_PRICES[tier][bracket] * 100), isAdditionalInBracket)
+    : annualUnitAmountCents(tier, bracket, isAdditionalInBracket);
+}
+
 export function annualUnitAmountCents(
   tier: Tier,
   bracket: Bracket,

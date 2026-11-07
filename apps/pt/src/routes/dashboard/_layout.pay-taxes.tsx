@@ -5,9 +5,12 @@ import {
   AlertTriangle,
   BadgeCheck,
   CalendarClock,
+  CalendarPlus,
+  Download,
   ExternalLink,
   FileText,
   Landmark,
+  Layers,
   Receipt,
   SplitSquareHorizontal,
   Upload,
@@ -44,6 +47,21 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { PageHero, heroButton } from "@/components/PageHero";
+import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
+import {
+  TAX_HISTORY_SOURCE_LABEL,
+  fetchTaxHistory,
+  isFresh,
+  listTaxHistory,
+  type TaxHistory,
+} from "@/lib/cad-tax-history";
+import {
+  downloadFile,
+  dueEvents,
+  dueEventsIcs,
+  summaryLine,
+  summaryPdf,
+} from "@/lib/pay-taxes-report";
 
 export const Route = createFileRoute("/dashboard/_layout/pay-taxes")({
   // property: the property whose details are open — in the URL so Back
@@ -55,6 +73,45 @@ export const Route = createFileRoute("/dashboard/_layout/pay-taxes")({
 });
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+type SortKey = "due" | "owner" | "county" | "status";
+const SORT_LABEL: Record<SortKey, string> = {
+  due: "Due date",
+  owner: "Owner",
+  county: "County",
+  status: "Payment status",
+};
+type FilterState = { county: string; status: string; plan: string; year: string; sort: SortKey };
+
+// Payment status order: what needs attention first.
+const STATUS_ORDER: Record<PayStatus, number> = {
+  overdue: 0,
+  unpaid: 1,
+  partial: 2,
+  initiated: 3,
+  verifying: 4,
+  paid: 5,
+};
+const byText = (a: string | null | undefined, b: string | null | undefined) =>
+  // blanks last
+  !a ? (b ? 1 : 0) : !b ? -1 : a.localeCompare(b, "en", { sensitivity: "base" });
+
+function sortRows(key: SortKey) {
+  // Due date (default): what needs attention first — overdue, then unpaid by
+  // next deadline, paid last. Every other sort falls back to that order.
+  const due = (a: PayTaxesRow, b: PayTaxesRow) =>
+    Number(b.flags.overdue) - Number(a.flags.overdue) ||
+    Number(a.status === "paid") - Number(b.status === "paid") ||
+    a.dueDate.localeCompare(b.dueDate);
+  return (a: PayTaxesRow, b: PayTaxesRow) =>
+    (key === "owner"
+      ? byText(a.property.ownerName, b.property.ownerName)
+      : key === "county"
+        ? byText(a.county, b.county)
+        : key === "status"
+          ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+          : 0) || due(a, b);
+}
 
 const fmtDate = (d: string | null | undefined) =>
   d
@@ -99,7 +156,29 @@ function PayTaxes() {
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [payRow, setPayRow] = useState<PayTaxesRow | null>(null);
-  const [filters, setFilters] = useState({ county: "", status: "", plan: "", year: "" });
+  // Add many properties (and their tax bills) at once: a spreadsheet, a PDF
+  // or a Podio app — the same import the Properties page uses.
+  const [importing, setImporting] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    county: "",
+    status: "",
+    plan: "",
+    year: "",
+    sort: "due",
+  });
+  const [exporting, setExporting] = useState(false);
+  // 5-year tax history from the appraisal district, per property (cached
+  // server-side for 30 days; anything missing is fetched in the background).
+  const [taxHistory, setTaxHistory] = useState<Map<string, TaxHistory>>(new Map());
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const historyTried = useRef(new Set<string>());
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    [],
+  );
 
   async function reload() {
     if (!user) return;
@@ -111,6 +190,10 @@ function PayTaxes() {
       listProtests(user.id).catch(() => [] as ProtestRecord[]),
     ]);
     setProperties(props);
+    listTaxHistory(props.map((x) => x.id))
+      .then(setTaxHistory)
+      .catch(() => undefined)
+      .finally(() => setHistoryLoaded(true));
     setBills(b);
     setPlans(p);
     setSettings(s);
@@ -125,6 +208,32 @@ function PayTaxes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Fetch history for properties with nothing fresh cached, three at a time.
+  useEffect(() => {
+    if (!historyLoaded) return;
+    const todo = properties.filter(
+      (p) => !historyTried.current.has(p.id) && !isFresh(taxHistory.get(p.id), p.accountNumber),
+    );
+    if (todo.length === 0) return;
+    for (const p of todo) historyTried.current.add(p.id);
+    const queue = [...todo];
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) {
+        const prop = p;
+        try {
+          const cadUrl = prop.cad
+            ? getCadRecordUrl({ cad: prop.cad, accountNumber: prop.accountNumber })
+            : null;
+          const h = await fetchTaxHistory(prop.id, cadUrl, prop.accountNumber);
+          if (mounted.current) setTaxHistory((m) => new Map(m).set(prop.id, h));
+        } catch {
+          // no history for this one — the column says so
+        }
+      }
+    };
+    void Promise.all([worker(), worker(), worker()]);
+  }, [properties, taxHistory, historyLoaded]);
+
   const today = todayIso();
   const allRows = useMemo(
     () =>
@@ -137,9 +246,10 @@ function PayTaxes() {
           protests,
           todayIso: today,
           taxYear: filters.year ? Number(filters.year) : undefined,
+          cadHistory: taxHistory.get(property.id) ?? null,
         }),
       ),
-    [properties, bills, plans, settings, protests, today, filters.year],
+    [properties, bills, plans, settings, protests, today, filters.year, taxHistory],
   );
   const rows = allRows
     .filter((r) => !filters.county || r.county === filters.county)
@@ -151,13 +261,7 @@ function PayTaxes() {
         (filters.plan === "enrolled" && r.flags.enrolled) ||
         (filters.plan === "none" && !r.flags.halfPayEligible && !r.flags.enrolled),
     )
-    // what needs attention first: overdue, then by next deadline
-    .sort(
-      (a, b) =>
-        Number(b.flags.overdue) - Number(a.flags.overdue) ||
-        Number(a.status === "paid") - Number(b.status === "paid") ||
-        a.dueDate.localeCompare(b.dueDate),
-    );
+    .sort(sortRows(filters.sort));
   const summary = portfolioSummary(rows);
   const counties = [...new Set(allRows.map((r) => r.county).filter(Boolean))].sort() as string[];
   const years = [
@@ -168,6 +272,31 @@ function PayTaxes() {
   ].sort((a, b) => b - a);
   const openRow = openId ? (allRows.find((r) => r.property.id === openId) ?? null) : null;
 
+  // The table as shown (filters + sort) as a one-page-per-~20-properties PDF.
+  async function downloadPdf() {
+    setExporting(true);
+    try {
+      const bytes = await summaryPdf(rows.map(summaryLine));
+      downloadFile(bytes, `Property-Tax-Summary-${today}.pdf`, "application/pdf");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Couldn't create the PDF."));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Every due date (and half-payment date where available) as a calendar file
+  // with alerts 30/15/7/2/1 days before and on the day; the same dates are on
+  // the CorvusPT Calendar, and email reminders go out on that schedule.
+  function addToCalendar() {
+    const events = dueEvents(rows.map(summaryLine));
+    downloadFile(dueEventsIcs(events), "property-tax-due-dates.ics", "text/calendar;charset=utf-8");
+    toast.success(`${events.length} due date${events.length === 1 ? "" : "s"} ready to add`, {
+      description:
+        "Open the downloaded file to add them to Google, Outlook or Apple Calendar — each has reminders 30, 15, 7, 2 and 1 days before and on the day.",
+    });
+  }
+
   const setOpen = (id: string | null) =>
     nav({ to: ".", search: id ? { property: id } : {}, resetScroll: false });
 
@@ -177,11 +306,30 @@ function PayTaxes() {
         icon={Landmark}
         title="Pay Taxes"
         tone="teal"
-        subtitle="Every property's tax bill, deadline, payment plan and the county's own payment page — in one place."
+        subtitle="Every property's tax bill, due date, payment plan and the county's own payment page — in one place."
       >
+        <button type="button" onClick={() => setImporting(true)} className={heroButton}>
+          <Layers className="h-4 w-4" /> Add Properties
+        </button>
         <Link to="/intake" className={heroButton}>
           <Upload className="h-4 w-4" /> Upload Tax Bill
         </Link>
+        <button
+          type="button"
+          onClick={downloadPdf}
+          disabled={loading || rows.length === 0 || exporting}
+          className={heroButton}
+        >
+          <Download className="h-4 w-4" /> {exporting ? "Preparing…" : "Download PDF"}
+        </button>
+        <button
+          type="button"
+          onClick={addToCalendar}
+          disabled={loading || rows.length === 0}
+          className={heroButton}
+        >
+          <CalendarPlus className="h-4 w-4" /> Add to Calendar
+        </button>
       </PageHero>
 
       {loading ? (
@@ -194,8 +342,11 @@ function PayTaxes() {
         <div className="card-elev mt-6 p-8 text-center">
           <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
           <p className="mt-1 text-muted-foreground">
-            Add a property and its tax bills, deadlines and payment options show up here.
+            Add a property and its tax bills, due dates and payment options show up here.
           </p>
+          <button type="button" onClick={() => setImporting(true)} className="btn-accent mt-4">
+            Add properties — spreadsheet, PDF or Podio
+          </button>
         </div>
       ) : (
         <>
@@ -213,6 +364,19 @@ function PayTaxes() {
       )}
 
       {payRow && <PayConfirm row={payRow} onClose={() => setPayRow(null)} />}
+      {importing && user && (
+        <ImportPropertiesModal
+          userId={user.id}
+          forTaxBills
+          onImported={() =>
+            reload().catch((err) => toast.error(getErrorMessage(err, "Could not refresh.")))
+          }
+          onClose={() => {
+            setImporting(false);
+            reload().catch(() => undefined);
+          }}
+        />
+      )}
       {openRow && user && (
         <PropertyTaxDetail
           row={openRow}
@@ -349,6 +513,7 @@ function HalfPayPanel({
                 <td className="px-4 py-2">
                   {money(row.totalTax)}
                   {row.totalTaxIsEstimate && <EstimateChip />}
+                  {row.totalTaxBasis === "cad" && <CadChip />}
                 </td>
                 <td className="px-4 py-2 font-semibold">{money(firstHalf.amount)}</td>
                 <td className="px-4 py-2 text-muted-foreground">
@@ -377,8 +542,8 @@ function Filters({
   counties,
   years,
 }: {
-  filters: { county: string; status: string; plan: string; year: string };
-  setFilters: (f: { county: string; status: string; plan: string; year: string }) => void;
+  filters: FilterState;
+  setFilters: (f: FilterState) => void;
   counties: string[];
   years: number[];
 }) {
@@ -433,16 +598,43 @@ function Filters({
         <option value="enrolled">On an installment plan</option>
         <option value="none">No plan</option>
       </select>
+      <select
+        aria-label="Sort by"
+        className={`${sel} sm:ml-auto`}
+        value={filters.sort}
+        onChange={(e) => setFilters({ ...filters, sort: e.target.value as SortKey })}
+      >
+        {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+          <option key={k} value={k}>
+            Sort: {SORT_LABEL[k]}
+          </option>
+        ))}
+      </select>
       {(filters.county || filters.status || filters.plan || filters.year) && (
         <button
           type="button"
           className="text-sm text-accent underline underline-offset-2"
-          onClick={() => setFilters({ county: "", status: "", plan: "", year: "" })}
+          onClick={() =>
+            setFilters({ county: "", status: "", plan: "", year: "", sort: filters.sort })
+          }
         >
           Clear filters
         </button>
       )}
     </div>
+  );
+}
+
+// The tax for this year worked out from the appraisal district's certified
+// value × each taxing unit's adopted rate (no statement on file yet).
+function CadChip() {
+  return (
+    <span
+      className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800"
+      title="No tax statement on file — the appraisal district's certified value × each taxing unit's adopted rate"
+    >
+      From CAD
+    </span>
   );
 }
 
@@ -500,7 +692,7 @@ function DeadlineCell({ row, today }: { row: PayTaxesRow; today: string }) {
               ? "Due today"
               : `${days} days left`}
         {row.nextInstallment && row.status !== "paid" ? ` · ${row.nextInstallment.label}` : ""}
-        {row.dueDateIsStandard ? " · standard deadline" : ""}
+        {row.dueDateIsStandard ? " · standard due date" : ""}
       </div>
     </div>
   );
@@ -578,7 +770,7 @@ function HistoryBars({ row }: { row: PayTaxesRow }) {
   const pts = [...row.history]
     .filter((b) => b.taxYear != null && b.amountDue != null)
     .sort((a, b) => (a.taxYear ?? 0) - (b.taxYear ?? 0));
-  if (pts.length === 0) return <span className="text-xs text-muted-foreground">No bills yet</span>;
+  if (pts.length === 0) return <CadHistoryBars row={row} />;
   const max = Math.max(...pts.map((b) => b.amountDue as number));
   return (
     <div
@@ -597,6 +789,131 @@ function HistoryBars({ row }: { row: PayTaxesRow }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// No bills on file: the appraisal district's last five years instead.
+function CadHistoryBars({ row }: { row: PayTaxesRow }) {
+  const h = row.cadHistory;
+  if (!h) return <span className="text-xs text-muted-foreground">Loading…</span>;
+  const pts = h.years
+    .filter((y) => y.tax != null)
+    .slice(0, 5)
+    .reverse();
+  if (pts.length === 0)
+    return <span className="text-xs text-muted-foreground">No history found</span>;
+  const max = Math.max(...pts.map((y) => y.tax as number));
+  return (
+    <div
+      className="flex h-8 items-end gap-1"
+      title={[
+        "From the appraisal district:",
+        ...pts.map((y) => `${y.year}: ${currency(y.tax as number)}`),
+      ].join("\n")}
+    >
+      {pts.map((y) => (
+        <div key={y.year} className="flex flex-col items-center">
+          <div
+            className="w-3 rounded-t bg-sky-600"
+            style={{ height: `${Math.max(3, ((y.tax as number) / max) * 24)}px` }}
+          />
+          <div className="text-[10px] leading-none text-muted-foreground">
+            {String(y.year).slice(2)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The detail view's year-by-year table: value, rate and tax per year.
+function TaxHistorySection({ row }: { row: PayTaxesRow }) {
+  const h = row.cadHistory;
+  const years = h?.years.slice(0, 6) ?? [];
+  return (
+    <Section title="Tax history (last 5 years)" icon={<CalendarClock className="h-4 w-4" />}>
+      {!h ? (
+        <p className="text-sm text-muted-foreground">
+          Getting the history from the appraisal district…
+        </p>
+      ) : years.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          The appraisal district&apos;s site didn&apos;t show a value or tax history for this
+          account. Upload past tax statements to build it.
+        </p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-1.5">Tax year</th>
+                  <th className="py-1.5">Market value</th>
+                  <th className="py-1.5">Taxable value</th>
+                  <th className="py-1.5">Tax rate</th>
+                  <th className="py-1.5 text-right">Tax</th>
+                  <th className="py-1.5 text-right">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((y, i) => {
+                  const prev = years[i + 1];
+                  const pct =
+                    prev?.tax && y.tax != null && prev.year === y.year - 1
+                      ? ((y.tax - prev.tax) / prev.tax) * 100
+                      : null;
+                  return (
+                    <tr key={y.year} className="border-t border-border/60">
+                      <td className="py-1.5">
+                        {y.year}
+                        {y.year === row.taxYear && (
+                          <span className="ml-1 text-[11px] text-muted-foreground">current</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">{money(y.marketValue)}</td>
+                      <td className="py-1.5">{money(y.taxableValue ?? y.appraisedValue)}</td>
+                      <td
+                        className="py-1.5"
+                        title={y.units?.map((u) => `${u.name}: ${u.rate.toFixed(6)}`).join("\n")}
+                      >
+                        {y.rate != null ? `${y.rate.toFixed(4)}%` : "—"}
+                      </td>
+                      <td className="py-1.5 text-right font-medium">
+                        {y.tax != null ? currency(Math.round(y.tax)) : "—"}
+                        {!y.exact && y.tax != null && (
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            before exemptions
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`py-1.5 text-right text-xs ${pct == null ? "text-muted-foreground" : pct > 0 ? "text-destructive" : "text-success"}`}
+                      >
+                        {pct == null ? "—" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Source: {TAX_HISTORY_SOURCE_LABEL[h.source]}
+            {h.sourceUrl && (
+              <>
+                {" "}
+                —{" "}
+                <a href={h.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+                  view source
+                </a>
+              </>
+            )}
+            . Checked {fmtDate(h.retrievedAt)}. Your actual bill can differ (exemptions, special
+            districts); the tax statement is the official amount.
+          </p>
+        </>
+      )}
+    </Section>
   );
 }
 
@@ -649,7 +966,7 @@ function PropertyTable({
             <th className="px-3 py-2.5 font-semibold">Tax year</th>
             <th className="px-3 py-2.5 font-semibold">5-yr history</th>
             <th className="px-3 py-2.5 font-semibold">Total tax</th>
-            <th className="px-3 py-2.5 font-semibold">Deadline</th>
+            <th className="px-3 py-2.5 font-semibold">Due date</th>
             <th className="px-3 py-2.5 font-semibold">Status</th>
             <th className="px-3 py-2.5 font-semibold">Tax notice</th>
             <th className="px-3 py-2.5 font-semibold">Payment plan</th>
@@ -659,7 +976,12 @@ function PropertyTable({
           {rows.map((row) => (
             <tr key={row.property.id} className="border-t border-border/60 align-top">
               <td className="max-w-[14rem] px-3 py-3">
-                <div className="truncate font-medium">{row.property.address}</div>
+                <div className="truncate font-medium" title={row.property.address}>
+                  {row.property.address}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  Owner: {row.property.ownerName ?? "Not on file"}
+                </div>
                 <Flags row={row} />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button
@@ -692,6 +1014,7 @@ function PropertyTable({
               <td className="whitespace-nowrap px-3 py-3 font-semibold">
                 {money(row.totalTax)}
                 {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
+                {row.totalTaxBasis === "cad" && <CadChip />}
                 {row.amountPaid > 0 && row.status !== "paid" && (
                   <div className="text-xs font-normal text-muted-foreground">
                     {money(row.outstanding)} left
@@ -741,6 +1064,7 @@ function PayConfirm({ row, onClose }: { row: PayTaxesRow; onClose: () => void })
           <div className="text-xl font-bold">
             {money(amount)}
             {row.totalTaxIsEstimate && <EstimateChip />}
+            {row.totalTaxBasis === "cad" && <CadChip />}
           </div>
         </div>
         <div className="rounded-lg bg-secondary/50 p-3">
@@ -868,6 +1192,10 @@ function PropertyTaxDetail({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-serif text-xl font-semibold">{property.address}</h3>
+          <p className="mt-0.5 text-sm">
+            <span className="text-muted-foreground">Owner:</span>{" "}
+            <span className="font-medium">{property.ownerName ?? "Not on file"}</span>
+          </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {row.county ?? "Unknown county"} County · Account {property.accountNumber ?? "—"} · Tax
             year {row.taxYear}
@@ -907,6 +1235,7 @@ function PropertyTaxDetail({
         <Fact label="Total tax">
           {money(row.totalTax)}
           {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
+          {row.totalTaxBasis === "cad" && <CadChip />}
         </Fact>
         <Fact label="Paid">{money(row.amountPaid)}</Fact>
         <Fact label="Outstanding">{row.status === "paid" ? money(0) : money(row.outstanding)}</Fact>
@@ -914,9 +1243,7 @@ function PropertyTaxDetail({
           <StatusChip row={row} />
         </Fact>
         <Fact label="Taxable value">{money(bill?.taxableValue ?? null)}</Fact>
-        <Fact
-          label={row.nextInstallment ? `Next: ${row.nextInstallment.label}` : "Payment deadline"}
-        >
+        <Fact label={row.nextInstallment ? `Next: ${row.nextInstallment.label}` : "Due date"}>
           {fmtDate(row.dueDate)}
         </Fact>
         <Fact label="Delinquent from">{fmtDate(row.delinquency)}</Fact>
@@ -1106,7 +1433,7 @@ function PropertyTaxDetail({
               {row.bill?.billKind === "revised"
                 ? "A revised tax statement is on file and replaces the original amount."
                 : "The amount here changes only when the county issues a revised tax statement — not on a proposed settlement."}{" "}
-              A pending protest doesn&apos;t change or suspend the payment deadline; confirm any
+              A pending protest doesn&apos;t change or suspend the payment due date; confirm any
               special arrangement with the county tax office.
             </p>
             <Link
@@ -1122,6 +1449,7 @@ function PropertyTaxDetail({
         )}
       </Section>
 
+      <TaxHistorySection row={row} />
       <Section title="Payment history" icon={<Receipt className="h-4 w-4" />}>
         {row.history.length === 0 ? (
           <p className="text-sm text-muted-foreground">No tax bills on file yet.</p>
@@ -1458,8 +1786,8 @@ function StatusForm({
         <input ref={fileRef} type="file" accept=".pdf,image/*" className="text-sm" />
       </label>
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        This is recorded as reported by you. &quot;Overdue&quot; is set automatically from the
-        deadline; a payment shows as verified only once the county confirms it.
+        This is recorded as reported by you. &quot;Overdue&quot; is set automatically from the due
+        date; a payment shows as verified only once the county confirms it.
       </p>
       <button
         type="submit"
@@ -1512,7 +1840,7 @@ function AddBillForm({
         <Link to="/intake" className="text-accent underline underline-offset-2">
           Upload the tax bill
         </Link>{" "}
-        (AI reads the amount and deadline; you review it before it&apos;s saved), or enter it:
+        (AI reads the amount and due date; you review it before it&apos;s saved), or enter it:
       </p>
       <form onSubmit={submit} className="mt-2 flex flex-wrap items-end gap-2">
         <input

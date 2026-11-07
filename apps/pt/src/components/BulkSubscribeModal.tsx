@@ -16,7 +16,6 @@ import {
   propertyAnnualPrice,
   formatMoney,
   isCustomPricedValue,
-  isLaunchDiscountActive,
   TIER_BRACKET_PRICES,
   type BulkSubResult,
   type Tier,
@@ -26,7 +25,7 @@ import { getErrorMessage } from "@/lib/error-message";
 
 const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
-  corvusrf_managed: "Expert/Managed Help",
+  corvusrf_managed: "Corvus-Managed",
 };
 
 // Batch-aware ANNUAL price estimate (list price, before the launch/franchise
@@ -191,7 +190,7 @@ function BulkForm({
                 {TIER_LABEL[t]}
               </span>
               <span className="text-muted-foreground pl-6 text-xs">
-                ${formatMoney(TIER_BRACKET_PRICES[t].upTo5m)}/mo per property, billed annually
+                ${formatMoney(TIER_BRACKET_PRICES[t].upTo5m * 12)}/year per property, paid upfront
               </span>
             </label>
           ))}
@@ -218,11 +217,8 @@ function BulkForm({
       </ul>
       <p className="text-muted-foreground -mt-2 text-[11px]">
         Estimate at list price — your first invoice reflects the exact amount, including any
-        additional-property discount for properties already in the same tier
-        {isLaunchDiscountActive()
-          ? ", and 50% off the first year for sign-ups before February 1, 2027"
-          : ""}
-        . Verified franchise owners get 50% off instead.
+        additional-property discount for properties already in the same tier , and 50% off the first
+        year (paid yearly) . Verified franchise owners get 50% off instead.
         {customPriced.length > 0 && " Properties valued at $5M+ are custom-priced — contact us."}
       </p>
 

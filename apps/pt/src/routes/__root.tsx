@@ -45,6 +45,7 @@ const EngagementPacketHost = lazy(() =>
   })),
 );
 import { AppShell, shouldShowShell } from "../components/AppShell";
+import { PartnerAttribution } from "../components/PartnerAttribution";
 
 function NotFoundComponent() {
   return (
@@ -256,6 +257,7 @@ function RootComponent() {
             <HourBeforeAlert />
             <EngagementPacketHost />
           </Suspense>
+          <PartnerAttribution />
           <Toaster />
         </TooltipProvider>
       </AuthProvider>

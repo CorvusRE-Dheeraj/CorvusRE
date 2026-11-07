@@ -105,3 +105,32 @@ describe("fromProperty — protest_deadline", () => {
     expect(deadline.resolvedLabel).toBeUndefined(); // generic "Done", not "Settled" — no real case to point to
   });
 });
+
+describe("fromProperty — tax due date", () => {
+  it("a property with no bill and no due date gets the standard due date (next business day)", () => {
+    const due = fromProperty(baseProperty, new Set(), new Set()).find((e) => e.type === "tax_due");
+    expect(due?.date).toBe("2027-02-01"); // Jan 31 2027 is a Sunday
+    expect(due?.title).toBe("Property tax due — PARKER RD, WYLIE, TX 75098");
+    expect(due?.resolved).toBe(false);
+  });
+
+  it("no standard due date once a bill exists, or for an older tax year", () => {
+    expect(
+      fromProperty(baseProperty, new Set(["prop-1"]), new Set()).some((e) => e.type === "tax_due"),
+    ).toBe(false);
+    expect(
+      fromProperty({ ...baseProperty, taxYear: 2024 }, new Set(), new Set()).some(
+        (e) => e.type === "tax_due",
+      ),
+    ).toBe(false);
+  });
+
+  it("marked paid (a reminder's Already paid) resolves it", () => {
+    const due = fromProperty(
+      { ...baseProperty, paidAt: "2026-11-06T00:00:00Z" },
+      new Set(),
+      new Set(),
+    ).find((e) => e.type === "tax_due");
+    expect(due?.resolved).toBe(true);
+  });
+});

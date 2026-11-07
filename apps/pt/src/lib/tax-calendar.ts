@@ -17,6 +17,14 @@ import { listReminders, type Reminder } from "./reminders";
 // drift with whatever a county's feed (or the real calendar) says.
 export const CURRENT_TAX_YEAR = 2026;
 
+// The last day to pay a tax year's property tax without penalty: January 31 of
+// the next year (Tax Code §31.02), moved to the next business day on a weekend.
+export function standardTaxDueDate(taxYear: number): string {
+  const d = new Date(Date.UTC(taxYear + 1, 0, 31));
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export type CalendarEventType =
   | "protest_deadline"
   | "informal_review"
@@ -124,12 +132,21 @@ export function fromProperty(
   // Only used as a fallback for properties that don't have a real tax_bills row yet —
   // once a bill exists there, that richer record supersedes this denormalized snapshot
   // (see updatePropertyBillSnapshot in src/lib/tax-bills.ts).
-  if (p.paymentDueDate && !taxBillPropertyIds.has(p.id)) {
+  // No due date of its own either: the statutory one (Jan 31, or the next
+  // business day — same as standardDueDate in pay-taxes.ts), so every property
+  // on Pay Taxes has its due date on the calendar and in the reminders.
+  if (
+    !taxBillPropertyIds.has(p.id) &&
+    (p.paymentDueDate || (p.taxYear ?? CURRENT_TAX_YEAR) >= CURRENT_TAX_YEAR)
+  ) {
+    const standard = !p.paymentDueDate;
     events.push({
       id: `tax-due:property:${p.id}`,
-      date: toIsoDate(p.paymentDueDate),
+      date: p.paymentDueDate
+        ? toIsoDate(p.paymentDueDate)
+        : standardTaxDueDate(p.taxYear ?? CURRENT_TAX_YEAR),
       type: "tax_due",
-      title: `Tax bill due — ${p.address}`,
+      title: `${standard ? "Property tax due" : "Tax bill due"} — ${p.address}`,
       amount: p.taxAmountDue,
       propertyId: p.id,
       linkTo: "/dashboard/pay-taxes",
