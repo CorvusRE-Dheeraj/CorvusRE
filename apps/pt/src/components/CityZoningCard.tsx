@@ -74,8 +74,10 @@ export function CityZoningCard({
   } else if (result.failed.length > 0) {
     body = `The ${result.failed.join(", ")} zoning map couldn't be read right now. Try again later.`;
   } else if (result.covered) {
+    // a nearby city's map was checked and has nothing here: either outside
+    // every city (unincorporated land isn't zoned) or in a city not connected
     body =
-      "The city zoning map has no district at this point. The property may be outside city limits (unincorporated county land isn't zoned) — upload a zoning letter if you have one.";
+      "No connected city zoning map has a district at this point. The property may be outside city limits (unincorporated county land isn't zoned) or in a city whose map isn't connected yet — upload a zoning verification letter if zoning matters to the value.";
   } else {
     body =
       "This property's city zoning map isn't connected yet. Upload a zoning verification letter or the city's zoning map page if zoning matters to the value.";

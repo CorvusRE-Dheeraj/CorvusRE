@@ -464,8 +464,37 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     url: "https://services8.arcgis.com/qwMz1Ra8Qny9RDxC/arcgis/rest/services/Zoning_241031/FeatureServer/0",
     bbox: [-97.972, 30.629, -97.832, 30.714],
     code: ["SHORT_DESC"],
-    description: ["ZONING"],
+    // ZONING is cut off at 25 characters ("…Retai"); Label is whole
+    description: ["Label", "ZONING"],
     ordinance: ["Ordinance"],
+  },
+  // ── Fort Bend County (Houston is listed above) ──
+  {
+    city: "Missouri City",
+    county: "fort bend",
+    url: "https://services2.arcgis.com/6vRbgYSxztFGZwla/arcgis/rest/services/Zoning2026_1/FeatureServer/0",
+    bbox: [-95.597, 29.457, -95.469, 29.644],
+    code: ["ZONE_", "LABELS"],
+    ordinance: ["ORDINANCE"],
+    link: ["Ord_Link", "Reference"],
+  },
+  {
+    city: "Stafford",
+    county: "fort bend",
+    url: "https://services.arcgis.com/Ga5PFntoooL0Dlwu/arcgis/rest/services/Zoning_Designations_Current/FeatureServer/0",
+    bbox: [-95.599, 29.598, -95.526, 29.65],
+    code: ["ZONE_CODE"],
+    description: ["ZONE_DESCR"],
+    link: ["CODE_LINK"],
+  },
+  {
+    city: "Fulshear",
+    county: "fort bend",
+    url: "https://services5.arcgis.com/k1ZyjVw1fpWcwy7h/arcgis/rest/services/ZONING_NEWER/FeatureServer/0",
+    bbox: [-95.93, 29.643, -95.845, 29.734],
+    code: ["Zone_Distr"],
+    description: ["Zone_Rev"],
+    ordinance: ["OrdNo"],
   },
   // ── next county ──
 ];
@@ -538,6 +567,10 @@ export function zoningFromAttributes(
         .replace(/^[\s\-–:,(]+/, "")
         .replace(/\)$/, "")
         .trim() || null;
+  }
+  // "Downtown Commercial/Retail (C2)" → "Downtown Commercial/Retail"
+  if (description && description.toLowerCase().endsWith(`(${code.toLowerCase()})`)) {
+    description = description.slice(0, -(code.length + 2)).trim() || null;
   }
   return {
     city: layer.city,
