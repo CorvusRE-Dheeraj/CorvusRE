@@ -10,8 +10,9 @@ import { countyFromCad as baseCounty } from "./tax-rates-official";
 export type ClerkRecords = {
   county: string;
   clerk: string;
-  // search for an owner (grantor/grantee) name
-  searchUrl: (owner: string) => string;
+  // search for an owner (grantor/grantee) name; absent when the clerk's
+  // search is a form that can't be pre-filled from a link
+  searchUrl?: (owner: string) => string;
   homeUrl: string;
 };
 
@@ -28,6 +29,11 @@ export const CLERK_RECORDS: Record<string, ClerkRecords> = {
   dallas: publicSearch("dallas", "Dallas"),
   tarrant: publicSearch("tarrant", "Tarrant"),
   denton: publicSearch("denton", "Denton"),
+  harris: {
+    county: "Harris",
+    clerk: "Harris County Clerk",
+    homeUrl: "https://www.cclerk.hctx.net/Applications/WebSearch/RP.aspx",
+  },
 };
 
 const countyFromCad = (cad: string | null | undefined) =>

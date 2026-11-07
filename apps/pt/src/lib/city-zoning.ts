@@ -25,6 +25,11 @@ export type CityZoningLayer = {
   link?: string[];
   // the city's public zoning map or zoning page, for the owner to check
   mapUrl?: string;
+  // "Town" for towns (Flower Mound, Trophy Club); default "City"
+  kind?: "Town" | "Village";
+  // a city with no zoning ordinance: the layer is its city limits, and a hit
+  // means "inside the city, which doesn't zone" (Houston)
+  noZoning?: string;
 };
 
 export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
@@ -281,6 +286,7 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
   },
   {
     city: "Flower Mound",
+    kind: "Town",
     county: "denton",
     url: "https://gismaps.flower-mound.com/wafmp/rest/services/Trakit/Trakit/MapServer/52",
     bbox: [-97.236, 32.981, -97.026, 33.092],
@@ -289,6 +295,7 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
   },
   {
     city: "Trophy Club",
+    kind: "Town",
     county: "denton",
     url: "https://services.arcgis.com/oTsZYNubyv7xK5yP/arcgis/rest/services/TrophyClub_Zoning_Public/FeatureServer/0",
     bbox: [-97.217, 32.985, -97.167, 33.025],
@@ -314,10 +321,57 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     code: ["Zoning"],
     ordinance: ["Ordinance"],
   },
+  // ── Harris County ──
+  {
+    city: "Houston",
+    county: "harris",
+    url: "https://services.arcgis.com/NummVBqZSIJKUeVR/arcgis/rest/services/COH_City_Limit_view/FeatureServer/0",
+    bbox: [-95.927, 29.503, -94.996, 30.167],
+    code: ["ENTITY_NAM"],
+    noZoning:
+      "Houston has no zoning ordinance. Land use is controlled by deed restrictions (recorded with the subdivision) and city development rules (Chapter 42), so check the deed restrictions for what the property can be used for.",
+  },
+  {
+    city: "Bellaire",
+    county: "harris",
+    url: "https://services8.arcgis.com/JcKlHMbLZfUPp860/arcgis/rest/services/City_of_Bellaire_Zones/FeatureServer/0",
+    bbox: [-95.484, 29.689, -95.447, 29.726],
+    code: ["Zone_Distr"],
+  },
+  {
+    city: "Tomball",
+    county: "harris",
+    url: "https://services2.arcgis.com/Q162lMMZLeb8KwDU/arcgis/rest/services/Current_Zoning_(Public_View)/FeatureServer/344",
+    bbox: [-95.668, 30.045, -95.585, 30.137],
+    code: ["District_ID"],
+    description: ["District"],
+  },
+  {
+    city: "Baytown",
+    county: "harris",
+    url: "https://services8.arcgis.com/2iaYWEMdQLPv0ZUw/arcgis/rest/services/Zoning_Adopted_Jan25/FeatureServer/30",
+    bbox: [-95.063, 29.679, -94.847, 29.861],
+    code: ["ULDCZON_20", "Zoning_Code"],
+    description: ["ORD_Text", "Zone_Description"],
+    ordinance: ["ORD_num"],
+  },
+  {
+    city: "Seabrook",
+    county: "harris",
+    url: "https://services5.arcgis.com/KkzTh8g0dTwlw3DH/arcgis/rest/services/Official_Zoning_Districts_March_2019/FeatureServer/0",
+    bbox: [-95.05, 29.548, -94.987, 29.595],
+    code: ["Zoning_Desktop_ZC_Abrv"],
+    description: ["Zoning_Desktop_Zoning_Code"],
+    link: ["url"],
+  },
 ];
 
 export type CityZoning = {
   city: string;
+  // "City of Plano", "Town of Flower Mound"
+  jurisdiction: string;
+  // true when the city has no zoning ordinance at all (Houston)
+  noZoning: boolean;
   code: string;
   description: string | null;
   plannedDevelopment: string | null;
@@ -349,9 +403,35 @@ export function zoningFromAttributes(
 ): CityZoning | null {
   const code = pick(attrs, layer.code);
   if (!code) return null;
-  const description = pick(attrs, layer.description);
+  const jurisdiction = `${layer.kind ?? "City"} of ${layer.city}`;
+  if (layer.noZoning) {
+    return {
+      city: layer.city,
+      jurisdiction,
+      noZoning: true,
+      code: "No zoning",
+      description: layer.noZoning,
+      plannedDevelopment: null,
+      ordinance: null,
+      link: null,
+      sourceUrl: layer.mapUrl ?? layer.url,
+    };
+  }
+  // "SF-6 (Single Family Residential - 6)" / "R7.5 - Single Family…" → just
+  // the words, since the code is shown beside it
+  let description = pick(attrs, layer.description);
+  if (description && description.toLowerCase().startsWith(code.toLowerCase())) {
+    description =
+      description
+        .slice(code.length)
+        .replace(/^[\s\-–:,(]+/, "")
+        .replace(/\)$/, "")
+        .trim() || null;
+  }
   return {
     city: layer.city,
+    jurisdiction,
+    noZoning: false,
     code,
     description: description && description !== code ? description : null,
     plannedDevelopment: pick(attrs, layer.planned),
@@ -444,7 +524,7 @@ export function zoningLabel(z: CityZoning): string {
         ? z.plannedDevelopment
         : `PD ${z.plannedDevelopment}`
       : null,
-    `City of ${z.city} zoning map`,
+    z.noZoning ? `${z.jurisdiction} city limits` : `${z.jurisdiction} zoning map`,
   ]
     .filter(Boolean)
     .join(" · ");

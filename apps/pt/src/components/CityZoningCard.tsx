@@ -40,7 +40,7 @@ export function CityZoningCard({
             <div>
               <span className="font-semibold">{z.code}</span>
               {z.description && <span> — {z.description}</span>}
-              <span className="text-muted-foreground"> · City of {z.city}</span>
+              <span className="text-muted-foreground"> · {z.jurisdiction}</span>
             </div>
             {(z.plannedDevelopment || z.ordinance || z.link) && (
               <div className="text-xs text-muted-foreground">
@@ -64,7 +64,8 @@ export function CityZoningCard({
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-xs text-accent underline"
             >
-              Source: City of {z.city} zoning map <ExternalLink className="h-3 w-3" aria-hidden />
+              Source: {z.jurisdiction} {z.noZoning ? "city limits" : "zoning map"}{" "}
+              <ExternalLink className="h-3 w-3" aria-hidden />
             </a>
           </li>
         ))}

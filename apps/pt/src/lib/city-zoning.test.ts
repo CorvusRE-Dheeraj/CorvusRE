@@ -45,6 +45,8 @@ describe("city zoning", () => {
     });
     expect(z).toEqual({
       city: "Frisco",
+      jurisdiction: "City of Frisco",
+      noZoning: false,
       code: "SF-7",
       description: null,
       plannedDevelopment: null,
@@ -62,6 +64,16 @@ describe("city zoning", () => {
     expect(a?.link).toBe("https://publicrecords.cityofallen.org/x");
     expect(zoningLabel(a!)).toBe("DD (DOWNTOWN DISTRICT) · City of Allen zoning map");
     expect(zoningFromAttributes(layer("Allen"), { Zoning: " " })).toBeNull();
+    // towns are labelled as towns
+    expect(
+      zoningFromAttributes(layer("Flower Mound"), { ZONE_DESCRIPTION: "SF10" })?.jurisdiction,
+    ).toBe("Town of Flower Mound");
+    // Houston: inside city limits = no zoning (never a district code)
+    const h = zoningFromAttributes(layer("Houston"), { ENTITY_NAM: "CITY OF HOUSTON" })!;
+    expect(h.noZoning).toBe(true);
+    expect(h.code).toBe("No zoning");
+    expect(h.description).toMatch(/deed restrictions/);
+    expect(zoningLabel(h)).toMatch(/City of Houston city limits$/);
     // Carrollton wraps codes in parentheses
     expect(zoningFromAttributes(layer("Carrollton"), { Zoning: "(SF-12/20)" })?.code).toBe(
       "SF-12/20",
@@ -94,13 +106,16 @@ describe("deed records", () => {
   it("links to the county clerk search with a clean owner name", () => {
     const c = clerkRecordsFor("Collin Central Appraisal District")!;
     expect(c.clerk).toBe("Collin County Clerk");
-    expect(c.searchUrl("SMITH JOHN")).toBe(
+    expect(c.searchUrl!("SMITH JOHN")).toBe(
       "https://collin.tx.publicsearch.us/results?department=RP&searchType=quickSearch&searchValue=SMITH%20JOHN",
     );
     expect(clerkRecordsFor("Dallas Central Appraisal District")?.homeUrl).toBe(
       "https://dallas.tx.publicsearch.us/",
     );
     expect(clerkRecordsFor("Tarrant Appraisal District")?.clerk).toBe("Tarrant County Clerk");
+    const harris = clerkRecordsFor("Harris Central Appraisal District")!;
+    expect(harris.searchUrl).toBeUndefined();
+    expect(harris.homeUrl).toMatch(/cclerk.hctx.net/);
     expect(clerkRecordsFor("Loving County Appraisal District")).toBeNull();
   });
 

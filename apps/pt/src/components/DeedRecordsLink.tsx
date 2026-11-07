@@ -11,7 +11,7 @@ export function DeedRecordsLink({ cad, owner }: { cad: string | null; owner: str
       <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
       <div>
         <a
-          href={name ? clerk.searchUrl(name) : clerk.homeUrl}
+          href={name && clerk.searchUrl ? clerk.searchUrl(name) : clerk.homeUrl}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 font-medium text-accent underline"
@@ -19,9 +19,9 @@ export function DeedRecordsLink({ cad, owner }: { cad: string | null; owner: str
           Official deed records — {clerk.clerk} <ExternalLink className="h-3 w-3" aria-hidden />
         </a>
         <p className="text-xs text-muted-foreground">
-          {name
+          {name && clerk.searchUrl
             ? `Opens the clerk's search for "${name}": recorded deeds, liens, releases and plats.`
-            : "Search the clerk's recorded deeds, liens, releases and plats by owner name."}
+            : `Search the clerk's recorded deeds, liens, releases and plats by owner name${name ? ` (${name})` : ""}.`}
         </p>
       </div>
     </div>
