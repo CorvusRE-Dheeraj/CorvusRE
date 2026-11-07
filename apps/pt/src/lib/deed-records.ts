@@ -26,6 +26,7 @@ const publicSearch = (sub: string, county: string): ClerkRecords => ({
 export const CLERK_RECORDS: Record<string, ClerkRecords> = {
   collin: publicSearch("collin", "Collin"),
   dallas: publicSearch("dallas", "Dallas"),
+  tarrant: publicSearch("tarrant", "Tarrant"),
 };
 
 const countyFromCad = (cad: string | null | undefined) =>

@@ -100,6 +100,7 @@ describe("deed records", () => {
     expect(clerkRecordsFor("Dallas Central Appraisal District")?.homeUrl).toBe(
       "https://dallas.tx.publicsearch.us/",
     );
+    expect(clerkRecordsFor("Tarrant Appraisal District")?.clerk).toBe("Tarrant County Clerk");
     expect(clerkRecordsFor("Loving County Appraisal District")).toBeNull();
   });
 
