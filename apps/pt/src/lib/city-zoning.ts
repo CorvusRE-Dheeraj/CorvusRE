@@ -496,6 +496,17 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     description: ["Zone_Rev"],
     ordinance: ["OrdNo"],
   },
+  // ── Montgomery County ──
+  {
+    city: "Magnolia",
+    county: "montgomery",
+    url: "https://services6.arcgis.com/8BGCtpzXj7oGtc44/arcgis/rest/services/Magnolia_Zoning_PublicView/FeatureServer/1",
+    bbox: [-95.776, 30.19, -95.672, 30.23],
+    code: ["Zoning"],
+    description: ["Zone_Desc"],
+    ordinance: ["Ord_Num"],
+    link: ["Ord_Link", "Zone_Link"],
+  },
   // ── next county ──
 ];
 

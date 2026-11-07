@@ -30,6 +30,7 @@ export const CLERK_RECORDS: Record<string, ClerkRecords> = {
   tarrant: publicSearch("tarrant", "Tarrant"),
   denton: publicSearch("denton", "Denton"),
   bexar: publicSearch("bexar", "Bexar"),
+  montgomery: publicSearch("montgomery", "Montgomery"),
   travis: {
     county: "Travis",
     clerk: "Travis County Clerk",
