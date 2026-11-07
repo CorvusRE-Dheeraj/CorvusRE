@@ -32,8 +32,8 @@ describe("city zoning", () => {
     const cities = layersAt(33.1976, -96.6153).map((l) => l.city);
     expect(cities).toContain("McKinney");
     expect(cities).not.toContain("Wylie");
-    // far west Texas — nothing listed
-    expect(layersAt(31.76, -106.48)).toEqual([]);
+    // Marfa — nothing listed
+    expect(layersAt(30.31, -104.02)).toEqual([]);
   });
 
   it("reads codes, skips placeholder values, keeps only real links", () => {
@@ -115,7 +115,7 @@ describe("city zoning", () => {
     );
     expect(url).toContain("geometry=-96.6153%2C33.1976");
     expect(url).toContain("inSR=4326");
-    const outside = await lookupCityZoning(31.76, -106.48);
+    const outside = await lookupCityZoning(30.31, -104.02);
     expect(outside).toEqual({ matches: [], covered: false, failed: [] });
   });
 });
