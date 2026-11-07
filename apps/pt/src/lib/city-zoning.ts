@@ -364,8 +364,26 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     description: ["Zoning_Desktop_Zoning_Code"],
     link: ["url"],
   },
+  // ── Bexar County ──
+  {
+    city: "San Antonio",
+    county: "bexar",
+    url: "https://services.arcgis.com/g1fRTDLeMgspWrYp/arcgis/rest/services/COSA_Zoning/FeatureServer/12",
+    bbox: [-98.929, 29.099, -98.109, 29.779],
+    code: ["Zoning", "ZoningDetail", "Base"],
+    description: ["BaseDescription"],
+    planned: ["SpecDistrictDescription"],
+  },
+  {
+    city: "Live Oak",
+    county: "bexar",
+    url: "https://services9.arcgis.com/xdpiCgT89eSIEpbi/arcgis/rest/services/Live_Oak_Zoning_2023/FeatureServer/0",
+    bbox: [-98.361, 29.531, -98.319, 29.581],
+    code: ["Zoning"],
+    description: ["District"],
+    link: ["Code_Link"],
+  },
 ];
-
 export type CityZoning = {
   city: string;
   // "City of Plano", "Town of Flower Mound"
