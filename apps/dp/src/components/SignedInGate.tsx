@@ -19,6 +19,7 @@ export function SignedInGate({ children }: { children: ReactNode }) {
   const search = useRouterState({ select: (s) => s.location.searchStr });
   const open = isPublicPath(pathname, import.meta.env.BASE_URL);
   const bounced = useRef(false);
+  const showing = useRef(false);
 
   useEffect(() => {
     if (open || loading || user || bounced.current) return;
@@ -27,17 +28,31 @@ export function SignedInGate({ children }: { children: ReactNode }) {
     nav({ to: "/sign-in", search: { redirect: `${path}${search ?? ""}` }, replace: true });
   }, [open, loading, user, nav, pathname, search]);
 
+  // Back/forward can restore this page from the browser's back-forward cache
+  // exactly as it was left — mid-hand-off, with the redirect already spent —
+  // and nothing would run again, leaving "Loading CorvusDP…" on screen for good.
+  // A restored page reloads instead, so the check (and the sign-in hand-off)
+  // runs fresh.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted && !showing.current) window.location.reload();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   // Signed in again (or back on a gated page later) — allow the next bounce.
   useEffect(() => {
     if (user) bounced.current = false;
   }, [user]);
 
   const show = open || (!loading && !!user);
+  showing.current = show;
   return (
     <>
       {!show && (
         <div
-          className="flex min-h-screen items-center justify-center bg-background"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-background"
           aria-live="polite"
         >
           <p className="text-sm text-muted-foreground">
