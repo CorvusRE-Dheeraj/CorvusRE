@@ -383,7 +383,45 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     description: ["District"],
     link: ["Code_Link"],
   },
+  // ── Travis County ──
+  {
+    city: "Austin",
+    county: "travis",
+    url: "https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/PLANNINGCADASTRE_zoning_large_map_scale/FeatureServer/0",
+    bbox: [-97.945, 30.07, -97.521, 30.52],
+    code: ["ZONING_ZTYPE", "ZONING_BASE"],
+  },
+  {
+    city: "Pflugerville",
+    county: "travis",
+    url: "https://maps.pflugervilletx.gov/arcgis/rest/services/Planning/Zoning_Districts/FeatureServer/0",
+    bbox: [-97.669, 30.381, -97.5, 30.5],
+    code: ["ZOINING_TY"],
+    description: ["ZONING_DES"],
+    ordinance: ["Ord"],
+    link: ["enCode_Lin"],
+  },
+  {
+    city: "Bee Cave",
+    county: "travis",
+    url: "https://services5.arcgis.com/evdRZPXXI3Gz8NJ1/arcgis/rest/services/Bee_Cave_Zoning_and_Boundaries/FeatureServer/3",
+    bbox: [-98.004, 30.286, -97.909, 30.33],
+    code: ["Zone_Code"],
+    description: ["Zone_Name"],
+    ordinance: ["Ord_Number"],
+    link: ["Ord_Link"],
+  },
+  {
+    city: "Manor",
+    county: "travis",
+    url: "https://services5.arcgis.com/L9cGEA18yPzG7Xak/arcgis/rest/services/Zoning_View/FeatureServer/22",
+    bbox: [-97.585, 30.326, -97.455, 30.393],
+    code: ["Zoning_Code", "Zoning_Class"],
+    ordinance: ["Ordinance_No"],
+  },
+  // ── next county ──
 ];
+
 export type CityZoning = {
   city: string;
   // "City of Plano", "Town of Flower Mound"

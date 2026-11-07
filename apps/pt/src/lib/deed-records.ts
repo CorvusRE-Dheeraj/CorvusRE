@@ -30,6 +30,11 @@ export const CLERK_RECORDS: Record<string, ClerkRecords> = {
   tarrant: publicSearch("tarrant", "Tarrant"),
   denton: publicSearch("denton", "Denton"),
   bexar: publicSearch("bexar", "Bexar"),
+  travis: {
+    county: "Travis",
+    clerk: "Travis County Clerk",
+    homeUrl: "https://www.tccsearch.org/",
+  },
   harris: {
     county: "Harris",
     clerk: "Harris County Clerk",
