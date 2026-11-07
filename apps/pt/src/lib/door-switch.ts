@@ -41,11 +41,17 @@ export function mustSignInAgain(door: Door): boolean {
   return active !== door;
 }
 
-/** Full-page trip to the shared sign-in, back to this exact page afterwards. */
+/**
+ * Full-page trip to the shared sign-in, back to this exact page afterwards.
+ * replace(), not assign(): this page is only a "Loading…" placeholder while
+ * it hands off, so it mustn't stay in history — otherwise Back from the
+ * sign-in screen lands on it (restored frozen from the back-forward cache) and
+ * sits on "Loading…" for good. Back now returns to the page before the door.
+ */
 export function sendToSwitchSignIn(door: Door) {
   const back = `${window.location.pathname}${window.location.search}`;
   const reason = `Please sign in again to continue to ${DOOR_NAME[door]}.`;
-  window.location.assign(
+  window.location.replace(
     `/auth/?redirect=${encodeURIComponent(back)}&switch=1&reason=${encodeURIComponent(reason)}`,
   );
 }
