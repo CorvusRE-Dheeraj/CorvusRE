@@ -507,6 +507,15 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     ordinance: ["Ord_Num"],
     link: ["Ord_Link", "Zone_Link"],
   },
+  // ── Grayson County ──
+  {
+    city: "Sherman",
+    county: "grayson",
+    url: "https://services7.arcgis.com/iMHDvyzuG2Q2tuit/arcgis/rest/services/Zoning_Districts_view/FeatureServer/2",
+    bbox: [-96.718, 33.529, -96.548, 33.71],
+    code: ["ZONECLASS", "ZONEDESC"],
+    description: ["ZONEDESC"],
+  },
   // ── next county ──
 ];
 
