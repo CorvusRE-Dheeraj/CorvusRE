@@ -575,6 +575,82 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     description: ["DEFINITION"],
     ordinance: ["ZONE_ORDIN", "ZORDINANCE"],
   },
+  // ── Metro counties, batch 2 ──
+  {
+    city: "San Marcos",
+    county: "hays",
+    url: "https://services1.arcgis.com/Hug9pbs2TYetbCha/arcgis/rest/services/Zoning/FeatureServer/15",
+    bbox: [-98.02, 29.775, -97.841, 29.962],
+    code: ["ZONECODE", "ZONINGDISTRICT"],
+    ordinance: ["ORDINANCE"],
+  },
+  {
+    city: "Seguin",
+    county: "guadalupe",
+    url: "https://gis.seguintexas.gov/arcgis/rest/services/Data_Download/Zoning_Open_Data/FeatureServer/0",
+    bbox: [-98.061, 29.512, -97.847, 29.684],
+    code: ["zone"],
+  },
+  {
+    city: "Cibolo",
+    county: "guadalupe",
+    url: "https://services3.arcgis.com/D32JCd9p0r1BYMwd/arcgis/rest/services/City_of_Cibolo__Zoning_(view)/FeatureServer/0",
+    bbox: [-98.275, 29.496, -98.111, 29.625],
+    code: ["ZONING"],
+    description: ["Zoning_des"],
+    planned: ["PUD"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "Friendswood",
+    county: "galveston",
+    url: "https://services6.arcgis.com/ghs8JYGzwZM6Zl6x/arcgis/rest/services/City_of_Friendswood_Zoning_by_Parcel/FeatureServer/4",
+    bbox: [-95.233, 29.452, -95.15, 29.574],
+    code: ["ZONE", "ZoneCode"],
+    description: ["ZoneDescription", "DESCRIPTION"],
+    ordinance: ["ORD"],
+  },
+  {
+    city: "Dickinson",
+    county: "galveston",
+    url: "https://services3.arcgis.com/B9RpfHT8Gso9BEJP/arcgis/rest/services/Official_Zoning_Map/FeatureServer/5",
+    bbox: [-95.115, 29.422, -95.01, 29.482],
+    code: ["ZONING_CLASS", "ZoningClass"],
+    ordinance: ["OrdinanceNo"],
+  },
+  {
+    city: "Fate",
+    county: "rockwall",
+    url: "https://services9.arcgis.com/mIjkbg9M3daAUJvr/arcgis/rest/services/Zoning/FeatureServer/2",
+    bbox: [-96.421, 32.911, -96.338, 32.984],
+    code: ["ZoningAbbreviation"],
+    description: ["ZoningDescription"],
+    link: ["ZoningDistrictStandards"],
+  },
+  {
+    city: "Tyler",
+    county: "smith",
+    url: "https://gis.cityoftyler.net/arcgis/rest/services/Tyler_Zoning/FeatureServer/5",
+    bbox: [-95.419, 32.231, -95.204, 32.468],
+    code: ["ZONECLASS"],
+    description: ["ZONEDESC"],
+  },
+  {
+    city: "College Station",
+    county: "brazos",
+    url: "https://gis.cstx.gov/csgis/rest/services/_OpenData/OpenData_PDS/MapServer/17",
+    bbox: [-96.391, 30.513, -96.193, 30.661],
+    code: ["Zoning_Type"],
+    description: ["Description"],
+  },
+  {
+    city: "Bryan",
+    county: "brazos",
+    url: "https://services6.arcgis.com/skDYeFloTW88hhip/arcgis/rest/services/City_of_Bryan_Zoning/FeatureServer/11",
+    bbox: [-96.519, 30.58, -96.241, 30.742],
+    code: ["ZONING"],
+    description: ["ZONING_DES"],
+  },
   // ── next county ──
 ];
 
@@ -631,7 +707,8 @@ export function zoningFromAttributes(
   }
   // "SF-6 (Single Family Residential - 6)" / "R7.5 - Single Family…" → just
   // the words, since the code is shown beside it
-  let description = pick(attrs, layer.description);
+  // Tyler prefixes its descriptions with "[Tyler] "
+  let description = pick(attrs, layer.description)?.replace(/^\[[^\]]*\]\s*/, "") || null;
   // a city's own "not ours" marker (San Antonio: OCL = Outside City Limits)
   if (/^ocl$/i.test(code) || /outside city limits/i.test(description ?? "")) return null;
   // only a whole-code prefix: "D" must not eat the D of "Downtown District"
