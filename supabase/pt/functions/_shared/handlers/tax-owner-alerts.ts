@@ -1,8 +1,9 @@
-// Deploy via CLI: `supabase functions deploy tax-owner-alerts` (JWT-verified).
+// Served by the admin-update-plan router as ?action=tax-owner-alerts
+// (JWT-verified; Supabase allows 100 functions per project).
 //
 // Proactive Texas rule-change alerts for property owners — see
 // supabase/pt/tax-owner-alerts.sql. Runs daily after the Regulatory Watch
-// (pg_cron, service role, {"mode":"run"}), and from the staff review screen
+// (pg_cron, service role, POST …/admin-update-plan?action=tax-owner-alerts {"mode":"run"}), and from the staff review screen
 // ({"action":"send","id"} once an alert is approved, {"action":"preview"}).
 //
 //   1. New staff alerts (tax_update_alerts) that no owner alert covers yet are
@@ -20,10 +21,10 @@
 //      owner turned rule-change emails off; affected properties are named and
 //      an open case the change touches is flagged.
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
-import { appBaseUrl } from "../_shared/app-url.ts";
-import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
-import { isServiceRoleRequest } from "../_shared/service-role-only.ts";
+import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
+import { appBaseUrl } from "../app-url.ts";
+import { emailShell, escapeHtml } from "../email-shell.ts";
+import { isServiceRoleRequest } from "../service-role-only.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -285,7 +286,7 @@ async function deliver(admin: SupabaseClient, onlyId?: string) {
   return summary;
 }
 
-Deno.serve(async (req: Request) => {
+export async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
@@ -319,4 +320,4 @@ Deno.serve(async (req: Request) => {
     console.error("tax-owner-alerts failed:", err);
     return json({ error: err instanceof Error ? err.message : "unknown error" }, 500);
   }
-});
+}

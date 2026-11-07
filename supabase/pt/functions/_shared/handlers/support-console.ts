@@ -1,6 +1,8 @@
-// Deploy via CLI: `supabase functions deploy support-console --no-verify-jwt`
-// (the ticket-feedback action is opened from an email by a signed-out
-// customer; every other action checks the caller itself).
+// Served by the bd-console function as ?module=support (Supabase allows 100
+// functions per project — this one shares bd-console's slot; bd-console is
+// --no-verify-jwt, which the signed-out ticket-feedback action needs; every
+// other action checks the caller itself). Cron: POST …/bd-console?module=support
+// with {"mode":"overdue"} / {"mode":"weekly"}.
 //
 // The Customer Support Admin console's server side (see supabase/pt/
 // support-console.sql for roles, tables and the Super Admin switches).
@@ -31,15 +33,15 @@
 //     overdue alerts to the assignee (or supervisors), weekly team summary
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
-import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
-import { appBaseUrl } from "../_shared/app-url.ts";
-import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
-import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
-import { cancelDecision } from "../_shared/commitment.ts";
-import { PRICING_VERSION } from "../_shared/pricing.ts";
-import { portalConfiguration } from "../_shared/billing-portal.ts";
-import { isServiceRoleRequest } from "../_shared/service-role-only.ts";
-import { rateLimitUser } from "../_shared/rate-limit.ts";
+import { GEMINI_MODEL_FAST, geminiUrl } from "../gemini.ts";
+import { appBaseUrl } from "../app-url.ts";
+import { emailShell, escapeHtml } from "../email-shell.ts";
+import { getStripeMode, stripeSecretKey } from "../stripe-mode.ts";
+import { cancelDecision } from "../commitment.ts";
+import { PRICING_VERSION } from "../pricing.ts";
+import { portalConfiguration } from "../billing-portal.ts";
+import { isServiceRoleRequest } from "../service-role-only.ts";
+import { rateLimitUser } from "../rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -712,7 +714,7 @@ async function runCron(mode: string, admin: SupabaseClient) {
   throw new HttpError(400, "Unknown mode");
 }
 
-Deno.serve(async (req: Request) => {
+export async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {
@@ -750,4 +752,4 @@ Deno.serve(async (req: Request) => {
     console.error("support-console failed:", err);
     return json({ error: err instanceof Error ? err.message : "unknown error" }, 500);
   }
-});
+}

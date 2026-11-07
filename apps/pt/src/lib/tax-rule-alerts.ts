@@ -135,12 +135,13 @@ export async function reviewOwnerAlert(id: string, approve: boolean, note?: stri
     p_note: note ?? null,
   });
   if (error) throw error;
-  if (approve) await invokeEdgeFunction("tax-owner-alerts", { action: "send", id });
+  if (approve)
+    await invokeEdgeFunction("admin-update-plan?action=tax-owner-alerts", { action: "send", id });
 }
 
 export function previewOwnerAlert(id: string) {
   return invokeEdgeFunction<{ owners: number; properties: number; openCases: number }>(
-    "tax-owner-alerts",
+    "admin-update-plan?action=tax-owner-alerts",
     { action: "preview", id },
   );
 }

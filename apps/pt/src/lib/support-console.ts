@@ -839,7 +839,7 @@ export function supportAction<T = Record<string, unknown>>(
   action: string,
   body: Record<string, unknown> = {},
 ): Promise<T> {
-  return invokeEdgeFunction<T>("support-console", { action, ...body });
+  return invokeEdgeFunction<T>("bd-console?module=support", { action, ...body });
 }
 
 export type Billing = {
