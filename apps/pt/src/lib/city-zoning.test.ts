@@ -74,6 +74,24 @@ describe("city zoning", () => {
     expect(h.code).toBe("No zoning");
     expect(h.description).toMatch(/deed restrictions/);
     expect(zoningLabel(h)).toMatch(/City of Houston city limits$/);
+    // the code prefix is trimmed only as a whole word
+    const sa = zoningFromAttributes(layer("San Antonio"), {
+      Zoning: "D",
+      BaseDescription: "Downtown District",
+    });
+    expect(sa?.description).toBe("Downtown District");
+    const tb = zoningFromAttributes(layer("Tomball"), {
+      District_ID: "SF-6",
+      District: "SF-6 (Single Family Residential - 6)",
+    });
+    expect(tb?.description).toBe("Single Family Residential - 6");
+    // San Antonio marks land outside its limits OCL — not a district
+    expect(
+      zoningFromAttributes(layer("San Antonio"), {
+        Zoning: "OCL",
+        BaseDescription: "Outside City Limits",
+      }),
+    ).toBeNull();
     // Carrollton wraps codes in parentheses
     expect(zoningFromAttributes(layer("Carrollton"), { Zoning: "(SF-12/20)" })?.code).toBe(
       "SF-12/20",

@@ -438,7 +438,14 @@ export function zoningFromAttributes(
   // "SF-6 (Single Family Residential - 6)" / "R7.5 - Single Family…" → just
   // the words, since the code is shown beside it
   let description = pick(attrs, layer.description);
-  if (description && description.toLowerCase().startsWith(code.toLowerCase())) {
+  // a city's own "not ours" marker (San Antonio: OCL = Outside City Limits)
+  if (/^ocl$/i.test(code) || /outside city limits/i.test(description ?? "")) return null;
+  // only a whole-code prefix: "D" must not eat the D of "Downtown District"
+  if (
+    description &&
+    description.toLowerCase().startsWith(code.toLowerCase()) &&
+    !/[a-z0-9]/i.test(description.charAt(code.length))
+  ) {
     description =
       description
         .slice(code.length)
