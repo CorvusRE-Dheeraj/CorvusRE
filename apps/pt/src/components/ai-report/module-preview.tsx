@@ -124,6 +124,8 @@ import {
 } from "./helpers";
 import { IncomeWorkspace } from "./income";
 import { Module1Content, Module2Content, Module5Content } from "./module-content";
+import { CityZoningCard } from "@/components/CityZoningCard";
+import { DeedRecordsLink } from "@/components/DeedRecordsLink";
 import { SavingsWorkspace } from "./savings";
 import { ModuleAsyncState } from "./shared";
 import { AnalysisPipeline } from "./strategy";
@@ -898,6 +900,7 @@ export function ModulePreviewContent({
                 </p>
               </div>
             )}
+            <DeedRecordsLink cad={state.cad ?? null} owner={state.ownerName ?? null} />
           </>
         )}
 
@@ -1385,6 +1388,7 @@ export function ModulePreviewContent({
             ]}
           />
 
+          <CityZoningCard coords={siteCoords} settled={siteCoordsSettled} />
           <ZoningBadge matches={d.matches} />
           <AiVerdictLine icon={m.icon} text={d.assessment} color={m.color} />
 

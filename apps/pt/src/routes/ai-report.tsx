@@ -162,6 +162,7 @@ import {
   type SavingsTaxInputsInput,
 } from "@/lib/savings-tax-inputs";
 import { getSiteGis, type SiteGisResult } from "@/lib/site-gis";
+import { lookupCityZoning, zoningLabel } from "@/lib/city-zoning";
 import { confirmedForModule, listSiteReports } from "@/lib/site-reports";
 import { isPaidStatus } from "@/lib/subscription-status";
 import {
@@ -322,6 +323,9 @@ function Report() {
   // Real FEMA flood-zone + USGS elevation for the subject's lat/lng, once
   // compsMap resolves one (see loadSiteGis()/its firing effect below). Same
   // rationale as compsMap: not an AI call, its own real/empty result shape.
+  // Official city zoning at the property's point (Module 6's input; the
+  // zoning card reads the same cached lookup). null until it settles.
+  const [cityZoning, setCityZoning] = useState<{ key: string; label: string | null } | null>(null);
   // `attempted` distinguishes "settled, genuinely no data" from "not started
   // yet" — see loadSiteGis's own comment.
   const [siteGisMap, setSiteGisMap] = useState<{
@@ -1903,7 +1907,7 @@ function Report() {
         const subj = compsMap.data?.subject ?? null;
         input.zoningData = {
           cadClassification: state.propertyType ?? null,
-          cadZoning: subj?.zoning ?? null,
+          cadZoning: subj?.zoning ?? cityZoning?.label ?? null,
           legalDescription: state.legalDescription ?? null,
           subdivision: state.subdivision ?? null,
           comps: (compsMap.data?.comps ?? []).slice(0, 15).map((c) => ({
@@ -2257,6 +2261,24 @@ function Report() {
   // sequence below wait for a real answer instead of firing "site" with a
   // premature "no data" the instant compsMap alone settles.
   const siteCoordsSettled = !!cadSubject || geocodedSubject.attempted;
+
+  const cityZoningKey = siteCoords ? `${siteCoords.lat},${siteCoords.lng}` : null;
+  useEffect(() => {
+    if (!siteCoords || !cityZoningKey) return;
+    let live = true;
+    lookupCityZoning(siteCoords.lat, siteCoords.lng)
+      .then((r) => r.matches.map(zoningLabel).join("; ") || null)
+      .catch(() => null)
+      .then((label) => live && setCityZoning({ key: cityZoningKey, label }));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityZoningKey]);
+  // Module 6 waits for this so its input (and cache hash) is the same on
+  // every visit; no coordinates = nothing to wait for.
+  const cityZoningSettled =
+    siteCoordsSettled && (!cityZoningKey || cityZoning?.key === cityZoningKey);
 
   // Only reachable once compsMap has settled with no subject of its own —
   // most counties (see getComps' own comment), so this is the common path,
@@ -3001,6 +3023,7 @@ function Report() {
         ) {
           continue;
         }
+        if (id === "zoning" && !cityZoningSettled) continue;
         const m = MODULES.find((mm) => mm.id === id);
         if (m && (m.n <= FREE_MODULE_COUNT || hasFullAccess)) loadModule(m.id);
       }
@@ -3032,6 +3055,7 @@ function Report() {
     geocodedSubject.data,
     siteGisMap.attempted,
     siteGisMap.loading,
+    cityZoningSettled,
   ]);
 
   // Module 10 (executive) reconciles Module 2's strategy and Module 8's

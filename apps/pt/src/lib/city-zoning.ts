@@ -1,0 +1,267 @@
+// Official city zoning at a property's point. Zoning in Texas is set by each
+// city (counties don't zone), and most cities publish their zoning map as a
+// public ArcGIS layer. Each layer below was checked live: it answers a point
+// query for a known spot inside that city, and it allows browser requests
+// (CORS), so the app reads it directly — no edge function (the project is at
+// Supabase's 100-function cap).
+//
+// A property is checked only against the cities whose map bounds contain its
+// point, so there's no need to know the city name first. Outside every listed
+// city (unincorporated county land, or a city not listed yet) the result is
+// empty — never a guess. Cities are added county by county.
+
+export type CityZoningLayer = {
+  city: string;
+  county: string;
+  // ArcGIS FeatureServer/MapServer layer
+  url: string;
+  // [xmin, ymin, xmax, ymax], WGS84 — from the layer's own extent
+  bbox: [number, number, number, number];
+  // first non-empty field wins
+  code: string[];
+  description?: string[];
+  planned?: string[];
+  ordinance?: string[];
+  link?: string[];
+  // the city's public zoning map or zoning page, for the owner to check
+  mapUrl?: string;
+};
+
+export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
+  // ── Collin County ──
+  {
+    city: "Plano",
+    county: "collin",
+    url: "https://maps.planogis.org/arcgiswad/rest/services/OpenData/Zoning/FeatureServer/0",
+    bbox: [-96.86, 32.997, -96.613, 33.125],
+    code: ["ZN"],
+    description: ["IMS_ZONE"],
+    planned: ["PD"],
+    ordinance: ["ORDINANCENUM"],
+  },
+  {
+    city: "McKinney",
+    county: "collin",
+    url: "https://maps.mckinneytexas.org/mckinney/rest/services/OpenData/Planning_and_Zoning/MapServer/4",
+    bbox: [-96.769, 33.122, -96.537, 33.303],
+    code: ["ZoningType"],
+    ordinance: ["ORD1"],
+  },
+  {
+    city: "Frisco",
+    county: "collin",
+    url: "https://services6.arcgis.com/OGXLcOSnuy0GwFwi/arcgis/rest/services/FriscoZoning_ODH/FeatureServer/1",
+    bbox: [-96.923, 33.081, -96.733, 33.219],
+    code: ["ZONING"],
+    planned: ["PD"],
+    ordinance: ["ORD1"],
+  },
+  {
+    city: "Allen",
+    county: "collin",
+    url: "https://gismaps.cityofallen.org/arcgis/rest/services/Current_Zoning/MapServer/0",
+    bbox: [-96.737, 33.068, -96.608, 33.157],
+    code: ["Zoning"],
+    description: ["DescLandUse"],
+    ordinance: ["ORDINANCE"],
+    link: ["OrdURL", "DocURL"],
+  },
+  {
+    city: "Wylie",
+    county: "collin",
+    url: "https://services7.arcgis.com/6qzfxgiNv7oGnzvU/arcgis/rest/services/Zoning_Districts_EDC/FeatureServer/81",
+    bbox: [-96.597, 32.967, -96.488, 33.055],
+    code: ["ZONECLASS"],
+    description: ["ZONEDESC"],
+    ordinance: ["OrdinanceNumber"],
+  },
+  {
+    city: "Celina",
+    county: "collin",
+    url: "https://services1.arcgis.com/x4nhme9V33KOzAfr/arcgis/rest/services/Zoning_Districts_Open_Data/FeatureServer/12",
+    bbox: [-96.894, 33.25, -96.712, 33.406],
+    code: ["zoning"],
+    ordinance: ["Zoning_Ord"],
+    link: ["Link", "PDPage"],
+  },
+  {
+    city: "Murphy",
+    county: "collin",
+    url: "https://services5.arcgis.com/lt8CbgYaNuFrQ7kB/arcgis/rest/services/Murphy_Zoning/FeatureServer/4",
+    bbox: [-96.635, 32.986, -96.595, 33.041],
+    code: ["Zone"],
+    description: ["MurphyZone", "Description"],
+    planned: ["PD"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "Richardson",
+    county: "collin",
+    url: "https://maps.cor.gov/arcgis/rest/services/DevelopmentServices/Zoning/MapServer/1",
+    bbox: [-96.77, 32.921, -96.613, 33.007],
+    code: ["ZONECLASS"],
+    description: ["ZONEDESC"],
+    ordinance: ["ORD"],
+    link: ["CZOLOC"],
+  },
+  {
+    city: "Sachse",
+    county: "collin",
+    url: "https://services6.arcgis.com/OSORr24S2Mlvyg30/arcgis/rest/services/Zoning/FeatureServer/0",
+    bbox: [-96.614, 32.942, -96.538, 33.005],
+    code: ["ZONING"],
+    description: ["TYPE"],
+    ordinance: ["ORD_NO1"],
+    link: ["FILE1"],
+  },
+  {
+    city: "Princeton",
+    county: "collin",
+    url: "https://services6.arcgis.com/KL1aiRJt0tw3BM7h/arcgis/rest/services/princeton_zoning_districts/FeatureServer/79",
+    bbox: [-96.545, 33.101, -96.426, 33.243],
+    code: ["Zone"],
+    description: ["PD_Name"],
+    planned: ["PD_Label"],
+    ordinance: ["ORD"],
+    link: ["Muni_Code_Link"],
+  },
+  {
+    city: "Anna",
+    county: "collin",
+    url: "https://services5.arcgis.com/DvFgDXTY4DS4ZXFx/arcgis/rest/services/Zoning_Base_Layer/FeatureServer/0",
+    bbox: [-96.64, 33.299, -96.44, 33.389],
+    code: ["Zoning_Abbreviation", "INFO001"],
+    ordinance: ["SUP_ORD"],
+    link: ["OrdinanceLink"],
+  },
+];
+
+export type CityZoning = {
+  city: string;
+  code: string;
+  description: string | null;
+  plannedDevelopment: string | null;
+  ordinance: string | null;
+  link: string | null;
+  sourceUrl: string;
+};
+
+// Placeholder values cities use for "none" (Frisco writes PD000 / SUP000).
+const EMPTY = /^(\s*|null|none|n\/a|pd0+|sup0+|0)$/i;
+function pick(attrs: Record<string, unknown>, fields: string[] | undefined): string | null {
+  for (const f of fields ?? []) {
+    const v = attrs[f];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (!EMPTY.test(s)) return s;
+  }
+  return null;
+}
+const isUrl = (s: string | null) => (s && /^https?:\/\//i.test(s) ? s : null);
+
+export function zoningFromAttributes(
+  layer: CityZoningLayer,
+  attrs: Record<string, unknown>,
+): CityZoning | null {
+  const code = pick(attrs, layer.code);
+  if (!code) return null;
+  const description = pick(attrs, layer.description);
+  return {
+    city: layer.city,
+    code,
+    description: description && description !== code ? description : null,
+    plannedDevelopment: pick(attrs, layer.planned),
+    ordinance: pick(attrs, layer.ordinance),
+    link: isUrl(pick(attrs, layer.link)),
+    sourceUrl: layer.mapUrl ?? layer.url,
+  };
+}
+
+export function layersAt(lat: number, lng: number): CityZoningLayer[] {
+  return CITY_ZONING_LAYERS.filter(
+    ({ bbox: [x0, y0, x1, y1] }) => lng >= x0 && lng <= x1 && lat >= y0 && lat <= y1,
+  );
+}
+
+async function queryLayer(
+  layer: CityZoningLayer,
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<CityZoning[]> {
+  const q = new URLSearchParams({
+    geometry: `${lng},${lat}`,
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    outFields: "*",
+    returnGeometry: "false",
+    f: "json",
+  });
+  const res = await fetch(`${layer.url}/query?${q}`, { signal });
+  if (!res.ok) throw new Error(`${layer.city} zoning map unavailable (${res.status})`);
+  const j = (await res.json()) as {
+    features?: { attributes?: Record<string, unknown> }[];
+    error?: { message?: string };
+  };
+  if (j.error) throw new Error(`${layer.city} zoning map: ${j.error.message ?? "error"}`);
+  const out: CityZoning[] = [];
+  for (const f of j.features ?? []) {
+    const z = f.attributes ? zoningFromAttributes(layer, f.attributes) : null;
+    if (z && !out.some((o) => o.code === z.code)) out.push(z);
+  }
+  return out;
+}
+
+export type CityZoningResult = {
+  // every district the point falls in (usually one; a base district plus an
+  // overlapping one is possible)
+  matches: CityZoning[];
+  // true when at least one listed city's bounds contained the point
+  covered: boolean;
+  // cities whose map couldn't be read right now
+  failed: string[];
+};
+
+const cache = new Map<string, Promise<CityZoningResult>>();
+
+// Cached per point so the zoning module's input and the zoning card share one
+// lookup per page.
+export function lookupCityZoning(lat: number, lng: number): Promise<CityZoningResult> {
+  const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  let p = cache.get(key);
+  if (!p) {
+    p = (async () => {
+      const layers = layersAt(lat, lng);
+      const settled = await Promise.allSettled(
+        layers.map((l) => queryLayer(l, lat, lng, AbortSignal.timeout(12_000))),
+      );
+      const matches: CityZoning[] = [];
+      const failed: string[] = [];
+      settled.forEach((s, i) => {
+        if (s.status === "fulfilled") matches.push(...s.value);
+        else failed.push(layers[i].city);
+      });
+      return { matches, covered: layers.length > 0, failed };
+    })();
+    cache.set(key, p);
+    // a failed read can be retried on the next page load
+    p.then((r) => r.failed.length && cache.delete(key)).catch(() => cache.delete(key));
+  }
+  return p;
+}
+
+// One line for the AI zoning module's input (zoningData.cadZoning).
+export function zoningLabel(z: CityZoning): string {
+  return [
+    `${z.code}${z.description ? ` (${z.description})` : ""}`,
+    z.plannedDevelopment
+      ? /^pd/i.test(z.plannedDevelopment)
+        ? z.plannedDevelopment
+        : `PD ${z.plannedDevelopment}`
+      : null,
+    `City of ${z.city} zoning map`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
