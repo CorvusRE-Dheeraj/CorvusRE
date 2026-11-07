@@ -30,7 +30,7 @@ function TicketFeedback() {
   useEffect(() => {
     if (!t) return setError("This link isn't valid.");
     invokeEdgeFunction<{ number: number; subject: string; rating: number | null }>(
-      "support-console",
+      "bd-console?module=support",
       {
         action: "ticket_feedback",
         token: t,
@@ -45,7 +45,7 @@ function TicketFeedback() {
   async function submit() {
     setBusy(true);
     try {
-      await invokeEdgeFunction("support-console", {
+      await invokeEdgeFunction("bd-console?module=support", {
         action: "ticket_feedback",
         token: t,
         rating,

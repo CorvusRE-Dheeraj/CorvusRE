@@ -1,4 +1,6 @@
 // Deploy via CLI: `supabase functions deploy bd-console --no-verify-jwt`
+// Also serves the Customer Support console as ?module=support
+// (../_shared/handlers/support-console.ts) — Supabase allows 100 functions.
 // (the proposal page is opened by a signed-out prospect; every staff action
 // checks the caller itself).
 //
@@ -25,6 +27,7 @@ import { appBaseUrl } from "../_shared/app-url.ts";
 import { emailShell, escapeHtml } from "../_shared/email-shell.ts";
 import { readOfficialSite, corpus } from "../_shared/web-retrieval.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
+import { handle as supportConsole } from "../_shared/handlers/support-console.ts";
 import { ADDITIONAL_PROPERTY_DISCOUNT, TIER_BRACKET_PRICES, TIER_LABEL, type Tier } from "../_shared/pricing.ts";
 
 const corsHeaders = {
@@ -572,6 +575,8 @@ async function proposalPublic(b: Record<string, unknown>, req: Request, admin: S
 }
 
 Deno.serve(async (req: Request) => {
+  // The Customer Support console shares this slot (100-function limit).
+  if (new URL(req.url).searchParams.get("module") === "support") return supportConsole(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   try {

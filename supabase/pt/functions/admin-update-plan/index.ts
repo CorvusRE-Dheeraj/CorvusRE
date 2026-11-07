@@ -9,6 +9,7 @@ import { handle as marketingSend } from "../_shared/handlers/marketing-send.ts";
 import { handle as marketingProspects } from "../_shared/handlers/marketing-prospects.ts";
 import { handle as staffApprovals } from "../_shared/handlers/staff-approvals.ts";
 import { handle as linkedin } from "../_shared/handlers/linkedin.ts";
+import { handle as taxOwnerAlerts } from "../_shared/handlers/tax-owner-alerts.ts";
 
 const ACTIONS: Record<string, (req: Request) => Promise<Response>> = {
   "admin-update-admin-status": adminUpdateAdminStatus,
@@ -19,6 +20,8 @@ const ACTIONS: Record<string, (req: Request) => Promise<Response>> = {
   "marketing-prospects": marketingProspects,
   "staff-approvals": staffApprovals,
   linkedin,
+  // proactive Texas rule-change alerts for owners (daily cron + staff review)
+  "tax-owner-alerts": taxOwnerAlerts,
 };
 
 Deno.serve((req: Request) => {
