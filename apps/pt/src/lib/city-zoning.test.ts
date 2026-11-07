@@ -131,6 +131,12 @@ describe("deed records", () => {
       "https://dallas.tx.publicsearch.us/",
     );
     expect(clerkRecordsFor("Tarrant Appraisal District")?.clerk).toBe("Tarrant County Clerk");
+    expect(clerkRecordsFor("Jim Hogg County Appraisal District")?.homeUrl).toBe(
+      "https://jimhogg.tx.publicsearch.us/",
+    );
+    expect(clerkRecordsFor("Hidalgo County Appraisal District")?.clerk).toBe(
+      "Hidalgo County Clerk",
+    );
     const harris = clerkRecordsFor("Harris Central Appraisal District")!;
     expect(harris.searchUrl).toBeUndefined();
     expect(harris.homeUrl).toMatch(/cclerk.hctx.net/);
