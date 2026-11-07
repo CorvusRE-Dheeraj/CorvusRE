@@ -651,6 +651,33 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     code: ["ZONING"],
     description: ["ZONING_DES"],
   },
+  // ── Metro counties, batch 3 ──
+  {
+    city: "Beaumont",
+    county: "jefferson",
+    url: "https://gis.beaumonttexas.gov/arcgis/rest/services/AGOL/Default_Public_Map/MapServer/23",
+    bbox: [-94.225, 29.973, -94.037, 30.189],
+    code: ["ZONE"],
+    description: ["ZONE_NAMES"],
+  },
+  {
+    city: "Abilene",
+    county: "taylor",
+    url: "https://services6.arcgis.com/iBFmWI3dYPQqS1KF/arcgis/rest/services/Zoning_Districts/FeatureServer/0",
+    bbox: [-100.16, 32.164, -99.601, 32.625],
+    code: ["ZoneClassification"],
+    description: ["ZoneDescription"],
+    planned: ["PDD"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "West University Place",
+    county: "harris",
+    url: "https://services2.arcgis.com/i0yOnTx5hca0RSx2/arcgis/rest/services/Zoning_Updated_WFL1/FeatureServer/18",
+    bbox: [-95.448, 29.706, -95.418, 29.725],
+    code: ["UpdatedZoningDistrict", "ZoningDistrict"],
+    description: ["PDD_Purpose"],
+  },
   // ── next county ──
 ];
 
