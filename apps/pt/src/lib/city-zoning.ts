@@ -268,6 +268,52 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     code: ["TYPE"],
     description: ["DESCR"],
   },
+  // ── Denton County (Frisco and Carrollton are listed above) ──
+  {
+    city: "Lewisville",
+    county: "denton",
+    url: "https://services2.arcgis.com/kXGqZY4GIOcEYxoF/arcgis/rest/services/Zoning_Feature_view/FeatureServer/0",
+    bbox: [-97.046, 32.986, -96.866, 33.1],
+    code: ["ZONING_CLASS"],
+    description: ["Zoning_Desc"],
+    ordinance: ["Ordinance_Number"],
+    link: ["Ordinance_Link", "LINK"],
+  },
+  {
+    city: "Flower Mound",
+    county: "denton",
+    url: "https://gismaps.flower-mound.com/wafmp/rest/services/Trakit/Trakit/MapServer/52",
+    bbox: [-97.236, 32.981, -97.026, 33.092],
+    code: ["ZONE_DESCRIPTION", "ZONE_CODE"],
+    ordinance: ["ORD_NO"],
+  },
+  {
+    city: "Trophy Club",
+    county: "denton",
+    url: "https://services.arcgis.com/oTsZYNubyv7xK5yP/arcgis/rest/services/TrophyClub_Zoning_Public/FeatureServer/0",
+    bbox: [-97.217, 32.985, -97.167, 33.025],
+    code: ["DistCode"],
+    description: ["District", "Name"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "Roanoke",
+    county: "denton",
+    url: "https://services7.arcgis.com/ZVnoRrwr69yZLQgK/arcgis/rest/services/Zoning_Data_Public_View/FeatureServer/2",
+    bbox: [-97.259, 32.987, -97.195, 33.045],
+    code: ["ZONE"],
+    description: ["ZoneClass", "Description"],
+    planned: ["PD_Amend_Num", "PD_Orig_Num"],
+    link: ["URL_Link"],
+  },
+  {
+    city: "Sanger",
+    county: "denton",
+    url: "https://services8.arcgis.com/ovJOFQdikJNb2dMW/arcgis/rest/services/Zoning/FeatureServer/0",
+    bbox: [-97.199, 33.326, -97.116, 33.425],
+    code: ["Zoning"],
+    ordinance: ["Ordinance"],
+  },
 ];
 
 export type CityZoning = {

@@ -27,6 +27,7 @@ export const CLERK_RECORDS: Record<string, ClerkRecords> = {
   collin: publicSearch("collin", "Collin"),
   dallas: publicSearch("dallas", "Dallas"),
   tarrant: publicSearch("tarrant", "Tarrant"),
+  denton: publicSearch("denton", "Denton"),
 };
 
 const countyFromCad = (cad: string | null | undefined) =>
