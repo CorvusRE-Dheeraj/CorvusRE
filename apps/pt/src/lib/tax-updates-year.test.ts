@@ -37,4 +37,17 @@ describe("taxYearUpdates", () => {
     expect(out.find((x) => x.title === "B")?.isNew).toBe(true);
     expect(out.find((x) => x.title === "A")?.isNew).toBe(false);
   });
+
+  it("shows an update once even after its title was reworded (same id)", () => {
+    const withId = (id: string, title: string) => ({ ...u(title, false), id }) as TaxUpdate;
+    const out = taxYearUpdates(
+      [
+        r("2026-10-05", [withId("x1", "Arbitration rules updated (final)")]),
+        r("2026-09-21", [withId("x1", "Arbitration rules updated")]),
+      ],
+      [withId("x1", "Arbitration rules — draft")],
+      2026,
+    );
+    expect(out.map((x) => x.title)).toEqual(["Arbitration rules updated (final)"]);
+  });
 });

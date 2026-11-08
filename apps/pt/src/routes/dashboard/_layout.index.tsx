@@ -1006,7 +1006,9 @@ function StatCard({
       <div className="mt-2 whitespace-nowrap text-[clamp(0.75rem,9cqi,2.1875rem)] font-medium text-muted-foreground leading-tight">
         {label}
       </div>
-      <div className="mt-auto truncate font-serif text-4xl font-black leading-none tracking-tight sm:text-5xl">
+      {/* sized to the card like the label, so "$1.1M" fits a phone-width card
+          instead of being cut to "$1…" */}
+      <div className="mt-auto truncate font-serif text-[clamp(1.5rem,22cqi,3rem)] font-black leading-none tracking-tight">
         {value === null ? "…" : <AnimatedNumber value={value} format={format} />}
       </div>
     </>

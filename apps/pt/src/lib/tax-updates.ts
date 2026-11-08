@@ -208,7 +208,15 @@ export async function listCriticalUpdatesForYear(year: number): Promise<TaxUpdat
     .eq("tax_year", year)
     .order("first_seen_week", { ascending: true });
   if (error) throw error;
-  return (data as CriticalItemRow[]).map((r) => plainUpdate(r.update));
+  // The ledger can hold the same update twice (one row per wording it was
+  // found under); show it once — the most recently recorded row wins.
+  const byId = new Map<string, TaxUpdate>();
+  for (const r of data as CriticalItemRow[]) {
+    const u = plainUpdate(r.update);
+    byId.delete(u.id);
+    byId.set(u.id, u);
+  }
+  return [...byId.values()];
 }
 
 // ── Generated reports (per person) ───────────────────────────────────────
@@ -531,15 +539,19 @@ export function taxYearUpdates(
     .sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
   const latestWeek = ofYear[0]?.weekStart;
   const byKey = new Map<string, TaxUpdate>();
-  for (const r of ofYear) {
-    for (const u of r.updates) {
-      const k = updateKey(u);
-      if (!byKey.has(k)) byKey.set(k, { ...u, isNew: r.weekStart === latestWeek && u.isNew });
-    }
-  }
-  for (const u of critical) {
+  // The same update keeps its id across weekly reports even when its title
+  // was reworded, so de-duplicate by id as well (newest copy wins) — two
+  // cards with one id also broke React's list keys on Texas Tax Updates.
+  const seenIds = new Set<string>();
+  const add = (u: TaxUpdate) => {
     const k = updateKey(u);
-    if (!byKey.has(k)) byKey.set(k, { ...u, isNew: false });
+    if (byKey.has(k) || (u.id && seenIds.has(u.id))) return;
+    if (u.id) seenIds.add(u.id);
+    byKey.set(k, u);
+  };
+  for (const r of ofYear) {
+    for (const u of r.updates) add({ ...u, isNew: r.weekStart === latestWeek && u.isNew });
   }
+  for (const u of critical) add({ ...u, isNew: false });
   return [...byKey.values()];
 }
