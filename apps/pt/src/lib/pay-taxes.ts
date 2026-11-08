@@ -398,7 +398,11 @@ export function buildPayTaxesRow(input: {
   const byYear = new Map<number, PayTaxBill>();
   for (const b of history)
     if (b.taxYear != null && !byYear.has(b.taxYear)) byYear.set(b.taxYear, b);
-  const taxYear = input.taxYear ?? property.taxYear ?? CURRENT_TAX_YEAR;
+  // The newest bill's year, else the current tax year. Not the property's
+  // value year: a CAD record saved with 2023 values made a bill-less row
+  // read "2023 · overdue 1012 days", and a property already showing next
+  // year's preliminary values jumped to a 2027 due date.
+  const taxYear = input.taxYear ?? history[0]?.taxYear ?? CURRENT_TAX_YEAR;
   const bill = byYear.get(taxYear) ?? (history[0]?.taxYear == null ? (history[0] ?? null) : null);
 
   const official = bill?.amountDue ?? null;

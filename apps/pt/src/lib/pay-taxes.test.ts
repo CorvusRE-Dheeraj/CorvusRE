@@ -252,6 +252,38 @@ describe("portfolio half-payment total", () => {
     expect(row.totalTax).toBeGreaterThan(0);
     expect(row.dueDateIsStandard).toBe(true);
   });
+
+  it("without a bill, uses the current tax year — not the property's stale or next value year", () => {
+    for (const valueYear of [2023, 2027]) {
+      const row = buildPayTaxesRow({
+        property: property({ taxYear: valueYear }),
+        bills: [],
+        plans: PLANS,
+        settings: [],
+        protests: [],
+        todayIso: "2026-11-08",
+      });
+      expect(row.taxYear).toBe(2026);
+      expect(row.status).not.toBe("overdue");
+    }
+  });
+
+  it("with a bill, uses the newest bill's year", () => {
+    const row = buildPayTaxesRow({
+      property: property({ taxYear: 2023 }),
+      bills: [bill({ taxYear: 2025 })],
+      plans: PLANS,
+      settings: [],
+      protests: [],
+      todayIso: "2026-11-08",
+    });
+    expect(row.taxYear).toBe(2025);
+  });
+
+  it("recognises a property saved under the 'Collin CAD' spelling", () => {
+    const link = paymentLink({ cad: "Collin CAD", accountNumber: "1" }, null);
+    expect(link?.url).toMatch(/^https?:\/\//);
+  });
 });
 
 describe("penaltyAndInterestPct", () => {

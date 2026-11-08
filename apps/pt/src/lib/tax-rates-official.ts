@@ -35,8 +35,11 @@ export type RatesFile = {
 // "Dallas Central Appraisal District" -> "dallas"
 export function countyFromCad(cad: string | null | undefined): string | null {
   if (!cad) return null;
+  // "Collin Central Appraisal District", "Collin CAD", "Collin County Appraisal
+  // District" all name Collin (CAD records are saved under both spellings)
   const name = cad
     .replace(/\b(central\s+)?appraisal\s+district\b/i, "")
+    .replace(/\s+cad\s*$/i, "")
     .replace(/\bcounty\b/i, "")
     .trim()
     .toLowerCase();
