@@ -1106,6 +1106,7 @@ function CalendarPage() {
           {view === "list" && (
             <ListView
               cursor={cursor}
+              onJump={(d) => setCursor(d)}
               eventsByDate={eventsByDate}
               onMarkPaid={handleMarkPaid}
               markingPaidId={markingPaidId}
@@ -1443,6 +1444,7 @@ function DayView({
 // its full agenda — the original "concise, no dead days" view, kept as its own mode.
 function ListView({
   cursor,
+  onJump,
   eventsByDate,
   onMarkPaid,
   markingPaidId,
@@ -1453,6 +1455,7 @@ function ListView({
   onOpenProperty,
 }: {
   cursor: Date;
+  onJump: (d: Date) => void;
   eventsByDate: Map<string, CalendarEvent[]>;
   onMarkPaid: (propertyId: string) => void;
   markingPaidId: string | null;
@@ -1468,9 +1471,19 @@ function ListView({
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (monthDays.length === 0) {
+    // an empty month, but there's more ahead: say when, and jump there
+    const next = [...eventsByDate.keys()].filter((iso) => iso.slice(0, 7) > key).sort()[0];
+    const nextDate = next ? new Date(`${next}T12:00:00`) : null;
     return (
       <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         Nothing scheduled in {format(cursor, "MMMM yyyy")}.
+        {nextDate && (
+          <div className="mt-3">
+            <button type="button" className="btn-outline" onClick={() => onJump(nextDate)}>
+              Next: {format(nextDate, "MMMM d, yyyy")} →
+            </button>
+          </div>
+        )}
       </div>
     );
   }

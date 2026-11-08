@@ -64,8 +64,11 @@ export function Modal({
       {/* Stops a click inside the modal content from bubbling up to the backdrop's
           onClose above — not a real interactive element, just propagation
           management, hence the same justified exception. */}
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */}
       <div
+        // announced as a dialog by screen readers (and findable as one)
+        role="dialog"
+        aria-modal="true"
         className={`relative overflow-hidden card-elev ${
           xl ? "w-[96vw] max-w-[80rem]" : wide ? "w-[90vw] max-w-5xl" : "w-full max-w-lg"
         }`}
