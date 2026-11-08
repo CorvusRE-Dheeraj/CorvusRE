@@ -80,12 +80,20 @@ describe("computeEvidenceStatus — once marked submitted", () => {
       additionalRequestedAt: null,
       rejectedAt: null,
     };
-    expect(computeEvidenceStatus(input({ criticalMissingCount: 0, submission: confirmed }))).toBe(
-      "complete",
-    );
     expect(
-      computeEvidenceStatus(input({ criticalMissingCount: null, submission: confirmed })),
+      computeEvidenceStatus(
+        input({ evidenceDocCount: 2, criticalMissingCount: 0, submission: confirmed }),
+      ),
     ).toBe("complete");
+    expect(
+      computeEvidenceStatus(
+        input({ evidenceDocCount: 2, criticalMissingCount: null, submission: confirmed }),
+      ),
+    ).toBe("complete");
+    // confirmed, but no evidence documents on the case: not "complete"
+    expect(computeEvidenceStatus(input({ criticalMissingCount: 0, submission: confirmed }))).toBe(
+      "confirmed",
+    );
   });
 
   it("is confirmed (not complete) when confirmed but Module 8 still flags a real gap", () => {
