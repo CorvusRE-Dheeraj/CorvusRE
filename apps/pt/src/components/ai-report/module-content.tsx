@@ -33,6 +33,7 @@ import { AiVerdictLine } from "./module-preview";
 import { buildCompsSummary, ModuleAsyncState } from "./shared";
 import { StrategyDetail, StrategyRankList } from "./strategy";
 import { BuildingComponentRow, ExecutiveStat } from "./visuals";
+import { BuildingPermits } from "@/components/BuildingPermits";
 
 // Part of the AI report page (src/routes/ai-report.tsx), split out of that
 // file unchanged. Group: module-content.
@@ -895,6 +896,7 @@ export function Module5Content({
           onEvidenceChange={setHasRecords}
         />
       )}
+      <BuildingPermits cad={state.cad ?? null} accountNumber={state.accountNumber ?? null} />
       {/* 1. What We Found — the building itself, component by component. */}
       <div>
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
