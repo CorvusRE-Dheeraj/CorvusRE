@@ -98,3 +98,106 @@ export async function collinHistory(account: string): Promise<{ years: TaxHistor
   };
 }
 
+// ── The standard "Value History" table (esearch / True Automation sites) ─────
+//
+// Most Texas CADs run one of two vendor sites (esearch.<cad>/Property/View/<id>
+// and <cad>.trueautomation.com/clientdb/Property.aspx), and both print the same
+// table: Year | Improvements | Land | Market | Ag Valuation | Appraised |
+// HS Cap Loss | Assessed — with six numbers per year (Market is never filled,
+// it's improvements + land). Read straight from the page, no AI: every value
+// is the CAD's own printed number. Tax isn't on the page, so it stays null.
+export function parseValueHistory(html: string): TaxHistoryYear[] {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ");
+  const at = text.search(/Value History/i);
+  if (at < 0) return [];
+  // the table ends at the next section heading
+  const section = text.slice(at, at + 4000).split(/Deed History|Property Deed|Taxing Jurisdiction|Improvement \/ Building/i)[0];
+  const n = String.raw`\$?\s?[\d,]+(?:\.\d+)?`;
+  const row = new RegExp(String.raw`\b(\d{4})\s+(${n})\s+(${n})\s+(${n})\s+(${n})\s+(${n})\s+(${n})`, "g");
+  const out: TaxHistoryYear[] = [];
+  for (const m of section.matchAll(row)) {
+    const year = Number(m[1]);
+    if (year < 1990 || year > CURRENT_TAX_YEAR) continue;
+    const [imp, land, , appraised, , assessed] = m.slice(2, 8).map((v) => num(v));
+    if (out.some((y) => y.year === year)) continue;
+    out.push({
+      year,
+      marketValue: imp != null && land != null ? imp + land : null,
+      appraisedValue: appraised,
+      taxableValue: assessed,
+      rate: null,
+      tax: null,
+      exact: true,
+    });
+  }
+  return out.sort((a, b) => b.year - a.year).slice(0, YEARS);
+}
+
+// ── TrueProdigy counties (public CAD API) ────────────────────────────────────
+//
+// Denton, Montgomery, Tarrant and Travis publish their records through the
+// TrueProdigy public API (their websites are JavaScript apps a page read
+// can't see). The property search returns one row per tax year. Same token
+// flow as cad-lookup's enrichTrueProdigy.
+export const TRUEPRODIGY_OFFICE: Record<string, string> = {
+  denton: "Denton",
+  montgomery: "Montgomery",
+  tarrant: "Tarrant",
+  travis: "Travis",
+};
+
+export async function trueProdigyHistory(
+  office: string,
+  account: string,
+): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
+  const pid = parseInt(account, 10);
+  if (!Number.isFinite(pid) || pid <= 0) return null;
+  const base = "https://prod-container.trueprodigyapi.com";
+  const auth = await fetch(`${base}/trueprodigy/cadpublic/auth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ office }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!auth.ok) return null;
+  const token = ((await auth.json()) as { user?: { token?: string } }).user?.token;
+  if (!token) return null;
+  const res = await fetch(`${base}/public/property/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: token },
+    // the API needs the value as a string
+    body: JSON.stringify({ pid: { operator: "=", value: String(pid) } }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) return null;
+  const rows = ((await res.json()) as { results?: Record<string, unknown>[] }).results ?? [];
+  const seen = new Set<number>();
+  const years = rows
+    .map((r): TaxHistoryYear | null => {
+      const year = num(r.pYear);
+      if (!year || year > CURRENT_TAX_YEAR || seen.has(year)) return null;
+      seen.add(year);
+      const market = num(r.marketValue);
+      const appraised = num(r.appraisedValue);
+      const taxable = num(r.netAppraisedValue) ?? num(r.assessedValue);
+      if (market == null && appraised == null) return null;
+      return {
+        year,
+        marketValue: market,
+        appraisedValue: appraised,
+        taxableValue: taxable,
+        rate: null,
+        tax: null,
+        exact: true,
+      };
+    })
+    .filter((y): y is TaxHistoryYear => !!y)
+    .sort((a, b) => b.year - a.year)
+    .slice(0, YEARS);
+  return { years, sourceUrl: `${base}/public/property/${pid}` };
+}
+

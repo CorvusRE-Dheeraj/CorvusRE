@@ -45,7 +45,7 @@ export function AssessmentChangesBanner({
   return (
     <section
       aria-label="Assessment changes"
-      className="rounded-lg border border-accent/40 bg-accent/5 p-4"
+      className="min-w-0 rounded-lg border border-accent/40 bg-accent/5 p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -62,12 +62,15 @@ export function AssessmentChangesBanner({
           Dismiss all
         </button>
       </div>
-      <ul className="mt-2 grid gap-2">
+      <ul className="mt-2 grid grid-cols-1 gap-2">
         {shown.map((c) => {
           const p = byId.get(c.propertyId)!;
           return (
-            <li key={c.id} className="flex items-start justify-between gap-3 text-sm">
-              <div className="min-w-0">
+            <li
+              key={c.id}
+              className="flex min-w-0 flex-col gap-2 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+            >
+              <div className="min-w-0 sm:flex-1">
                 <div className="truncate font-medium">{p.address}</div>
                 <div className="text-muted-foreground">{c.text}</div>
                 <div className="flex flex-wrap gap-x-3 text-xs">

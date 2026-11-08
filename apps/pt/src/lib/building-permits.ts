@@ -59,6 +59,12 @@ export function permitFromRow(r: Record<string, unknown>): BuildingPermit {
   };
 }
 
+// Collin's permit data is keyed by the numeric CAD property ID; anything
+// else (a map-style ID like "24-0158-GR-0001") can't be looked up there.
+export function permitAccountOk(accountNumber: string | null | undefined): boolean {
+  return /^\d+$/.test(accountNumber?.trim() ?? "");
+}
+
 // Newest first; null when the county has no open permit data.
 export async function loadBuildingPermits(
   cad: string | null | undefined,
@@ -68,7 +74,7 @@ export async function loadBuildingPermits(
   const county = countyFromCad(cad);
   const src = county ? PERMIT_SOURCES[county] : undefined;
   const acct = accountNumber?.trim();
-  if (!src || !acct) return null;
+  if (!src || !acct || !permitAccountOk(acct)) return null;
   const url =
     `https://data.texas.gov/resource/${src.dataset}.json?propid=${encodeURIComponent(acct)}` +
     `&$order=${encodeURIComponent("permitissueddate DESC")}&$limit=100`;

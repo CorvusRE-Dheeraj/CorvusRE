@@ -32,6 +32,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PropertyProtestRouteImport } from './routes/property-protest'
 import { Route as PropertyTaxManagementRouteImport } from './routes/property-tax-management'
 import { Route as ProposalRouteImport } from './routes/proposal'
+import { Route as ReminderUnsubscribeRouteImport } from './routes/reminder-unsubscribe'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SupportRouteImport } from './routes/support'
@@ -173,6 +174,11 @@ const PropertyTaxManagementRoute = PropertyTaxManagementRouteImport.update({
 const ProposalRoute = ProposalRouteImport.update({
   id: '/proposal',
   path: '/proposal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReminderUnsubscribeRoute = ReminderUnsubscribeRouteImport.update({
+  id: '/reminder-unsubscribe',
+  path: '/reminder-unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -344,6 +350,7 @@ export interface FileRoutesByFullPath {
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/proposal': typeof ProposalRoute
+  '/reminder-unsubscribe': typeof ReminderUnsubscribeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -396,6 +403,7 @@ export interface FileRoutesByTo {
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/proposal': typeof ProposalRoute
+  '/reminder-unsubscribe': typeof ReminderUnsubscribeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -448,6 +456,7 @@ export interface FileRoutesById {
   '/property-protest': typeof PropertyProtestRoute
   '/property-tax-management': typeof PropertyTaxManagementRoute
   '/proposal': typeof ProposalRoute
+  '/reminder-unsubscribe': typeof ReminderUnsubscribeRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/support': typeof SupportRoute
@@ -502,6 +511,7 @@ export interface FileRouteTypes {
     | '/property-protest'
     | '/property-tax-management'
     | '/proposal'
+    | '/reminder-unsubscribe'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -554,6 +564,7 @@ export interface FileRouteTypes {
     | '/property-protest'
     | '/property-tax-management'
     | '/proposal'
+    | '/reminder-unsubscribe'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -605,6 +616,7 @@ export interface FileRouteTypes {
     | '/property-protest'
     | '/property-tax-management'
     | '/proposal'
+    | '/reminder-unsubscribe'
     | '/reset-password'
     | '/sign-in'
     | '/support'
@@ -658,6 +670,7 @@ export interface RootRouteChildren {
   PropertyProtestRoute: typeof PropertyProtestRoute
   PropertyTaxManagementRoute: typeof PropertyTaxManagementRoute
   ProposalRoute: typeof ProposalRoute
+  ReminderUnsubscribeRoute: typeof ReminderUnsubscribeRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
   SupportRoute: typeof SupportRoute
@@ -829,6 +842,13 @@ declare module '@tanstack/react-router' {
       path: '/proposal'
       fullPath: '/proposal'
       preLoaderRoute: typeof ProposalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reminder-unsubscribe': {
+      id: '/reminder-unsubscribe'
+      path: '/reminder-unsubscribe'
+      fullPath: '/reminder-unsubscribe'
+      preLoaderRoute: typeof ReminderUnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -1095,6 +1115,7 @@ const rootRouteChildren: RootRouteChildren = {
   PropertyProtestRoute: PropertyProtestRoute,
   PropertyTaxManagementRoute: PropertyTaxManagementRoute,
   ProposalRoute: ProposalRoute,
+  ReminderUnsubscribeRoute: ReminderUnsubscribeRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
   SupportRoute: SupportRoute,

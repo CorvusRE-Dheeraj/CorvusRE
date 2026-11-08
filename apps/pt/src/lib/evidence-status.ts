@@ -49,7 +49,11 @@ export function computeEvidenceStatus(input: EvidenceStatusInput): EvidenceStatu
   if (subStatus === "rejected") return "rejected";
   if (subStatus === "additional_requested") return "additional_requested";
   if (subStatus === "confirmed") {
-    return input.criticalMissingCount === null || input.criticalMissingCount === 0
+    // "Complete" needs evidence actually on the case — a confirmed filing
+    // with no evidence documents read "Evidence Complete" right beside
+    // "0 evidence documents · your evidence score is low".
+    return input.evidenceDocCount > 0 &&
+      (input.criticalMissingCount === null || input.criticalMissingCount === 0)
       ? "complete"
       : "confirmed";
   }

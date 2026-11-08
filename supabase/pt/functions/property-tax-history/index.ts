@@ -16,6 +16,10 @@
 // approximate. (Collin CAD's own site is behind a Cloudflare bot check, so
 // this is the only machine-readable source — and it's the CAD's own data.)
 //
+// Denton, Montgomery, Tarrant, Travis — the CADs' public TrueProdigy API (one
+// row per tax year; values only). Counties on the esearch / True Automation
+// record sites — that page's standard Value History table, read directly.
+//
 // Every other county — AI: the property's record page on the CAD's own site
 // (the caller passes it; it's fetched only if it's on the official CAD
 // website from the Comptroller directory), read by Gemini for the value and
@@ -29,7 +33,10 @@ import {
   collinHistory,
   CURRENT_TAX_YEAR,
   num,
+  parseValueHistory,
   round2,
+  TRUEPRODIGY_OFFICE,
+  trueProdigyHistory,
   YEARS,
   type TaxHistoryYear,
 } from "../_shared/tax-history.ts";
@@ -41,6 +48,7 @@ const corsHeaders = {
 };
 
 const FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 
 type DirEntry = { county: string; appraisalDistrict: { website: string | null } | null };
 const counties = (directory as unknown as { counties: Record<string, DirEntry> }).counties;
@@ -62,7 +70,25 @@ const AI_SYSTEM = `You read a Texas appraisal district's web page for ONE proper
 Return ONLY JSON: {"years": [{"year": <4-digit tax year>, "marketValue": <number or null>, "appraisedValue": <number or null>, "taxableValue": <the net taxable / assessed value, or null>, "rate": <the combined tax rate per $100 for that year if printed, or null>, "tax": <the total tax / estimated taxes for that year if printed, or null>}]}
 Numbers as plain numbers (no $ or commas). Most recent year first, at most 6 years.`;
 
-const sameSite = (a: URL, b: URL) => a.hostname.replace(/^www\./, "") === b.hostname.replace(/^www\./, "");
+const bare = (u: URL) => u.hostname.replace(/^www\./, "");
+// The CAD's own domain or a subdomain of it (esearch.<cad>.org), or True
+// Automation's hosted record site, which several CADs use for their records.
+const allowedRecordHost = (u: URL, site: URL) =>
+  bare(u) === bare(site) ||
+  bare(u).endsWith(`.${bare(site)}`) ||
+  /(^|\.)trueautomation\.com$/i.test(u.hostname);
+
+// The record page itself, for the standard Value History table.
+async function pageHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
+  const res = await fetch(cadUrl, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; CorvusPT/1.0)", Accept: "text/html" },
+    signal: AbortSignal.timeout(20_000),
+    redirect: "follow",
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const years = parseValueHistory(await res.text());
+  return years.length ? { years, sourceUrl: cadUrl } : null;
+}
 
 async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
   const { pages } = await readOfficialSite(cadUrl, /history|values?|tax(es)?/i, { maxPages: 1, maxPdfs: 0 });
@@ -157,10 +183,12 @@ Deno.serve(async (req: Request) => {
         .select("years, source, source_url, retrieved_at, account_number")
         .eq("property_id", prop.id)
         .maybeSingle();
+      // an empty cached result is retried after a day, not held for a month
+      const maxAge = Array.isArray(cached?.years) && cached.years.length === 0 ? EMPTY_FRESH_MS : FRESH_MS;
       if (
         cached &&
         cached.account_number === prop.account_number &&
-        Date.now() - new Date(cached.retrieved_at as string).getTime() < FRESH_MS
+        Date.now() - new Date(cached.retrieved_at as string).getTime() < maxAge
       ) {
         return json({ years: cached.years, source: cached.source, sourceUrl: cached.source_url, retrievedAt: cached.retrieved_at });
       }
@@ -170,24 +198,31 @@ Deno.serve(async (req: Request) => {
 
     const county = countyOf(prop.cad);
     let result: { years: TaxHistoryYear[]; sourceUrl: string } | null = null;
-    let source: "collin_open_data" | "cad_page" | "none" = "none";
+    let source: "collin_open_data" | "cad_api" | "cad_page" | "none" = "none";
+    const office = county ? TRUEPRODIGY_OFFICE[county.toLowerCase()] : undefined;
     if (county?.toLowerCase() === "collin" && prop.account_number) {
       result = await collinHistory(prop.account_number.trim());
       source = "collin_open_data";
-    } else if (typeof cadUrl === "string" && county) {
+    } else if (office && prop.account_number) {
+      result = await trueProdigyHistory(office, prop.account_number.trim()).catch(() => null);
+      if (result?.years.length) source = "cad_api";
+      else result = null;
+    }
+    if (!result && typeof cadUrl === "string" && county) {
       const entry = Object.values(counties).find((c) => c.county.toLowerCase() === county.toLowerCase());
       const site = entry?.appraisalDistrict?.website;
       let ok = false;
       try {
         const u = new URL(cadUrl);
         ok = !!site && (u.protocol === "https:" || u.protocol === "http:") &&
-          sameSite(u, new URL(site.startsWith("http") ? site : `https://${site}`));
+          allowedRecordHost(u, new URL(site.startsWith("http") ? site : `https://${site}`));
       } catch {
         ok = false;
       }
       if (ok) {
-        result = await aiHistory(cadUrl);
-        if (result) source = "cad_page";
+        // the standard Value History table first (exact, no AI), then AI
+        result = (await pageHistory(cadUrl)) ?? (await aiHistory(cadUrl));
+        if (result?.years.length) source = "cad_page";
       }
     }
 

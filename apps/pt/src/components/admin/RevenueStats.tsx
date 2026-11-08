@@ -125,6 +125,9 @@ export function FinancialsTab({
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Stripe subscriptions by status
           </div>
+          {statusRows.length === 0 && (
+            <p className="text-muted-foreground">No subscriptions in Stripe yet.</p>
+          )}
           {statusRows.map(([k, v]) => (
             <div
               key={k}

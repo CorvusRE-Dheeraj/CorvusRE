@@ -37,6 +37,12 @@ describe("cad tax history", () => {
     expect(isFresh(h, "2781247", Date.parse("2026-12-05T00:00:00Z"))).toBe(false);
     expect(isFresh(undefined, "2781247", now)).toBe(false);
   });
+  it("retries an empty result after a day", () => {
+    const empty = { ...h, years: [] };
+    const retrieved = Date.parse(h.retrievedAt);
+    expect(isFresh(empty, "2781247", retrieved + 6 * 3600_000)).toBe(true);
+    expect(isFresh(empty, "2781247", retrieved + 25 * 3600_000)).toBe(false);
+  });
   it("finds a year's tax only when it has one", () => {
     expect(historyTaxFor(h, 2026)?.tax).toBe(10);
     expect(historyTaxFor(h, 2025)).toBeNull();

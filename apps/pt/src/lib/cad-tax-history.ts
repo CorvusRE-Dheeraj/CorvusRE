@@ -4,7 +4,9 @@ import { invokeEdgeFunction } from "./edge-functions";
 // A property's tax history by year, from the appraisal district — see
 // supabase/pt/functions/property-tax-history. Collin comes from Collin CAD's
 // certified rolls on the Texas Open Data Portal (value × each taxing unit's
-// adopted rate); other counties from AI reading the CAD's own record page.
+// adopted rate); Denton/Montgomery/Tarrant/Travis from the CADs' TrueProdigy
+// API; esearch / True Automation counties from the record page's Value
+// History table; other counties from AI reading the CAD's own record page.
 
 export type TaxHistoryYear = {
   year: number;
@@ -21,18 +23,20 @@ export type TaxHistory = {
   propertyId: string;
   accountNumber: string | null;
   years: TaxHistoryYear[]; // newest first
-  source: "collin_open_data" | "cad_page" | "none";
+  source: "collin_open_data" | "cad_api" | "cad_page" | "none";
   sourceUrl: string | null;
   retrievedAt: string;
 };
 
 export const TAX_HISTORY_SOURCE_LABEL: Record<TaxHistory["source"], string> = {
   collin_open_data: "Collin CAD certified values × each taxing unit's adopted rate",
+  cad_api: "The appraisal district's public property data (values by year)",
   cad_page: "The appraisal district's property record",
   none: "",
 };
 
 const FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 
 type Row = {
   property_id: string;
@@ -47,7 +51,10 @@ const fromRow = (r: Row): TaxHistory => ({
   propertyId: r.property_id,
   accountNumber: r.account_number,
   years: Array.isArray(r.years) ? r.years : [],
-  source: r.source === "collin_open_data" || r.source === "cad_page" ? r.source : ("none" as const),
+  source:
+    r.source === "collin_open_data" || r.source === "cad_api" || r.source === "cad_page"
+      ? r.source
+      : ("none" as const),
   sourceUrl: r.source_url,
   retrievedAt: r.retrieved_at,
 });
@@ -70,8 +77,11 @@ export function isFresh(
   accountNumber: string | null,
   now = Date.now(),
 ): boolean {
+  // an empty result (site down, or a source not connected yet) is retried
+  // after a day rather than held for a month
+  const maxAge = h && h.years.length === 0 ? EMPTY_FRESH_MS : FRESH_MS;
   return (
-    !!h && h.accountNumber === accountNumber && now - new Date(h.retrievedAt).getTime() < FRESH_MS
+    !!h && h.accountNumber === accountNumber && now - new Date(h.retrievedAt).getTime() < maxAge
   );
 }
 

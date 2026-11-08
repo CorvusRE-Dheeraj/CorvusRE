@@ -579,6 +579,10 @@ function Report() {
   // each tab is self-contained. Resolves once, seeds intake from the real
   // row, then the normal readIntake() flow below takes over on the next tick.
   const [propertyIdApplied, setPropertyIdApplied] = useState(!deepLinkPropertyId);
+  // a link to a property that isn't in this account (deleted, or someone
+  // else's) — say so and go to Properties, rather than silently landing on
+  // a blank intake form
+  const deepLinkMissingRef = useRef(false);
   useEffect(() => {
     if (!deepLinkPropertyId || !user || propertyIdApplied) return;
     let live = true;
@@ -587,6 +591,11 @@ function Report() {
         if (!live) return;
         const match = props.find((p) => p.id === deepLinkPropertyId);
         if (match) updateIntake({ ...buildAiReportIntakePatch(match), confirmed: true });
+        else {
+          deepLinkMissingRef.current = true;
+          toast.error("That property isn't in your account.");
+          nav({ to: "/dashboard/properties" });
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -595,10 +604,11 @@ function Report() {
     return () => {
       live = false;
     };
-  }, [deepLinkPropertyId, user, propertyIdApplied]);
+  }, [deepLinkPropertyId, user, propertyIdApplied, nav]);
 
   useEffect(() => {
     if (!propertyIdApplied) return; // wait for ?propertyId to seed intake first
+    if (deepLinkMissingRef.current) return;
     const s = readIntake();
     if (!s.confirmed) {
       setState(s);

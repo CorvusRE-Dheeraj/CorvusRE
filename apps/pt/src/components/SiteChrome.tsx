@@ -97,6 +97,15 @@ export function SiteNav() {
   const navItems = isBetaUser
     ? [...baseNavItems, { to: "/dashboard/feedback", label: "Feedback" } as const]
     : baseNavItems;
+  // The full menu only once it fits beside "Book a demo" and the icons —
+  // measured: 9 links need ~1400px, 10 ~1480px, 11 ~1560px (below that the
+  // Menu button). Shown at the larger link size only from 1800px.
+  const navAt =
+    navItems.length <= 9
+      ? { show: "min-[1400px]:flex", hide: "min-[1400px]:hidden" }
+      : navItems.length === 10
+        ? { show: "min-[1480px]:flex", hide: "min-[1480px]:hidden" }
+        : { show: "min-[1560px]:flex", hide: "min-[1560px]:hidden" };
 
   useEffect(() => {
     if (!user) {
@@ -297,7 +306,7 @@ export function SiteNav() {
         <nav
           aria-label="Main"
           ref={navContainerRef}
-          className="relative hidden min-[1340px]:flex items-center gap-0.5"
+          className={`relative hidden items-center gap-0.5 ${navAt.show}`}
         >
           <span
             aria-hidden
@@ -317,7 +326,7 @@ export function SiteNav() {
               to={item.to}
               data-tour={item.to === "/dashboard/tax-updates" ? "tax-updates" : undefined}
               onClick={feedbackItemClick(item.to)}
-              className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1500px]:px-3 min-[1500px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
+              className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1800px]:px-3 min-[1800px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}
               activeOptions={{ exact: item.to === "/" }}
             >
@@ -463,7 +472,7 @@ export function SiteNav() {
           )}
           <button
             ref={menuButtonRef}
-            className="min-[1340px]:hidden btn-outline text-sm"
+            className={`btn-outline text-sm ${navAt.hide}`}
             onClick={() => setOpen((v) => !v)}
             aria-label="Menu"
             aria-expanded={open}
@@ -473,7 +482,7 @@ export function SiteNav() {
         </div>
       </div>
       {open && (
-        <div className="min-[1340px]:hidden border-t border-border/70 bg-background">
+        <div className={`border-t border-border/70 bg-background ${navAt.hide}`}>
           <div className="container-page grid gap-1 py-3">
             {navItems.map((item) => (
               <Link

@@ -57,6 +57,21 @@ const links = [...index.matchAll(/<li><a href="([a-z]+)\.php">(\d{3}) ([^<]+)<\/
 );
 if (links.length < 250) throw new Error(`Expected ~254 counties, found ${links.length}`);
 
+// Appraisal-district websites the Comptroller's page leaves blank — each
+// checked live (2026-11-08) to be the district's own site. Motley has none.
+const CAD_WEBSITE_OVERRIDES = {
+  Crockett: "https://crockettcad.org",
+  Dickens: "https://dickenscad.org",
+  Edwards: "https://edwardscad.org",
+  Jasper: "https://jaspercad.org",
+  Kaufman: "https://www.kaufman-cad.org",
+  Kleberg: "https://www.kleberg-cad.org",
+  Nacogdoches: "https://www.nacocad.org",
+  Rockwall: "https://www.rockwallcad.com",
+  Somervell: "http://www.somervellcad.net",
+  Young: "https://youngcad.org",
+};
+
 const counties = {};
 for (const { slug, code, name } of links) {
   const html = await (await fetch(`${BASE}${slug}.php`)).text();
@@ -69,7 +84,13 @@ for (const { slug, code, name } of links) {
   counties[code] = {
     county: name,
     slug,
-    appraisalDistrict: cadName ? { name: decode(cadName), ...office(cadBlock) } : null,
+    appraisalDistrict: cadName
+      ? (() => {
+          const o = { name: decode(cadName), ...office(cadBlock) };
+          if (!o.website && CAD_WEBSITE_OVERRIDES[name]) o.website = CAD_WEBSITE_OVERRIDES[name];
+          return o;
+        })()
+      : null,
     taxOffice: office(taxBlock),
   };
   await new Promise((r) => setTimeout(r, 150));
