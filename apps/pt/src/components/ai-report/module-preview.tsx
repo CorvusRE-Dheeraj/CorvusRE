@@ -710,6 +710,8 @@ export function ModulePreviewContent({
           <AddCompForm onAdd={onSaveCompSelection} onExtractSale={onExtractCompSale} />
         )}
 
+        {/* the county clerk's deed records — shown whether or not comps were found */}
+        <DeedRecordsLink cad={state.cad ?? null} owner={state.ownerName ?? null} />
         {hasAnyComp && (
           <>
             {/* How the comp set was narrowed — real counts only. */}
@@ -900,7 +902,6 @@ export function ModulePreviewContent({
                 </p>
               </div>
             )}
-            <DeedRecordsLink cad={state.cad ?? null} owner={state.ownerName ?? null} />
           </>
         )}
 

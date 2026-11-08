@@ -5,6 +5,7 @@ import {
   loadBuildingPermits,
   permitsSupported,
   PERMIT_SOURCES,
+  permitAccountOk,
   type BuildingPermit,
 } from "@/lib/building-permits";
 import { countyFromCad } from "@/lib/tax-rates-official";
@@ -36,7 +37,7 @@ export function BuildingPermits({
   const [error, setError] = useState<string | null>(null);
   const supported = permitsSupported(cad);
   useEffect(() => {
-    if (!supported || !accountNumber) return;
+    if (!supported || !accountNumber || !permitAccountOk(accountNumber)) return;
     const ctl = new AbortController();
     setPermits(null);
     setError(null);
@@ -89,6 +90,12 @@ export function BuildingPermits({
       {!accountNumber ? (
         <p className="mt-1 text-muted-foreground">
           Add the CAD account number to see this property&apos;s permits.
+        </p>
+      ) : !permitAccountOk(accountNumber) ? (
+        <p className="mt-1 text-muted-foreground">
+          Permits are listed by the appraisal district&apos;s numeric property ID, and this
+          property&apos;s account number ({accountNumber}) isn&apos;t one. Check the account number
+          on the property — it&apos;s on the appraisal notice and the CAD&apos;s property page.
         </p>
       ) : error ? (
         <p className="mt-1 text-muted-foreground">

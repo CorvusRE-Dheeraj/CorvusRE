@@ -86,6 +86,20 @@ export function NotificationsBell() {
         for (const r of reminders) {
           if (r.done) continue;
           const d = daysUntil(r.remindOn);
+          // A system reminder is a notice dated the day something changed
+          // ("Property base data updated for …") — say when it happened, not
+          // "Overdue", and let it drop off after a month.
+          if (r.source === "system") {
+            if (d < -30) continue;
+            out.push({
+              key: `rm-${r.id}-${r.remindOn}`,
+              text: r.note,
+              when: d >= 0 ? "Today" : d === -1 ? "Yesterday" : `${-d} days ago`,
+              to: "/dashboard/calendar",
+              days: Math.max(d, -1),
+            });
+            continue;
+          }
           if (d <= 7)
             out.push({
               key: `rm-${r.id}-${r.remindOn}`,
