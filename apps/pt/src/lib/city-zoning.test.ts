@@ -92,6 +92,13 @@ describe("city zoning", () => {
         BaseDescription: "Outside City Limits",
       }),
     ).toBeNull();
+    // an HTML link's href is used as the document link
+    expect(
+      zoningFromAttributes(layer("Pearland"), {
+        Zone_Name: "R-1",
+        AllowedUses: '<a href= "https://gis.pearlandtx.gov/x.pdf">R-1</a>',
+      })?.link,
+    ).toBe("https://gis.pearlandtx.gov/x.pdf");
     // Carrollton wraps codes in parentheses
     expect(zoningFromAttributes(layer("Carrollton"), { Zoning: "(SF-12/20)" })?.code).toBe(
       "SF-12/20",

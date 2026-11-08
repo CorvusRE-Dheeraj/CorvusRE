@@ -678,6 +678,62 @@ export const CITY_ZONING_LAYERS: CityZoningLayer[] = [
     code: ["UpdatedZoningDistrict", "ZoningDistrict"],
     description: ["PDD_Purpose"],
   },
+  // ── Metro counties, batch 4 ──
+  {
+    city: "Pearland",
+    county: "brazoria",
+    url: "https://services5.arcgis.com/iJ6DPCVBtManqbJU/arcgis/rest/services/Zoning/FeatureServer/0",
+    bbox: [-95.446, 29.499, -95.21, 29.602],
+    code: ["Zone_Name"],
+    description: ["Zone_Description"],
+    ordinance: ["Ordinance"],
+    link: ["AllowedUses", "LinkField"],
+  },
+  {
+    city: "Midland",
+    county: "midland",
+    url: "https://services.arcgis.com/0H6bQdxd9223gQB5/arcgis/rest/services/Zoning_Collab/FeatureServer/4",
+    bbox: [-102.273, 31.914, -102.016, 32.13],
+    code: ["ZONINGCODE"],
+    description: ["PD_TYPE"],
+    ordinance: ["ORDNUM"],
+  },
+  {
+    city: "Amarillo",
+    county: "potter",
+    url: "https://services6.arcgis.com/Vdk8uHgdgYx8ZqS6/arcgis/rest/services/ZoningArcGISOnline/FeatureServer/0",
+    bbox: [-101.957, 35.094, -101.653, 35.295],
+    code: ["Zone_Text", "Zone_Designation"],
+    ordinance: ["Ordinance"],
+    link: ["Zoning_Hyperlink"],
+  },
+  {
+    city: "Galveston",
+    county: "galveston",
+    url: "https://services2.arcgis.com/uGo7PKALPg93ZiO2/arcgis/rest/services/Planning_and_Development_Data/FeatureServer/3",
+    bbox: [-95.126, 29.024, -94.58, 29.417],
+    code: ["ZONING"],
+    description: ["DISTNAME"],
+    ordinance: ["ORD___"],
+  },
+  {
+    city: "Kyle",
+    county: "hays",
+    url: "https://services5.arcgis.com/Zhdeglqfvv6JnrnU/arcgis/rest/services/Jurisdiction_and_Zoning_Finder/FeatureServer/4",
+    bbox: [-97.975, 29.93, -97.811, 30.056],
+    code: ["Z_Code"],
+    description: ["Description"],
+    ordinance: ["Ordinance"],
+  },
+  {
+    city: "Waxahachie",
+    county: "ellis",
+    url: "https://arcgis.waxahachie.com/arcgis/rest/services/Zoning_8262020/MapServer/1",
+    bbox: [-96.964, 32.318, -96.742, 32.497],
+    code: ["ZONE", "CoreZone"],
+    description: ["Z_DESC"],
+    ordinance: ["ORDINANCE"],
+  },
   // ── next county ──
 ];
 
@@ -710,7 +766,11 @@ function pick(attrs: Record<string, unknown>, fields: string[] | undefined): str
   }
   return null;
 }
-const isUrl = (s: string | null) => (s && /^https?:\/\//i.test(s) ? s : null);
+// a plain URL, or the href of an HTML link (Pearland stores <a href="…">)
+const isUrl = (s: string | null) => {
+  const href = s?.match(/href\s*=\s*["']([^"']+)["']/i)?.[1] ?? s;
+  return href && /^https?:\/\//i.test(href) ? href : null;
+};
 
 export function zoningFromAttributes(
   layer: CityZoningLayer,
