@@ -37,11 +37,21 @@ export function CityZoningCard({
       <ul className="grid gap-2">
         {result.matches.map((z) => (
           <li key={`${z.city}-${z.code}`}>
-            <div>
-              <span className="font-semibold">{z.code}</span>
-              {z.description && <span> — {z.description}</span>}
-              <span className="text-muted-foreground"> · {z.jurisdiction}</span>
-            </div>
+            {z.noZoning ? (
+              <>
+                <div>
+                  <span className="font-semibold">{z.code}</span>
+                  <span className="text-muted-foreground"> · {z.jurisdiction}</span>
+                </div>
+                <p className="mt-0.5">{z.description}</p>
+              </>
+            ) : (
+              <div>
+                <span className="font-semibold">{z.code}</span>
+                {z.description && <span> — {z.description}</span>}
+                <span className="text-muted-foreground"> · {z.jurisdiction}</span>
+              </div>
+            )}
             {(z.plannedDevelopment || z.ordinance || z.link) && (
               <div className="text-xs text-muted-foreground">
                 {z.plannedDevelopment && <span>Planned development {z.plannedDevelopment}. </span>}
@@ -84,7 +94,7 @@ export function CityZoningCard({
   }
 
   return (
-    <section className="card-elev p-4 text-sm" aria-label="City zoning">
+    <section className="card-elev min-w-0 p-4 text-sm" aria-label="City zoning">
       <h3 className="mb-1 flex items-center gap-2 font-semibold">
         <Landmark className="h-4 w-4" aria-hidden /> Official city zoning
       </h3>

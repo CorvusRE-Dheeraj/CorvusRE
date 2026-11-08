@@ -53,7 +53,7 @@ export function BuildingPermits({
   const src = county ? PERMIT_SOURCES[county] : undefined;
   if (!supported) {
     return (
-      <section className="card-elev p-4 text-sm" aria-label="Building permits">
+      <section className="card-elev min-w-0 p-4 text-sm" aria-label="Building permits">
         <h3 className="flex items-center gap-2 font-semibold">
           <Hammer className="h-4 w-4" aria-hidden /> Building permits
         </h3>
@@ -70,7 +70,7 @@ export function BuildingPermits({
   }
   const valueAdding = (permits ?? []).filter(isValueAdding);
   return (
-    <section className="card-elev p-4 text-sm" aria-label="Building permits">
+    <section className="card-elev min-w-0 p-4 text-sm" aria-label="Building permits">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold">
           <Hammer className="h-4 w-4" aria-hidden /> Building permits (last 3 years)
@@ -109,7 +109,7 @@ export function BuildingPermits({
               ` — ${valueAdding.length} for work that usually adds value (new construction, additions, finish-out, remodels, pools). Check that the county's improvement value reflects only work that's finished, and at what it actually cost.`}
           </p>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="text-xs text-muted-foreground">
                 <tr>
                   <th className="py-1.5 pr-3">Issued</th>
@@ -127,7 +127,7 @@ export function BuildingPermits({
                       {p.type ?? "—"}
                       {p.subtype && <span className="text-muted-foreground"> · {p.subtype}</span>}
                       {isValueAdding(p) && (
-                        <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+                        <span className="ml-1.5 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                           Adds value
                         </span>
                       )}
