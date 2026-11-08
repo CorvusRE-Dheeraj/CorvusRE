@@ -181,6 +181,16 @@ export function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // The page is server-rendered: anything typed into this box before React
+  // takes over the page (the first second or so) sat only in the DOM, and
+  // hydration then reset it to the empty controlled value. Pick it up.
+  useEffect(() => {
+    const typed = inputRef.current?.value ?? "";
+    if (typed && !value) onChange(typed);
+    // once, on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const listboxId = useId();
   // Set right before each onChange() call inside selectSuggestion(), so the
   // value-watching effect below can recognize its own programmatic update and
@@ -341,6 +351,7 @@ export function AddressAutocomplete({
   return (
     <div ref={containerRef} className="relative flex-1">
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => {

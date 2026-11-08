@@ -146,67 +146,74 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }, [pathname, user]);
 
-  if (loading || !user || !shouldShowShell(pathname)) {
-    return (
-      <div ref={transitionRef} className="page-enter">
-        {children}
-      </div>
-    );
-  }
+  // The same element tree whether or not the sidebar shows (the wrappers are
+  // `display: contents` without it) — so the page itself is never remounted
+  // when sign-in finishes loading. It used to switch between two different
+  // trees, and React rebuilt the page: an address typed into /intake in the
+  // first second or two vanished, along with any other in-progress input.
+  const showShell = !loading && !!user && shouldShowShell(pathname);
 
   return (
-    <div className="w-full px-3 py-6 sm:px-10 sm:py-10 lg:px-16">
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
-        {/* On desktop it's a left sidebar; on a phone, a sideways strip.
+    <div className={showShell ? "w-full px-3 py-6 sm:px-10 sm:py-10 lg:px-16" : "contents"}>
+      <div
+        className={
+          showShell
+            ? "grid grid-cols-1 gap-2 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8"
+            : "contents"
+        }
+      >
+        {showShell && (
+          /* On desktop it's a left sidebar; on a phone, a sideways strip.
             Sticks just under SiteNav's own sticky header (top-16 matches its
             h-16) so this tab bar stays reachable on long pages (Properties,
             Documents) instead of scrolling away — bg-background keeps page
-            content from showing through once it's actually stuck. */}
-        <nav
-          ref={tabBarRef}
-          aria-label="Dashboard sections"
-          className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2 lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:[justify-content:flex-start] lg:bg-transparent lg:pt-0"
-        >
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            if (item.locked) {
+            content from showing through once it's actually stuck. */
+          <nav
+            ref={tabBarRef}
+            aria-label="Dashboard sections"
+            className="sticky top-16 z-30 flex min-w-0 gap-1 overflow-x-auto [justify-content:safe_center] bg-background pb-2 pt-2 lg:top-20 lg:flex-col lg:self-start lg:overflow-visible lg:[justify-content:flex-start] lg:bg-transparent lg:pt-0"
+          >
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              if (item.locked) {
+                return (
+                  <button
+                    key={item.to}
+                    type="button"
+                    title={`${item.label} is coming soon.${item.label.includes("BPP") ? " " + GLOSSARY_MAP.BPP : ""}`}
+                    onClick={() =>
+                      toast(`${item.label} is coming soon`, {
+                        description: "This section is still under development — check back soon.",
+                      })
+                    }
+                    className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed lg:w-full lg:px-3.5"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                    <Lock className="h-3 w-3" />
+                  </button>
+                );
+              }
+              const color = TAB_COLOR[item.to];
               return (
-                <button
+                <Link
                   key={item.to}
-                  type="button"
-                  title={`${item.label} is coming soon.${item.label.includes("BPP") ? " " + GLOSSARY_MAP.BPP : ""}`}
-                  onClick={() =>
-                    toast(`${item.label} is coming soon`, {
-                      description: "This section is still under development — check back soon.",
-                    })
-                  }
-                  className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed lg:w-full lg:px-3.5"
+                  to={item.to}
+                  // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
+                  data-tour={`nav-${item.to.split("/").pop()}`}
+                  className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
+                  activeOptions={{ exact: item.to === "/dashboard" }}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon
+                    className={`h-4 w-4 transition-colors group-data-[status=active]:text-white ${color?.icon ?? ""}`}
+                  />
                   {item.label}
-                  <Lock className="h-3 w-3" />
-                </button>
+                </Link>
               );
-            }
-            const color = TAB_COLOR[item.to];
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
-                data-tour={`nav-${item.to.split("/").pop()}`}
-                className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
-                activeOptions={{ exact: item.to === "/dashboard" }}
-              >
-                <Icon
-                  className={`h-4 w-4 transition-colors group-data-[status=active]:text-white ${color?.icon ?? ""}`}
-                />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div ref={transitionRef} className="min-w-0 page-enter">
+            })}
+          </nav>
+        )}
+        <div ref={transitionRef} className={showShell ? "min-w-0 page-enter" : "page-enter"}>
           {children}
         </div>
       </div>
