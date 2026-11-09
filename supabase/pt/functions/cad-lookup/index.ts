@@ -28,6 +28,7 @@ import {
 } from "../_shared/bexar-tax-office.ts";
 import { rateLimit } from "../_shared/rate-limit.ts";
 import { statewideLookup } from "../_shared/statewide-parcels.ts";
+import { esearchSite, fetchEsearchRecord } from "../_shared/esearch-record.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -3374,6 +3375,61 @@ async function enrichDallas(
   }
 }
 
+// The esearch record page ({origin}/Property/View/{id}, see
+// _shared/esearch-record.ts) prints the full deed history and roll value
+// history. Used for:
+//  - statewide records in a county whose site was verified to open by the
+//    State's PROP_ID (tx-esearch-sites.json, 101 counties on 2026-11-08);
+//  - the integrated BIS counties: Grayson and Kaufman by accountNumber (their
+//    account number IS the BIS property ID), Fort Bend by bisPropertyId.
+// Gap-fill only (never replaces deeds/value history another source gave), and
+// only when the page shows this record's owner.
+const ESEARCH_BY_CAD: Record<string, { origin: string; id: (r: CadRecord) => string | null }> = {
+  "Grayson Central Appraisal District": {
+    origin: "https://esearch.graysonappraisal.org",
+    id: (r) => r.accountNumber,
+  },
+  "Kaufman Central Appraisal District": {
+    origin: "https://esearch.kaufman-cad.org",
+    id: (r) => r.accountNumber,
+  },
+  "Fort Bend Central Appraisal District": {
+    origin: "https://esearch.fbcad.org",
+    id: (r) => r.bisPropertyId ?? null,
+  },
+};
+
+async function withEsearchRecord(record: CadRecord): Promise<CadRecord> {
+  if (record.deeds?.length && record.valueHistory?.length) return record;
+  let origin: string | null = null;
+  let id: string | null = null;
+  const integrated = ESEARCH_BY_CAD[record.cad];
+  if (integrated) {
+    origin = integrated.origin;
+    id = integrated.id(record);
+  } else if (record.dataSource === "statewide") {
+    origin = esearchSite(countyOfCad(record.cad))?.origin ?? null;
+    // the State's PROP_ID ("74996", "R71735") — never its dashed GEO_ID fallback
+    id = record.accountNumber && /^[A-Z]?\d+$/i.test(record.accountNumber) ? record.accountNumber : null;
+  }
+  if (!origin || !id) return record;
+  const page = await fetchEsearchRecord(origin, id, record.ownerName);
+  if (!page) return record;
+  return {
+    ...record,
+    deeds: record.deeds?.length ? record.deeds : page.deeds,
+    valueHistory: record.valueHistory?.length ? record.valueHistory : page.valueHistory,
+  };
+}
+
+// "Angelina County Appraisal District" / "Lamb CAD" → "Angelina" / "Lamb"
+function countyOfCad(cad: string): string {
+  return cad
+    .replace(/\s*(central\s+|county\s+)?appraisal district$/i, "")
+    .replace(/\s+cad$/i, "")
+    .trim();
+}
+
 async function enrichRecord(record: CadRecord): Promise<CadRecord> {
   if (!record.accountNumber) return record;
   const expectedHouseNumber = houseNumberOf(record.propertyAddress);
@@ -3393,7 +3449,9 @@ async function enrichRecord(record: CadRecord): Promise<CadRecord> {
             ? await enrichDallas(record.accountNumber)
             : null;
 
-  const merged = enrichment ? { ...record, ...enrichment } : record;
+  // BIS counties: deeds + value history from the record page (Fort Bend's
+  // page ID only arrives with the enrichment above, hence after it)
+  const merged = await withEsearchRecord(enrichment ? { ...record, ...enrichment } : record);
 
   // Structure / lot fields are gap-fill only: a real value from the primary
   // ArcGIS match (applyStructureDetail) always wins over an enrichment source's
@@ -4529,7 +4587,13 @@ Deno.serve(async (req: Request) => {
     const tryStatewide = async (): Promise<LookupResult | null> => {
       if (isNameQuery) return null;
       try {
-        return await statewideLookup(address);
+        const r = await statewideLookup(address);
+        // a confirmed match in a county with a verified esearch site: its
+        // deed history and value history, read off the CAD's own record page
+        if (r?.matched === true && !preview) {
+          return { matched: true, record: await withEsearchRecord(r.record) };
+        }
+        return r;
       } catch {
         return null; // state service down / slow
       }
