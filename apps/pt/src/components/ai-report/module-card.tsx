@@ -488,7 +488,7 @@ export function ModuleVisual({
         onClick={onOpen}
         className="text-left text-xs text-destructive underline underline-offset-2 hover:text-destructive/80"
       >
-        Couldn't load — click to view &amp; retry
+        {moduleState.rateLimitedUntil ? moduleState.error : "Couldn't load — click to view & retry"}
       </button>
     );
   }
