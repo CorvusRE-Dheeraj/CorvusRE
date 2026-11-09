@@ -814,7 +814,7 @@ export function ComparableTable({
                                       onClick={(e) => e.stopPropagation()}
                                       className="text-accent underline underline-offset-2"
                                     >
-                                      {isDirectCadRecordUrl(cad!)
+                                      {isDirectCadRecordUrl(cad!, String(c.pid))
                                         ? `View CAD record #${c.pid}`
                                         : `Search ${cad} for #${c.pid}`}
                                     </a>

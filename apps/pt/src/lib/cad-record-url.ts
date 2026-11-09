@@ -1,5 +1,6 @@
 import type { CadRecord } from "./cad-lookup";
 import { lookupCadDirectory } from "./cad-directory";
+import { esearchOriginForCad, esearchRecordUrl, isEsearchPropertyId } from "./esearch-sites";
 
 // A link to the property's real, official county record — lets a user
 // independently verify what this app shows (owner, values, account number)
@@ -144,6 +145,12 @@ export function getCadRecordUrl(
   if (bisBase) {
     return `${bisBase}/Property/View/${encodeURIComponent(record.accountNumber)}`;
   }
+  // Standard-coverage counties on a verified esearch site (see esearch-sites.ts)
+  // — the 13 integrated counties above keep their own rules.
+  if (!(record.cad in CAD_SEARCH_HOMEPAGE)) {
+    const esearch = esearchRecordUrl(record.cad, record.accountNumber);
+    if (esearch) return esearch;
+  }
   return homepageFor(record.cad);
 }
 
@@ -151,13 +158,18 @@ export function getCadRecordUrl(
 // account — used to phrase the link's own label honestly ("View Official CAD
 // Record" vs. "Search on {CAD}'s Website") rather than promising a specific
 // record every county doesn't actually jump straight to.
-export function isDirectCadRecordUrl(cad: string): boolean {
+// esearch counties link straight to the record only when the account number is
+// an esearch property ID — pass it so the label matches the link.
+export function isDirectCadRecordUrl(cad: string, accountNumber?: string | null): boolean {
   return (
     cad === "Bexar Appraisal District" ||
     cad === "Dallas Central Appraisal District" ||
     cad === "Williamson Central Appraisal District" ||
     cad in PRODIGYCAD_DETAIL_BASE ||
-    cad in BIS_DETAIL_BASE
+    cad in BIS_DETAIL_BASE ||
+    (!(cad in CAD_SEARCH_HOMEPAGE) &&
+      !!esearchOriginForCad(cad) &&
+      isEsearchPropertyId(accountNumber))
   );
 }
 

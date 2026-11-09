@@ -6,7 +6,17 @@ vi.mock("./supabase", () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => mockInvoke(...args) } },
 }));
 
-const { invokeEdgeFunction } = await import("./edge-functions");
+const { invokeEdgeFunction, isRateLimitError, waitPhrase } = await import("./edge-functions");
+type RateLimitError = import("./edge-functions").RateLimitError;
+
+// Our own per-caller limiter (supabase/pt/functions/_shared/rate-limit.ts)
+function ownLimitError(body: Record<string, unknown>) {
+  const context = {
+    status: 429,
+    clone: () => ({ json: async () => body }),
+  } as unknown as Response;
+  return { data: null, error: Object.assign(new Error("non-2xx status code"), { context }) };
+}
 
 function rateLimitedError() {
   const context = {
@@ -80,6 +90,47 @@ describe("invokeEdgeFunction", () => {
     await assertion;
     // initial attempt + MAX_RETRIES(2) retries = 3 calls total, then it stops.
     expect(mockInvoke).toHaveBeenCalledTimes(3);
+  });
+
+  // Retrying our own limit immediately only counts against it again — the
+  // caller gets the wait time and the message to show instead.
+  it("does not retry our own request limit and reports how long to wait", async () => {
+    mockInvoke.mockResolvedValue(
+      ownLimitError({
+        error: "Too many requests — try again in a minute.",
+        rateLimited: true,
+        retryAfterSecs: 42,
+      }),
+    );
+
+    const err = (await invokeEdgeFunction("ai-report-modules", {}).catch(
+      (e) => e,
+    )) as RateLimitError;
+
+    expect(isRateLimitError(err)).toBe(true);
+    expect(err.message).toBe("Too many requests — try again in a minute.");
+    expect(err.retryAfterSecs).toBe(42);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("recognises an older deployed limiter's message and assumes the full window", async () => {
+    mockInvoke.mockResolvedValue(
+      ownLimitError({ error: "Too many requests — please wait a few minutes and try again." }),
+    );
+
+    const err = (await invokeEdgeFunction("ai-health-score", {}).catch((e) => e)) as RateLimitError;
+
+    expect(isRateLimitError(err)).toBe(true);
+    expect(err.retryAfterSecs).toBe(600);
+    expect(err.message).toBe("Too many requests — try again in 10 minutes.");
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("words the wait in whole minutes", () => {
+    expect(waitPhrase(1)).toBe("a minute");
+    expect(waitPhrase(60)).toBe("a minute");
+    expect(waitPhrase(61)).toBe("2 minutes");
+    expect(waitPhrase(600)).toBe("10 minutes");
   });
 
   it("does not retry non-429 errors", async () => {
