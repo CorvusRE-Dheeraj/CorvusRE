@@ -1,4 +1,4 @@
-import type { PayTaxesRow, Installment } from "./pay-taxes";
+import type { BppTaxRow, PayTaxesRow, Installment } from "./pay-taxes";
 
 // Pay Taxes → "Download PDF" (a one-table summary of every property's tax, due
 // date and half-payment option, with totals) and "Add to Calendar" (every due
@@ -63,6 +63,27 @@ export function summaryLine(row: PayTaxesRow): SummaryLine {
     halfPay,
     firstHalf: inst[0] ?? null,
     secondHalf: inst[1] ?? null,
+  };
+}
+
+// A business personal property account as a summary line: "BPP — <business>",
+// with its location underneath. BPP has no half-payment plan here.
+export function bppSummaryLine(row: BppTaxRow): SummaryLine {
+  const [street, rest] = splitAddress(row.account.locationAddress ?? "");
+  return {
+    propertyId: `bpp-${row.account.id}`,
+    property: `BPP — ${row.account.businessName}`,
+    address: [street, rest].filter(Boolean).join(", "),
+    owner: row.account.businessName,
+    county: row.county,
+    taxYear: row.taxYear,
+    totalTax: row.totalTax,
+    totalIsEstimate: row.totalTaxIsEstimate,
+    totalFromCad: false,
+    dueDate: row.dueDate,
+    halfPay: "not_available",
+    firstHalf: null,
+    secondHalf: null,
   };
 }
 

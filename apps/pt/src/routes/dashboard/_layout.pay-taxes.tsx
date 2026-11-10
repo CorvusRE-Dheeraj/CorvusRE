@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   BadgeCheck,
+  Briefcase,
   CalendarClock,
   CalendarPlus,
   Download,
@@ -26,7 +27,9 @@ import { getErrorMessage } from "@/lib/error-message";
 import {
   PAY_STATUS_LABEL,
   TO_CONFIRM,
+  buildBppTaxRow,
   buildPayTaxesRow,
+  countyName,
   daysBetween,
   enrollInPlan,
   listCountyTaxSettings,
@@ -36,6 +39,7 @@ import {
   portfolioSummary,
   reportPayment,
   saveInstallments,
+  withBppSummary,
   type CountyTaxSettings,
   type Installment,
   type PayStatus,
@@ -48,6 +52,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/Modal";
 import { PageHero, heroButton } from "@/components/PageHero";
 import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
+import { AddBppModal, BppTaxSection } from "@/components/BppTaxSection";
+import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import {
   TAX_HISTORY_SOURCE_LABEL,
   fetchTaxHistory,
@@ -56,6 +62,7 @@ import {
   type TaxHistory,
 } from "@/lib/cad-tax-history";
 import {
+  bppSummaryLine,
   downloadFile,
   dueEvents,
   dueEventsIcs,
@@ -159,6 +166,9 @@ function PayTaxes() {
   // Add many properties (and their tax bills) at once: a spreadsheet, a PDF
   // or a Podio app — the same import the Properties page uses.
   const [importing, setImporting] = useState(false);
+  // Business personal property accounts and their tax (Add BPP).
+  const [bppAccounts, setBppAccounts] = useState<BppAccountRecord[]>([]);
+  const [addingBpp, setAddingBpp] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     county: "",
     status: "",
@@ -182,14 +192,16 @@ function PayTaxes() {
 
   async function reload() {
     if (!user) return;
-    const [props, b, p, s, pr] = await Promise.all([
+    const [props, b, p, s, pr, bpp] = await Promise.all([
       listProperties(user.id),
       listPayTaxBills(user.id),
       listPaymentPlans(),
       listCountyTaxSettings(),
       listProtests(user.id).catch(() => [] as ProtestRecord[]),
+      listBppAccounts(user.id).catch(() => [] as BppAccountRecord[]),
     ]);
     setProperties(props);
+    setBppAccounts(bpp);
     listTaxHistory(props.map((x) => x.id))
       .then(setTaxHistory)
       .catch(() => undefined)
@@ -262,8 +274,33 @@ function PayTaxes() {
         (filters.plan === "none" && !r.flags.halfPayEligible && !r.flags.enrolled),
     )
     .sort(sortRows(filters.sort));
-  const summary = portfolioSummary(rows);
-  const counties = [...new Set(allRows.map((r) => r.county).filter(Boolean))].sort() as string[];
+  // BPP rows follow the county and status filters; they have no payment plan
+  // or tax-year history, so a plan filter other than "none" or a year filter
+  // for another year leaves them out.
+  const bppRows = useMemo(
+    () => bppAccounts.map((account) => buildBppTaxRow({ account, settings, todayIso: today })),
+    [bppAccounts, settings, today],
+  )
+    .filter((r) => !filters.county || r.county === filters.county)
+    .filter((r) => !filters.status || r.status === filters.status)
+    .filter((r) => !filters.plan || filters.plan === "none")
+    .filter((r) => !filters.year || r.taxYear === Number(filters.year))
+    .sort(
+      (a, b) =>
+        Number(b.flags.overdue) - Number(a.flags.overdue) ||
+        Number(a.status === "paid") - Number(b.status === "paid") ||
+        a.dueDate.localeCompare(b.dueDate),
+    );
+  const summary = withBppSummary(portfolioSummary(rows), bppRows);
+  const reportLines = () => [...rows.map(summaryLine), ...bppRows.map(bppSummaryLine)];
+  const hasAny = properties.length > 0 || bppAccounts.length > 0;
+  const counties = [
+    ...new Set(
+      [...allRows.map((r) => r.county), ...bppAccounts.map((a) => countyName(a.cad))].filter(
+        Boolean,
+      ),
+    ),
+  ].sort() as string[];
   const years = [
     ...new Set([
       ...allRows.map((r) => r.taxYear),
@@ -276,7 +313,7 @@ function PayTaxes() {
   async function downloadPdf() {
     setExporting(true);
     try {
-      const bytes = await summaryPdf(rows.map(summaryLine));
+      const bytes = await summaryPdf(reportLines());
       downloadFile(bytes, `Property-Tax-Summary-${today}.pdf`, "application/pdf");
     } catch (err) {
       toast.error(getErrorMessage(err, "Couldn't create the PDF."));
@@ -289,7 +326,7 @@ function PayTaxes() {
   // with alerts 30/15/7/2/1 days before and on the day; the same dates are on
   // the CorvusPT Calendar, and email reminders go out on that schedule.
   function addToCalendar() {
-    const events = dueEvents(rows.map(summaryLine));
+    const events = dueEvents(reportLines());
     downloadFile(dueEventsIcs(events), "property-tax-due-dates.ics", "text/calendar;charset=utf-8");
     toast.success(`${events.length} due date${events.length === 1 ? "" : "s"} ready to add`, {
       description:
@@ -311,13 +348,16 @@ function PayTaxes() {
         <button type="button" onClick={() => setImporting(true)} className={heroButton}>
           <Layers className="h-4 w-4" /> Add Properties
         </button>
+        <button type="button" onClick={() => setAddingBpp(true)} className={heroButton}>
+          <Briefcase className="h-4 w-4" /> Add BPP
+        </button>
         <Link to="/intake" className={heroButton}>
           <Upload className="h-4 w-4" /> Upload Tax Bill
         </Link>
         <button
           type="button"
           onClick={downloadPdf}
-          disabled={loading || rows.length === 0 || exporting}
+          disabled={loading || rows.length + bppRows.length === 0 || exporting}
           className={heroButton}
         >
           <Download className="h-4 w-4" /> {exporting ? "Preparing…" : "Download PDF"}
@@ -325,7 +365,7 @@ function PayTaxes() {
         <button
           type="button"
           onClick={addToCalendar}
-          disabled={loading || rows.length === 0}
+          disabled={loading || rows.length + bppRows.length === 0}
           className={heroButton}
         >
           <CalendarPlus className="h-4 w-4" /> Add to Calendar
@@ -338,22 +378,36 @@ function PayTaxes() {
             <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
-      ) : properties.length === 0 ? (
+      ) : !hasAny ? (
         <div className="card-elev mt-6 p-8 text-center">
           <h3 className="font-serif text-xl font-semibold">No properties yet.</h3>
           <p className="mt-1 text-muted-foreground">
             Add a property and its tax bills, due dates and payment options show up here.
           </p>
-          <button type="button" onClick={() => setImporting(true)} className="btn-accent mt-4">
-            Add properties — spreadsheet, PDF or Podio
-          </button>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={() => setImporting(true)} className="btn-accent">
+              Add properties — spreadsheet, PDF or Podio
+            </button>
+            <button type="button" onClick={() => setAddingBpp(true)} className="btn-outline">
+              Add business personal property
+            </button>
+          </div>
         </div>
       ) : (
         <>
-          <PortfolioTiles summary={summary} />
+          <PortfolioTiles summary={summary} bppCount={bppRows.length} />
           <HalfPayPanel summary={summary} today={today} onOpen={setOpen} />
           <Filters filters={filters} setFilters={setFilters} counties={counties} years={years} />
-          <PropertyTable rows={rows} today={today} onOpen={setOpen} onPay={setPayRow} />
+          {properties.length > 0 && (
+            <PropertyTable rows={rows} today={today} onOpen={setOpen} onPay={setPayRow} />
+          )}
+          <BppTaxSection
+            rows={bppRows}
+            onAdd={() => setAddingBpp(true)}
+            onChanged={() =>
+              reload().catch((err) => toast.error(getErrorMessage(err, "Could not refresh.")))
+            }
+          />
           <p className="mt-3 text-xs text-muted-foreground">
             CorvusPT doesn&apos;t collect tax payments. Pay Taxes opens the county&apos;s own
             payment page; nothing is marked paid until you update the status (or the county confirms
@@ -364,6 +418,15 @@ function PayTaxes() {
       )}
 
       {payRow && <PayConfirm row={payRow} onClose={() => setPayRow(null)} />}
+      {addingBpp && user && (
+        <AddBppModal
+          userId={user.id}
+          onClose={() => setAddingBpp(false)}
+          onAdded={() =>
+            reload().catch((err) => toast.error(getErrorMessage(err, "Could not refresh.")))
+          }
+        />
+      )}
       {importing && user && (
         <ImportPropertiesModal
           userId={user.id}
@@ -415,10 +478,20 @@ function Tile({
   );
 }
 
-function PortfolioTiles({ summary }: { summary: ReturnType<typeof portfolioSummary> }) {
+function PortfolioTiles({
+  summary,
+  bppCount,
+}: {
+  summary: ReturnType<typeof portfolioSummary>;
+  bppCount: number;
+}) {
   return (
     <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
-      <Tile label="Properties" value={summary.properties} />
+      <Tile
+        label="Properties"
+        value={summary.properties}
+        hint={bppCount > 0 ? `+ ${bppCount} BPP account${bppCount === 1 ? "" : "s"}` : undefined}
+      />
       <Tile
         label="Total tax"
         value={money(summary.totalTax)}

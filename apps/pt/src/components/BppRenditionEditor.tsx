@@ -16,6 +16,8 @@ import {
 } from "@/lib/protest-documents";
 import { signRendition, markRenditionFiled, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { getErrorMessage } from "@/lib/error-message";
+import { newTrackingId } from "@/lib/signing-packets";
+import { SigningIdBadge } from "@/components/SigningIdBadge";
 
 const TEMPLATE_PATH = "forms/50-144.pdf";
 
@@ -81,14 +83,16 @@ export function BppRenditionEditor({
     setSigning(true);
     try {
       const resolved = resolveDateFields(BPP_RENDITION_SCHEMA, values);
+      const trackingId = newTrackingId();
       const bytes = await signPdf(
         TEMPLATE_PATH,
         BPP_RENDITION_SCHEMA,
         resolved,
         signature,
         new Date(),
+        trackingId,
       );
-      const updated = await signRendition(account.id, signature);
+      const updated = await signRendition(account.id, signature, trackingId);
       onUpdate(updated);
       downloadPdf(bytes, `Form-50-144-signed-${account.businessName || "BPP"}.pdf`);
       toast.success("Rendition signed. Download it and file it with the county.");
@@ -122,6 +126,7 @@ export function BppRenditionEditor({
 
       {view === "sign" && account.renditionSignedAt ? (
         <div className="mt-4 grid gap-4">
+          <SigningIdBadge trackingId={account.signingTrackingId} />
           <div className="rounded-lg border border-accent/30 bg-accent/5 p-4 text-sm">
             Signed {new Date(account.renditionSignedAt).toLocaleDateString("en-US")}. Download a
             copy and deliver it to {account.cad || "your county's appraisal district"} by the

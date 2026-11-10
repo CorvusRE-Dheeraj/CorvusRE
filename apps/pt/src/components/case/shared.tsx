@@ -14,6 +14,7 @@ export const EMPTY_FORM_SUBMISSION: FormSubmission = {
   fieldValues: {},
   signature: null,
   signedAt: null,
+  signingTrackingId: null,
   documentId: null,
   filingMethod: null,
   filingConfirmationNumber: null,

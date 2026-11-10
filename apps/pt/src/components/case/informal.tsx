@@ -67,6 +67,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { CalendarDays } from "lucide-react";
 import { Field } from "@/components/case/shared";
+import { SigningIdBadge } from "@/components/SigningIdBadge";
 
 // Every real, trackable informal-review sub-state, in the same order the
 // product spec listed them — the raw options for the status dropdown below.
@@ -1546,6 +1547,7 @@ export function SettlementSignatureSection({
               <div className="font-semibold text-foreground">
                 Signed {new Date(agreement.signedAt).toLocaleDateString()}
               </div>
+              <SigningIdBadge trackingId={agreement.signingTrackingId} className="mt-2" />
               <p className="mt-1 text-muted-foreground">
                 Download the completed settlement and submit it to your county — there&apos;s no
                 county-wide e-filing system, so delivering it is still on you.

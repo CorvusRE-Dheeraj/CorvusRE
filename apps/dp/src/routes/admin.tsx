@@ -40,6 +40,7 @@ import {
   type DesignStage,
 } from "@/lib/design-requests";
 import { dateShort, daysUntil } from "@/lib/format";
+import { getSignInRequired, setSignInRequired } from "@/lib/site-settings";
 import { Section, Pill, Stat, Field, inputCls, humanize } from "@/components/dp-ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { AdminProjectChat, useAdminChatUnread } from "@/components/AdminProjectChat";
@@ -548,14 +549,83 @@ function Admin() {
         )}
 
         {tab === "settings" && (
-          <Section title="Settings" subtitle="Account-wide switches.">
-            <p className="text-sm text-muted-foreground">
+          <Section title="Settings" subtitle="Site-wide switches.">
+            <SignInRequiredSetting />
+            <p className="mt-5 text-sm text-muted-foreground">
               Payment mode controls (test/live) will appear here once Stripe checkout is wired up.
-              Nothing else is configurable site-wide yet.
             </p>
           </Section>
         )}
       </div>
+    </div>
+  );
+}
+
+// Admin → Settings: whether every CorvusDP page needs a signed-in user
+// (public.site_settings 'sign_in_required', read by SignedInGate). The
+// dashboard and admin require sign-in either way.
+function SignInRequiredSetting() {
+  const [required, setRequired] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getSignInRequired().then(setRequired);
+  }, []);
+
+  async function toggle() {
+    if (required === null) return;
+    const next = !required;
+    setBusy(true);
+    setError(null);
+    try {
+      await setSignInRequired(next);
+      setRequired(next);
+      await logAdminAction({
+        action: "site_setting_change",
+        target: "sign_in_required",
+        detail: next ? "sign-in required on every page" : "public pages open without sign-in",
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p id="sign-in-required-label" className="text-sm font-semibold">
+          Require sign-in for every page
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {required === null
+            ? "Loading…"
+            : required
+              ? "On — visitors must sign in before seeing any page (home, pricing, the design and permitting wizards). Terms, Privacy and sign-in stay open."
+              : "Off — the home page, pricing and the design and permitting wizards open without signing in."}{" "}
+          The dashboard and admin always require sign-in.
+        </p>
+        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={required === true}
+        aria-labelledby="sign-in-required-label"
+        disabled={required === null || busy}
+        onClick={() => void toggle()}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+          required ? "bg-accent" : "bg-muted"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-background shadow transition-transform ${
+            required ? "translate-x-5" : "translate-x-0.5"
+          }`}
+        />
+      </button>
     </div>
   );
 }

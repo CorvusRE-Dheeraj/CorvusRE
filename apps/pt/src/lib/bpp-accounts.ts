@@ -25,6 +25,8 @@ export type BppAccountRecord = {
   renditionSignatureData: string | null;
   renditionSignedAt: string | null;
   renditionFiledAt: string | null;
+  // the rendition's signing packet ID (CPT-XXXX-XXXX) — lib/signing-packets.ts
+  signingTrackingId: string | null;
   estimatedSavings: number | null;
   // This account's own, real, independent Stripe subscription — see
   // cancel-bpp-subscription/create-bpp-checkout-session. Never client-
@@ -38,6 +40,11 @@ export type BppAccountRecord = {
   cancelAt: string | null;
   autoRefile: boolean;
   autoRefileAuthorizedAt: string | null;
+  // This year's BPP tax bill, as the owner entered it (Pay Taxes → Add BPP).
+  taxAmountDue: number | null;
+  taxAmountPaid: number | null;
+  paymentDueDate: string | null;
+  paidAt: string | null;
 };
 
 type BppAccountRow = {
@@ -57,6 +64,7 @@ type BppAccountRow = {
   rendition_signature_data: string | null;
   rendition_signed_at: string | null;
   rendition_filed_at: string | null;
+  signing_tracking_id: string | null;
   estimated_savings: number | null;
   stripe_subscription_id: string | null;
   subscription_status: string | null;
@@ -66,10 +74,14 @@ type BppAccountRow = {
   cancel_at: string | null;
   auto_refile: boolean;
   auto_refile_authorized_at: string | null;
+  tax_amount_due: number | null;
+  tax_amount_paid: number | null;
+  payment_due_date: string | null;
+  paid_at: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at";
+  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
 
 function fromRow(row: BppAccountRow): BppAccountRecord {
   return {
@@ -89,6 +101,7 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     renditionSignatureData: row.rendition_signature_data,
     renditionSignedAt: row.rendition_signed_at,
     renditionFiledAt: row.rendition_filed_at,
+    signingTrackingId: row.signing_tracking_id,
     estimatedSavings: row.estimated_savings,
     stripeSubscriptionId: row.stripe_subscription_id,
     subscriptionStatus: row.subscription_status,
@@ -98,6 +111,10 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     cancelAt: row.cancel_at,
     autoRefile: row.auto_refile,
     autoRefileAuthorizedAt: row.auto_refile_authorized_at,
+    taxAmountDue: row.tax_amount_due == null ? null : Number(row.tax_amount_due),
+    taxAmountPaid: row.tax_amount_paid == null ? null : Number(row.tax_amount_paid),
+    paymentDueDate: row.payment_due_date,
+    paidAt: row.paid_at,
   };
 }
 
@@ -147,11 +164,17 @@ export async function addBppAccount(
     noticeValue?: number;
     protestDeadline?: string;
     estimatedSavings?: number;
+    taxAmountDue?: number;
+    taxAmountPaid?: number;
+    paymentDueDate?: string;
   },
 ): Promise<BppAccountRecord> {
   const { data, error } = await supabase
     .from("bpp_accounts")
     .insert({
+      tax_amount_due: account.taxAmountDue ?? null,
+      tax_amount_paid: account.taxAmountPaid ?? null,
+      payment_due_date: account.paymentDueDate ?? null,
       user_id: userId,
       business_name: account.businessName,
       account_number: account.accountNumber ?? null,
@@ -214,6 +237,8 @@ export async function updateBppAccount(
 export async function signRendition(
   id: string,
   signature: SignatureValue,
+  // the ID printed on the signed PDF (lib/signing-packets.ts)
+  trackingId?: string,
 ): Promise<BppAccountRecord> {
   const { data, error } = await supabase
     .from("bpp_accounts")
@@ -221,6 +246,7 @@ export async function signRendition(
       rendition_signature_type: signature.type,
       rendition_signature_data: signature.data,
       rendition_signed_at: new Date().toISOString(),
+      ...(trackingId ? { signing_tracking_id: trackingId } : {}),
     })
     .eq("id", id)
     .select(SELECT_COLUMNS)
@@ -272,4 +298,30 @@ export function bppNeedsProtest(
     account.renderedValue != null &&
     account.noticeValue !== account.renderedValue
   );
+}
+
+// Pay Taxes: the owner's own record of this year's BPP tax bill. `paid`
+// marks it paid today (or clears that); amounts/dates left undefined are kept.
+export async function updateBppTaxBill(
+  id: string,
+  patch: {
+    taxAmountDue?: number | null;
+    taxAmountPaid?: number | null;
+    paymentDueDate?: string | null;
+    paid?: boolean;
+  },
+): Promise<BppAccountRecord> {
+  const update: Record<string, unknown> = {};
+  if (patch.taxAmountDue !== undefined) update.tax_amount_due = patch.taxAmountDue;
+  if (patch.taxAmountPaid !== undefined) update.tax_amount_paid = patch.taxAmountPaid;
+  if (patch.paymentDueDate !== undefined) update.payment_due_date = patch.paymentDueDate;
+  if (patch.paid !== undefined) update.paid_at = patch.paid ? new Date().toISOString() : null;
+  const { data, error } = await supabase
+    .from("bpp_accounts")
+    .update(update)
+    .eq("id", id)
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromRow(data as BppAccountRow);
 }
