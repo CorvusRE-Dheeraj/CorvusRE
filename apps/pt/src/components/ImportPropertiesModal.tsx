@@ -173,12 +173,20 @@ export function ImportPropertiesModal({
     setRows(built);
     setStep("review");
     setProgress({ done: 0, total: built.length });
-    // Sequential dedupe + CAD lookup with live progress.
-    for (let i = 0; i < built.length; i++) {
-      if (built[i].status !== "duplicate") await enrichRow(userId, built[i]);
-      setProgress({ done: i + 1, total: built.length });
-      setRows((prev) => prev.map((r, idx) => (idx === i ? { ...built[i] } : r)));
-    }
+    // Dedupe + CAD lookup with live progress, 4 rows at a time — one at a
+    // time, a 46-row file kept "Add" disabled for minutes.
+    let next = 0;
+    let done = 0;
+    const worker = async () => {
+      while (next < built.length) {
+        const i = next++;
+        if (built[i].status !== "duplicate") await enrichRow(userId, built[i]).catch(() => {});
+        done++;
+        setProgress({ done, total: built.length });
+        setRows((prev) => prev.map((r, idx) => (idx === i ? { ...built[i] } : r)));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, built.length) }, worker));
     // County matching can reveal two spellings of one account.
     setRows(markInFileDuplicates(built.map((r) => ({ ...r }))));
   }
@@ -577,9 +585,11 @@ export function ImportPropertiesModal({
                 disabled={enriching || (toAdd === 0 && billUpdates === 0)}
                 className="btn-accent disabled:opacity-60"
               >
-                {toAdd > 0
-                  ? `Add ${toAdd} propert${toAdd === 1 ? "y" : "ies"}`
-                  : `Record ${billUpdates} tax bill${billUpdates === 1 ? "" : "s"}`}
+                {enriching
+                  ? `Checking ${progress.done} of ${progress.total}…`
+                  : toAdd > 0
+                    ? `Add ${toAdd} propert${toAdd === 1 ? "y" : "ies"}`
+                    : `Record ${billUpdates} tax bill${billUpdates === 1 ? "" : "s"}`}
               </button>
             )}
           </div>

@@ -5,6 +5,7 @@ import {
   type PropertyRecord,
 } from "./properties";
 import { cadLookup, type CadRecord } from "./cad-lookup";
+import { countyFromCad } from "./tax-rates-official";
 import { parseNumber } from "./csv-import";
 import { supabase } from "./supabase";
 import {
@@ -217,6 +218,10 @@ function disagree(
   const fileVal = row.values[k];
   if (!fileVal || !cadVal) return;
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  // "Collin County" and "Collin Central Appraisal District" are the same
+  // county — compare the county name, not the wording
+  if (k === "cad" && countyFromCad(fileVal) && countyFromCad(fileVal) === countyFromCad(cadVal))
+    return;
   if (norm(fileVal) !== norm(cadVal)) {
     row.flags.push({
       level: "warn",

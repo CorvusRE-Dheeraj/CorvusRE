@@ -126,6 +126,25 @@ describe("enrichRow", () => {
     expect(r.status).toBe("review");
   });
 
+  it("doesn't flag the same county written two ways (Collin County vs Collin CAD)", async () => {
+    vi.mocked(cadLookup).mockResolvedValueOnce({
+      matched: true,
+      record: {
+        ownerName: null,
+        propertyAddress: "4220 S Preston Rd",
+        cad: "Collin Central Appraisal District",
+        accountNumber: "2821244",
+        propertyType: "commercial",
+        landValue: 1,
+        improvementValue: 1,
+        totalValue: 2,
+        taxYear: 2026,
+      },
+    } as never);
+    const r = await enrichRow("u1", row("4220 S Preston Rd", { cad: "Collin County" }));
+    expect(r.flags.some((f) => f.message.includes("cad"))).toBe(false);
+  });
+
   it("offers a parcel picker when the address matches multiple CAD parcels", async () => {
     vi.mocked(cadLookup).mockResolvedValueOnce({
       matched: "multiple",
