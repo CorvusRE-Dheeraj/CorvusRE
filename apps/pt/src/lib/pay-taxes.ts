@@ -6,6 +6,7 @@ import { CURRENT_TAX_YEAR } from "./tax-calendar";
 import type { PropertyRecord } from "./properties";
 import type { TaxBillRecord } from "./tax-bills";
 import type { ProtestRecord } from "./protests";
+import type { BppAccountRecord } from "./bpp-accounts";
 import { historyTaxFor, type TaxHistory } from "./cad-tax-history";
 
 // The Pay Taxes tab: per-property tax obligations, deadlines, county payment
@@ -501,6 +502,97 @@ export function buildPayTaxesRow(input: {
       halfPayEligible: halfPay?.status === "eligible",
       enrolled: !!enrolledPlan,
     },
+  };
+}
+
+// ── Business personal property ─────────────────────────────────────────────
+
+// A BPP account's tax for the year, beside the real-estate rows (Pay Taxes →
+// Add BPP). The bill is the owner's own entry on the account; without one the
+// amount is an estimate (the county's assessed value, else the rendered value,
+// × the county's typical rate) and labelled as such.
+export type BppTaxRow = {
+  account: BppAccountRecord;
+  county: string | null;
+  taxYear: number;
+  totalTax: number | null;
+  totalTaxIsEstimate: boolean;
+  amountPaid: number;
+  outstanding: number | null;
+  dueDate: string;
+  dueDateIsStandard: boolean;
+  status: PayStatus;
+  link: PaymentLink | null;
+  flags: { upcoming: boolean; overdue: boolean };
+};
+
+export function buildBppTaxRow(input: {
+  account: BppAccountRecord;
+  settings: CountyTaxSettings[];
+  todayIso: string;
+}): BppTaxRow {
+  const { account, todayIso } = input;
+  const county = countyName(account.cad);
+  const settings =
+    input.settings.find((s) => s.county.toLowerCase() === county?.toLowerCase()) ?? null;
+  // The entered bill's year; without a bill, the current tax year (an old
+  // rendition year would otherwise read as a long-overdue bill).
+  const taxYear =
+    account.taxAmountDue != null ? (account.taxYear ?? CURRENT_TAX_YEAR) : CURRENT_TAX_YEAR;
+  const value = account.noticeValue ?? account.renderedValue;
+  const estimate =
+    account.taxAmountDue == null && value
+      ? Math.round(value * getEffectiveTaxRate(account.cad))
+      : null;
+  const totalTax = account.taxAmountDue ?? estimate;
+  const amountPaid = account.taxAmountPaid ?? 0;
+  const delinquency = delinquencyDate(taxYear, settings);
+  const dueDate = account.paymentDueDate ?? standardDueDate(taxYear, settings);
+  const status: PayStatus =
+    account.paidAt || (totalTax != null && amountPaid > 0 && amountPaid >= totalTax - 0.005)
+      ? "paid"
+      : todayIso >= delinquency
+        ? "overdue"
+        : amountPaid > 0
+          ? "partial"
+          : "unpaid";
+  const daysToDue = daysBetween(todayIso, dueDate);
+  return {
+    account,
+    county,
+    taxYear,
+    totalTax,
+    totalTaxIsEstimate: account.taxAmountDue == null && totalTax != null,
+    amountPaid: status === "paid" && account.taxAmountPaid == null ? (totalTax ?? 0) : amountPaid,
+    outstanding:
+      totalTax == null || status === "paid"
+        ? totalTax == null
+          ? null
+          : 0
+        : Math.max(0, Math.round((totalTax - amountPaid) * 100) / 100),
+    dueDate,
+    dueDateIsStandard: !account.paymentDueDate,
+    status,
+    link: paymentLink({ cad: account.cad, accountNumber: account.accountNumber }, settings),
+    flags: {
+      upcoming: status !== "paid" && daysToDue >= 0 && daysToDue <= UPCOMING_DAYS,
+      overdue: status === "overdue",
+    },
+  };
+}
+
+// The portfolio tiles with BPP accounts added in.
+export function withBppSummary(summary: PortfolioSummary, bpp: BppTaxRow[]): PortfolioSummary {
+  const sum = (xs: (number | null)[]) =>
+    Math.round(xs.reduce<number>((s, x) => s + (x ?? 0), 0) * 100) / 100;
+  return {
+    ...summary,
+    totalTax: sum([summary.totalTax, ...bpp.map((r) => r.totalTax)]),
+    totalPaid: sum([summary.totalPaid, ...bpp.map((r) => r.amountPaid)]),
+    outstanding: sum([summary.outstanding, ...bpp.map((r) => r.outstanding)]),
+    estimatedCount: summary.estimatedCount + bpp.filter((r) => r.totalTaxIsEstimate).length,
+    upcoming: summary.upcoming + bpp.filter((r) => r.flags.upcoming).length,
+    overdue: summary.overdue + bpp.filter((r) => r.flags.overdue).length,
   };
 }
 

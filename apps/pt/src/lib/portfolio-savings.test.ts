@@ -56,6 +56,10 @@ function bppAccount(overrides: Partial<BppAccountRecord> = {}): BppAccountRecord
     cancelAt: null,
     autoRefile: false,
     autoRefileAuthorizedAt: null,
+    taxAmountDue: null,
+    taxAmountPaid: null,
+    paymentDueDate: null,
+    paidAt: null,
     ...overrides,
   };
 }
