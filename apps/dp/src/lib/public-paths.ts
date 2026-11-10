@@ -1,3 +1,9 @@
+// Site-wide sign-in gate switch. TEMPORARILY OFF (2026-11-10, owner's request):
+// every page opens signed out again (home, pricing, the design / permitting
+// wizards). The dashboard and admin keep their own sign-in checks regardless.
+// Set back to true to make CorvusDP sign-in only again.
+export const SIGN_IN_REQUIRED = false;
+
 // CorvusDP is sign-in only (Nov 2026) — see components/SignedInGate.tsx.
 // Open without signing in: the sign-in hand-off and its return trip, password
 // reset, the staff admin sign-in, and the Terms / Privacy pages the sign-up
@@ -23,6 +29,7 @@ export function appPath(pathname: string, base: string): string {
 }
 
 export function isPublicPath(pathname: string, base: string): boolean {
+  if (!SIGN_IN_REQUIRED) return true;
   const p = appPath(pathname, base);
   // /auth/… is the shared identity app (a separate build). If a request for
   // it ever lands here (local dev without the identity server), show the
