@@ -64,9 +64,7 @@ export function PropertyMaps({
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            {isDirectCadRecordUrl(cad ?? "", accountNumber)
-              ? "Open the county's CAD record"
-              : `Search ${cad}`}
+            {isDirectCadRecordUrl(cad ?? "") ? "Open the county's CAD record" : `Search ${cad}`}
           </a>
         )}
       </div>

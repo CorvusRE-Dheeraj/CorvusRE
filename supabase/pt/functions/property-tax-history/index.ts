@@ -28,7 +28,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import directory from "../_shared/tx-cad-directory.json" with { type: "json" };
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
-import { ESEARCH_HOSTS } from "../_shared/esearch-record.ts";
 import { readOfficialSite, corpus } from "../_shared/web-retrieval.ts";
 import {
   collinHistory,
@@ -77,9 +76,7 @@ const bare = (u: URL) => u.hostname.replace(/^www\./, "");
 const allowedRecordHost = (u: URL, site: URL) =>
   bare(u) === bare(site) ||
   bare(u).endsWith(`.${bare(site)}`) ||
-  /(^|\.)trueautomation\.com$/i.test(u.hostname) ||
-  // a CAD's verified esearch site on a different domain than its listed website
-  ESEARCH_HOSTS.has(u.hostname);
+  /(^|\.)trueautomation\.com$/i.test(u.hostname);
 
 // The record page itself, for the standard Value History table.
 async function pageHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {

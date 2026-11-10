@@ -1173,7 +1173,7 @@ function Intake() {
                         className="btn-outline inline-flex items-center gap-1.5 text-sm py-1.5"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        {isDirectCadRecordUrl(r.cad, r.accountNumber)
+                        {isDirectCadRecordUrl(r.cad)
                           ? "View Official CAD Record"
                           : `Search on ${r.cad}`}
                       </a>
@@ -1440,10 +1440,9 @@ function Intake() {
           {isStandardCoverageCad(state.cad) && (
             <p className="mt-3 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
               Standard coverage: owner and values come from the State of Texas statewide parcel data
-              (compiled from {state.cad})
-              {state.deeds?.length || state.valueHistory?.length
-                ? ", with value and deed history from the district's own record page. Comparable sales aren't available for this county yet — your notice or the district's website can fill those in."
-                : ". Value history, deed history and comparable sales aren't available for this county yet — your notice or the district's website can fill those in."}
+              (compiled from {state.cad}). Value history, deed history and comparable sales aren't
+              available for this county yet — your notice or the district's website can fill those
+              in.
             </p>
           )}
 
@@ -1558,7 +1557,7 @@ function Intake() {
                 className="btn-outline inline-flex items-center gap-1.5"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                {isDirectCadRecordUrl(state.cad ?? "", state.accountNumber)
+                {isDirectCadRecordUrl(state.cad ?? "")
                   ? "View Official CAD Record"
                   : `Search on ${state.cad}`}
               </a>

@@ -1669,9 +1669,7 @@ function PropertyActionsMenu({
           <DropdownMenuItem asChild>
             <a href={recordUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" />
-              {isDirectCadRecordUrl(cad, p.accountNumber)
-                ? "View Official CAD Record"
-                : `Search on ${cad}`}
+              {isDirectCadRecordUrl(cad) ? "View Official CAD Record" : `Search on ${cad}`}
             </a>
           </DropdownMenuItem>
         )}

@@ -12,10 +12,6 @@ export type ModuleAsyncState = {
   // Re-running in the background (e.g. after marking a factor N/A): the
   // data above stays on screen until the new result arrives.
   refreshing?: boolean;
-  // Set when `error` is the per-user request limit (RateLimitError): the
-  // time (ms since epoch) it lifts. The card shows the error text itself,
-  // and the auto-retry waits until then instead of hitting the limit again.
-  rateLimitedUntil?: number;
 };
 
 // Real comps-derived signal fed into Module 2's prompt (see loadModule() below) —

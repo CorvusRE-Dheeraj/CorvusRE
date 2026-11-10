@@ -176,7 +176,6 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { isRateLimitError } from "@/lib/edge-functions";
 
 export const Route = createFileRoute("/ai-report")({
   head: () => ({
@@ -2155,14 +2154,9 @@ function Report() {
         }
       } catch (err) {
         if (!isLatest()) return;
-        const limited = isRateLimitError(err);
-        // Several modules load at once, so one shared toast (same id) rather
-        // than one per module.
-        if (limited) toast.error(err.message, { id: "ai-report-rate-limit" });
         if (background) {
           setModuleData((prev) => ({ ...prev, [id]: { ...prev[id], refreshing: false } }));
-          if (!limited)
-            toast.error("Could not update this analysis — showing the previous result.");
+          toast.error("Could not update this analysis — showing the previous result.");
           return;
         }
         setModuleData((prev) => ({
@@ -2171,7 +2165,6 @@ function Report() {
             data: null,
             loading: false,
             error: err instanceof Error ? err.message : "Could not generate this analysis.",
-            ...(limited ? { rateLimitedUntil: Date.now() + err.retryAfterSecs * 1000 } : {}),
           },
         }));
       }
@@ -2218,20 +2211,6 @@ function Report() {
       }
       if (tracked?.timer) continue; // a retry is already scheduled for this module
       const count = tracked?.count ?? 0;
-      // Per-user request limit: retrying every 6s would only count against
-      // the limit again — wait until it lifts, then try once more (doesn't
-      // use up the retry budget, since nothing actually failed).
-      if (entry.rateLimitedUntil) {
-        const timer = setTimeout(
-          () => {
-            autoRetryRef.current[id] = { count, timer: null };
-            loadModule(id, { force: true });
-          },
-          Math.max(0, entry.rateLimitedUntil - Date.now()) + 1000,
-        );
-        autoRetryRef.current[id] = { count, timer };
-        continue;
-      }
       if (count >= AUTO_RETRY_MAX) continue;
       const timer = setTimeout(() => {
         autoRetryRef.current[id] = { count: count + 1, timer: null };
@@ -2273,11 +2252,7 @@ function Report() {
       totalValue: state.totalValue ?? undefined,
     })
       .then((data) => setCompsMap({ data, loading: false, attempted: true }))
-      .catch((err) => {
-        if (isRateLimitError(err)) toast.error(err.message, { id: "ai-report-rate-limit" });
-        else console.error("Comparable properties failed to load:", err);
-        setCompsMap({ data: null, loading: false, attempted: true });
-      });
+      .catch(() => setCompsMap({ data: null, loading: false, attempted: true }));
   }
 
   // Real coordinates for Module 4's map/FEMA-flood/USGS-elevation/highway-
