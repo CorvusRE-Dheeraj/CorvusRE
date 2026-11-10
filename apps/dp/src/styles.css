@@ -1276,3 +1276,14 @@ header .container-page {
 [data-track-on] [data-junction-art] {
   display: none;
 }
+
+/* Sign-in gate (components/SignedInGate.tsx): while the admin switch is known
+   to be off, show the page at once — before the app's code loads — instead of
+   "Loading CorvusDP…". The attribute is set by the head script in
+   lib/site-settings.ts. Beats Tailwind's [hidden] { display: none !important }. */
+html[data-signin-open] .dp-gate-overlay {
+  display: none !important;
+}
+html[data-signin-open] .dp-gate-content[hidden] {
+  display: block !important;
+}

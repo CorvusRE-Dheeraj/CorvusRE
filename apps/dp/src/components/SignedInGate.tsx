@@ -14,7 +14,10 @@ import { getSignInRequired } from "@/lib/site-settings";
 
 // Content stays in the page (the static build crawls it for links) but is
 // hidden — never shown — until a signed-in user is confirmed. The prerendered
-// HTML has no session, so it's hidden there too, and hydration matches.
+// HTML has no session, so it's hidden there too, and hydration matches. When
+// the switch is known to be off, <html data-signin-open> (set by the head
+// script in lib/site-settings.ts) shows it straight away via CSS (styles.css),
+// before this component has even run.
 export function SignedInGate({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const nav = useNavigate();
@@ -66,7 +69,7 @@ export function SignedInGate({ children }: { children: ReactNode }) {
     <>
       {!show && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-background"
+          className="dp-gate-overlay fixed inset-0 z-[100] flex items-center justify-center bg-background"
           aria-live="polite"
         >
           <p className="text-sm text-muted-foreground">
@@ -74,7 +77,9 @@ export function SignedInGate({ children }: { children: ReactNode }) {
           </p>
         </div>
       )}
-      <div hidden={!show}>{children}</div>
+      <div hidden={!show} className="dp-gate-content">
+        {children}
+      </div>
     </>
   );
 }

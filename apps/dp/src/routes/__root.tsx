@@ -27,6 +27,7 @@ import { AppShell } from "../components/AppShell";
 import { AskAiWidget } from "../components/AskAiWidget";
 import { ProfileGate } from "../components/ProfileGate";
 import { SignedInGate } from "../components/SignedInGate";
+import { signInEarlyScript } from "@/lib/site-settings";
 
 function NotFoundComponent() {
   return (
@@ -141,9 +142,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 const FRAME_GUARD =
   "if(location.hostname==='corvusre.com'&&window.top!==window.self){document.documentElement.style.visibility='hidden';try{window.top.location.replace(location.href)}catch(e){}}";
 
+// Whether sign-in is required, asked as the page arrives (lib/site-settings.ts).
+const SIGN_IN_EARLY = signInEarlyScript(
+  import.meta.env.VITE_SUPABASE_URL ?? "",
+  import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+);
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the sign-in head script may add data-signin-open first
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Baseline policy that cannot break third-party scripts (Maps, Stripe,
             Supabase): no plug-ins, no <base> hijack, HTTPS only. A full CSP
@@ -153,6 +161,7 @@ function RootShell({ children }: { children: ReactNode }) {
           content="object-src 'none'; base-uri 'self'; upgrade-insecure-requests"
         />
         <script dangerouslySetInnerHTML={{ __html: FRAME_GUARD }} />
+        <script dangerouslySetInnerHTML={{ __html: SIGN_IN_EARLY }} />
         <HeadContent />
       </head>
       <body>
