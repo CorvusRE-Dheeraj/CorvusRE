@@ -30,36 +30,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Our own per-caller limit was hit (supabase/pt/functions/_shared/rate-limit.ts)
- * — unlike an upstream 429 this won't clear in a second, so it is never retried
- * here; callers show `message` and wait `retryAfterSecs` before trying again.
- */
-export class RateLimitError extends Error {
-  readonly retryAfterSecs: number;
-  constructor(retryAfterSecs: number, message?: string) {
-    super(message ?? `Too many requests — try again in ${waitPhrase(retryAfterSecs)}.`);
-    this.name = "RateLimitError";
-    this.retryAfterSecs = retryAfterSecs;
-  }
-}
-
-export function isRateLimitError(err: unknown): err is RateLimitError {
-  return err instanceof RateLimitError;
-}
-
-/** 45 → "a minute", 130 → "3 minutes" (same wording as the server) */
-export function waitPhrase(secs: number): string {
-  const mins = Math.ceil(secs / 60);
-  return mins <= 1 ? "a minute" : `${mins} minutes`;
-}
-
-// The full limiter window — used when an older deployed function answers
-// with its plain message and no retryAfterSecs.
-const RATE_LIMIT_WINDOW_SECS = 600;
-
-type ErrorPayload = { error?: string; rateLimited?: boolean; retryAfterSecs?: number };
-
 // supabase-js's default error.message on a non-2xx Edge Function response is a
 // generic "non-2xx status code" string — the function's actual { error: "..." }
 // reason lives in the response body, which this pulls out so callers can show it.
@@ -131,29 +101,14 @@ export async function invokeEdgeFunction<T>(
 
     const context = (error as { context?: Response }).context;
     let extractedMessage: string | undefined;
-    let payload: ErrorPayload | null = null;
     if (context) {
       try {
-        payload = (await context.clone().json()) as ErrorPayload | null;
+        const payload = (await context.clone().json()) as { error?: string };
         extractedMessage = payload?.error;
       } catch {
         // response body wasn't JSON — fall through to the generic error below
       }
     }
-
-    // Our own limiter: retrying immediately only counts against the limit
-    // again, so stop here and say how long to wait.
-    if (
-      context?.status === 429 &&
-      (payload?.rateLimited || /^too many requests/i.test(extractedMessage ?? ""))
-    ) {
-      const secs =
-        typeof payload?.retryAfterSecs === "number" && payload.retryAfterSecs > 0
-          ? payload.retryAfterSecs
-          : RATE_LIMIT_WINDOW_SECS;
-      throw new RateLimitError(secs, payload?.rateLimited ? extractedMessage : undefined);
-    }
-
     const thrown = extractedMessage ? new Error(extractedMessage) : error;
 
     // A 401 despite an attached token means the token was rejected server-side

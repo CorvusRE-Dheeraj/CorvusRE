@@ -79,52 +79,15 @@ async function hit(
   } catch {
     return null;
   }
-  const retryAfterSecs = await secondsUntilReset(db, bucket);
   return new Response(
-    JSON.stringify({
-      error: `Too many requests — try again in ${waitPhrase(retryAfterSecs)}.`,
-      // lets the app tell this limit apart from a transient upstream 429 and
-      // wait it out instead of retrying straight back into it
-      rateLimited: true,
-      retryAfterSecs,
-    }),
+    JSON.stringify({ error: "Too many requests — please wait a few minutes and try again." }),
     {
       status: 429,
       headers: {
         ...headers,
         "Content-Type": "application/json",
-        "Retry-After": String(retryAfterSecs),
+        "Retry-After": String(WINDOW_SECS),
       },
     },
   );
-}
-
-// The window is fixed (see rate-limits.sql), so the real wait is whatever is
-// left of it — often well under the full 10 minutes. Falls back to the full
-// window if the row can't be read.
-async function secondsUntilReset(
-  db: ReturnType<typeof createClient>,
-  bucket: string,
-): Promise<number> {
-  try {
-    const { data } = await db
-      .from("rate_limits")
-      .select("window_start")
-      .eq("bucket", bucket)
-      .maybeSingle();
-    const start = Date.parse((data as { window_start?: string } | null)?.window_start ?? "");
-    if (Number.isFinite(start)) {
-      const left = Math.ceil((start + WINDOW_SECS * 1000 - Date.now()) / 1000);
-      return Math.min(WINDOW_SECS, Math.max(1, left));
-    }
-  } catch {
-    // fall through
-  }
-  return WINDOW_SECS;
-}
-
-/** 45 → "a minute", 130 → "3 minutes" */
-export function waitPhrase(secs: number): string {
-  const mins = Math.ceil(secs / 60);
-  return mins <= 1 ? "a minute" : `${mins} minutes`;
 }
