@@ -105,6 +105,7 @@ import { Modal } from "@/components/Modal";
 import { softDeleteDocuments } from "@/lib/upload-undo";
 import { type SignatureValue } from "@/components/SignaturePad";
 import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+import { newTrackingId } from "@/lib/signing-packets";
 import { EMPTY_FORM_SUBMISSION, FILING_METHOD_LABEL } from "@/components/case/shared";
 
 // Every county email CorvusPT drafts copies its county address, so replies
@@ -1501,6 +1502,10 @@ export function DocumentsSection({
   // kept local here rather than lifted, since nothing outside Documents
   // currently needs it. Loaded whenever the agent editor opens, below.
   const [agentFormSignedAt, setAgentFormSignedAt] = useState<string | null>(null);
+  // Each signed form's signing packet ID (CPT-XXXX-XXXX, lib/signing-packets.ts).
+  const [trackingIds, setTrackingIds] = useState<
+    Partial<Record<"protest" | "agent" | "evidence", string | null>>
+  >({});
   // Same again for the Evidence Declaration (Form 50-283) — note that
   // "signed" here only means the in-app signature was drawn and saved, not
   // that the affidavit was actually notarized (see PdfFormEditor's own
@@ -1530,13 +1535,20 @@ export function DocumentsSection({
       .then((s) => {
         const v = s?.fieldValues?.["ARB hearing"];
         setNoticeHearingAppearance(typeof v === "string" && v ? v : null);
+        setTrackingIds((t) => ({ ...t, protest: s?.signingTrackingId ?? null }));
       })
       .catch(() => {});
     getSubmission(protest.id, "appointment_of_agent")
-      .then((s) => setAgentFormSignedAt(s?.signedAt ?? null))
+      .then((s) => {
+        setAgentFormSignedAt(s?.signedAt ?? null);
+        setTrackingIds((t) => ({ ...t, agent: s?.signingTrackingId ?? null }));
+      })
       .catch(() => {});
     getSubmission(protest.id, "evidence_declaration")
-      .then((s) => setEvidenceDeclarationSignedAt(s?.signedAt ?? null))
+      .then((s) => {
+        setEvidenceDeclarationSignedAt(s?.signedAt ?? null);
+        setTrackingIds((t) => ({ ...t, evidence: s?.signingTrackingId ?? null }));
+      })
       .catch(() => {});
   }, [protest.id]);
 
@@ -1812,7 +1824,15 @@ export function DocumentsSection({
       const resolvedValues = resolveDateFields(schema, values);
       setValues(resolvedValues);
       const signedAt = new Date();
-      const bytes = await signPdf(templatePath, schema, resolvedValues, signature, signedAt);
+      const trackingId = newTrackingId();
+      const bytes = await signPdf(
+        templatePath,
+        schema,
+        resolvedValues,
+        signature,
+        signedAt,
+        trackingId,
+      );
       const filenameBase = property.accountNumber ?? property.id;
       const fileName =
         editingForm === "protest"
@@ -1831,7 +1851,15 @@ export function DocumentsSection({
             ? "Signed Appointment of Agent"
             : "Signed Evidence Declaration",
       );
-      await signAndSubmit(userId, protest.id, formType, resolvedValues, signature, doc.id);
+      await signAndSubmit(
+        userId,
+        protest.id,
+        formType,
+        resolvedValues,
+        signature,
+        doc.id,
+        trackingId,
+      );
       // Signing here is NOT the same as filing — this app has no e-filing
       // integration with any county, so it can't truthfully claim the
       // protest has been filed the moment it's signed. Status stays
@@ -1843,6 +1871,14 @@ export function DocumentsSection({
       if (editingForm === "protest") onNoticeSigned(signedAt.toISOString());
       else if (editingForm === "agent") setAgentFormSignedAt(signedAt.toISOString());
       else setEvidenceDeclarationSignedAt(signedAt.toISOString());
+      // the ID the database actually kept (normally the one on the PDF)
+      const signedForm = editingForm ?? "protest";
+      setTrackingIds((t) => ({ ...t, [signedForm]: trackingId }));
+      getSubmission(protest.id, formType)
+        .then((s) =>
+          setTrackingIds((t) => ({ ...t, [signedForm]: s?.signingTrackingId ?? trackingId })),
+        )
+        .catch(() => {});
       downloadPdf(bytes, fileName);
       setSigningOpen(false);
       setSignature(null);
@@ -2221,6 +2257,7 @@ export function DocumentsSection({
                 ? agentFormSignedAt
                 : evidenceDeclarationSignedAt
           }
+          trackingId={trackingIds[editingForm] ?? null}
           caseStatus={protest.status}
           onMarkFiled={handleMarkFiled}
           markingFiled={false}

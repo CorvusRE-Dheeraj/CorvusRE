@@ -40,6 +40,7 @@ import { Route as TaxPaymentRouteImport } from './routes/tax-payment'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TicketFeedbackRouteImport } from './routes/ticket-feedback'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as DashboardLayoutIndexRouteImport } from './routes/dashboard/_layout.index'
 import { Route as DashboardLayoutAcquisitionRouteImport } from './routes/dashboard/_layout.acquisition'
@@ -216,6 +217,11 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
   path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardLayoutRoute = DashboardLayoutRouteImport.update({
   id: '/dashboard/_layout',
   path: '/dashboard',
@@ -358,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/verify': typeof VerifyRoute
   '/dashboard': typeof DashboardLayoutRouteWithChildren
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
@@ -411,6 +418,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/verify': typeof VerifyRoute
   '/dashboard/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/agreements': typeof DashboardLayoutAgreementsRoute
   '/dashboard/billing': typeof DashboardLayoutBillingRoute
@@ -464,6 +472,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/ticket-feedback': typeof TicketFeedbackRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/verify': typeof VerifyRoute
   '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
   '/dashboard/_layout/acquisition': typeof DashboardLayoutAcquisitionRoute
   '/dashboard/_layout/agreements': typeof DashboardLayoutAgreementsRoute
@@ -519,6 +528,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/ticket-feedback'
     | '/unsubscribe'
+    | '/verify'
     | '/dashboard'
     | '/dashboard/acquisition'
     | '/dashboard/agreements'
@@ -572,6 +582,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/ticket-feedback'
     | '/unsubscribe'
+    | '/verify'
     | '/dashboard/acquisition'
     | '/dashboard/agreements'
     | '/dashboard/billing'
@@ -624,6 +635,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/ticket-feedback'
     | '/unsubscribe'
+    | '/verify'
     | '/dashboard/_layout'
     | '/dashboard/_layout/acquisition'
     | '/dashboard/_layout/agreements'
@@ -678,6 +690,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   TicketFeedbackRoute: typeof TicketFeedbackRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  VerifyRoute: typeof VerifyRoute
   DashboardLayoutRoute: typeof DashboardLayoutRouteWithChildren
 }
 
@@ -898,6 +911,13 @@ declare module '@tanstack/react-router' {
       path: '/unsubscribe'
       fullPath: '/unsubscribe'
       preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/_layout': {
@@ -1123,6 +1143,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   TicketFeedbackRoute: TicketFeedbackRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  VerifyRoute: VerifyRoute,
   DashboardLayoutRoute: DashboardLayoutRouteWithChildren,
 }
 export const routeTree = rootRouteImport

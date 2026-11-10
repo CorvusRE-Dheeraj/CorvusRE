@@ -15,6 +15,7 @@ import { Modal } from "@/components/Modal";
 import { FilingMethodsList } from "@/components/FilingMethodsList";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
 import { CORVUSPT_COUNTY_EMAIL } from "@/lib/county-email";
+import { SigningIdBadge } from "@/components/SigningIdBadge";
 
 function fieldInputId(name: string): string {
   return `pdf-field-${name.replace(/[^a-zA-Z0-9]+/g, "-")}`;
@@ -51,6 +52,7 @@ export function PdfFormEditor({
   formKind,
   countyInfo,
   signedAt,
+  trackingId = null,
   caseStatus,
   onMarkFiled,
   markingFiled,
@@ -83,6 +85,8 @@ export function PdfFormEditor({
   // doesn't care which, only whether the form it's currently showing has a
   // real signature on file.
   signedAt: string | null;
+  // the signed form's signing packet ID (lib/signing-packets.ts)
+  trackingId?: string | null;
   caseStatus: ProtestStatus;
   onMarkFiled: () => void;
   markingFiled: boolean;
@@ -125,16 +129,19 @@ export function PdfFormEditor({
       <h3 className="font-serif text-xl font-semibold">{title}</h3>
 
       {view === "signed" ? (
-        <SignedFilingGuidance
-          formKind={formKind}
-          countyInfo={countyInfo}
-          caseStatus={caseStatus}
-          onMarkFiled={onMarkFiled}
-          markingFiled={markingFiled}
-          onDownload={onDownload}
-          downloading={downloading}
-          onMakeChanges={() => setView("edit")}
-        />
+        <>
+          <SigningIdBadge trackingId={trackingId} className="mt-2" />
+          <SignedFilingGuidance
+            formKind={formKind}
+            countyInfo={countyInfo}
+            caseStatus={caseStatus}
+            onMarkFiled={onMarkFiled}
+            markingFiled={markingFiled}
+            onDownload={onDownload}
+            downloading={downloading}
+            onMakeChanges={() => setView("edit")}
+          />
+        </>
       ) : view === "review" ? (
         <>
           <p className="text-xs text-muted-foreground">

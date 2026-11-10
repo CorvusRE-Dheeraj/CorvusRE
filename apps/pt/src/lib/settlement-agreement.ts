@@ -10,6 +10,7 @@ import { extractDecisionDocument, type DecisionExtraction } from "./decision-not
 import { logCaseEvent } from "./case-audit";
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
+import { newTrackingId, stampTrackingId, verifyUrl } from "./signing-packets";
 import type { SignatureValue } from "@/components/SignaturePad";
 
 // Real "settlement offer awaiting signature" flow: upload the county's own
@@ -39,6 +40,8 @@ export type SettlementAgreementRecord = {
   signatureType: "draw" | "type" | null;
   signatureData: string | null;
   signedAt: string | null;
+  // the signing packet ID (CPT-XXXX-XXXX) — see lib/signing-packets.ts
+  signingTrackingId: string | null;
   signedDocumentId: string | null;
   // Informal-settlement outcome flow (see SettlementSignatureSection):
   // whether the owner already responded to the county's proposed value
@@ -68,6 +71,7 @@ type SettlementAgreementRow = {
   signature_type: "draw" | "type" | null;
   signature_data: string | null;
   signed_at: string | null;
+  signing_tracking_id?: string | null;
   signed_document_id: string | null;
   response_status: "not_yet" | "accepted" | "rejected" | null;
   response_recorded_at: string | null;
@@ -104,6 +108,7 @@ function fromRow(row: SettlementAgreementRow): SettlementAgreementRecord {
     signatureType: row.signature_type,
     signatureData: row.signature_data,
     signedAt: row.signed_at,
+    signingTrackingId: row.signing_tracking_id ?? null,
     signedDocumentId: row.signed_document_id,
     responseStatus: row.response_status,
     responseRecordedAt: row.response_recorded_at,
@@ -307,6 +312,8 @@ export async function buildSignedSettlementPdf(
     taxYear: string | null;
     settledValue: number | null;
     signerName: string;
+    // the signing packet ID (lib/signing-packets.ts)
+    trackingId?: string;
   },
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
@@ -396,6 +403,12 @@ export async function buildSignedSettlementPdf(
       color: muted,
     },
   );
+  if (meta.trackingId) {
+    y -= 6;
+    write(`Signing packet ID: ${meta.trackingId}`, { size: 9.5, bold: true, gap: 2 });
+    write(`Verify at ${verifyUrl(meta.trackingId)}`, { size: 9, color: muted });
+    await stampTrackingId(out, meta.trackingId);
+  }
 
   return out.save();
 }
@@ -413,6 +426,7 @@ export async function signSettlementAgreement(
   if (!res.ok) throw new Error("Could not read the original settlement document.");
   const blob = await res.blob();
   const bytes = new Uint8Array(await blob.arrayBuffer());
+  const trackingId = newTrackingId();
 
   const signedBytes = await buildSignedSettlementPdf(
     bytes,
@@ -425,6 +439,7 @@ export async function signSettlementAgreement(
       taxYear: agreement.taxYear ?? (property.taxYear != null ? String(property.taxYear) : null),
       settledValue: agreement.settledValue,
       signerName,
+      trackingId,
     },
   );
 
@@ -440,16 +455,19 @@ export async function signSettlementAgreement(
     SETTLEMENT_SIGNED_DOCUMENT_TYPE,
   );
 
-  const { error } = await supabase
+  const { data: saved, error } = await supabase
     .from("settlement_agreements")
     .update({
       signature_type: signature.type,
       signature_data: signature.data,
       signed_at: new Date().toISOString(),
       signed_document_id: signedDocument.id,
+      signing_tracking_id: trackingId,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", agreement.id);
+    .eq("id", agreement.id)
+    .select("signing_tracking_id")
+    .maybeSingle();
   if (error) throw error;
 
   return {
@@ -457,6 +475,8 @@ export async function signSettlementAgreement(
       ...agreement,
       signatureType: signature.type,
       signedAt: new Date().toISOString(),
+      signingTrackingId:
+        (saved as { signing_tracking_id: string | null } | null)?.signing_tracking_id ?? trackingId,
       signedDocumentId: signedDocument.id,
     },
     signedDocument,

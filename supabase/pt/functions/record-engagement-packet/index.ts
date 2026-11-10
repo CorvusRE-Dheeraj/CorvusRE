@@ -21,7 +21,8 @@ import { sendSignedPacketEmail } from "../_shared/engagement-packet-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
@@ -30,7 +31,10 @@ const corsHeaders = {
 const MAX_SIGNATURE_LENGTH = 400_000;
 
 function bad(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ error: message }), { status, headers: corsHeaders });
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: corsHeaders,
+  });
 }
 
 function str(v: unknown): string {
@@ -38,40 +42,62 @@ function str(v: unknown): string {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
     const body = (await req.json()) as Record<string, unknown>;
     if (body.packetVersion !== PACKET_VERSION) {
-      return bad("The agreements were updated while you were signing — please reload and try again.", 409);
+      return bad(
+        "The agreements were updated while you were signing — please reload and try again.",
+        409,
+      );
     }
     const firstName = str(body.firstName);
     const lastName = str(body.lastName);
     const title = str(body.title);
-    const role = body.role === "owner" || body.role === "representative" ? body.role : null;
+    const role =
+      body.role === "owner" || body.role === "representative"
+        ? body.role
+        : null;
     const companyName = str(body.companyName);
     const phone = str(body.phone);
-    const sig = body.signature as { type?: unknown; data?: unknown } | undefined;
-    const signatureType = sig?.type === "draw" || sig?.type === "type" ? sig.type : null;
+    const sig = body.signature as
+      { type?: unknown; data?: unknown } | undefined;
+    const signatureType =
+      sig?.type === "draw" || sig?.type === "type" ? sig.type : null;
     const signatureData = str(sig?.data);
 
     if (!firstName || !lastName || !title || !role || !phone) {
-      return bad("First name, last name, title, signee role and phone are required.");
+      return bad(
+        "First name, last name, title, signee role and phone are required.",
+      );
     }
     if (role === "representative" && !companyName) {
       return bad("Enter the name of the company or entity you're signing for.");
     }
-    if (!signatureType || !signatureData || signatureData.length > MAX_SIGNATURE_LENGTH) {
+    if (
+      !signatureType ||
+      !signatureData ||
+      signatureData.length > MAX_SIGNATURE_LENGTH
+    ) {
       return bad("A signature is required.");
     }
-    if (signatureType === "draw" && !signatureData.startsWith("data:image/png;base64,")) {
+    if (
+      signatureType === "draw" &&
+      !signatureData.startsWith("data:image/png;base64,")
+    ) {
       return bad("A drawn signature must be a PNG image.");
     }
 
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+      {
+        global: {
+          headers: { Authorization: req.headers.get("Authorization") ?? "" },
+        },
+      },
     );
     const {
       data: { user },
@@ -115,7 +141,7 @@ Deno.serve(async (req: Request) => {
         signed_at: signedAt,
       })
       .select(
-        "id, packet_version, signee_first_name, signee_last_name, signee_title, signee_role, company_name, email, phone, signature_type, signature_data, signed_at",
+        "id, packet_version, signee_first_name, signee_last_name, signee_title, signee_role, company_name, email, phone, signature_type, signature_data, signed_at, signing_tracking_id",
       )
       .single();
     if (insErr) throw insErr;
@@ -132,7 +158,11 @@ Deno.serve(async (req: Request) => {
       user_agent: userAgent,
       source: "engagement_packet",
     });
-    if (termsErr) console.error("terms_acceptances insert failed (packet still recorded):", termsErr);
+    if (termsErr)
+      console.error(
+        "terms_acceptances insert failed (packet still recorded):",
+        termsErr,
+      );
 
     // Fill — never overwrite — the profile from the signer's details, so a Google
     // signup with no name on file gets one here.
@@ -166,15 +196,25 @@ Deno.serve(async (req: Request) => {
         signedAt,
         ipAddress,
         packetVersion: PACKET_VERSION,
+        // issued by the database's track_signing trigger (signing-packets.sql)
+        trackingId:
+          (packet as { signing_tracking_id?: string | null })
+            .signing_tracking_id ?? null,
       });
     }
 
-    return new Response(JSON.stringify(packet), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify(packet), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (err) {
     const message =
       err instanceof Error
         ? err.message
-        : err && typeof err === "object" && "message" in err && typeof err.message === "string"
+        : err &&
+            typeof err === "object" &&
+            "message" in err &&
+            typeof err.message === "string"
           ? err.message
           : "unknown error";
     console.error("record-engagement-packet failed:", err);

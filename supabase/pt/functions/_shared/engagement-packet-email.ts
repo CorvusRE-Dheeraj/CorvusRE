@@ -26,6 +26,8 @@ export type SignedPacket = {
   signedAt: string;
   ipAddress: string | null;
   packetVersion: string;
+  // the signing packet ID (CPT-XXXX-XXXX) — supabase/pt/signing-packets.sql
+  trackingId?: string | null;
 };
 
 const ROLE_LABEL = {
@@ -34,11 +36,13 @@ const ROLE_LABEL = {
 } as const;
 
 function signedAtLabel(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    timeZone: "America/Chicago",
-    dateStyle: "long",
-    timeStyle: "short",
-  }) + " (Central)";
+  return (
+    new Date(iso).toLocaleString("en-US", {
+      timeZone: "America/Chicago",
+      dateStyle: "long",
+      timeStyle: "short",
+    }) + " (Central)"
+  );
 }
 
 // The attached copy: a standalone HTML page of the packet as signed.
@@ -49,7 +53,8 @@ function renderSignedCopy(p: SignedPacket): string {
       ? `<img src="${e(p.signatureData)}" alt="Signature" style="height:64px;">`
       : `<span style="font-family:Georgia,serif; font-style:italic; font-size:28px;">${e(p.signatureData)}</span>`;
   const docs = PACKET_DOCUMENTS.map(
-    (d) => `<h3 style="margin:16px 0 4px;">${e(d.title)}</h3><p style="margin:0; color:#42506a;">${e(d.summary)}</p>`,
+    (d) =>
+      `<h3 style="margin:16px 0 4px;">${e(d.title)}</h3><p style="margin:0; color:#42506a;">${e(d.summary)}</p>`,
   ).join("");
   const agreement = SERVICE_AGREEMENT_SECTIONS.map(
     (s) =>
@@ -71,6 +76,7 @@ ${row("Signing as", ROLE_LABEL[p.role])}
 ${p.companyName ? row("Company / entity", p.companyName) : ""}
 ${row("Email", p.email)}
 ${row("Phone", p.phone)}
+${p.trackingId ? row("Signing packet ID", p.trackingId) : ""}
 ${row("Signed on", signedAtLabel(p.signedAt))}
 ${p.ipAddress ? row("IP address", p.ipAddress) : ""}
 </table>
@@ -108,7 +114,7 @@ export async function sendSignedPacketEmail(p: SignedPacket): Promise<void> {
       heading: "Your signed CorvusPT documents",
       intro:
         `Thanks, ${escapeHtml(p.firstName)} — your CorvusPT Engagement Packet was signed on ` +
-        `${escapeHtml(signedAtLabel(p.signedAt))}. A copy of everything you signed is attached. ` +
+        `${escapeHtml(signedAtLabel(p.signedAt))}${p.trackingId ? ` (signing packet ID <strong>${escapeHtml(p.trackingId)}</strong>)` : ""}. A copy of everything you signed is attached. ` +
         `Log in to your client portal to access your property dashboard and get started.`,
       bodyRows: PACKET_DOCUMENTS.map(
         (d) =>
@@ -122,7 +128,10 @@ export async function sendSignedPacketEmail(p: SignedPacket): Promise<void> {
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from: "CorvusPT <info@corvusre.com>",
         to: p.email,
@@ -137,9 +146,15 @@ export async function sendSignedPacketEmail(p: SignedPacket): Promise<void> {
       }),
     });
     if (!res.ok) {
-      console.error(`Resend error ${res.status} sending signed documents:`, await res.text());
+      console.error(
+        `Resend error ${res.status} sending signed documents:`,
+        await res.text(),
+      );
     }
   } catch (err) {
-    console.error("Signed documents email failed (signing itself is recorded):", err);
+    console.error(
+      "Signed documents email failed (signing itself is recorded):",
+      err,
+    );
   }
 }

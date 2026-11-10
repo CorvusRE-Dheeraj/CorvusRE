@@ -12,6 +12,8 @@ import {
 } from "@/lib/engagement-packet";
 import { EngagementPacketForm } from "@/components/EngagementPacketForm";
 import { SignaturePreview } from "@/components/SignaturePad";
+import { SigningIdBadge } from "@/components/SigningIdBadge";
+import { SigningHistory } from "@/components/SigningHistory";
 import { PageHero } from "@/components/PageHero";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
@@ -60,6 +62,7 @@ function Agreements() {
               <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
               <span className="font-semibold">Engagement packet signed</span>
             </div>
+            <SigningIdBadge trackingId={packet.signingTrackingId} className="mt-3" />
             <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
               <Field label="Signed by" value={`${packet.firstName} ${packet.lastName}`} />
               <Field label="Title" value={packet.title} />
@@ -130,6 +133,7 @@ function Agreements() {
           />
         </div>
       )}
+      {!loading && user && <SigningHistory userId={user.id} key={packet?.signingTrackingId} />}
     </div>
   );
 }

@@ -22,6 +22,7 @@ function account(overrides: Partial<BppAccountRecord> = {}): BppAccountRecord {
     renditionSignatureData: null,
     renditionSignedAt: null,
     renditionFiledAt: null,
+    signingTrackingId: null,
     estimatedSavings: null,
     stripeSubscriptionId: null,
     subscriptionStatus: null,

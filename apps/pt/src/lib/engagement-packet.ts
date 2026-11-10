@@ -76,6 +76,8 @@ export type EngagementPacket = {
   phone: string;
   signature: SignatureValue;
   signedAt: string;
+  // the signing packet ID (CPT-XXXX-XXXX) — lib/signing-packets.ts
+  signingTrackingId: string | null;
 };
 
 type PacketRow = {
@@ -91,10 +93,11 @@ type PacketRow = {
   signature_type: "draw" | "type";
   signature_data: string;
   signed_at: string;
+  signing_tracking_id?: string | null;
 };
 
 const PACKET_COLUMNS =
-  "id, packet_version, signee_first_name, signee_last_name, signee_title, signee_role, company_name, email, phone, signature_type, signature_data, signed_at";
+  "id, packet_version, signee_first_name, signee_last_name, signee_title, signee_role, company_name, email, phone, signature_type, signature_data, signed_at, signing_tracking_id";
 
 function fromRow(row: PacketRow): EngagementPacket {
   return {
@@ -109,16 +112,25 @@ function fromRow(row: PacketRow): EngagementPacket {
     phone: row.phone,
     signature: { type: row.signature_type, data: row.signature_data } as SignatureValue,
     signedAt: row.signed_at,
+    signingTrackingId: row.signing_tracking_id ?? null,
   };
 }
 
-// The signed-in user's most recent signing, current or not (RLS scopes it).
-// A copy voided by an approved agreement change doesn't count — the customer
-// is asked to sign again.
+// The signed-in user's most recent signing, current or not. Filtered by user
+// explicitly: RLS also lets admins read every customer's packets, so without
+// it an admin saw (and was treated as having signed) the newest packet anyone
+// signed. A copy voided by an approved agreement change doesn't count — the
+// customer is asked to sign again.
 export async function getMyLatestPacket(): Promise<EngagementPacket | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const uid = session?.user.id;
+  if (!uid) return null;
   const { data, error } = await supabase
     .from("engagement_packets")
     .select(PACKET_COLUMNS)
+    .eq("user_id", uid)
     .is("voided_at", null)
     .order("signed_at", { ascending: false })
     .limit(1)

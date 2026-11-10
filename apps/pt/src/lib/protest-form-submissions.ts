@@ -16,6 +16,8 @@ export type FormSubmission = {
   fieldValues: FieldValues;
   signature: SignatureValue | null;
   signedAt: string | null;
+  // the signing packet ID (CPT-XXXX-XXXX) — see lib/signing-packets.ts
+  signingTrackingId: string | null;
   documentId: string | null;
   // How this specific document is being submitted to the county — a county
   // can allow a different method for the Notice of Protest than for the
@@ -70,6 +72,7 @@ type SubmissionRow = {
   signature_type: "draw" | "type" | null;
   signature_data: string | null;
   signed_at: string | null;
+  signing_tracking_id: string | null;
   document_id: string | null;
   filing_method: FilingMethod | null;
   filing_confirmation_number: string | null;
@@ -95,6 +98,7 @@ function fromRow(row: SubmissionRow): FormSubmission {
         ? { type: row.signature_type, data: row.signature_data }
         : null,
     signedAt: row.signed_at,
+    signingTrackingId: row.signing_tracking_id ?? null,
     documentId: row.document_id,
     filingMethod: row.filing_method,
     filingConfirmationNumber: row.filing_confirmation_number,
@@ -120,7 +124,7 @@ export async function getSubmission(
   const { data, error } = await supabase
     .from("protest_form_submissions")
     .select(
-      "field_values, signature_type, signature_data, signed_at, document_id, filing_method, filing_confirmation_number, mail_tracking_number, email_recipient, email_subject, email_sent_at, submitted_at, filing_confirmed_at, additional_requested_at, additional_request_note, mail_delivered_at, rejected_at, reminder_frequency, last_reminder_sent_at",
+      "field_values, signature_type, signature_data, signed_at, signing_tracking_id, document_id, filing_method, filing_confirmation_number, mail_tracking_number, email_recipient, email_subject, email_sent_at, submitted_at, filing_confirmed_at, additional_requested_at, additional_request_note, mail_delivered_at, rejected_at, reminder_frequency, last_reminder_sent_at",
     )
     .eq("protest_id", protestId)
     .eq("form_type", formType)
@@ -157,6 +161,8 @@ export async function signAndSubmit(
   values: FieldValues,
   signature: SignatureValue,
   documentId: string,
+  // the ID printed on the signed PDF (lib/signing-packets.ts)
+  trackingId?: string,
 ): Promise<void> {
   const { error } = await supabase.from("protest_form_submissions").upsert(
     {
@@ -168,6 +174,7 @@ export async function signAndSubmit(
       signature_data: signature.data,
       signed_at: new Date().toISOString(),
       document_id: documentId,
+      ...(trackingId ? { signing_tracking_id: trackingId } : {}),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "protest_id,form_type" },

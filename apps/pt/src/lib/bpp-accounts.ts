@@ -25,6 +25,8 @@ export type BppAccountRecord = {
   renditionSignatureData: string | null;
   renditionSignedAt: string | null;
   renditionFiledAt: string | null;
+  // the rendition's signing packet ID (CPT-XXXX-XXXX) — lib/signing-packets.ts
+  signingTrackingId: string | null;
   estimatedSavings: number | null;
   // This account's own, real, independent Stripe subscription — see
   // cancel-bpp-subscription/create-bpp-checkout-session. Never client-
@@ -62,6 +64,7 @@ type BppAccountRow = {
   rendition_signature_data: string | null;
   rendition_signed_at: string | null;
   rendition_filed_at: string | null;
+  signing_tracking_id: string | null;
   estimated_savings: number | null;
   stripe_subscription_id: string | null;
   subscription_status: string | null;
@@ -78,7 +81,7 @@ type BppAccountRow = {
 };
 
 const SELECT_COLUMNS =
-  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
+  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
 
 function fromRow(row: BppAccountRow): BppAccountRecord {
   return {
@@ -98,6 +101,7 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     renditionSignatureData: row.rendition_signature_data,
     renditionSignedAt: row.rendition_signed_at,
     renditionFiledAt: row.rendition_filed_at,
+    signingTrackingId: row.signing_tracking_id,
     estimatedSavings: row.estimated_savings,
     stripeSubscriptionId: row.stripe_subscription_id,
     subscriptionStatus: row.subscription_status,
@@ -233,6 +237,8 @@ export async function updateBppAccount(
 export async function signRendition(
   id: string,
   signature: SignatureValue,
+  // the ID printed on the signed PDF (lib/signing-packets.ts)
+  trackingId?: string,
 ): Promise<BppAccountRecord> {
   const { data, error } = await supabase
     .from("bpp_accounts")
@@ -240,6 +246,7 @@ export async function signRendition(
       rendition_signature_type: signature.type,
       rendition_signature_data: signature.data,
       rendition_signed_at: new Date().toISOString(),
+      ...(trackingId ? { signing_tracking_id: trackingId } : {}),
     })
     .eq("id", id)
     .select(SELECT_COLUMNS)

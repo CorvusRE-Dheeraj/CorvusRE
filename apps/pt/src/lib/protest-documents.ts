@@ -3,6 +3,7 @@ import type { PropertyRecord } from "./properties";
 import type { AuthorizationRecord } from "./protest-authorizations";
 import type { CadRecord } from "./cad-lookup";
 import type { SignatureValue } from "@/components/SignaturePad";
+import { stampTrackingId } from "./signing-packets";
 import { AGREEMENT } from "@/components/ProtestAuthorizationFlow";
 
 // Drives every field on the two REAL, official Texas Comptroller PDF forms
@@ -1600,6 +1601,8 @@ export async function signPdf(
   values: FieldValues,
   signature: SignatureValue,
   signedAt: Date,
+  // the signing packet ID (lib/signing-packets.ts), printed on every page
+  trackingId?: string,
 ): Promise<Uint8Array> {
   const doc = await loadTemplate(templatePath);
   const dateField = DATE_FIELD_NAME[templatePath];
@@ -1644,6 +1647,7 @@ export async function signPdf(
     }
   }
 
+  if (trackingId) await stampTrackingId(doc, trackingId);
   return doc.save();
 }
 
