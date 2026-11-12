@@ -11,7 +11,10 @@
 // columns this writes via stripe-webhook's checkout.session.completed
 // handler (stripe_subscription_id, subscription_status, plan_tier,
 // value_bracket on the properties row itself).
-import { existingSubscriptionMessage, hasLiveSubscription } from "../_shared/subscription-status.ts";
+import {
+  existingSubscriptionMessage,
+  hasLiveSubscription,
+} from "../_shared/subscription-status.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { getStripeMode, stripeSecretKey } from "../_shared/stripe-mode.ts";
@@ -26,21 +29,32 @@ import {
   type BillingInterval,
   type Tier,
 } from "../_shared/pricing.ts";
-import { bestCheckoutCoupon, type PricingException } from "../_shared/discounts.ts";
+import {
+  bestCheckoutCoupon,
+  type PricingException,
+} from "../_shared/discounts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   // Without this, supabase-js's functions.invoke() parses the body as plain text
   // (a JSON string) instead of a parsed object, based on the response Content-Type.
   "Content-Type": "application/json",
 };
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { propertyId, tier, successPath, cancelPath, interval: rawInterval } = (await req.json()) as {
+    const {
+      propertyId,
+      tier,
+      successPath,
+      cancelPath,
+      interval: rawInterval,
+    } = (await req.json()) as {
       propertyId?: string;
       tier?: Tier;
       successPath?: string;
@@ -49,10 +63,14 @@ Deno.serve(async (req: Request) => {
     };
     // Monthly (12-month commitment) or annual upfront; annual when not given,
     // so an older client keeps its previous behaviour.
-    const interval: BillingInterval = isBillingInterval(rawInterval) ? rawInterval : "year";
+    const interval: BillingInterval = isBillingInterval(rawInterval)
+      ? rawInterval
+      : "year";
     if (!isTier(tier)) {
       return new Response(
-        JSON.stringify({ error: "tier must be owner_managed or corvusrf_managed" }),
+        JSON.stringify({
+          error: "tier must be owner_managed or corvusrf_managed",
+        }),
         { status: 400, headers: corsHeaders },
       );
     }
@@ -71,7 +89,11 @@ Deno.serve(async (req: Request) => {
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+      {
+        global: {
+          headers: { Authorization: req.headers.get("Authorization") ?? "" },
+        },
+      },
     );
     const {
       data: { user },
@@ -97,7 +119,9 @@ Deno.serve(async (req: Request) => {
     // start a checkout for their own property.
     const { data: property } = await adminClient
       .from("properties")
-      .select("id, address, total_value, stripe_subscription_id, subscription_status")
+      .select(
+        "id, address, total_value, stripe_subscription_id, subscription_status",
+      )
       .eq("id", propertyId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -112,7 +136,10 @@ Deno.serve(async (req: Request) => {
     if (hasLiveSubscription(property.subscription_status as string | null)) {
       return new Response(
         JSON.stringify({
-          error: existingSubscriptionMessage(property.subscription_status as string, "property"),
+          error: existingSubscriptionMessage(
+            property.subscription_status as string,
+            "property",
+          ),
         }),
         { status: 400, headers: corsHeaders },
       );
@@ -121,7 +148,8 @@ Deno.serve(async (req: Request) => {
     if (isCustomPricedValue(property.total_value as number | null)) {
       return new Response(
         JSON.stringify({
-          error: "Properties valued at $5M+ have custom pricing — please contact us to subscribe.",
+          error:
+            "Properties valued at $5M+ have custom pricing — please contact us to subscribe.",
         }),
         { status: 400, headers: corsHeaders },
       );
@@ -146,8 +174,18 @@ Deno.serve(async (req: Request) => {
     // hosted billing portal (product name only); also set as the subscription
     // description for portals/emails that surface it. See ../_shared/pricing.ts.
     const address = ((property.address as string | null) ?? "").trim();
-    const unitAmount = unitAmountCents(tier, bracket, interval, isAdditionalInBracket);
-    const name = subscriptionProductName(tier, bracket, address, isAdditionalInBracket);
+    const unitAmount = unitAmountCents(
+      tier,
+      bracket,
+      interval,
+      isAdditionalInBracket,
+    );
+    const name = subscriptionProductName(
+      tier,
+      bracket,
+      address,
+      isAdditionalInBracket,
+    );
 
     const { data: profile } = await adminClient
       .from("profiles")
@@ -193,19 +231,27 @@ Deno.serve(async (req: Request) => {
       ...(discount ? { discounts: [{ coupon: discount.couponId }] } : {}),
       client_reference_id: user.id,
       customer: profile?.stripe_customer_id ?? undefined,
-      customer_email: profile?.stripe_customer_id ? undefined : (user.email ?? undefined),
+      customer_email: profile?.stripe_customer_id
+        ? undefined
+        : (user.email ?? undefined),
       subscription_data: {
         ...(address ? { description: address } : {}),
-        metadata: { tier, bracket, propertyId, interval, pricing: PRICING_VERSION },
+        metadata: {
+          tier,
+          bracket,
+          propertyId,
+          interval,
+          pricing: PRICING_VERSION,
+        },
       },
       metadata: { tier, bracket, propertyId, interval },
-      // The commitment, stated on Stripe's own payment page before paying.
+      // The commitment, stated on Stripe's own payment page before paying —
+      // the owner's wording, same as SUBSCRIPTION_TERMS in the app's
+      // components/BillingChoice.tsx (keep the two in step by hand).
       custom_text: {
         submit: {
           message:
-            interval === "month"
-              ? "Monthly plan with a 12-month commitment. You can give 60 days' notice to cancel once 13 months are complete."
-              : "One payment for 12 months. Renews yearly; you can turn off renewal at any time from Manage Billing.",
+            "12-Month Subscription Commitment: All subscriptions require a mandatory 12-month commitment. You may choose to pay the full subscription fee upfront or in 12 monthly installments. By selecting monthly payments, you agree to the full 12-month subscription term. Your saved credit card will be automatically charged each month for 12 consecutive months. Monthly payments are an installment option and do not constitute a month-to-month subscription. Please note: Early cancellation is not permitted, and the full 12-month subscription commitment remains payable regardless of the selected payment frequency.",
         },
       },
       success_url: `${origin}${safePath(successPath, "/dashboard/properties?checkout=success")}`,
@@ -226,7 +272,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "unknown error" }),
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "unknown error",
+      }),
       { status: 500, headers: corsHeaders },
     );
   }

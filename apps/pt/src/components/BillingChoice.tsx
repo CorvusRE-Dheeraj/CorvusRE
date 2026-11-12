@@ -41,12 +41,53 @@ export function BillingIntervalToggle({
   );
 }
 
-/** The commitment in plain words, folded away until someone wants it. */
+// The subscription commitment, worded by the owner (Nov 2026). Shown in full —
+// never folded away — wherever someone picks a plan before paying, and on
+// Stripe's payment page (create-checkout-session custom_text).
+export const SUBSCRIPTION_TERMS = [
+  "All subscriptions require a mandatory 12-month commitment. You may choose to pay the full subscription fee upfront or in 12 monthly installments.",
+  "By selecting monthly payments, you agree to the full 12-month subscription term. Your saved credit card will be automatically charged each month for 12 consecutive months. Monthly payments are an installment option and do not constitute a month-to-month subscription.",
+] as const;
+export const EARLY_CANCELLATION_NOTE =
+  "Early cancellation is not permitted, and the full 12-month subscription commitment remains payable regardless of the selected payment frequency.";
+
+/** The 12-month commitment, always visible, before payment. */
+export function SubscriptionTermsNotice({ className = "" }: { className?: string }) {
+  return (
+    <div
+      role="note"
+      aria-label="12-Month Subscription Commitment"
+      className={`rounded-xl border border-warning/50 bg-warning/10 px-4 py-3 text-xs leading-relaxed text-foreground ${className}`}
+    >
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
+        12-Month Subscription Commitment
+      </p>
+      {SUBSCRIPTION_TERMS.map((t) => (
+        <p key={t} className="mt-2">
+          {t}
+        </p>
+      ))}
+      <p className="mt-2">
+        <span className="font-semibold">Please note:</span> {EARLY_CANCELLATION_NOTE}
+      </p>
+    </div>
+  );
+}
+
+/** The commitment terms, then how the plan runs (folded away until wanted). */
 export function CommitmentNote({ className = "" }: { className?: string }) {
   return (
-    <details
-      className={`group rounded-xl border border-border bg-secondary/30 px-4 py-3 text-sm ${className}`}
-    >
+    <div className={`space-y-3 ${className}`}>
+      <SubscriptionTermsNotice />
+      <CommitmentDetails />
+    </div>
+  );
+}
+
+function CommitmentDetails() {
+  return (
+    <details className="group rounded-xl border border-border bg-secondary/30 px-4 py-3 text-sm">
       <summary className="flex cursor-pointer list-none items-center gap-2 font-medium">
         <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         How your plan works

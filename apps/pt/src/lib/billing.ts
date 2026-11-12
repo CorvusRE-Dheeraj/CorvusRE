@@ -124,7 +124,7 @@ const priceUsd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionD
 export function planPriceLines(tier: Tier, interval: BillingInterval) {
   const monthly = TIER_BRACKET_PRICES[tier].upTo5m;
   return interval === "month"
-    ? { amount: priceUsd(monthly), unit: "/month", detail: "12-month plan" }
+    ? { amount: priceUsd(monthly), unit: "/month", detail: "12-Month Subscription Commitment" }
     : {
         amount: priceUsd(annualFirstYearPrice(tier)),
         unit: "first year",
