@@ -54,12 +54,11 @@ import {
 import { HearingJoinSection } from "@/components/case/meeting";
 import { EscalationEvaluationSection } from "@/components/case/escalation";
 
-// The case road's steps (case-pipeline.ts) open these tabs; Appeal Decision opens
+// The case road's steps (case-pipeline.ts) open these tabs; Appeal Further opens
 // Arbitration or Court Appeal, and Request CAD Evidence its section on Formal Hearing.
 const STAGE_TAB: Record<Exclude<StageId, "appeal" | "cad_evidence">, CaseTabId> = {
   readiness: "overview",
   file: "file",
-  confirm: "file",
   informal: "informal",
   arb: "hearing",
   decision: "decision",
@@ -271,7 +270,7 @@ export function CaseDetailView({
   // CorvusGuidancePanel/NextStepFooter can give correct guidance too.
   const [noticeSignedAt, setNoticeSignedAt] = useState<string | null>(null);
   // The Notice of Protest's full filing timestamps — what the case pipeline
-  // reads for File Protest / Confirm Filing (see case-pipeline.ts).
+  // reads for File Protest (delivery and the county's confirmation — see case-pipeline.ts).
   const [noticeFiling, setNoticeFiling] = useState<NoticeFiling | null>(null);
   // Real "Protest Evidence"-tagged documents for this property — evidence
   // now uploads exclusively through Module 8 (ai-report.tsx), not a

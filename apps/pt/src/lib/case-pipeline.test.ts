@@ -79,7 +79,9 @@ describe("casePipeline", () => {
     const p = protest({ corvusGuidanceAckAt: "x" });
     const n = notice({ signedAt: "a", submittedAt: "2026-04-04T00:00:00Z" });
     const r = casePipeline({ ...base, protest: p, notice: n });
-    expect(r.next.stage).toBe("confirm");
+    // still File Protest — it isn't done until the county confirms
+    expect(r.next.stage).toBe("file");
+    expect(r.stages.find((s) => s.id === "file")?.state).toBe("current");
     expect(r.next.title).toBe("Confirm the county received your protest");
   });
 
@@ -96,7 +98,6 @@ describe("casePipeline", () => {
     ]) {
       const r = casePipeline({ ...base, protest: p, notice: n });
       expect(r.stages.find((s) => s.id === "file")?.state).toBe("done");
-      expect(r.stages.find((s) => s.id === "confirm")?.state).toBe("done");
       expect(r.next.stage).toBe("informal");
       expect(r.next.title).toBe("Request an informal review with the appraiser");
     }
@@ -107,7 +108,7 @@ describe("casePipeline", () => {
     ).toBe("file");
   });
 
-  it("reopens Confirm Filing when the county asks for more or rejects it", () => {
+  it("reopens File Protest when the county asks for more or rejects it", () => {
     const p = protest({ status: "filed", corvusGuidanceAckAt: "x" });
     const n = notice({
       signedAt: "a",
@@ -118,6 +119,21 @@ describe("casePipeline", () => {
     expect(casePipeline({ ...base, protest: p, notice: n }).next.title).toBe(
       "The county asked for more information",
     );
+    expect(casePipeline({ ...base, protest: p, notice: n }).next.stage).toBe("file");
+  });
+
+  it("names the steps as the case road shows them", () => {
+    const r = casePipeline({ ...base, protest: null });
+    expect(r.stages.map((s) => s.label)).toEqual([
+      "Case Readiness",
+      "File Protest",
+      "Request CAD Evidence",
+      "Informal",
+      "ARB Hearing",
+      "Post ARB Options",
+      "Appeal Further",
+      "Close Case",
+    ]);
   });
 
   it("puts Request CAD Evidence next after filing, due 14 days before the hearing", () => {
@@ -207,7 +223,7 @@ describe("casePipeline", () => {
       protest: protest({ status: "resolved", escalationPath: "accept", arbDecision: "denied" }),
     });
     expect(r.next.stage).toBeNull();
-    expect(r.completed).toBe(9);
+    expect(r.completed).toBe(8);
   });
 });
 
