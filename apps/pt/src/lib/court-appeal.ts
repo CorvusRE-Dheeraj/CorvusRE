@@ -11,7 +11,15 @@ import { addDaysIso, daysUntilIso, localDay } from "./local-day";
 const DAY = 24 * 60 * 60 * 1000;
 
 // ── Saved state (protests.court_appeal, one jsonb column) ────────────────
-export type CourtUpdateType = "notice" | "filing" | "order" | "settlement" | "other";
+export type CourtUpdateType =
+  | "notice"
+  | "filing"
+  | "petition"
+  | "order"
+  | "settlement"
+  | "hearing"
+  | "correspondence"
+  | "other";
 
 export type CourtUpdate = {
   id: string;
@@ -20,6 +28,10 @@ export type CourtUpdate = {
   title: string;
   summary: string; // AI (or user) summary of the document
   documentId: string | null;
+  // dates and deadlines Corvus AI read from the document (owner can delete)
+  deadlines?: { date: string; label: string }[];
+  // when it was added (document history)
+  addedAt?: string;
 };
 
 export type CourtAttorney = {
@@ -27,6 +39,20 @@ export type CourtAttorney = {
   firm: string;
   email: string;
   phone: string;
+  // the attorney's matter / file number, or any case reference
+  reference?: string;
+  addedAt?: string;
+};
+
+// Corvus AI's review of the case for the attorney — saved so it shows on the
+// page and goes into the package. Areas to review, never conclusions.
+export type CourtAiReview = {
+  summary: string[];
+  issues: string[];
+  gaps: string[];
+  valuation: string[];
+  procedural: string[];
+  at: string;
 };
 
 export type CourtAppealData = {
@@ -35,20 +61,37 @@ export type CourtAppealData = {
   orderReceivedDate?: string | null;
   deadlineAckAt?: string | null;
   packageAt?: string | null;
+  // the saved package in Documents
+  packageDocumentId?: string | null;
   legalReviewDoneAt?: string | null;
   attorney?: CourtAttorney | null;
-  // Set only when the owner confirms the petition was filed.
+  aiReview?: CourtAiReview | null;
+  questions?: string[];
+  // Set only when the owner confirms the petition was filed — with a case
+  // number or an uploaded filing confirmation as proof.
   petitionFiledAt?: string | null;
+  petitionConfirmedAt?: string | null;
+  filingConfirmationDocumentId?: string | null;
   court?: string | null;
   caseNumber?: string | null;
   updates?: CourtUpdate[];
+  // tax adjustment / refund after the case resolves
+  refund?: {
+    expected: number | null;
+    status: "not_applicable" | "pending" | "received";
+    amount?: number | null;
+    receivedAt?: string | null;
+  } | null;
 };
 
 export const UPDATE_TYPE_LABEL: Record<CourtUpdateType, string> = {
   notice: "Court notice",
-  filing: "Filing",
-  order: "Order",
-  settlement: "Settlement",
+  filing: "Court filing",
+  petition: "Filed petition",
+  order: "Court order",
+  settlement: "Settlement offer / agreement",
+  hearing: "Hearing notice",
+  correspondence: "Legal correspondence",
   other: "Other",
 };
 
@@ -130,11 +173,11 @@ export type CourtStageId =
 
 export const COURT_STAGES: { id: CourtStageId; label: string }[] = [
   { id: "hearing", label: "Formal Hearing" },
-  { id: "result", label: "Result" },
+  { id: "result", label: "Unsatisfied Result" },
   { id: "selected", label: "Court Appeal Selected" },
   { id: "legal_review", label: "Attorney / Legal Review" },
   { id: "petition_filed", label: "Petition Filed" },
-  { id: "court_case", label: "Court Case" },
+  { id: "court_case", label: "Court Case in Progress" },
   { id: "resolution", label: "Resolution" },
 ];
 
@@ -206,4 +249,43 @@ export function courtTimeline(data: CourtAppealData | null | undefined): {
     });
   }
   return items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+// Dates the owner or an attorney must supply before the deadline can be
+// trusted — flagged, never assumed.
+export function courtMissing(
+  protest: ProtestRecord,
+  data: CourtAppealData | null | undefined,
+  has: { arbOrderDocument: boolean; requestedValue: boolean },
+): string[] {
+  const out: string[] = [];
+  if (!protest.arbDecision) out.push("The ARB decision isn't recorded yet.");
+  if (!localDay(protest.arbDecisionDate)) out.push("The ARB order's date isn't recorded.");
+  if (!localDay(data?.orderReceivedDate))
+    out.push(
+      "The date you received the ARB order isn't entered — the 60 days run from receipt, so the deadline shown counts from the order date until you add it.",
+    );
+  if (!has.arbOrderDocument) out.push("The ARB order (Order Determining Protest) isn't uploaded.");
+  if (!has.requestedValue) out.push("Your requested (opinion of) value isn't on file.");
+  return out;
+}
+
+// Upcoming deadlines for the main page: the appeal deadline until the
+// petition is filed, then every future date read from court documents.
+export function courtUpcoming(
+  review: CourtAppealReview,
+  data: CourtAppealData | null | undefined,
+  now: Date = new Date(),
+): { date: string; label: string; days: number | null }[] {
+  const items: { date: string; label: string }[] = [];
+  if (!data?.petitionFiledAt && review.deadline)
+    items.push({ date: review.deadline, label: "Last day to file the court appeal (60 days)" });
+  for (const u of data?.updates ?? [])
+    for (const d of u.deadlines ?? [])
+      items.push({ date: d.date, label: `${d.label} (${u.title})` });
+  return items
+    .map((i) => ({ ...i, days: daysUntilIso(i.date, now) }))
+    .filter((i) => i.days == null || i.days >= 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 6);
 }

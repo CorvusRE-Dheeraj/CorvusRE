@@ -680,6 +680,22 @@ export async function closeCase(protestId: string, finalValue: number): Promise<
   );
 }
 
+// A court appeal (or arbitration) ended: close the case at the final value
+// and carry that value onto the property record, so monitoring and next
+// year's protest start from it.
+export async function recordFinalValueOnProperty(
+  protestId: string,
+  propertyId: string,
+  finalValue: number,
+): Promise<void> {
+  await closeCase(protestId, finalValue);
+  const { error } = await supabase
+    .from("properties")
+    .update({ total_value: finalValue })
+    .eq("id", propertyId);
+  if (error) throw error;
+}
+
 export type CaseResults = { valueReduction: number; actualSavings: number };
 
 // Real, decision-backed numbers — not the intake-time estimate. Only meaningful
