@@ -1473,11 +1473,33 @@ export function SettlementSignatureSection({
 
           {canOfferSignedCopy && (
             <div className="mt-3 border-t border-border pt-3">
-              <div className="text-xs font-semibold">Signed it in person at the CAD office?</div>
+              <div className="text-xs font-semibold">
+                Prefer to sign on paper, or signed it at the CAD office?
+              </div>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Upload the copy you signed — AI verifies the value, date, tax year, terms, and that
-                it&apos;s actually signed.
+                Download the agreement, print and sign it, then upload a scan or photo — no online
+                signature needed. AI verifies the value, date, tax year, terms, and that it&apos;s
+                actually signed.
               </p>
+              {originalDoc && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      window.open(
+                        await getDocumentUrl(originalDoc.storagePath),
+                        "_blank",
+                        "noopener",
+                      );
+                    } catch {
+                      toast.error("Could not open the agreement.");
+                    }
+                  }}
+                  className="mr-2 mt-2 inline-flex btn-outline text-xs py-1.5"
+                >
+                  Download to Print
+                </button>
+              )}
               <label
                 className={`mt-2 inline-flex btn-outline cursor-pointer text-xs py-1.5 ${
                   verifyingCopy ? "pointer-events-none opacity-60" : ""
