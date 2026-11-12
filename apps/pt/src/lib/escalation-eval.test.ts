@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateEscalation } from "./escalation-eval";
+import { bindingArbitrationFees, evaluateEscalation } from "./escalation-eval";
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
 
@@ -126,7 +126,8 @@ describe("evaluateEscalation — eligibility", () => {
       0,
     ).options.find((o) => o.id === "binding_arbitration")!;
     expect(arb.eligible).toBe(true);
-    expect(arb.estimatedCost?.min).toBe(1_550); // > $2M and ≤ $3M
+    // Comptroller schedule (eff. 9/1/2017): > $2M and ≤ $3M non-homestead = $1,050
+    expect(arb.estimatedCost?.min).toBe(1_050);
   });
 
   it("blocks binding arbitration once a district-court petition is filed", () => {
@@ -222,5 +223,21 @@ describe("evaluateEscalation — market-disconnect evidence", () => {
     );
     expect(evalr.marketDisconnectEvidence.available).toBe(false);
     expect(evalr.marketDisconnectEvidence.narrative).toMatch(/no published comptroller/i);
+  });
+});
+
+describe("binding arbitration fee schedule (Comptroller, eff. Sept. 1, 2017)", () => {
+  it("matches every published row", () => {
+    const f = (v: number, h: boolean) => {
+      const r = bindingArbitrationFees(v, h);
+      return [r.deposit, r.arbitratorFee];
+    };
+    expect(f(400_000, true)).toEqual([450, 400]);
+    expect(f(600_000, true)).toEqual([500, 450]);
+    expect(f(1_000_000, false)).toEqual([500, 450]);
+    expect(f(1_500_000, false)).toEqual([800, 750]);
+    expect(f(2_500_000, false)).toEqual([1_050, 1_000]);
+    expect(f(4_000_000, false)).toEqual([1_550, 1_500]);
+    expect(bindingArbitrationFees(1, false).retained).toBe(50);
   });
 });
