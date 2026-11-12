@@ -54,6 +54,14 @@ import { PageHero, heroButton } from "@/components/PageHero";
 import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
 import { AddBppModal, BppTaxSection } from "@/components/BppTaxSection";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
+import { TaxOfficeStatementPanel } from "@/components/TaxOfficeStatementPanel";
+import {
+  fetchTaxStatement,
+  isStatementFresh,
+  listTaxStatements,
+  taxOfficeConnected,
+  type SavedStatement,
+} from "@/lib/tax-office-statements";
 import {
   TAX_HISTORY_SOURCE_LABEL,
   fetchTaxHistory,
@@ -182,6 +190,12 @@ function PayTaxes() {
   const [taxHistory, setTaxHistory] = useState<Map<string, TaxHistory>>(new Map());
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const historyTried = useRef(new Set<string>());
+  // The county tax office's own account page, per property, for connected
+  // counties (lib/tax-office-statements.ts — cached 12 hours server-side).
+  const [statements, setStatements] = useState<Map<string, SavedStatement>>(new Map());
+  const [statementsLoaded, setStatementsLoaded] = useState(false);
+  const [statementBusy, setStatementBusy] = useState<Set<string>>(new Set());
+  const statementTried = useRef(new Set<string>());
   const mounted = useRef(true);
   useEffect(
     () => () => {
@@ -206,6 +220,10 @@ function PayTaxes() {
       .then(setTaxHistory)
       .catch(() => undefined)
       .finally(() => setHistoryLoaded(true));
+    listTaxStatements(props.map((x) => x.id))
+      .then(setStatements)
+      .catch(() => undefined)
+      .finally(() => setStatementsLoaded(true));
     setBills(b);
     setPlans(p);
     setSettings(s);
@@ -246,6 +264,44 @@ function PayTaxes() {
     void Promise.all([worker(), worker(), worker()]);
   }, [properties, taxHistory, historyLoaded]);
 
+  async function loadStatement(p: PropertyRecord, refresh: boolean) {
+    setStatementBusy((s) => new Set(s).add(p.id));
+    try {
+      const st = await fetchTaxStatement(p.id, p.accountNumber, refresh);
+      if (mounted.current) setStatements((m) => new Map(m).set(p.id, st));
+    } catch (err) {
+      if (refresh) toast.error(getErrorMessage(err, "Couldn't reach the county tax office."));
+    } finally {
+      if (mounted.current)
+        setStatementBusy((s) => {
+          const n = new Set(s);
+          n.delete(p.id);
+          return n;
+        });
+    }
+  }
+
+  // Read the tax office for connected-county properties with nothing fresh
+  // saved, two at a time (the county sites are slow and shared).
+  useEffect(() => {
+    if (!statementsLoaded) return;
+    const todo = properties.filter(
+      (p) =>
+        !!p.accountNumber &&
+        taxOfficeConnected(p.cad) &&
+        !statementTried.current.has(p.id) &&
+        !isStatementFresh(statements.get(p.id), p.accountNumber),
+    );
+    if (todo.length === 0) return;
+    for (const p of todo) statementTried.current.add(p.id);
+    const queue = [...todo];
+    const worker = async () => {
+      for (let p = queue.shift(); p; p = queue.shift()) await loadStatement(p, false);
+    };
+    void Promise.all([worker(), worker()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties, statements, statementsLoaded]);
+
   const today = todayIso();
   const allRows = useMemo(
     () =>
@@ -259,9 +315,10 @@ function PayTaxes() {
           todayIso: today,
           taxYear: filters.year ? Number(filters.year) : undefined,
           cadHistory: taxHistory.get(property.id) ?? null,
+          taxOffice: statements.get(property.id)?.statement ?? null,
         }),
       ),
-    [properties, bills, plans, settings, protests, today, filters.year, taxHistory],
+    [properties, bills, plans, settings, protests, today, filters.year, taxHistory, statements],
   );
   const rows = allRows
     .filter((r) => !filters.county || r.county === filters.county)
@@ -450,6 +507,9 @@ function PayTaxes() {
           onChanged={() =>
             reload().catch((err) => toast.error(getErrorMessage(err, "Could not refresh.")))
           }
+          statement={statements.get(openRow.property.id) ?? null}
+          statementLoading={statementBusy.has(openRow.property.id)}
+          onRefreshStatement={() => void loadStatement(openRow.property, true)}
         />
       )}
     </div>
@@ -587,6 +647,7 @@ function HalfPayPanel({
                   {money(row.totalTax)}
                   {row.totalTaxIsEstimate && <EstimateChip />}
                   {row.totalTaxBasis === "cad" && <CadChip />}
+                  {row.totalTaxBasis === "county" && <CountyChip county={row.county} />}
                 </td>
                 <td className="px-4 py-2 font-semibold">{money(firstHalf.amount)}</td>
                 <td className="px-4 py-2 text-muted-foreground">
@@ -707,6 +768,18 @@ function CadChip() {
       title="No tax statement on file — the appraisal district's certified value × each taxing unit's adopted rate"
     >
       From CAD
+    </span>
+  );
+}
+
+// This year's levy, read from the county tax office's own account page.
+function CountyChip({ county }: { county: string | null }) {
+  return (
+    <span
+      className="ml-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800"
+      title={`From the ${county ?? "county"} County Tax Office's account page`}
+    >
+      County
     </span>
   );
 }
@@ -1090,6 +1163,7 @@ function PropertyTable({
                 {money(row.totalTax)}
                 {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
                 {row.totalTaxBasis === "cad" && <CadChip />}
+                {row.totalTaxBasis === "county" && <CountyChip county={row.county} />}
                 {row.amountPaid > 0 && row.status !== "paid" && (
                   <div className="text-xs font-normal text-muted-foreground">
                     {money(row.outstanding)} left
@@ -1140,6 +1214,7 @@ function PayConfirm({ row, onClose }: { row: PayTaxesRow; onClose: () => void })
             {money(amount)}
             {row.totalTaxIsEstimate && <EstimateChip />}
             {row.totalTaxBasis === "cad" && <CadChip />}
+            {row.totalTaxBasis === "county" && <CountyChip county={row.county} />}
           </div>
         </div>
         <div className="rounded-lg bg-secondary/50 p-3">
@@ -1220,6 +1295,9 @@ function PropertyTaxDetail({
   onClose,
   onPay,
   onChanged,
+  statement,
+  statementLoading,
+  onRefreshStatement,
 }: {
   row: PayTaxesRow;
   userId: string;
@@ -1227,6 +1305,9 @@ function PropertyTaxDetail({
   onClose: () => void;
   onPay: () => void;
   onChanged: () => void;
+  statement: SavedStatement | null;
+  statementLoading: boolean;
+  onRefreshStatement: () => void;
 }) {
   const { property, bill } = row;
   const cadUrl = property.cad
@@ -1311,6 +1392,7 @@ function PropertyTaxDetail({
           {money(row.totalTax)}
           {row.totalTaxIsEstimate && row.totalTax != null && <EstimateChip />}
           {row.totalTaxBasis === "cad" && <CadChip />}
+          {row.totalTaxBasis === "county" && <CountyChip county={row.county} />}
         </Fact>
         <Fact label="Paid">{money(row.amountPaid)}</Fact>
         <Fact label="Outstanding">{row.status === "paid" ? money(0) : money(row.outstanding)}</Fact>
@@ -1324,6 +1406,16 @@ function PropertyTaxDetail({
         <Fact label="Delinquent from">{fmtDate(row.delinquency)}</Fact>
         <Fact label="Tax notice">{row.noticeAvailable ? "On file" : "Not on file"}</Fact>
       </div>
+
+      <Section title="County tax office account" icon={<Landmark className="h-4 w-4" />}>
+        <TaxOfficeStatementPanel
+          saved={statement}
+          county={row.county}
+          connected={taxOfficeConnected(property.cad) && !!property.accountNumber}
+          loading={statementLoading}
+          onRefresh={onRefreshStatement}
+        />
+      </Section>
 
       <Section title="Latest tax statement (the bill)" icon={<Receipt className="h-4 w-4" />}>
         {bill ? (
