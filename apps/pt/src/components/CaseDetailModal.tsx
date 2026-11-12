@@ -52,7 +52,7 @@ import {
   HearingPrepSection,
 } from "@/components/case/hearing";
 import { HearingJoinSection } from "@/components/case/meeting";
-import { EscalationEvaluationSection } from "@/components/case/escalation";
+import { PostArbOptions } from "@/components/case/post-arb-options";
 
 // The case road's steps (case-pipeline.ts) open these tabs; Appeal Further opens
 // Arbitration or Court Appeal, and Request CAD Evidence its section on Formal Hearing.
@@ -833,14 +833,23 @@ export function CaseDetailView({
                   property={property}
                   protest={current}
                   evidenceDocumentCount={evidenceDocuments.length}
-                />
-                <EscalationEvaluationSection
-                  protest={current}
-                  property={property}
-                  evidenceDocumentCount={evidenceDocuments.length}
                   onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
                   onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
                 />
+                {/* Before a final value is recorded the decision card doesn't
+                    show, so the options table stands on its own. */}
+                {current.finalValue == null && (
+                  <section className="card-elev mt-4 p-5">
+                    <h2 className="font-serif text-xl font-semibold">Post ARB options</h2>
+                    <PostArbOptions
+                      property={property}
+                      protest={current}
+                      evidenceDocumentCount={evidenceDocuments.length}
+                      onUpdate={(patch) => setCurrent((prev) => ({ ...prev, ...patch }))}
+                      onChosen={(path) => setActiveTab(path === "appeal" ? "court" : "arbitration")}
+                    />
+                  </section>
+                )}
               </div>
             )}
 
