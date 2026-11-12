@@ -3,6 +3,8 @@ import {
   ACT_COUNTIES,
   accountLinks,
   accountsInList,
+  accountsInJsonList,
+  baseDueByYear,
   isoDate,
   moneyValue,
   parseAccountPage,
@@ -197,7 +199,7 @@ describe("ACT tax office pages", () => {
   it("builds the county's own links from the account page", () => {
     const base = ACT_COUNTIES.bexar.base;
     const l = accountLinks(base, "177280090010", BEXAR_DETAIL);
-    expect(l.account).toBe(`${base}/showdetail2.jsp?can=177280090010`);
+    expect(l.account).toBe(`${base}/showdetail2.jsp?can=177280090010&ownerno=0`);
     expect(l.statement).toBe(
       `${base}/requests/currentstatement/prepare.jsp?can=177280090010&ownerno=0`,
     );
@@ -220,6 +222,94 @@ describe("ACT tax office pages", () => {
     expect(moneyValue("Not Received")).toBeNull();
     expect(isoDate("November 30, 2026")).toBe("2026-11-30");
     expect(isoDate("02/01/2027")).toBe("2027-02-01");
+  });
+});
+
+// ACT's newer design (Montgomery, Nueces, Kleberg …): label and value in
+// separate blocks, hidden blocks marked data-if="false", results as JSON.
+const MODERN_DETAIL = `
+<div data-if="false" class="alert">This account is currently paying taxes in Quarter Installments.</div>
+<ul><li class="list-group-item"><span class="fw-bold">Account Number:</span>
+  <strong class="badge">65600201400</strong></li>
+<li class="list-group-item"><div class="fw-bold mb-1">Mailing Address:</div>
+  <p class="mb-0">NESMITH DARLENE K & JOHN O<br>408 PINEWOOD DR<br>CONROE,TX 773859670</p></li>
+<li class="list-group-item"><div class="fw-bold mb-1">Property Site Address:</div><p>408 PINEWOOD DR</p></li></ul>
+<div class="card-header"><a href="./reports/jurisdiction-details.jsp?can=65600201400&ownerno=0">Jurisdictions Collected:<strong>*</strong></a></div>
+<div class="card-body">MONTGOMERY COUNTY<br>CONROE ISD</div>
+<ul><li><span>Current Year Levy:</span> <span>$171.69</span>
+<span>Current Year Due:</span> <span>$0.00</span>
+<span>Prior Year Due:</span> <span>$0.00</span>
+<span>Total Amount Due:</span> <span>$0.00</span></li>
+<li><span>Total Due for 2026 &amp; Prior Years:</span> <span>$0.00</span></li>
+<li><span>Pending Internet Payments:</span> <span>No payment pending</span></li>
+<li><span>Market Value:</span> <span>$107,786</span></li></ul>
+<a href="reports/payment-info.jsp?can=65600201400&ownerno=0">Payment Information for 2026 and Prior Year Taxes</a>
+<a href="javascript:createReport('statements/current-statements.jsp')">Print a Current Tax Statement</a>`;
+
+// El Paso (city tax office collecting for the county): its own wording.
+const EL_PASO_DETAIL = `<table><tr><td>Account No.:</td><td>R24699902800100</td></tr>
+<tr><td>Prop. Id. No.:</td><td>290417</td></tr>
+<tr><td>Current Taxes (Levy):</td><td>$9,419.34</td></tr>
+<tr><td>Current Year Amount Due:</td><td>$9,419.34</td></tr>
+<tr><td>Market Value:</td><td>$528,779</td></tr>
+<tr><td>Last Payment Date:</td><td>07-20-2026</td></tr>
+<tr><td>Pending Credit/Debit or e-Check Payments:</td><td>No Payment Pending</td></tr></table>
+<a href='reports/future_taxselect.jsp?can=R24699902800100&ownerno=0&taxYear=2026'>Click Here</a>`;
+
+describe("ACT pages — newer design and county wording", () => {
+  it("reads the newer design, skipping hidden blocks", () => {
+    expect(parseAccountPage(MODERN_DETAIL)).toMatchObject({
+      taxAccount: "65600201400",
+      taxYear: 2026,
+      ownerLines: ["NESMITH DARLENE K & JOHN O", "408 PINEWOOD DR", "CONROE,TX 773859670"],
+      siteAddress: "408 PINEWOOD DR",
+      levy: 171.69,
+      yearAmountDue: 0,
+      priorYearsDue: 0,
+      totalDue: 0,
+      pendingPayments: "No payment pending",
+      marketValue: 107786,
+    });
+    const l = accountLinks(
+      ACT_COUNTIES.montgomery.base,
+      "65600201400",
+      MODERN_DETAIL,
+      "account-details.jsp",
+    );
+    expect(l.account).toBe(
+      `${ACT_COUNTIES.montgomery.base}/account-details.jsp?can=65600201400&ownerno=0`,
+    );
+    expect(l.paymentHistory).toMatch(/reports\/payment-info\.jsp\?can=65600201400/);
+    expect(l.statement).toBeNull(); // a javascript: link isn't a page
+  });
+
+  it("reads El Paso's wording", () => {
+    expect(parseAccountPage(EL_PASO_DETAIL)).toMatchObject({
+      taxAccount: "R24699902800100",
+      taxYear: 2026,
+      levy: 9419.34,
+      yearAmountDue: 9419.34,
+      marketValue: 528779,
+      lastPaymentDate: "2026-07-20",
+      pendingPayments: "No Payment Pending",
+    });
+  });
+
+  it("finds the account in the JSON result list, either variable name", () => {
+    const list = (name: string) =>
+      `<script>${name} = {"status":"success","data":{"criteria":"R109220","matches":2,"accounts":[{"can":"111","aprdistacc":"R555"},{"can":"65600201400","aprdistacc":"R109220"}]}};\n</script>`;
+    expect(accountsInJsonList(list("var searchResults"), "109220")[0]).toBe("65600201400");
+    expect(accountsInJsonList(list("const result"), "R109220")[0]).toBe("65600201400");
+  });
+
+  it("reads the base tax still due per year (Fort Bend)", () => {
+    const html = `<table><tr><td>Year</td><td>Base Tax Due</td><td>Total Due</td></tr>
+      <tr><td> 2026 </td><td></td><td>$4,519.21</td><td>$0.00</td><td>$4,519.21</td></tr>
+      <tr><td>2025</td><td>$0.00</td><td>$0.00</td></tr></table>`;
+    expect([...baseDueByYear(html)]).toEqual([
+      [2026, 4519.21],
+      [2025, 0],
+    ]);
   });
 });
 
