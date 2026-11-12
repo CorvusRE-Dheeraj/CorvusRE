@@ -32,3 +32,7 @@ create policy "Owners and members read tax statements" on public.property_tax_st
 revoke all on public.property_tax_statements from anon;
 grant select on public.property_tax_statements to authenticated;
 grant all on public.property_tax_statements to service_role;
+
+-- 2026-11-12: why a read came back empty (error from the county site, or
+-- "no account for this number"), so a failing county can be diagnosed.
+alter table public.property_tax_statements add column if not exists error text;

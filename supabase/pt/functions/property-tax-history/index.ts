@@ -270,6 +270,9 @@ Deno.serve(async (req: Request) => {
       );
       if (limited) return limited;
       const county = countyOf(prop.cad);
+      // why a read came back empty — returned to the app and kept with the
+      // row, so a failing county can be diagnosed without server logs
+      let failure: string | null = null;
       const statement =
         county && prop.account_number
           ? await fetchCountyTaxStatement(
@@ -278,9 +281,16 @@ Deno.serve(async (req: Request) => {
               25000,
             ).catch((e) => {
               console.error("tax office statement failed:", county, e);
+              failure = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
               return null;
             })
           : null;
+      if (!statement && !failure)
+        failure = !county
+          ? "no county on the property"
+          : !prop.account_number
+            ? "no account number on the property"
+            : "the tax office returned no account for this number";
       const now = new Date().toISOString();
       await admin.from("property_tax_statements").upsert(
         {
@@ -289,6 +299,7 @@ Deno.serve(async (req: Request) => {
           account_number: prop.account_number,
           statement,
           source_url: statement?.links.account ?? null,
+          error: failure,
           retrieved_at: now,
         },
         { onConflict: "property_id" },
@@ -297,6 +308,7 @@ Deno.serve(async (req: Request) => {
         statement,
         sourceUrl: statement?.links.account ?? null,
         retrievedAt: now,
+        error: failure,
       });
     }
     if (refresh !== true) {
