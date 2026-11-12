@@ -27,7 +27,8 @@ export type SavedStatement = {
 };
 
 const FRESH_MS = 12 * 60 * 60 * 1000;
-const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
+// an empty read is usually the county site not answering — try again soon
+const EMPTY_FRESH_MS = 60 * 60 * 1000;
 
 // Counties whose tax office CorvusPT reads (supabase/pt/functions/_shared/tax-office.ts).
 export function taxOfficeConnected(cad: string | null | undefined): boolean {

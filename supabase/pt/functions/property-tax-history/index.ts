@@ -53,7 +53,8 @@ const FRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 // a tax office statement changes when a payment posts — re-read twice a day
 const STATEMENT_FRESH_MS = 12 * 60 * 60 * 1000;
-const STATEMENT_EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
+// an empty read is usually the county site not answering — try again soon
+const STATEMENT_EMPTY_FRESH_MS = 60 * 60 * 1000;
 
 type DirEntry = {
   county: string;
@@ -279,11 +280,22 @@ Deno.serve(async (req: Request) => {
               county,
               prop.account_number.trim(),
               25000,
-            ).catch((e) => {
-              console.error("tax office statement failed:", county, e);
-              failure = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-              return null;
-            })
+            )
+              // county sites drop connections now and then: one retry
+              .catch(async () => {
+                await new Promise((r) => setTimeout(r, 1500));
+                return fetchCountyTaxStatement(
+                  county,
+                  prop.account_number!.trim(),
+                  25000,
+                );
+              })
+              .catch((e) => {
+                console.error("tax office statement failed:", county, e);
+                failure =
+                  e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+                return null;
+              })
           : null;
       if (!statement && !failure)
         failure = !county
