@@ -1224,6 +1224,11 @@ function Intake() {
 
       {step === "savings" && state.address && savings && (
         <section className="mt-8 card-elev overflow-hidden">
+          <p className="border-b border-border bg-secondary/40 px-6 py-3 text-center text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Note:</span> Estimated tax savings are
+            based on standard market calculations and may vary depending on available comps,
+            evidence, and property-specific data.
+          </p>
           <div className="bg-accent/10 px-6 pt-10 pb-8 text-center">
             {/* >= 1, not > 0 — currency() rounds to whole dollars, so a
                 positive-but-sub-$1 amount would otherwise slip past this
