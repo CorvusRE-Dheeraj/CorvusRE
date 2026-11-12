@@ -36,3 +36,10 @@ grant all on public.property_tax_statements to service_role;
 -- 2026-11-12: why a read came back empty (error from the county site, or
 -- "no account for this number"), so a failing county can be diagnosed.
 alter table public.property_tax_statements add column if not exists error text;
+
+-- 2026-11-12: a property paying taxes in two counties ("Bexar County,
+-- Kendall County") has one statement per county: part = the county name for
+-- those, '' for an ordinary single-county property.
+alter table public.property_tax_statements add column if not exists part text not null default '';
+alter table public.property_tax_statements drop constraint if exists property_tax_statements_pkey;
+alter table public.property_tax_statements add primary key (property_id, part);

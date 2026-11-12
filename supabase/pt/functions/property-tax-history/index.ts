@@ -30,6 +30,7 @@ import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { readOfficialSite, corpus } from "../_shared/web-retrieval.ts";
 import { fetchCountyTaxStatement } from "../_shared/tax-office.ts";
+import { accountForCounty, countyParts } from "../_shared/multi-county.ts";
 import {
   collinHistory,
   CURRENT_TAX_YEAR,
@@ -218,11 +219,19 @@ Deno.serve(async (req: Request) => {
     } = await caller.auth.getUser();
     if (!user) return json({ error: "unauthenticated" }, 401);
 
-    const { propertyId, cadUrl, refresh, kind } = (await req.json()) as {
+    const {
+      propertyId,
+      cadUrl,
+      refresh,
+      kind,
+      county: partCounty,
+    } = (await req.json()) as {
       propertyId?: unknown;
       cadUrl?: unknown;
       refresh?: unknown;
       kind?: unknown;
+      // one county of a property that pays taxes in two (multi-county.ts)
+      county?: unknown;
     };
     if (typeof propertyId !== "string")
       return json({ error: "propertyId is required" }, 400);
@@ -241,11 +250,31 @@ Deno.serve(async (req: Request) => {
     // {"kind":"statement"}: the county tax office's account page instead —
     // see _shared/act-tax-office.ts and supabase/pt/tax-office-statements.sql.
     if (kind === "statement") {
+      // A two-county property is read one county at a time; the county must
+      // be one the property names. Otherwise the property's own county, with
+      // its account picked out of any "(County)" notes.
+      const parts = countyParts(prop.cad, prop.account_number);
+      const asked =
+        typeof partCounty === "string" && partCounty.trim()
+          ? parts.find(
+              (p) => p.county.toLowerCase() === partCounty.trim().toLowerCase(),
+            )
+          : null;
+      if (typeof partCounty === "string" && partCounty.trim() && !asked)
+        return json({ error: "That county isn't on this property." }, 400);
+      const part = asked?.county ?? "";
+      const county = asked?.county ?? countyOf(prop.cad);
+      const accountNumber = asked
+        ? asked.accountNumber
+        : county
+          ? accountForCounty(prop.account_number, county)
+          : null;
       if (refresh !== true) {
         const { data: cached } = await admin
           .from("property_tax_statements")
           .select("statement, source_url, retrieved_at, account_number")
           .eq("property_id", prop.id)
+          .eq("part", part)
           .maybeSingle();
         const maxAge = cached?.statement
           ? STATEMENT_FRESH_MS
@@ -270,23 +299,18 @@ Deno.serve(async (req: Request) => {
         corsHeaders,
       );
       if (limited) return limited;
-      const county = countyOf(prop.cad);
       // why a read came back empty — returned to the app and kept with the
       // row, so a failing county can be diagnosed without server logs
       let failure: string | null = null;
       const statement =
-        county && prop.account_number
-          ? await fetchCountyTaxStatement(
-              county,
-              prop.account_number.trim(),
-              25000,
-            )
+        county && accountNumber
+          ? await fetchCountyTaxStatement(county, accountNumber.trim(), 25000)
               // county sites drop connections now and then: one retry
               .catch(async () => {
                 await new Promise((r) => setTimeout(r, 1500));
                 return fetchCountyTaxStatement(
                   county,
-                  prop.account_number!.trim(),
+                  accountNumber.trim(),
                   25000,
                 );
               })
@@ -300,13 +324,14 @@ Deno.serve(async (req: Request) => {
       if (!statement && !failure)
         failure = !county
           ? "no county on the property"
-          : !prop.account_number
-            ? "no account number on the property"
+          : !accountNumber
+            ? `no account number for ${county} on the property`
             : "the tax office returned no account for this number";
       const now = new Date().toISOString();
       await admin.from("property_tax_statements").upsert(
         {
           property_id: prop.id,
+          part,
           user_id: prop.user_id,
           account_number: prop.account_number,
           statement,
@@ -314,7 +339,7 @@ Deno.serve(async (req: Request) => {
           error: failure,
           retrieved_at: now,
         },
-        { onConflict: "property_id" },
+        { onConflict: "property_id,part" },
       );
       return json({
         statement,
