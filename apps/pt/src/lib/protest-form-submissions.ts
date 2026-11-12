@@ -182,6 +182,36 @@ export async function signAndSubmit(
   if (error) throw error;
 }
 
+// Signed on paper: the owner downloaded the form, signed it by hand and
+// uploaded a scan (documentId = the scan in Documents). Counts as signed for
+// every step that needs a signature; signature_type "upload" says how, and
+// there's no drawn signature to keep. The track_signing trigger still gives
+// it a signing packet ID (supabase/pt/signing-packets.sql).
+export async function recordPaperSigned(
+  userId: string,
+  protestId: string,
+  formType: FormType,
+  values: FieldValues,
+  documentId: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("protest_form_submissions").upsert(
+    {
+      protest_id: protestId,
+      user_id: userId,
+      form_type: formType,
+      field_values: JSON.stringify(values),
+      signature_type: "upload",
+      signature_data: null,
+      signed_at: now,
+      document_id: documentId,
+      updated_at: now,
+    },
+    { onConflict: "protest_id,form_type" },
+  );
+  if (error) throw error;
+}
+
 // The three functions below only ever touch their own columns — never
 // field_values/signature — so an upsert against an already-drafted form never
 // clobbers it (and field_values defaults to '{}' in the database for a
