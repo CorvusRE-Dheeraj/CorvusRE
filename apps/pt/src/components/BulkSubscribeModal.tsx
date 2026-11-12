@@ -22,6 +22,7 @@ import {
 } from "@/lib/billing";
 import type { PropertyRecord } from "@/lib/properties";
 import { getErrorMessage } from "@/lib/error-message";
+import { SubscriptionTermsNotice } from "@/components/BillingChoice";
 
 const TIER_LABEL: Record<Tier, string> = {
   owner_managed: "Owner-Managed",
@@ -226,6 +227,8 @@ function BulkForm({
         <span className="text-xs font-medium">Card</span>
         <PaymentElement options={{ layout: "tabs" }} />
       </div>
+
+      <SubscriptionTermsNotice />
 
       <button
         type="submit"

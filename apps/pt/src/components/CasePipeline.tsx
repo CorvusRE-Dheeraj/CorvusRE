@@ -143,6 +143,10 @@ export function NextRequiredAction({
 // outlined (openStage), and Appeal Decision carries its two paths underneath.
 export type AppealPath = "arbitration" | "court";
 
+// Steps an owner may skip — marked "(Optional)" under the label. An informal
+// review isn't required: a protest can go straight to the ARB hearing.
+const OPTIONAL_STAGES: ReadonlySet<StageId> = new Set<StageId>(["informal"]);
+
 export function PipelineStepper({
   pipeline,
   onSelect,
@@ -186,8 +190,12 @@ export function PipelineStepper({
             >
               {s.label}
             </span>
-            {s.state === "skipped" && (
+            {s.state === "skipped" ? (
               <span className="text-[10px] text-muted-foreground">not needed</span>
+            ) : (
+              OPTIONAL_STAGES.has(s.id) && (
+                <span className="text-[10px] text-muted-foreground">(Optional)</span>
+              )
             )}
           </>
         );

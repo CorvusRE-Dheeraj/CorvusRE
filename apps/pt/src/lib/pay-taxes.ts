@@ -8,6 +8,7 @@ import type { TaxBillRecord } from "./tax-bills";
 import type { ProtestRecord } from "./protests";
 import type { BppAccountRecord } from "./bpp-accounts";
 import { historyTaxFor, type TaxHistory } from "./cad-tax-history";
+import type { TaxOfficeStatement } from "./tax-office-statements";
 
 // The Pay Taxes tab: per-property tax obligations, deadlines, county payment
 // links and county-specific payment plans. County rules live in
@@ -315,6 +316,28 @@ export function billStatus(
   return "unpaid";
 }
 
+// The tax office's account page says what's left of the year's levy: none
+// left = paid (the county's own record, so verified), some paid = partial.
+export function officeStatus(
+  office: Pick<TaxOfficeStatement, "levy" | "yearAmountDue" | "pendingPayments">,
+  todayIso: string,
+  delinquency: string | null,
+): PayStatus {
+  const due = office.yearAmountDue;
+  if (due != null && due <= 0.005) return "paid";
+  if (delinquency && todayIso >= delinquency) return "overdue";
+  if (office.pendingPayments && !/no payment pending/i.test(office.pendingPayments))
+    return "verifying";
+  if (office.levy != null && due != null && due < office.levy - 0.005) return "partial";
+  return "unpaid";
+}
+
+export function addDaysIso(isoDate: string, n: number): string {
+  const d = new Date(`${isoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 // ── Penalties (Tax Code §33.01) ─────────────────────────────────────────────
 
 // Penalty + interest on a delinquent amount in its `monthsLate`-th month
@@ -341,9 +364,12 @@ export type PayTaxesRow = {
   // where totalTax came from: the bill, the property's own snapshot, the
   // appraisal district (certified value × adopted rates — tax-history.ts), or
   // our estimate (value × the county's typical rate)
-  totalTaxBasis: "bill" | "snapshot" | "cad" | "estimate" | null;
+  totalTaxBasis: "county" | "bill" | "snapshot" | "cad" | "estimate" | null;
   // the appraisal district's year-by-year history, when loaded
   cadHistory: TaxHistory | null;
+  // the county tax office's account page, when its county is connected
+  // ("county" basis above = this year's levy came from it)
+  taxOffice: TaxOfficeStatement | null;
   amountPaid: number;
   outstanding: number | null;
   dueDate: string;
@@ -382,6 +408,8 @@ export function buildPayTaxesRow(input: {
   todayIso: string;
   taxYear?: number;
   cadHistory?: TaxHistory | null;
+  // the county tax office's own account page (lib/tax-office-statements.ts)
+  taxOffice?: TaxOfficeStatement | null;
 }): PayTaxesRow {
   const { property, todayIso } = input;
   const county = countyName(property.cad);
@@ -403,11 +431,19 @@ export function buildPayTaxesRow(input: {
   // value year: a CAD record saved with 2023 values made a bill-less row
   // read "2023 · overdue 1012 days", and a property already showing next
   // year's preliminary values jumped to a 2027 due date.
-  const taxYear = input.taxYear ?? history[0]?.taxYear ?? CURRENT_TAX_YEAR;
+  // The tax office's current year counts too: a 2026 account page outranks a
+  // 2025 statement uploaded last year.
+  const officeYear = input.taxOffice?.levy != null ? (input.taxOffice.taxYear ?? null) : null;
+  const taxYear =
+    input.taxYear ?? (Math.max(history[0]?.taxYear ?? 0, officeYear ?? 0) || CURRENT_TAX_YEAR);
   const bill = byYear.get(taxYear) ?? (history[0]?.taxYear == null ? (history[0] ?? null) : null);
+  // The county's own record of this year's account — what it levied and
+  // what's still due — beats an uploaded statement (it already reflects any
+  // payment since) and every estimate.
+  const office = officeYear === taxYear ? input.taxOffice! : null;
 
-  const official = bill?.amountDue ?? null;
-  const snapshot = !bill && property.taxAmountDue != null ? property.taxAmountDue : null;
+  const official = office?.levy ?? bill?.amountDue ?? null;
+  const snapshot = !office && !bill && property.taxAmountDue != null ? property.taxAmountDue : null;
   const fromCad =
     official == null && snapshot == null
       ? (historyTaxFor(input.cadHistory ?? undefined, taxYear)?.tax ?? null)
@@ -417,19 +453,30 @@ export function buildPayTaxesRow(input: {
       ? Math.round(property.totalValue * getEffectiveTaxRate(property.cad))
       : null;
   const totalTax = official ?? snapshot ?? fromCad ?? estimate;
+  const officePaid =
+    office?.levy != null && office.yearAmountDue != null
+      ? Math.max(0, Math.round((office.levy - office.yearAmountDue) * 100) / 100)
+      : null;
   const amountPaid =
+    officePaid ??
     bill?.amountPaid ??
     (bill?.installments ?? []).reduce(
       (s, i) => s + (i.paidAt ? (i.amountPaid ?? i.amount ?? 0) : 0),
       0,
     );
 
-  const delinquency = bill?.penaltyDate ?? delinquencyDate(taxYear, settings);
-  const standardDue = standardDueDate(taxYear, settings);
+  const delinquency =
+    office?.delinquentAfter ?? bill?.penaltyDate ?? delinquencyDate(taxYear, settings);
+  const standardDue = office?.delinquentAfter
+    ? nextBusinessDay(addDaysIso(office.delinquentAfter, -1))
+    : standardDueDate(taxYear, settings);
   const dueDate = bill?.dueDate ?? (!bill ? property.paymentDueDate : null) ?? standardDue;
   // No bill on file, but the owner said it's paid (a reminder's "Already paid").
-  const status: PayStatus =
-    !bill && property.paidAt ? "paid" : billStatus(bill, todayIso, delinquency);
+  const status: PayStatus = office
+    ? officeStatus(office, todayIso, delinquency)
+    : !bill && property.paidAt
+      ? "paid"
+      : billStatus(bill, todayIso, delinquency);
 
   const plans = planEligibility(property, input.plans, taxYear, totalTax);
   const halfPay = plans.find((p) => p.plan.kind === "half") ?? null;
@@ -466,8 +513,9 @@ export function buildPayTaxesRow(input: {
     history: [...byYear.values()].slice(0, 5),
     totalTax,
     totalTaxIsEstimate: official == null && snapshot == null && fromCad == null,
-    totalTaxBasis:
-      official != null
+    totalTaxBasis: office
+      ? "county"
+      : official != null
         ? "bill"
         : snapshot != null
           ? "snapshot"
@@ -477,14 +525,16 @@ export function buildPayTaxesRow(input: {
               ? "estimate"
               : null,
     cadHistory: input.cadHistory ?? null,
+    taxOffice: input.taxOffice ?? null,
     amountPaid,
     outstanding:
-      totalTax != null ? Math.max(0, Math.round((totalTax - amountPaid) * 100) / 100) : null,
+      office?.yearAmountDue ??
+      (totalTax != null ? Math.max(0, Math.round((totalTax - amountPaid) * 100) / 100) : null),
     dueDate: nextDue,
     dueDateIsStandard: !bill?.dueDate && !(!bill && property.paymentDueDate) && !nextInstallment,
     delinquency,
     status,
-    verified: bill?.statusSource === "county" && !!bill.verifiedAt,
+    verified: !!office || (bill?.statusSource === "county" && !!bill.verifiedAt),
     noticeAvailable,
     noticeIsNew,
     plans,

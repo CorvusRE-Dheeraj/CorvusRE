@@ -29,6 +29,7 @@ import directory from "../_shared/tx-cad-directory.json" with { type: "json" };
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { readOfficialSite, corpus } from "../_shared/web-retrieval.ts";
+import { fetchCountyTaxStatement } from "../_shared/tax-office.ts";
 import {
   collinHistory,
   CURRENT_TAX_YEAR,
@@ -43,15 +44,24 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
 const FRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
+// a tax office statement changes when a payment posts — re-read twice a day
+const STATEMENT_FRESH_MS = 12 * 60 * 60 * 1000;
+const STATEMENT_EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 
-type DirEntry = { county: string; appraisalDistrict: { website: string | null } | null };
-const counties = (directory as unknown as { counties: Record<string, DirEntry> }).counties;
+type DirEntry = {
+  county: string;
+  appraisalDistrict: { website: string | null } | null;
+};
+const counties = (
+  directory as unknown as { counties: Record<string, DirEntry> }
+).counties;
 
 function countyOf(cad: string | null): string | null {
   if (!cad) return null;
@@ -79,9 +89,14 @@ const allowedRecordHost = (u: URL, site: URL) =>
   /(^|\.)trueautomation\.com$/i.test(u.hostname);
 
 // The record page itself, for the standard Value History table.
-async function pageHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
+async function pageHistory(
+  cadUrl: string,
+): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
   const res = await fetch(cadUrl, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; CorvusPT/1.0)", Accept: "text/html" },
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; CorvusPT/1.0)",
+      Accept: "text/html",
+    },
     signal: AbortSignal.timeout(20_000),
     redirect: "follow",
   }).catch(() => null);
@@ -90,8 +105,14 @@ async function pageHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; s
   return years.length ? { years, sourceUrl: cadUrl } : null;
 }
 
-async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
-  const { pages } = await readOfficialSite(cadUrl, /history|values?|tax(es)?/i, { maxPages: 1, maxPdfs: 0 });
+async function aiHistory(
+  cadUrl: string,
+): Promise<{ years: TaxHistoryYear[]; sourceUrl: string } | null> {
+  const { pages } = await readOfficialSite(
+    cadUrl,
+    /history|values?|tax(es)?/i,
+    { maxPages: 1, maxPdfs: 0 },
+  );
   if (pages.length === 0) return null;
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
@@ -101,12 +122,28 @@ async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sou
     signal: AbortSignal.timeout(45_000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: AI_SYSTEM }] },
-      contents: [{ role: "user", parts: [{ text: pages.map((p) => `=== PAGE ${p.url} ===\n${p.text}`).join("\n\n") }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0 },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: pages
+                .map((p) => `=== PAGE ${p.url} ===\n${p.text}`)
+                .join("\n\n"),
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0,
+      },
     }),
   });
   if (!res.ok) throw new Error(`Gemini API error ${res.status}`);
-  const out = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const out = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
   let parsed: { years?: unknown } = {};
   try {
     parsed = JSON.parse(out.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
@@ -119,7 +156,9 @@ async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sou
     if (n == null) return null;
     const plain = String(n);
     const fixed = n.toFixed(2);
-    return digits.includes(plain) || digits.includes(fixed) || digits.includes(fixed.replace(/0+$/, "").replace(/\.$/, ""))
+    return digits.includes(plain) ||
+      digits.includes(fixed) ||
+      digits.includes(fixed.replace(/0+$/, "").replace(/\.$/, ""))
       ? n
       : null;
   };
@@ -127,7 +166,13 @@ async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sou
     .map((y): TaxHistoryYear | null => {
       const r = (y ?? {}) as Record<string, unknown>;
       const year = num(r.year);
-      if (!year || year < 1990 || year > CURRENT_TAX_YEAR + 1 || !digits.includes(String(year))) return null;
+      if (
+        !year ||
+        year < 1990 ||
+        year > CURRENT_TAX_YEAR + 1 ||
+        !digits.includes(String(year))
+      )
+        return null;
       const e: TaxHistoryYear = {
         year,
         marketValue: seen(num(r.marketValue)),
@@ -141,7 +186,9 @@ async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sou
       if (e.tax == null && e.rate != null && e.taxableValue != null) {
         e.tax = round2((e.taxableValue * e.rate) / 100);
       }
-      return e.marketValue ?? e.appraisedValue ?? e.taxableValue ?? e.tax ? e : null;
+      return (e.marketValue ?? e.appraisedValue ?? e.taxableValue ?? e.tax)
+        ? e
+        : null;
     })
     .filter((y): y is TaxHistoryYear => !!y)
     .sort((a, b) => b.year - a.year)
@@ -150,25 +197,34 @@ async function aiHistory(cadUrl: string): Promise<{ years: TaxHistoryYear[]; sou
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
   try {
-    const caller = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-    });
+    const caller = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      {
+        global: {
+          headers: { Authorization: req.headers.get("Authorization") ?? "" },
+        },
+      },
+    );
     const {
       data: { user },
     } = await caller.auth.getUser();
     if (!user) return json({ error: "unauthenticated" }, 401);
 
-    const { propertyId, cadUrl, refresh } = (await req.json()) as {
+    const { propertyId, cadUrl, refresh, kind } = (await req.json()) as {
       propertyId?: unknown;
       cadUrl?: unknown;
       refresh?: unknown;
+      kind?: unknown;
     };
-    if (typeof propertyId !== "string") return json({ error: "propertyId is required" }, 400);
+    if (typeof propertyId !== "string")
+      return json({ error: "propertyId is required" }, 400);
     const { data: prop } = await caller
       .from("properties")
       .select("id, user_id, cad, account_number")
@@ -176,7 +232,73 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!prop) return json({ error: "Property not found." }, 404);
 
-    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // {"kind":"statement"}: the county tax office's account page instead —
+    // see _shared/act-tax-office.ts and supabase/pt/tax-office-statements.sql.
+    if (kind === "statement") {
+      if (refresh !== true) {
+        const { data: cached } = await admin
+          .from("property_tax_statements")
+          .select("statement, source_url, retrieved_at, account_number")
+          .eq("property_id", prop.id)
+          .maybeSingle();
+        const maxAge = cached?.statement
+          ? STATEMENT_FRESH_MS
+          : STATEMENT_EMPTY_FRESH_MS;
+        if (
+          cached &&
+          cached.account_number === prop.account_number &&
+          Date.now() - new Date(cached.retrieved_at as string).getTime() <
+            maxAge
+        ) {
+          return json({
+            statement: cached.statement,
+            sourceUrl: cached.source_url,
+            retrievedAt: cached.retrieved_at,
+          });
+        }
+      }
+      const limited = await rateLimitUser(
+        user.id,
+        "property-tax-history",
+        120,
+        corsHeaders,
+      );
+      if (limited) return limited;
+      const county = countyOf(prop.cad);
+      const statement =
+        county && prop.account_number
+          ? await fetchCountyTaxStatement(
+              county,
+              prop.account_number.trim(),
+              25000,
+            ).catch((e) => {
+              console.error("tax office statement failed:", county, e);
+              return null;
+            })
+          : null;
+      const now = new Date().toISOString();
+      await admin.from("property_tax_statements").upsert(
+        {
+          property_id: prop.id,
+          user_id: prop.user_id,
+          account_number: prop.account_number,
+          statement,
+          source_url: statement?.links.account ?? null,
+          retrieved_at: now,
+        },
+        { onConflict: "property_id" },
+      );
+      return json({
+        statement,
+        sourceUrl: statement?.links.account ?? null,
+        retrievedAt: now,
+      });
+    }
     if (refresh !== true) {
       const { data: cached } = await admin
         .from("property_tax_history")
@@ -184,38 +306,63 @@ Deno.serve(async (req: Request) => {
         .eq("property_id", prop.id)
         .maybeSingle();
       // an empty cached result is retried after a day, not held for a month
-      const maxAge = Array.isArray(cached?.years) && cached.years.length === 0 ? EMPTY_FRESH_MS : FRESH_MS;
+      const maxAge =
+        Array.isArray(cached?.years) && cached.years.length === 0
+          ? EMPTY_FRESH_MS
+          : FRESH_MS;
       if (
         cached &&
         cached.account_number === prop.account_number &&
         Date.now() - new Date(cached.retrieved_at as string).getTime() < maxAge
       ) {
-        return json({ years: cached.years, source: cached.source, sourceUrl: cached.source_url, retrievedAt: cached.retrieved_at });
+        return json({
+          years: cached.years,
+          source: cached.source,
+          sourceUrl: cached.source_url,
+          retrievedAt: cached.retrieved_at,
+        });
       }
     }
-    const limited = await rateLimitUser(user.id, "property-tax-history", 120, corsHeaders);
+    const limited = await rateLimitUser(
+      user.id,
+      "property-tax-history",
+      120,
+      corsHeaders,
+    );
     if (limited) return limited;
 
     const county = countyOf(prop.cad);
     let result: { years: TaxHistoryYear[]; sourceUrl: string } | null = null;
     let source: "collin_open_data" | "cad_api" | "cad_page" | "none" = "none";
-    const office = county ? TRUEPRODIGY_OFFICE[county.toLowerCase()] : undefined;
+    const office = county
+      ? TRUEPRODIGY_OFFICE[county.toLowerCase()]
+      : undefined;
     if (county?.toLowerCase() === "collin" && prop.account_number) {
       result = await collinHistory(prop.account_number.trim());
       source = "collin_open_data";
     } else if (office && prop.account_number) {
-      result = await trueProdigyHistory(office, prop.account_number.trim()).catch(() => null);
+      result = await trueProdigyHistory(
+        office,
+        prop.account_number.trim(),
+      ).catch(() => null);
       if (result?.years.length) source = "cad_api";
       else result = null;
     }
     if (!result && typeof cadUrl === "string" && county) {
-      const entry = Object.values(counties).find((c) => c.county.toLowerCase() === county.toLowerCase());
+      const entry = Object.values(counties).find(
+        (c) => c.county.toLowerCase() === county.toLowerCase(),
+      );
       const site = entry?.appraisalDistrict?.website;
       let ok = false;
       try {
         const u = new URL(cadUrl);
-        ok = !!site && (u.protocol === "https:" || u.protocol === "http:") &&
-          allowedRecordHost(u, new URL(site.startsWith("http") ? site : `https://${site}`));
+        ok =
+          !!site &&
+          (u.protocol === "https:" || u.protocol === "http:") &&
+          allowedRecordHost(
+            u,
+            new URL(site.startsWith("http") ? site : `https://${site}`),
+          );
       } catch {
         ok = false;
       }
@@ -236,10 +383,20 @@ Deno.serve(async (req: Request) => {
       source_url: result?.sourceUrl ?? null,
       retrieved_at: now,
     };
-    await admin.from("property_tax_history").upsert(row, { onConflict: "property_id" });
-    return json({ years: row.years, source, sourceUrl: row.source_url, retrievedAt: now });
+    await admin
+      .from("property_tax_history")
+      .upsert(row, { onConflict: "property_id" });
+    return json({
+      years: row.years,
+      source,
+      sourceUrl: row.source_url,
+      retrievedAt: now,
+    });
   } catch (err) {
     console.error("property-tax-history failed:", err);
-    return json({ error: err instanceof Error ? err.message : "unknown error" }, 500);
+    return json(
+      { error: err instanceof Error ? err.message : "unknown error" },
+      500,
+    );
   }
 });

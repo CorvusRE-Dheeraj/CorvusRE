@@ -22,7 +22,10 @@ test("pricing page shows both plans monthly and yearly, with the commitment expl
   // Monthly is shown first.
   await expect(main.getByText("$199", { exact: true })).toBeVisible();
   await expect(main.getByText("$299", { exact: true })).toBeVisible();
-  await expect(main.getByText("12-month plan").first()).toBeVisible();
+  await expect(main.getByText("12-Month Subscription Commitment").first()).toBeVisible();
+  // The commitment terms are on the page, unfolded, before anyone pays.
+  await expect(main.getByText(/mandatory 12-month commitment/)).toBeVisible();
+  await expect(main.getByText(/Early cancellation is not permitted/)).toBeVisible();
 
   // Yearly: 50% off the first year, then the full year price.
   await page.getByRole("radio", { name: /Pay yearly/ }).click();
