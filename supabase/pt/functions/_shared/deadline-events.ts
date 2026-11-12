@@ -37,7 +37,8 @@ export type DeadlineEvent = {
 const CURRENT_TAX_YEAR = 2026;
 function standardTaxDueDate(taxYear: number): string {
   const d = new Date(Date.UTC(taxYear + 1, 0, 31));
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+    d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -57,12 +58,16 @@ export function streetOnly(address: string): string {
     : street;
 }
 
-const short = (what: string, address: string) => `${what} — ${streetOnly(address)}`;
+const short = (what: string, address: string) =>
+  `${what} — ${streetOnly(address)}`;
 
 // "Property base data updated for <address> — total assessed value …" ->
 // "Property base data updated": the headline of a note, without its details.
 function noteHeadline(note: string): string {
-  let head = note.split(/ — |: /)[0].replace(/ for .*\d.*$/, "").trim();
+  let head = note
+    .split(/ — |: /)[0]
+    .replace(/ for .*\d.*$/, "")
+    .trim();
   if (head.length > 60) head = head.slice(0, 57).replace(/\s+\S*$/, "") + "…";
   return head;
 }
@@ -87,40 +92,53 @@ export async function buildDeadlineEvents(
   userId: string,
 ): Promise<DeadlineEvent[]> {
   const todayIso = new Date().toISOString().slice(0, 10);
-  const [{ data: properties }, { data: protests }, { data: taxBills }, { data: bppAccounts }, { data: reminders }] =
-    await Promise.all([
-      admin
-        .from("properties")
-        .select("id, address, protest_deadline, payment_due_date, tax_amount_due, paid_at, tax_year")
-        .eq("user_id", userId),
-      admin
-        .from("protests")
-        .select(
-          "id, property_id, bpp_account_id, status, hearing_date, hearing_time, hearing_location, arb_decision_date, informal_status, informal_review_date, informal_review_time, tax_year",
-        )
-        .eq("user_id", userId),
-      admin
-        .from("tax_bills")
-        .select(
-          "id, property_id, tax_year, amount_due, due_date, penalty_date, paid_at, status, installments, refund_amount, refund_expected_at, refund_received_at",
-        )
-        .eq("user_id", userId),
-      admin
-        .from("bpp_accounts")
-        .select(
-          "id, business_name, protest_deadline, rendered_value, notice_value, rendition_filed_at",
-        )
-        .eq("user_id", userId),
-      admin
-        .from("user_reminders")
-        .select("id, property_id, remind_on, note, done")
-        .eq("user_id", userId),
-    ]);
+  const [
+    { data: properties },
+    { data: protests },
+    { data: taxBills },
+    { data: bppAccounts },
+    { data: reminders },
+  ] = await Promise.all([
+    admin
+      .from("properties")
+      .select(
+        "id, address, protest_deadline, payment_due_date, tax_amount_due, paid_at, tax_year",
+      )
+      .eq("user_id", userId),
+    admin
+      .from("protests")
+      .select(
+        "id, property_id, bpp_account_id, status, hearing_date, hearing_time, hearing_location, arb_decision_date, informal_status, informal_review_date, informal_review_time, tax_year, escalation_path, arbitration_filed_at, arbitration, court_appeal",
+      )
+      .eq("user_id", userId),
+    admin
+      .from("tax_bills")
+      .select(
+        "id, property_id, tax_year, amount_due, due_date, penalty_date, paid_at, status, installments, refund_amount, refund_expected_at, refund_received_at",
+      )
+      .eq("user_id", userId),
+    admin
+      .from("bpp_accounts")
+      .select(
+        "id, business_name, protest_deadline, rendered_value, notice_value, rendition_filed_at",
+      )
+      .eq("user_id", userId),
+    admin
+      .from("user_reminders")
+      .select("id, property_id, remind_on, note, done")
+      .eq("user_id", userId),
+  ]);
 
   type Row = Record<string, unknown>;
-  const propertyById = new Map(((properties ?? []) as Row[]).map((p) => [p.id as string, p]));
-  const bppAccountById = new Map(((bppAccounts ?? []) as Row[]).map((a) => [a.id as string, a]));
-  const taxBillPropertyIds = new Set(((taxBills ?? []) as Row[]).map((b) => b.property_id as string));
+  const propertyById = new Map(
+    ((properties ?? []) as Row[]).map((p) => [p.id as string, p]),
+  );
+  const bppAccountById = new Map(
+    ((bppAccounts ?? []) as Row[]).map((a) => [a.id as string, a]),
+  );
+  const taxBillPropertyIds = new Set(
+    ((taxBills ?? []) as Row[]).map((b) => b.property_id as string),
+  );
   const events: DeadlineEvent[] = [];
 
   for (const p of (properties ?? []) as Row[]) {
@@ -141,7 +159,8 @@ export async function buildDeadlineEvents(
     // in src/lib/tax-calendar.ts), so every property gets payment reminders.
     if (
       !taxBillPropertyIds.has(id) &&
-      (p.payment_due_date || ((p.tax_year as number | null) ?? CURRENT_TAX_YEAR) >= CURRENT_TAX_YEAR)
+      (p.payment_due_date ||
+        ((p.tax_year as number | null) ?? CURRENT_TAX_YEAR) >= CURRENT_TAX_YEAR)
     ) {
       const standard = !p.payment_due_date;
       const date = standard
@@ -165,8 +184,10 @@ export async function buildDeadlineEvents(
     // in schema.sql), never both — label whichever one this is instead of
     // falling back to a generic "your property" for a BPP case.
     const address = pr.property_id
-      ? ((propertyById.get(pr.property_id as string)?.address as string) ?? "your property")
-      : ((bppAccountById.get(pr.bpp_account_id as string)?.business_name as string) ?? "your account");
+      ? ((propertyById.get(pr.property_id as string)?.address as string) ??
+        "your property")
+      : ((bppAccountById.get(pr.bpp_account_id as string)
+          ?.business_name as string) ?? "your account");
     if (pr.informal_status === "scheduled" && pr.informal_review_date) {
       const date = toIsoDate(pr.informal_review_date as string);
       events.push({
@@ -177,6 +198,89 @@ export async function buildDeadlineEvents(
         time: (pr.informal_review_time as string | null) ?? null,
         amount: null,
         resolved: isPast(date, todayIso),
+      });
+    }
+    // Post-ARB: arbitration and court-appeal dates (apps/pt/src/lib/arbitration-case.ts,
+    // court-appeal.ts). Each 60-day filing deadline runs from the day the ARB
+    // order was received, else the order date.
+    const arb = (pr.arbitration ?? {}) as Row;
+    const court = (pr.court_appeal ?? {}) as Row;
+    const plus60 = (from: unknown) => {
+      if (typeof from !== "string" || !/^d{4}-d{2}-d{2}/.test(from))
+        return null;
+      const d = new Date(`${from.slice(0, 10)}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 60);
+      return d.toISOString().slice(0, 10);
+    };
+    const closed = pr.status === "resolved";
+    if (pr.escalation_path === "arbitration" && !closed) {
+      const due = plus60(arb.orderReceivedDate ?? pr.arb_decision_date);
+      if (due)
+        events.push({
+          key: `arbitration-deadline:${id}`,
+          date: due,
+          title: `Binding arbitration request due — ${address}`,
+          subject: short("Arbitration request due", address),
+          amount: null,
+          resolved:
+            !!(arb.submittedAt || pr.arbitration_filed_at) ||
+            isPast(due, todayIso),
+        });
+      const settlement = (arb.settlement ?? null) as Row | null;
+      if (settlement?.endDate)
+        events.push({
+          key: `arbitration-settlement:${id}`,
+          date: toIsoDate(settlement.endDate as string),
+          title: `Arbitration settlement period ends — ${address}`,
+          subject: short("Arbitration settlement period ends", address),
+          amount: null,
+          resolved:
+            !!settlement.withdrawnAt ||
+            settlement.status === "settled" ||
+            isPast(settlement.endDate as string, todayIso),
+        });
+      const arbitrator = (arb.arbitrator ?? null) as Row | null;
+      if (arbitrator?.hearingDate)
+        events.push({
+          key: `arbitration-hearing:${id}`,
+          date: toIsoDate(arbitrator.hearingDate as string),
+          time: (arbitrator.hearingTime as string | null) ?? null,
+          title: `Arbitration hearing — ${address}`,
+          subject: short("Arbitration hearing", address),
+          amount: null,
+          resolved:
+            !!arb.award || isPast(arbitrator.hearingDate as string, todayIso),
+        });
+    }
+    if (pr.escalation_path === "appeal" && !closed) {
+      const due = plus60(court.orderReceivedDate ?? pr.arb_decision_date);
+      if (due)
+        events.push({
+          key: `court-appeal-deadline:${id}`,
+          date: due,
+          title: `Court appeal petition due — ${address}`,
+          subject: short("Court appeal petition due", address),
+          amount: null,
+          resolved: !!court.petitionFiledAt || isPast(due, todayIso),
+        });
+      const updates = Array.isArray(court.updates)
+        ? (court.updates as Row[])
+        : [];
+      updates.forEach((u, i) => {
+        const dls = Array.isArray(u.deadlines)
+          ? (u.deadlines as { date: string; label: string }[])
+          : [];
+        dls.forEach((dl, j) => {
+          if (!dl?.date) return;
+          events.push({
+            key: `court-deadline:${id}:${i}:${j}`,
+            date: toIsoDate(dl.date),
+            title: `${dl.label} — ${address}`,
+            subject: short(dl.label.slice(0, 50), address),
+            amount: null,
+            resolved: isPast(dl.date, todayIso),
+          });
+        });
       });
     }
     if (pr.status === "hearing_scheduled" && pr.hearing_date) {
@@ -199,13 +303,19 @@ export async function buildDeadlineEvents(
   for (const bill of (taxBills ?? []) as Row[]) {
     const id = bill.id as string;
     const address =
-      (propertyById.get(bill.property_id as string)?.address as string) ?? "your property";
+      (propertyById.get(bill.property_id as string)?.address as string) ??
+      "your property";
     const yearLabel = bill.tax_year ? ` (${bill.tax_year})` : "";
     const billPaid = !!bill.paid_at || bill.status === "paid";
     // On an installment plan (Pay Taxes tab) each installment is its own
     // deadline, reminded separately; the single due date no longer applies.
     const installments = Array.isArray(bill.installments)
-      ? (bill.installments as { label: string; dueDate: string; amount: number | null; paidAt?: string | null }[])
+      ? (bill.installments as {
+          label: string;
+          dueDate: string;
+          amount: number | null;
+          paidAt?: string | null;
+        }[])
       : [];
     for (const inst of installments) {
       if (!inst?.dueDate) continue;
@@ -274,14 +384,18 @@ export async function buildDeadlineEvents(
   for (const r of (reminders ?? []) as Row[]) {
     const id = r.id as string;
     const propertyId = r.property_id as string | null;
-    const label = propertyId ? (propertyById.get(propertyId)?.address as string) : null;
+    const label = propertyId
+      ? (propertyById.get(propertyId)?.address as string)
+      : null;
     const note = (r.note as string) ?? "";
     events.push({
       key: `reminder:${id}`,
       date: toIsoDate(r.remind_on as string),
       // a system note already names the property — don't repeat the address
       title:
-        label && !note.toLowerCase().includes(label.toLowerCase()) ? `${note} (${label})` : note,
+        label && !note.toLowerCase().includes(label.toLowerCase())
+          ? `${note} (${label})`
+          : note,
       subject: label ? short(noteHeadline(note), label) : noteHeadline(note),
       isReminder: true,
       amount: null,
