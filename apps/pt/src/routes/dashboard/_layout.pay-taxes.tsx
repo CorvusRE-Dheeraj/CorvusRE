@@ -55,6 +55,7 @@ import { ImportPropertiesModal } from "@/components/ImportPropertiesModal";
 import { AddBppModal, BppTaxSection } from "@/components/BppTaxSection";
 import { listBppAccounts, type BppAccountRecord } from "@/lib/bpp-accounts";
 import { TaxOfficeStatementPanel } from "@/components/TaxOfficeStatementPanel";
+import { expandByCounty, sourceIdOf, type PayProperty } from "@/lib/pay-taxes-parts";
 import {
   fetchTaxStatement,
   isStatementFresh,
@@ -239,11 +240,20 @@ function PayTaxes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // One entry per county for a property that pays taxes in two
+  // (lib/pay-taxes-parts.ts); every other property is one entry as before.
+  const payProperties = useMemo(() => properties.flatMap(expandByCounty), [properties]);
+
   // Fetch history for properties with nothing fresh cached, three at a time.
+  // (Not for a two-county property's entries: the appraisal-district history
+  // is per county and the saved record names both.)
   useEffect(() => {
     if (!historyLoaded) return;
     const todo = properties.filter(
-      (p) => !historyTried.current.has(p.id) && !isFresh(taxHistory.get(p.id), p.accountNumber),
+      (p) =>
+        expandByCounty(p).length === 1 &&
+        !historyTried.current.has(p.id) &&
+        !isFresh(taxHistory.get(p.id), p.accountNumber),
     );
     if (todo.length === 0) return;
     for (const p of todo) historyTried.current.add(p.id);
@@ -265,10 +275,11 @@ function PayTaxes() {
     void Promise.all([worker(), worker(), worker()]);
   }, [properties, taxHistory, historyLoaded]);
 
-  async function loadStatement(p: PropertyRecord, refresh: boolean) {
+  async function loadStatement(p: PayProperty, refresh: boolean) {
     setStatementBusy((s) => new Set(s).add(p.id));
     try {
-      const st = await fetchTaxStatement(p.id, p.accountNumber, refresh);
+      // p.id is the statement key ("<id>" or "<id>~<County>")
+      const st = await fetchTaxStatement(p.sourceId, p.sourceAccountNumber, refresh, p.countyPart);
       if (mounted.current) setStatements((m) => new Map(m).set(p.id, st));
     } catch (err) {
       if (refresh) toast.error(getErrorMessage(err, "Couldn't reach the county tax office."));
@@ -286,12 +297,12 @@ function PayTaxes() {
   // saved, two at a time (the county sites are slow and shared).
   useEffect(() => {
     if (!statementsLoaded) return;
-    const todo = properties.filter(
+    const todo = payProperties.filter(
       (p) =>
         !!p.accountNumber &&
         taxOfficeConnected(p.cad) &&
         !statementTried.current.has(p.id) &&
-        !isStatementFresh(statements.get(p.id), p.accountNumber),
+        !isStatementFresh(statements.get(p.id), p.sourceAccountNumber),
     );
     if (todo.length === 0) return;
     for (const p of todo) statementTried.current.add(p.id);
@@ -300,12 +311,12 @@ function PayTaxes() {
       for (let p = queue.shift(); p; p = queue.shift()) await loadStatement(p, false);
     };
     void Promise.all([worker(), worker()]);
-  }, [properties, statements, statementsLoaded]);
+  }, [payProperties, statements, statementsLoaded]);
 
   const today = todayIso();
   const allRows = useMemo(
     () =>
-      properties.map((property) =>
+      payProperties.map((property) =>
         buildPayTaxesRow({
           property,
           bills,
@@ -314,11 +325,11 @@ function PayTaxes() {
           protests,
           todayIso: today,
           taxYear: filters.year ? Number(filters.year) : undefined,
-          cadHistory: taxHistory.get(property.id) ?? null,
+          cadHistory: property.countyPart ? null : (taxHistory.get(property.id) ?? null),
           taxOffice: statements.get(property.id)?.statement ?? null,
         }),
       ),
-    [properties, bills, plans, settings, protests, today, filters.year, taxHistory, statements],
+    [payProperties, bills, plans, settings, protests, today, filters.year, taxHistory, statements],
   );
   const rows = allRows
     .filter((r) => !filters.county || r.county === filters.county)
@@ -509,7 +520,7 @@ function PayTaxes() {
           }
           statement={statements.get(openRow.property.id) ?? null}
           statementLoading={statementBusy.has(openRow.property.id)}
-          onRefreshStatement={() => void loadStatement(openRow.property, true)}
+          onRefreshStatement={() => void loadStatement(openRow.property as PayProperty, true)}
         />
       )}
     </div>
@@ -1484,7 +1495,7 @@ function PropertyTaxDetail({
           </div>
         ) : (
           <AddBillForm
-            propertyId={property.id}
+            propertyId={sourceIdOf(property)}
             userId={userId}
             taxYear={row.taxYear}
             onSaved={onChanged}
@@ -1575,7 +1586,12 @@ function PropertyTaxDetail({
 
       {bill && (
         <Section title="Update payment status" icon={<BadgeCheck className="h-4 w-4" />}>
-          <StatusForm bill={bill} propertyId={property.id} userId={userId} onSaved={onChanged} />
+          <StatusForm
+            bill={bill}
+            propertyId={sourceIdOf(property)}
+            userId={userId}
+            onSaved={onChanged}
+          />
         </Section>
       )}
 
@@ -1606,7 +1622,7 @@ function PropertyTaxDetail({
             </p>
             <Link
               to="/dashboard/case"
-              search={{ propertyId: property.id }}
+              search={{ propertyId: sourceIdOf(property) }}
               className="mt-1 inline-block text-accent underline underline-offset-2"
             >
               View case

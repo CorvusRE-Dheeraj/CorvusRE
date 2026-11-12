@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   resolveDateInput,
   mmddyyyyToIso,
@@ -46,6 +46,8 @@ export function PdfFormEditor({
   signature,
   onSignatureChange,
   onConfirmSign,
+  onUploadSigned,
+  onDownloadSigned,
   submitting,
   expectedSignerName,
   onClose,
@@ -75,6 +77,11 @@ export function PdfFormEditor({
   signature: SignatureValue | null;
   onSignatureChange: (v: SignatureValue | null) => void;
   onConfirmSign: () => void;
+  // Signed on paper instead: the scanned/photographed signed copy (PDF or
+  // image). Counts as signed, like an e-signature.
+  onUploadSigned?: (file: File) => void | Promise<void>;
+  // Once signed, opens the copy that was actually signed.
+  onDownloadSigned?: () => void;
   submitting: boolean;
   expectedSignerName?: string;
   onClose: () => void;
@@ -107,6 +114,31 @@ export function PdfFormEditor({
 
   const [view, setView] = useState<"edit" | "review" | "signed">("edit");
   const [reviewed, setReviewed] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadButton = onUploadSigned ? (
+    <>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void onUploadSigned(file);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInput.current?.click()}
+        disabled={submitting}
+        title="Signed it by hand? Upload a scan or photo of the signed form"
+        className="btn-outline text-sm disabled:opacity-60"
+      >
+        {submitting ? "Uploading…" : "Upload Signed Copy"}
+      </button>
+    </>
+  ) : null;
 
   // Reacts to a REAL sign completing (signedAt going from null to a real
   // timestamp) — also fires on mount if this form was already signed in an
@@ -137,7 +169,7 @@ export function PdfFormEditor({
             caseStatus={caseStatus}
             onMarkFiled={onMarkFiled}
             markingFiled={markingFiled}
-            onDownload={onDownload}
+            onDownload={onDownloadSigned ?? onDownload}
             downloading={downloading}
             onMakeChanges={() => setView("edit")}
           />
@@ -212,6 +244,7 @@ export function PdfFormEditor({
               <button onClick={() => setView("edit")} className="btn-outline text-sm">
                 Go Back &amp; Edit
               </button>
+              {uploadButton}
               {allowSigning && (
                 <button
                   onClick={onOpenSigning}
@@ -264,9 +297,17 @@ export function PdfFormEditor({
 
           {!complete && (
             <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-              Complete these required fields before you can download or continue:{" "}
-              {missing.join(", ")}.
+              Complete these required fields to sign here: {missing.join(", ")}. You can still
+              download the form and fill them in by hand.
             </div>
+          )}
+          {onUploadSigned && (
+            <p className="mt-3 rounded-md bg-secondary/50 p-3 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Prefer to sign on paper?</span>{" "}
+              Download the PDF, print and sign it, then upload a scan or photo with{" "}
+              <span className="font-medium">Upload Signed Copy</span>. It&apos;s saved to your
+              Documents and counts as signed — no online signature needed.
+            </p>
           )}
 
           <div className="mt-6 flex flex-wrap justify-end gap-2">
@@ -282,12 +323,17 @@ export function PdfFormEditor({
             </button>
             <button
               onClick={onDownload}
-              disabled={downloading || !complete}
-              title={!complete ? "Complete all required fields (marked *) first" : undefined}
+              disabled={downloading}
+              title={
+                !complete
+                  ? "Fields still empty can be filled in by hand on the printout"
+                  : undefined
+              }
               className="btn-outline text-sm disabled:opacity-60"
             >
               {downloading ? "Generating…" : "Download PDF"}
             </button>
+            {uploadButton}
             {allowSigning && (
               <button
                 onClick={() => setView("review")}

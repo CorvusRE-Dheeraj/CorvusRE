@@ -8,18 +8,21 @@ import { filingSubmissionStatus } from "./filing-submission-status";
 // step, so this is derived purely from facts the case already records —
 // never a separately tracked "done" flag that could drift.
 //
-//   Case Readiness → File Protest → Confirm Filing → Request CAD Evidence →
-//   Informal → ARB → Post ARB → Appeal Decision → Close Case
+//   Case Readiness → File Protest → Request CAD Evidence → Informal →
+//   ARB Hearing → Post ARB Options → Appeal Further → Close Case
+//
+// File Protest covers delivering the Notice of Protest AND the county
+// confirming it received it (there's no separate Confirm Filing step since
+// 2026-11-12); its next action moves from "file it" to "confirm it".
 
 export const PIPELINE_STAGES = [
   { id: "readiness", label: "Case Readiness" },
   { id: "file", label: "File Protest" },
-  { id: "confirm", label: "Confirm Filing" },
   { id: "cad_evidence", label: "Request CAD Evidence" },
   { id: "informal", label: "Informal" },
-  { id: "arb", label: "ARB" },
-  { id: "decision", label: "Post ARB" },
-  { id: "appeal", label: "Appeal Decision" },
+  { id: "arb", label: "ARB Hearing" },
+  { id: "decision", label: "Post ARB Options" },
+  { id: "appeal", label: "Appeal Further" },
   { id: "close", label: "Close Case" },
 ] as const;
 export type StageId = (typeof PIPELINE_STAGES)[number]["id"];
@@ -137,7 +140,8 @@ export function casePipeline(input: PipelineInput): Pipeline {
   // file, so receiving it proves the filing even if delivery and the county's
   // confirmation were never recorded here.
   const districtHasProtest = !!p?.cadEvidenceReceivedAt;
-  const done: Record<StageId, boolean> = {
+  // "confirm" isn't a step on the road any more, but File Protest needs it.
+  const done: Record<StageId | "confirm", boolean> = {
     readiness: !!p && (!!p.corvusGuidanceAckAt || rank >= 1 || !!notice?.signedAt),
     file: rank >= 1 || !!notice?.submittedAt || districtHasProtest,
     confirm: rank >= 1 || filing === "confirmed" || districtHasProtest,
@@ -156,8 +160,12 @@ export function casePipeline(input: PipelineInput): Pipeline {
       !!p?.courtAppeal?.petitionFiledAt,
     close: resolved,
   };
-  // The county's filing problems reopen Confirm Filing even after "filed".
+  // The county's filing problems reopen File Protest even after "filed".
   if (filing === "additional_requested" || filing === "rejected") done.confirm = false;
+  // Delivered but not yet confirmed by the county: File Protest stays open,
+  // asking for the confirmation.
+  const awaitingConfirmation = done.file && !done.confirm;
+  done.file = done.file && done.confirm;
 
   const skipped: Partial<Record<StageId, boolean>> = {
     // Too late to matter once the hearing is behind the case, or there won't be one.
@@ -211,7 +219,8 @@ export function casePipeline(input: PipelineInput): Pipeline {
   const deadline = day(input.protestDeadline);
 
   let next: NextAction;
-  switch (current) {
+  // File Protest delivered but unconfirmed runs the confirmation actions
+  switch (current === "file" && awaitingConfirmation ? "confirm" : current) {
     case null:
       next = action({
         title: "Case closed — nothing left to do",

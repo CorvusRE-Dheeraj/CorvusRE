@@ -138,9 +138,9 @@ export function NextRequiredAction({
   );
 }
 
-// The nine-stage case road: Case Readiness → … → Close Case. In View Case it's
+// The eight-stage case road: Case Readiness → … → Close Case. In View Case it's
 // also the navigation: click a step to open it (onSelect), the open step is
-// outlined (openStage), and Appeal Decision carries its two paths underneath.
+// outlined (openStage), and Appeal Further carries its two paths underneath.
 export type AppealPath = "arbitration" | "court";
 
 // Steps an owner may skip — marked "(Optional)" under the label. An informal

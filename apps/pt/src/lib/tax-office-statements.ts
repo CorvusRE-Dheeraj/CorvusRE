@@ -19,15 +19,23 @@ export type {
 // property-tax-history ({"kind":"statement"}) and kept in
 // public.property_tax_statements; refreshed after 12 hours.
 
+// A property paying taxes in two counties has one statement per county —
+// keyed "<propertyId>~<County>"; an ordinary property is keyed by its id.
+export const statementKey = (propertyId: string, county?: string | null) =>
+  county ? `${propertyId}~${county}` : propertyId;
+
 export type SavedStatement = {
   propertyId: string;
+  // the county part ("" for a single-county property)
+  part?: string;
   accountNumber: string | null;
   statement: TaxOfficeStatement | null;
   retrievedAt: string;
 };
 
 const FRESH_MS = 12 * 60 * 60 * 1000;
-const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
+// an empty read is usually the county site not answering — try again soon
+const EMPTY_FRESH_MS = 60 * 60 * 1000;
 
 // Counties whose tax office CorvusPT reads (supabase/pt/functions/_shared/tax-office.ts).
 export function taxOfficeConnected(cad: string | null | undefined): boolean {
@@ -46,17 +54,19 @@ export async function listTaxStatements(
   if (propertyIds.length === 0) return out;
   const { data, error } = await supabase
     .from("property_tax_statements")
-    .select("property_id, account_number, statement, retrieved_at")
+    .select("property_id, part, account_number, statement, retrieved_at")
     .in("property_id", propertyIds);
   if (error || !data) return out;
   for (const r of data as {
     property_id: string;
+    part: string | null;
     account_number: string | null;
     statement: TaxOfficeStatement | null;
     retrieved_at: string;
   }[])
-    out.set(r.property_id, {
+    out.set(statementKey(r.property_id, r.part), {
       propertyId: r.property_id,
+      part: r.part ?? "",
       accountNumber: r.account_number,
       statement: r.statement,
       retrievedAt: r.retrieved_at,
@@ -78,10 +88,23 @@ export async function fetchTaxStatement(
   propertyId: string,
   accountNumber: string | null,
   refresh = false,
+  // one county of a two-county property
+  county?: string | null,
 ): Promise<SavedStatement> {
   const r = await invokeEdgeFunction<{
     statement: TaxOfficeStatement | null;
     retrievedAt: string;
-  }>("property-tax-history", { propertyId, kind: "statement", refresh });
-  return { propertyId, accountNumber, statement: r.statement ?? null, retrievedAt: r.retrievedAt };
+  }>("property-tax-history", {
+    propertyId,
+    kind: "statement",
+    refresh,
+    ...(county ? { county } : {}),
+  });
+  return {
+    propertyId,
+    part: county ?? "",
+    accountNumber,
+    statement: r.statement ?? null,
+    retrievedAt: r.retrievedAt,
+  };
 }

@@ -11,6 +11,7 @@ import { evaluateEscalation } from "@/lib/escalation-eval";
 import { evaluateArbitrationEligibility } from "@/lib/arbitration";
 import { localTodayIso } from "@/lib/case-pipeline";
 import { postHearing, type PostHearing } from "@/lib/post-hearing";
+import { PostArbOptions } from "@/components/case/post-arb-options";
 
 const usd = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
 const fmtDate = (iso: string) =>
@@ -42,11 +43,15 @@ export function PostHearingDecision({
   property,
   protest,
   evidenceDocumentCount,
+  onUpdate,
+  onChosen,
 }: {
   userId: string;
   property: PropertyRecord;
   protest: ProtestRecord;
   evidenceDocumentCount: number;
+  onUpdate?: (patch: Partial<ProtestRecord>) => void;
+  onChosen?: (path: "appeal" | "arbitration") => void;
 }) {
   const [data, setData] = useState<{
     bills: TaxBillRecord[];
@@ -182,8 +187,8 @@ export function PostHearingDecision({
         {/* Appeal deadline, arbitration, economics */}
         <div className="lg:col-span-2">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Scale className="h-3.5 w-3.5" aria-hidden="true" /> Further appeal — deadlines and
-            economics
+            <Scale className="h-3.5 w-3.5" aria-hidden="true" /> Further appeal — options after the
+            ARB
           </h3>
           {ph.arbitration && (
             <p className="mt-1 text-sm">
@@ -191,61 +196,16 @@ export function PostHearingDecision({
               <span className="text-muted-foreground">{ph.arbitration.reasons[0]}</span>
             </p>
           )}
-          {ph.routes.length > 0 ? (
-            <div className="mt-2 overflow-x-auto rounded-md border border-border">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="bg-secondary/60 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="p-2">Route</th>
-                    <th className="p-2">Deadline</th>
-                    <th className="p-2 text-right">Up-front cost</th>
-                    <th className="p-2 text-right">Could save / yr</th>
-                    <th className="p-2 text-right">Return</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ph.routes.map((r) => (
-                    <tr
-                      key={r.id}
-                      className={`border-t border-border align-top ${r.eligible ? "" : "text-muted-foreground"}`}
-                    >
-                      <td className="p-2">
-                        <div className="font-medium">
-                          {r.title}
-                          {r.recommended && r.eligible && (
-                            <span className="ml-1.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                              Strongest by Corvus AI&apos;s numbers
-                            </span>
-                          )}
-                        </div>
-                        {!r.eligible && <div className="text-xs">{r.basis}</div>}
-                      </td>
-                      <td className="p-2 text-xs">
-                        {r.deadline
-                          ? `${fmtDate(r.deadline)}${r.daysLeft != null ? ` · ${r.daysLeft < 0 ? "passed" : `${r.daysLeft} days`}` : ""}`
-                          : "60 days from the order"}
-                      </td>
-                      <td className="p-2 text-right tabular-nums">
-                        {r.cost
-                          ? r.cost.min === r.cost.max
-                            ? usd(r.cost.min)
-                            : `${usd(r.cost.min)}–${usd(r.cost.max)}`
-                          : "—"}
-                      </td>
-                      <td className="p-2 text-right tabular-nums">
-                        {r.potentialSavings != null ? usd(r.potentialSavings) : "—"}
-                      </td>
-                      <td className="p-2 text-right tabular-nums">
-                        {r.roi != null ? `${r.roi}x` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground">No appeal route applies.</p>
-          )}
+          {/* Every post-ARB option in one table — hover / click for detail,
+              Corvus AI's assessment, county guidelines (case/post-arb-options.tsx) */}
+          <PostArbOptions
+            property={property}
+            protest={protest}
+            evidenceDocumentCount={evidenceDocumentCount}
+            supportableLow={data.supportableLow}
+            onUpdate={onUpdate}
+            onChosen={onChosen}
+          />
         </div>
 
         {/* Documents required */}

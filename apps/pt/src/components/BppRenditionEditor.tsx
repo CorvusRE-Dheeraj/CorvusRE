@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Modal } from "@/components/Modal";
 import { SignaturePad, type SignatureValue } from "@/components/SignaturePad";
@@ -14,7 +14,13 @@ import {
   getIncompleteRequiredLabels,
   type FieldValues,
 } from "@/lib/protest-documents";
-import { signRendition, markRenditionFiled, type BppAccountRecord } from "@/lib/bpp-accounts";
+import {
+  signRendition,
+  markRenditionFiled,
+  recordRenditionPaperSigned,
+  signedRenditionUrl,
+  type BppAccountRecord,
+} from "@/lib/bpp-accounts";
 import { getErrorMessage } from "@/lib/error-message";
 import { newTrackingId } from "@/lib/signing-packets";
 import { SigningIdBadge } from "@/components/SigningIdBadge";
@@ -48,6 +54,7 @@ export function BppRenditionEditor({
   const [downloading, setDownloading] = useState(false);
   const [signing, setSigning] = useState(false);
   const [markingFiled, setMarkingFiled] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   if (!open) return null;
 
@@ -92,9 +99,15 @@ export function BppRenditionEditor({
         new Date(),
         trackingId,
       );
-      const updated = await signRendition(account.id, signature, trackingId);
+      const fileName = `Form-50-144-signed-${account.businessName || "BPP"}.pdf`;
+      const updated = await signRendition(
+        account.id,
+        signature,
+        trackingId,
+        new File([bytes as BlobPart], fileName, { type: "application/pdf" }),
+      );
       onUpdate(updated);
-      downloadPdf(bytes, `Form-50-144-signed-${account.businessName || "BPP"}.pdf`);
+      downloadPdf(bytes, fileName);
       toast.success("Rendition signed. Download it and file it with the county.");
       setView("sign");
     } catch (err) {
@@ -103,6 +116,59 @@ export function BppRenditionEditor({
       setSigning(false);
     }
   }
+
+  // Signed on paper: upload the scan of the hand-signed printout.
+  async function handleUploadSigned(file: File) {
+    setSigning(true);
+    try {
+      const updated = await recordRenditionPaperSigned(account.id, file);
+      onUpdate(updated);
+      toast.success("Signed copy saved. File it with the county by the rendition deadline.");
+      setView("sign");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not upload the signed copy."));
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  // The copy that was actually signed; older signings without one rebuild it.
+  async function handleDownloadSigned() {
+    if (!account.renditionDocumentPath) return handleDownload();
+    setDownloading(true);
+    try {
+      window.open(await signedRenditionUrl(account.renditionDocumentPath), "_blank", "noopener");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not open the signed copy."));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const uploadButton = (
+    <>
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void handleUploadSigned(file);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInput.current?.click()}
+        disabled={signing}
+        title="Signed it by hand? Upload a scan or photo of the signed form"
+        className="btn-outline disabled:opacity-60"
+      >
+        {signing ? "Uploading…" : "Upload Signed Copy"}
+      </button>
+    </>
+  );
 
   async function handleMarkFiled() {
     setMarkingFiled(true);
@@ -138,11 +204,15 @@ export function BppRenditionEditor({
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={handleDownload}
+              onClick={() => void handleDownloadSigned()}
               disabled={downloading}
               className="btn-outline disabled:opacity-60"
             >
-              {downloading ? "Building…" : "Download Signed PDF"}
+              {downloading
+                ? "Opening…"
+                : account.renditionSignatureType === "upload"
+                  ? "Download Signed Copy"
+                  : "Download Signed PDF"}
             </button>
             {account.renditionFiledAt ? (
               <span className="badge-soft self-center">
@@ -261,8 +331,16 @@ export function BppRenditionEditor({
           ))}
 
           {!complete && missing.length > 0 && (
-            <p className="text-xs text-muted-foreground">Still needed: {missing.join(", ")}</p>
+            <p className="text-xs text-muted-foreground">
+              Still needed to sign here: {missing.join(", ")}. You can also download the form and
+              fill them in by hand.
+            </p>
           )}
+          <p className="rounded-md bg-secondary/50 p-3 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Prefer to sign on paper?</span> Download
+            the form, print and sign it, then upload a scan or photo with{" "}
+            <span className="font-medium">Upload Signed Copy</span> — no online signature needed.
+          </p>
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -270,8 +348,9 @@ export function BppRenditionEditor({
               disabled={downloading}
               className="btn-outline disabled:opacity-60"
             >
-              {downloading ? "Building…" : "Download Draft"}
+              {downloading ? "Building…" : "Download PDF"}
             </button>
+            {uploadButton}
             <button
               disabled={!complete}
               onClick={() => setView("sign")}

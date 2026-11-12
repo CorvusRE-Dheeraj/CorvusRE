@@ -27,6 +27,7 @@ import {
   getFilingProofDocumentsFor,
   filingProofDocumentType,
   getDocumentUrl,
+  getDocumentById,
   setDocumentProofKind,
   setDocumentType,
   type DocumentRecord,
@@ -61,6 +62,7 @@ import {
   getSubmission,
   saveDraft,
   signAndSubmit,
+  recordPaperSigned,
   saveFilingMethod,
   saveFilingProofFields,
   markSubmitted,
@@ -1896,6 +1898,67 @@ export function DocumentsSection({
     }
   }
 
+  // Signed on paper instead: the owner downloaded the form, signed it by hand
+  // and uploads the scan. It's saved to Documents and counts as signed, the
+  // same as an e-signature, so the filing steps carry on from here.
+  async function handleUploadSigned(file: File) {
+    if (!formType) return;
+    setSubmitting(true);
+    try {
+      const resolvedValues = resolveDateFields(schema, values);
+      setValues(resolvedValues);
+      const doc = await uploadDocument(
+        userId,
+        property.id,
+        file,
+        editingForm === "protest"
+          ? "Signed Notice of Protest"
+          : editingForm === "agent"
+            ? "Signed Appointment of Agent"
+            : "Signed Evidence Declaration",
+      );
+      await recordPaperSigned(userId, protest.id, formType, resolvedValues, doc.id);
+      const signedAt = new Date().toISOString();
+      if (editingForm === "protest") onNoticeSigned(signedAt);
+      else if (editingForm === "agent") setAgentFormSignedAt(signedAt);
+      else setEvidenceDeclarationSignedAt(signedAt);
+      const signedForm = editingForm ?? "protest";
+      getSubmission(protest.id, formType)
+        .then((s) => setTrackingIds((t) => ({ ...t, [signedForm]: s?.signingTrackingId ?? null })))
+        .catch(() => {});
+      setSigningOpen(false);
+      setSignature(null);
+      toast.success(
+        editingForm === "protest"
+          ? "Your signed copy is saved to Documents. This does not file your protest — deliver it to your county, then confirm it below."
+          : editingForm === "agent"
+            ? "Your signed copy is saved to Documents. Deliver it to your appraisal district to put it into effect."
+            : "Your signed copy is saved to Documents. It must be signed before a notary public to be valid.",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not upload the signed copy.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Once signed (on screen or on paper), "Download" opens the copy that was
+  // actually signed — not a fresh blank build of the form.
+  async function handleDownloadSigned() {
+    if (!formType) return handleDownload();
+    setDownloading(true);
+    try {
+      const s = await getSubmission(protest.id, formType);
+      const doc = s?.documentId ? await getDocumentById(userId, s.documentId) : null;
+      if (!doc) return await handleDownload();
+      window.open(await getDocumentUrl(doc.storagePath), "_blank", "noopener");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not open the signed copy.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   // Just closes the editor — actually recording how/whether this was filed
   // now happens in the always-visible FilingSubmissionFlow panel on the tab
   // behind it (kept the same name since it's already wired as
@@ -2230,6 +2293,8 @@ export function DocumentsSection({
           signature={signature}
           onSignatureChange={setSignature}
           onConfirmSign={handleConfirmSign}
+          onUploadSigned={handleUploadSigned}
+          onDownloadSigned={handleDownloadSigned}
           submitting={submitting}
           expectedSignerName={(() => {
             const key =

@@ -21,9 +21,11 @@ export type BppAccountRecord = {
   noticeValue: number | null;
   renditionDeadline: string | null;
   protestDeadline: string | null;
-  renditionSignatureType: "draw" | "type" | null;
+  renditionSignatureType: "draw" | "type" | "upload" | null;
   renditionSignatureData: string | null;
   renditionSignedAt: string | null;
+  // the copy that was actually signed, in the documents bucket
+  renditionDocumentPath?: string | null;
   renditionFiledAt: string | null;
   // the rendition's signing packet ID (CPT-XXXX-XXXX) — lib/signing-packets.ts
   signingTrackingId: string | null;
@@ -60,9 +62,10 @@ type BppAccountRow = {
   notice_value: number | null;
   rendition_deadline: string | null;
   protest_deadline: string | null;
-  rendition_signature_type: "draw" | "type" | null;
+  rendition_signature_type: "draw" | "type" | "upload" | null;
   rendition_signature_data: string | null;
   rendition_signed_at: string | null;
+  rendition_document_path?: string | null;
   rendition_filed_at: string | null;
   signing_tracking_id: string | null;
   estimated_savings: number | null;
@@ -81,7 +84,7 @@ type BppAccountRow = {
 };
 
 const SELECT_COLUMNS =
-  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
+  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_document_path, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
 
 function fromRow(row: BppAccountRow): BppAccountRecord {
   return {
@@ -100,6 +103,7 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     renditionSignatureType: row.rendition_signature_type,
     renditionSignatureData: row.rendition_signature_data,
     renditionSignedAt: row.rendition_signed_at,
+    renditionDocumentPath: row.rendition_document_path ?? null,
     renditionFiledAt: row.rendition_filed_at,
     signingTrackingId: row.signing_tracking_id,
     estimatedSavings: row.estimated_savings,
@@ -234,18 +238,38 @@ export async function updateBppAccount(
 // is filed with the county directly by the owner (there's no ARB process for
 // it), so this just records the sign-off; markRenditionFiled below records
 // the county actually has it.
+// Puts the signed copy in the documents bucket under the owner's folder
+// (BPP accounts aren't properties, so it's not a Documents row).
+async function storeSignedCopy(id: string, file: File): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Please sign in again.");
+  const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const path = `${user.id}/bpp/${id}/${Date.now()}-${safe}`;
+  const { error } = await supabase.storage
+    .from("documents")
+    .upload(path, file, { contentType: file.type || "application/octet-stream" });
+  if (error) throw error;
+  return path;
+}
+
 export async function signRendition(
   id: string,
   signature: SignatureValue,
   // the ID printed on the signed PDF (lib/signing-packets.ts)
   trackingId?: string,
+  // the signed PDF itself, kept so it can be downloaded again
+  signedPdf?: File,
 ): Promise<BppAccountRecord> {
+  const path = signedPdf ? await storeSignedCopy(id, signedPdf).catch(() => null) : null;
   const { data, error } = await supabase
     .from("bpp_accounts")
     .update({
       rendition_signature_type: signature.type,
       rendition_signature_data: signature.data,
       rendition_signed_at: new Date().toISOString(),
+      ...(path ? { rendition_document_path: path } : {}),
       ...(trackingId ? { signing_tracking_id: trackingId } : {}),
     })
     .eq("id", id)
@@ -253,6 +277,35 @@ export async function signRendition(
     .single();
   if (error) throw error;
   return fromRow(data as BppAccountRow);
+}
+
+// Signed on paper: the owner printed the rendition, signed it by hand and
+// uploads the scan. Counts as signed (signature_type "upload").
+export async function recordRenditionPaperSigned(
+  id: string,
+  scan: File,
+): Promise<BppAccountRecord> {
+  const path = await storeSignedCopy(id, scan);
+  const { data, error } = await supabase
+    .from("bpp_accounts")
+    .update({
+      rendition_signature_type: "upload",
+      rendition_signature_data: null,
+      rendition_signed_at: new Date().toISOString(),
+      rendition_document_path: path,
+    })
+    .eq("id", id)
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromRow(data as BppAccountRow);
+}
+
+// A short-lived link to the signed copy.
+export async function signedRenditionUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from("documents").createSignedUrl(path, 300);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export async function markRenditionFiled(id: string): Promise<BppAccountRecord> {
