@@ -29,7 +29,7 @@ import directory from "../_shared/tx-cad-directory.json" with { type: "json" };
 import { GEMINI_MODEL_FAST, geminiUrl } from "../_shared/gemini.ts";
 import { rateLimitUser } from "../_shared/rate-limit.ts";
 import { readOfficialSite, corpus } from "../_shared/web-retrieval.ts";
-import { fetchActStatement } from "../_shared/act-tax-office.ts";
+import { fetchCountyTaxStatement } from "../_shared/tax-office.ts";
 import {
   collinHistory,
   CURRENT_TAX_YEAR,
@@ -272,7 +272,7 @@ Deno.serve(async (req: Request) => {
       const county = countyOf(prop.cad);
       const statement =
         county && prop.account_number
-          ? await fetchActStatement(
+          ? await fetchCountyTaxStatement(
               county,
               prop.account_number.trim(),
               25000,

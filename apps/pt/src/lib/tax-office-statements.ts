@@ -1,10 +1,11 @@
 import { supabase } from "./supabase";
 import { invokeEdgeFunction } from "./edge-functions";
 import { countyFromCad } from "./tax-rates-official";
+import type { TaxOfficeStatement } from "../../../../supabase/pt/functions/_shared/act-tax-office";
 import {
-  ACT_COUNTIES,
-  type TaxOfficeStatement,
-} from "../../../../supabase/pt/functions/_shared/act-tax-office";
+  isTaxOfficeBlocked,
+  isTaxOfficeConnected,
+} from "../../../../supabase/pt/functions/_shared/tax-office";
 
 export type {
   TaxOfficeStatement,
@@ -28,10 +29,14 @@ export type SavedStatement = {
 const FRESH_MS = 12 * 60 * 60 * 1000;
 const EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 
-// Counties whose tax office CorvusPT reads (ACT sites for now).
+// Counties whose tax office CorvusPT reads (supabase/pt/functions/_shared/tax-office.ts).
 export function taxOfficeConnected(cad: string | null | undefined): boolean {
-  const county = countyFromCad(cad ?? null);
-  return !!county && county.toLowerCase() in ACT_COUNTIES;
+  return isTaxOfficeConnected(countyFromCad(cad ?? null));
+}
+
+// The county's tax office site blocks automated lookups (a bot check).
+export function taxOfficeBlocked(cad: string | null | undefined): boolean {
+  return isTaxOfficeBlocked(countyFromCad(cad ?? null));
 }
 
 export async function listTaxStatements(

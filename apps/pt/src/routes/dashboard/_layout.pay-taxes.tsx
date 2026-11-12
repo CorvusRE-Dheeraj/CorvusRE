@@ -59,6 +59,7 @@ import {
   fetchTaxStatement,
   isStatementFresh,
   listTaxStatements,
+  taxOfficeBlocked,
   taxOfficeConnected,
   type SavedStatement,
 } from "@/lib/tax-office-statements";
@@ -299,7 +300,6 @@ function PayTaxes() {
       for (let p = queue.shift(); p; p = queue.shift()) await loadStatement(p, false);
     };
     void Promise.all([worker(), worker()]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, statements, statementsLoaded]);
 
   const today = todayIso();
@@ -1412,6 +1412,7 @@ function PropertyTaxDetail({
           saved={statement}
           county={row.county}
           connected={taxOfficeConnected(property.cad) && !!property.accountNumber}
+          blocked={taxOfficeBlocked(property.cad)}
           loading={statementLoading}
           onRefresh={onRefreshStatement}
         />

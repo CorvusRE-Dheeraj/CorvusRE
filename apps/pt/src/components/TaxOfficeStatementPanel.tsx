@@ -63,25 +63,31 @@ export function TaxOfficeStatementPanel({
   saved,
   county,
   connected,
+  blocked = false,
   loading,
   onRefresh,
 }: {
   saved: SavedStatement | null;
   county: string | null;
   connected: boolean;
+  // the county's site blocks automated lookups (a bot check)
+  blocked?: boolean;
   loading: boolean;
   onRefresh: () => void;
 }) {
   const [allPayments, setAllPayments] = useState(false);
   const s: TaxOfficeStatement | null = saved?.statement ?? null;
   const title = `${county ?? "County"} County Tax Office`;
+  const whose = county ? `${county} County's` : "This county's";
 
   if (!connected) {
     return (
       <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-        CorvusPT doesn&apos;t read {county ? `${county} County's` : "this county's"} tax office yet,
-        so the amounts here come from your tax statement or an estimate. Use the county link above
-        to see the live account.
+        {blocked
+          ? `${whose} tax office website blocks automated lookups, so CorvusPT can't read the account there.`
+          : `CorvusPT doesn't read ${county ? `${county} County's` : "this county's"} tax office yet.`}{" "}
+        The amounts here come from your tax statement, the appraisal district, or an estimate. Use
+        the county link above to see the live account.
       </p>
     );
   }

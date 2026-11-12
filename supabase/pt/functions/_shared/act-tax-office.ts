@@ -96,9 +96,13 @@ export type TaxOfficeLinks = {
   map: string | null;
 };
 
+// Which county system a statement was read from (act-tax-office.ts, then one
+// reader per county system: harris-tax-office.ts, …).
+export type TaxOfficeSource = "act" | "harris" | "travis" | "collin" | "denton";
+
 export type TaxOfficeStatement = {
   county: string; // "Bexar"
-  source: "act";
+  source: TaxOfficeSource; // which reader produced it
   taxAccount: string;
   longAccount: string | null;
   cadPropertyId: string | null;
@@ -182,7 +186,9 @@ export function isoDate(s: string | null | undefined): string | null {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const long = t.match(/([A-Za-z]+)\.?\s+(\d{1,2}),\s*(\d{4})/);
   if (long) {
-    const m = MONTHS.indexOf(long[1].toLowerCase());
+    // "November" or "Nov"/"Dec" (Harris receipts)
+    const w = long[1].toLowerCase();
+    const m = w.length >= 3 ? MONTHS.findIndex((x) => x.startsWith(w)) : -1;
     if (m >= 0)
       return `${long[3]}-${String(m + 1).padStart(2, "0")}-${long[2].padStart(2, "0")}`;
   }
