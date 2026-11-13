@@ -48,4 +48,18 @@ describe("two-county properties", () => {
     expect(one).toHaveLength(1);
     expect(one[0].id).toBe("p1");
   });
+
+  it("splits when only the account notes name the second county", () => {
+    expect(countyParts("Comal County", "447170 - Comal County 1334687 - Bexar county")).toEqual([
+      { county: "Comal", accountNumber: "447170" },
+      { county: "Bexar", accountNumber: "1334687" },
+    ]);
+    expect(countyParts("Bexar County", "123456 (Bexar County) 98765 - Fort Bend County")).toEqual([
+      { county: "Bexar", accountNumber: "123456" },
+      { county: "Fort Bend", accountNumber: "98765" },
+    ]);
+    // a plain account, or a district named after the county, is not a split
+    expect(countyParts("Harris County", "0441230000012")).toEqual([]);
+    expect(countyParts("Harris County", "Harris County MUD 5")).toEqual([]);
+  });
 });
