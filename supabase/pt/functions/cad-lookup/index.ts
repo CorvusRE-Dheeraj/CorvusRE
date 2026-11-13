@@ -4560,6 +4560,16 @@ Deno.serve(async (req: Request) => {
         ? r
         : new Promise<never>(() => {}),
     );
+    // "410 S 17th St, Silsbee, TX 77656, USA" (Google pins end in ", USA")
+    const zip = address.match(/\bTX,?\s+(\d{5})\b/i)?.[1];
+    const city = address
+      .match(/,\s*([^,]+?)\s*,\s*TX\b/i)?.[1]
+      ?.trim()
+      .toLowerCase();
+    const elsewhere = (r: CadRecord) => {
+      const a = r.propertyAddress.toLowerCase();
+      return !(zip && a.includes(zip)) && !(city && a.includes(city));
+    };
     const sweep = async (): Promise<LookupResult> => {
       if (hintedQuery) {
         const hinted = await runLookup(
@@ -4568,9 +4578,23 @@ Deno.serve(async (req: Request) => {
           [hintedQuery],
           preview,
         );
-        return isConfidentMatch(hinted, isNameQuery)
-          ? hinted
-          : await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
+        if (isConfidentMatch(hinted, isNameQuery)) return hinted;
+        // No exact parcel, but the address's own county suggested real
+        // nearby parcels in the ZIP / city that was typed — that IS the
+        // answer. Found live: "524 South Carroll Boulevard, Denton" took
+        // ~35 s because it then swept all 13 counties (Tarrant's slow LIKE
+        // query alone ~22 s) only to return the same Denton neighbours.
+        // A wrong hint's loose guesses land in other cities (see
+        // isConfidentMatch), so those — and an empty result — still sweep.
+        if (
+          !isNameQuery &&
+          hinted.matched === false &&
+          hinted.nearby.length > 0 &&
+          (zip || city) &&
+          !hinted.nearby.some(elsewhere)
+        )
+          return hinted;
+        return await runLookup(address, queryTimeoutMs, ALL_COUNTY_QUERIES, preview);
       }
       return await runLookup(
         address,
@@ -4586,16 +4610,6 @@ Deno.serve(async (req: Request) => {
     // Nothing in the 13 counties — or only "nearby" guesses in a different
     // ZIP than the one typed (same street name in another county) → the
     // state layer, kept only if it actually found something.
-    // "410 S 17th St, Silsbee, TX 77656, USA" (Google pins end in ", USA")
-    const zip = address.match(/\bTX,?\s+(\d{5})\b/i)?.[1];
-    const city = address
-      .match(/,\s*([^,]+?)\s*,\s*TX\b/i)?.[1]
-      ?.trim()
-      .toLowerCase();
-    const elsewhere = (r: CadRecord) => {
-      const a = r.propertyAddress.toLowerCase();
-      return !(zip && a.includes(zip)) && !(city && a.includes(city));
-    };
     if (
       !otherCounty &&
       result.matched === false &&
