@@ -180,14 +180,14 @@ export function ScheduleAppointment({
         )
       ) : mine ? (
         trigger === "button" ? (
-          <div className="flex flex-wrap items-center gap-3 text-sm text-white">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-foreground">
             <span>
               Your appointment: <strong>{formatAppointment(mine.startAt)}</strong>
             </span>
             <Link
               to="/appointment"
               search={{ token: mine.manageToken }}
-              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800"
+              className="btn-outline text-sm"
             >
               Reschedule or cancel
             </Link>
@@ -222,7 +222,7 @@ export function ScheduleAppointment({
             reset();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
+          className="btn-accent text-sm"
         >
           <Video className="h-4 w-4" />
           {buttonLabel}

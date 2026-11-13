@@ -253,19 +253,17 @@ function TaxUpdates() {
 
   return (
     <div>
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 p-5 text-white sm:p-7">
-        <div className="tu-glow pointer-events-none absolute -right-10 -top-10 h-56 w-56 rounded-full bg-white/25 blur-3xl" />
-        <div className="tu-glow pointer-events-none absolute -bottom-16 left-1/3 h-48 w-48 rounded-full bg-sky-300/30 blur-3xl" />
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)] sm:p-7">
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="tu-float grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/20 ring-1 ring-white/30 backdrop-blur">
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-accent/10 text-accent ring-1 ring-accent/20">
               <Scale className="h-7 w-7" />
             </div>
             <div>
               <h1 className="font-serif text-2xl font-semibold sm:text-3xl">
                 Texas Tax Law &amp; Updates
               </h1>
-              <p className="mt-1 max-w-xl text-sm text-white/85">
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">
                 What changed this tax year in Texas property tax — from official sources only. Not
                 legal or tax advice.
               </p>
@@ -275,7 +273,7 @@ function TaxUpdates() {
             type="button"
             onClick={() => void generate()}
             disabled={!report || generating}
-            className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03] disabled:opacity-60"
+            className="btn-accent text-sm disabled:opacity-60"
           >
             {generating ? "Generating…" : "Generate update report"}
           </button>
@@ -289,11 +287,16 @@ function TaxUpdates() {
                 ["Counties", counties.length],
               ] as const
             ).map(([label, n]) => (
-              <div key={label} className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20">
+              <div
+                key={label}
+                className="rounded-xl bg-secondary/60 px-3 py-2 ring-1 ring-border/70"
+              >
                 <div className="text-2xl font-semibold tabular-nums">
                   <CountUp to={n} />
                 </div>
-                <div className="text-[11px] uppercase tracking-wide text-white/80">{label}</div>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {label}
+                </div>
               </div>
             ))}
           </div>
@@ -301,24 +304,27 @@ function TaxUpdates() {
         {/* Always-on alerts: the next statutory dates, so there's something
             timely here even in a week the official sources didn't change. */}
         <div className="relative mt-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-white/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Coming up
           </div>
           <div className="mt-1.5 grid gap-2 sm:grid-cols-3">
             {upcomingKeyDates(localTodayIso()).map((k) => (
-              <div key={k.date} className="rounded-xl bg-white/15 px-3 py-2 ring-1 ring-white/20">
+              <div
+                key={k.date}
+                className="rounded-xl bg-secondary/60 px-3 py-2 ring-1 ring-border/70"
+              >
                 <div className="text-sm font-semibold">
                   {new Date(`${k.date}T12:00:00`).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
                   })}{" "}
-                  <span className="font-normal text-white/80">
+                  <span className="font-normal text-muted-foreground">
                     · {k.daysAway === 0 ? "today" : `in ${k.daysAway} days`}
                   </span>
                 </div>
-                <div className="text-xs text-white/90">{k.label}</div>
-                <div className="text-[10px] text-white/70">{k.cite}</div>
+                <div className="text-xs text-foreground/90">{k.label}</div>
+                <div className="text-[10px] text-muted-foreground">{k.cite}</div>
               </div>
             ))}
           </div>
@@ -602,10 +608,12 @@ function TaxUpdates() {
         </>
       )}
 
-      <section className="tu-rise mt-10 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white sm:p-7">
-        <div className="grid gap-4 text-sm leading-relaxed text-white/95">
+      <section className="tu-rise mt-10 overflow-hidden rounded-2xl border border-accent/20 bg-accent/[0.04] p-5 sm:p-7">
+        <div className="grid gap-4 text-sm leading-relaxed text-foreground/90">
           <p className="max-w-3xl">
-            <strong className="text-white">Critical updates for tax year {currentTaxYear}: </strong>
+            <strong className="text-foreground">
+              Critical updates for tax year {currentTaxYear}:{" "}
+            </strong>
             {sortedCriticalItems.length > 0 ? (
               <>
                 {sortedCriticalItems.length} verified item
@@ -625,13 +633,13 @@ function TaxUpdates() {
             <ul className="grid gap-3 lg:grid-cols-2">
               {sortedCriticalItems.slice(0, 6).map((u) => (
                 // Titles only — the full "why / what to do" is on each card above.
-                <li key={u.id} className="rounded-xl bg-white/10 p-3 ring-1 ring-white/15">
-                  <div className="font-semibold text-white">{u.title}</div>
+                <li key={u.id} className="rounded-xl bg-card p-3 ring-1 ring-border">
+                  <div className="font-semibold text-foreground">{u.title}</div>
                   <a
                     href={u.sourceUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 inline-block underline underline-offset-2"
+                    className="mt-1 inline-block text-accent underline underline-offset-2"
                   >
                     Read it at {u.sourceName}
                   </a>
@@ -640,13 +648,13 @@ function TaxUpdates() {
             </ul>
           )}
           {sortedCriticalItems.length > 6 && (
-            <p className="text-xs text-white/80">
+            <p className="text-xs text-muted-foreground">
               +{sortedCriticalItems.length - 6} more critical update
               {sortedCriticalItems.length - 6 === 1 ? "" : "s"} in the tile above.
             </p>
           )}
           <p className="max-w-3xl">
-            <strong className="text-white">How CorvusPT helps: </strong>
+            <strong className="text-foreground">How CorvusPT helps: </strong>
             CorvusPT reads the official sources every week, tells you which updates may affect your
             properties, and turns them into next steps &mdash; a protest opportunity analysis,
             deadline and hearing alerts, evidence and hearing preparation, and every stage of your
@@ -656,7 +664,7 @@ function TaxUpdates() {
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <ScheduleAppointment trigger="button" buttonLabel="Schedule a Google Meet" />
-          <span className="text-xs text-white/80">
+          <span className="text-xs text-muted-foreground">
             One-on-one, 60 minutes. Pick a time that works for you.
           </span>
         </div>

@@ -233,7 +233,7 @@ function PersonalPropertyPage() {
             />
           </div>
 
-          <div className="card-elev mt-4 overflow-x-auto">
+          <div className="card-elev mt-4 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-secondary/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -310,6 +310,55 @@ function PersonalPropertyPage() {
                 })}
               </tbody>
             </table>
+          </div>
+          {/* Phones: one card per account instead of a wide table. */}
+          <div className="mt-4 grid gap-3 md:hidden">
+            {accounts.map((a) => {
+              const rs = renditionStatus(a);
+              const tr = taxRows.get(a.id)!;
+              const dl = effectiveRenditionDeadline(a);
+              return (
+                <div key={a.id} className="card-elev grid gap-3 p-4 text-sm">
+                  <div>
+                    <div className="font-semibold">{a.businessName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[
+                        a.locationAddress,
+                        countyOf(a.cad),
+                        a.accountNumber ? `Acct ${a.accountNumber}` : null,
+                        a.taxYear,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${RENDITION_TONE[rs]}`}
+                    >
+                      {RENDITION_STATUS_LABEL[rs]}
+                    </span>
+                    {rs !== "submitted" && (
+                      <span className="text-muted-foreground">Due {fmtDate(dl.date)}</span>
+                    )}
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${PAY_TONE[tr.status]}`}
+                    >
+                      {a.taxAmountDue == null && !a.paidAt
+                        ? "No bill yet"
+                        : PAY_STATUS_LABEL[tr.status]}
+                    </span>
+                  </div>
+                  <RowActions
+                    account={a}
+                    paid={tr.status === "paid"}
+                    downloading={downloading === a.id}
+                    onOpen={(kind) => setPopup({ kind, id: a.id })}
+                    onDownload={() => void downloadRendition(a)}
+                  />
+                </div>
+              );
+            })}
           </div>
           <DeadlineInfo compact />
         </>
