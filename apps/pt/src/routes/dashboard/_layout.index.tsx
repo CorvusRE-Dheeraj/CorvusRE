@@ -757,7 +757,7 @@ function Overview() {
             color={ICON_COLORS[0]}
           />
           <StatCard
-            label="BPP Accounts"
+            label="Personal Property"
             value={loaded ? bppAccounts.length : null}
             to="/dashboard/bpp-accounts"
             delayMs={40}

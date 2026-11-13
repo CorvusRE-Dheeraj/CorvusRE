@@ -120,7 +120,7 @@ export async function buildDeadlineEvents(
     admin
       .from("bpp_accounts")
       .select(
-        "id, business_name, protest_deadline, rendered_value, notice_value, rendition_filed_at",
+        "id, business_name, protest_deadline, rendered_value, notice_value, rendition_filed_at, rendition_deadline, extension_granted_until, tax_amount_due, payment_due_date, paid_at",
       )
       .eq("user_id", userId),
     admin
@@ -377,6 +377,33 @@ export async function buildDeadlineEvents(
         subject: `BPP protest deadline — ${businessName}`,
         amount: null,
         resolved: isPast(date, todayIso),
+      });
+    }
+    // Rendition (Form 50-144): a GRANTED extension replaces April 15; done
+    // once the owner records it submitted.
+    const renditionDue =
+      (account.extension_granted_until as string | null) ??
+      (account.rendition_deadline as string | null);
+    if (renditionDue) {
+      const date = toIsoDate(renditionDue);
+      events.push({
+        key: `bpp-rendition-deadline:${id}:${date}`,
+        date,
+        title: `BPP rendition due — ${businessName}`,
+        subject: `BPP rendition due — ${businessName}`,
+        amount: null,
+        resolved: !!account.rendition_filed_at,
+      });
+    }
+    if (account.tax_amount_due != null && account.payment_due_date) {
+      const date = toIsoDate(account.payment_due_date as string);
+      events.push({
+        key: `bpp-tax-due:${id}:${date}`,
+        date,
+        title: `BPP tax payment due — ${businessName}`,
+        subject: `BPP tax payment due — ${businessName}`,
+        amount: account.tax_amount_due as number | null,
+        resolved: !!account.paid_at,
       });
     }
   }

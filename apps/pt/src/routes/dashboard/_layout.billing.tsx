@@ -334,7 +334,7 @@ function Billing() {
                 rel="noopener noreferrer"
                 className="btn-outline"
               >
-                Manage BPP Accounts
+                Manage Personal Property
               </Link>
               <Link
                 to="/pricing"

@@ -1248,6 +1248,55 @@ export const BPP_RENDITION_SCHEMA: FieldSection[] = [
         name: "ScA:Year AcquiredRow1",
         label: "Year acquired (optional)",
       },
+      // rows 2–3: filled from the asset schedule (lib/bpp-rendition.ts)
+      ...[2, 3].flatMap((r): FieldSection["fields"] => [
+        {
+          type: "text",
+          name: `ScA:General Property Description by TypeCategoryRow${r}`,
+          label: `Row ${r} — description/category`,
+        },
+        {
+          type: "text",
+          name: `ScA:Estimate of Quantity of Each TypeRow${r}`,
+          label: `Row ${r} — quantity`,
+        },
+        {
+          type: "text",
+          name: `ScA:Good Faith Estimate of Market ValueRow${r}`,
+          label: `Row ${r} — market value`,
+        },
+        {
+          type: "text",
+          name: `ScA:Historical Cost When NewRow${r}`,
+          label: `Row ${r} — historical cost`,
+        },
+        { type: "text", name: `ScA:Year AcquiredRow${r}`, label: `Row ${r} — year acquired` },
+      ]),
+    ],
+  },
+  {
+    title: "Inventory & Exemptions",
+    fields: [
+      {
+        type: "radio",
+        name: "Does your inventory involve freeport goods?",
+        label: "Does your inventory involve freeport goods? (exemption under Tax Code §11.251)",
+        options: ["Yes", "No"],
+      },
+      {
+        type: "radio",
+        name: "Does your inventory involve interstate/foreign commerce issues?",
+        label: "Does your inventory involve interstate/foreign commerce issues?",
+        options: ["Yes", "No"],
+      },
+      {
+        type: "radio",
+        name: "Apply for a Sept. 1 Inventory date",
+        label: "Apply for a September 1 inventory date?",
+        options: ["Yes", "No"],
+      },
+      { type: "text", name: "Square Feet Occupied", label: "Square feet occupied" },
+      { type: "text", name: "Sales Tax Permit Number", label: "Sales tax permit number" },
     ],
   },
   {

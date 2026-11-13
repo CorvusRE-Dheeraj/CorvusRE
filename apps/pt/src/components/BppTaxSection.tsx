@@ -8,6 +8,7 @@ import { TEXAS_COUNTY_NAMES } from "@/lib/county-coverage";
 import { CURRENT_TAX_YEAR } from "@/lib/tax-calendar";
 import { addBppAccount, deleteBppAccount, updateBppTaxBill } from "@/lib/bpp-accounts";
 import { PAY_STATUS_LABEL, type BppTaxRow, type PayStatus } from "@/lib/pay-taxes";
+import { BppTaxInfoDialog } from "@/components/BppTaxInfoDialog";
 
 // Pay Taxes → business personal property (furniture, fixtures, equipment,
 // inventory): each BPP account's tax for the year beside the real-estate
@@ -63,6 +64,7 @@ export function BppTaxSection({
 }) {
   const [editing, setEditing] = useState<BppTaxRow | null>(null);
   const [paying, setPaying] = useState<BppTaxRow | null>(null);
+  const [info, setInfo] = useState<BppTaxRow | null>(null);
   if (rows.length === 0) return null;
   return (
     <section className="mt-6">
@@ -119,6 +121,14 @@ export function BppTaxSection({
                     >
                       Update
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setInfo(row)}
+                      title="Upload the BPP tax bill (Corvus AI reads it) or record a payment"
+                      className="btn-outline whitespace-nowrap !px-3 !py-1.5 text-xs"
+                    >
+                      Bill &amp; Payment
+                    </button>
                   </div>
                 </td>
                 <td className="px-3 py-3">
@@ -164,6 +174,16 @@ export function BppTaxSection({
         <BppBillModal row={editing} onClose={() => setEditing(null)} onSaved={onChanged} />
       )}
       {paying && <BppPayConfirm row={paying} onClose={() => setPaying(null)} />}
+      {info && (
+        <BppTaxInfoDialog
+          row={info}
+          onClose={() => setInfo(null)}
+          onUpdate={() => {
+            setInfo(null);
+            onChanged();
+          }}
+        />
+      )}
     </section>
   );
 }

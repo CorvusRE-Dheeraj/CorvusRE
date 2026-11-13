@@ -77,6 +77,8 @@ export async function askAboutDocument(input: {
   // first-person support-associate voice instead of the generic assistant
   // framing. Never combined with `conversational`.
   personaName?: string;
+  // one PDF or image the question is about, read directly (data: URL, 8 MB max)
+  file?: { dataUrl: string };
 }): Promise<{ answer: string }> {
   return invokeEdgeFunction<{ answer: string }>("ask-about-document", input);
 }
