@@ -97,15 +97,17 @@ export function SiteNav() {
   const navItems = isBetaUser
     ? [...baseNavItems, { to: "/dashboard/feedback", label: "Feedback" } as const]
     : baseNavItems;
-  // The full menu only once it fits beside "Book a demo" and the icons —
-  // measured: 9 links need ~1400px, 10 ~1480px, 11 ~1560px (below that the
-  // Menu button). Shown at the larger link size only from 1800px.
+  // The full menu only once it fits beside "Book a demo" and the icons, at
+  // the readable 15px link size — measured: 8 links need ~1440px and each
+  // extra link ~90px more (below that the Menu button).
   const navAt =
-    navItems.length <= 9
-      ? { show: "min-[1400px]:flex", hide: "min-[1400px]:hidden" }
-      : navItems.length === 10
-        ? { show: "min-[1480px]:flex", hide: "min-[1480px]:hidden" }
-        : { show: "min-[1560px]:flex", hide: "min-[1560px]:hidden" };
+    navItems.length <= 8
+      ? { show: "min-[1440px]:flex", hide: "min-[1440px]:hidden" }
+      : navItems.length === 9
+        ? { show: "min-[1540px]:flex", hide: "min-[1540px]:hidden" }
+        : navItems.length === 10
+          ? { show: "min-[1630px]:flex", hide: "min-[1630px]:hidden" }
+          : { show: "min-[1720px]:flex", hide: "min-[1720px]:hidden" };
 
   useEffect(() => {
     if (!user) {
@@ -326,7 +328,7 @@ export function SiteNav() {
               to={item.to}
               data-tour={item.to === "/dashboard/tax-updates" ? "tax-updates" : undefined}
               onClick={feedbackItemClick(item.to)}
-              className="relative whitespace-nowrap rounded-md px-1.5 py-2 text-[13px] font-medium text-foreground/80 min-[1800px]:px-3 min-[1800px]:text-sm transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
+              className="relative whitespace-nowrap rounded-md px-2 py-2 text-[15px] font-medium text-foreground/85 min-[1800px]:px-3 transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground"
               activeProps={{ className: "text-nav-highlight-foreground" }}
               activeOptions={{ exact: item.to === "/" }}
             >
