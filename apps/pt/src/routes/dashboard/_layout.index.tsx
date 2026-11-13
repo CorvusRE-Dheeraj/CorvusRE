@@ -585,10 +585,10 @@ function Overview() {
             to="/intake"
             onClick={() => resetIntake()}
             data-tour="add-property"
-            className="card-elev flex items-center gap-2.5 p-3 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+            className="card-elev flex items-center gap-2.5 p-3 transition-colors hover:bg-secondary/50"
           >
             <span
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${ICON_COLORS[0].bg} ${ICON_COLORS[0].text}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent`}
             >
               <Plus className="h-4 w-4" />
             </span>
@@ -599,16 +599,16 @@ function Overview() {
 
           <Link
             to="/dashboard/bpp-accounts"
-            className="card-elev flex items-center gap-2.5 p-3 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+            className="card-elev flex items-center gap-2.5 p-3 transition-colors hover:bg-secondary/50"
             style={{ animationDelay: "60ms" }}
           >
             <span
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${ICON_COLORS[1].bg} ${ICON_COLORS[1].text}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent`}
             >
               <Briefcase className="h-4 w-4" />
             </span>
             <div className="flex items-center gap-1 text-sm font-semibold">
-              Add BPP Account <ArrowUpRight className="h-3.5 w-3.5" />
+              Add Personal Property <ArrowUpRight className="h-3.5 w-3.5" />
             </div>
           </Link>
 
@@ -622,7 +622,7 @@ function Overview() {
             {...noticeDropHandlers}
           >
             <span
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${ICON_COLORS[2].bg} ${ICON_COLORS[2].text}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent`}
             >
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -655,7 +655,7 @@ function Overview() {
             style={{ animationDelay: "180ms" }}
           >
             <span
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${ICON_COLORS[4].bg} ${ICON_COLORS[4].text}`}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent`}
             >
               <Sparkles className="h-4 w-4" />
             </span>
@@ -992,14 +992,10 @@ function StatCard({
 }) {
   const content = (
     <>
-      <span
-        aria-hidden
-        className={`tu-glow pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-70 blur-2xl ${color.bg}`}
-      />
-      <span
-        className={`relative grid h-9 w-9 place-items-center rounded-lg ${color.bg} ${color.text}`}
-      >
-        <Icon className="h-5 w-5" />
+      {/* one brand-green icon tile for every card (was a different colour + a
+          glow blob per card) */}
+      <span className="relative grid h-9 w-9 place-items-center rounded-lg bg-accent/10 text-accent">
+        <Icon className="h-[18px] w-[18px]" />
       </span>
       {/* one line, sized to the card (container query) — big on wide cards, never
           broken mid-word ("Propertie / s") on narrow ones */}
@@ -1008,7 +1004,7 @@ function StatCard({
       </div>
       {/* sized to the card like the label, so "$1.1M" fits a phone-width card
           instead of being cut to "$1…" */}
-      <div className="mt-auto truncate font-serif text-[clamp(1.5rem,22cqi,3rem)] font-black leading-none tracking-tight">
+      <div className="mt-auto truncate font-serif text-[clamp(1.5rem,20cqi,2.75rem)] font-semibold leading-none tracking-tight tabular-nums">
         {value === null ? "…" : <AnimatedNumber value={value} format={format} />}
       </div>
     </>
@@ -1024,7 +1020,7 @@ function StatCard({
         // cleanly. min-h keeps the cards from looking collapsed when the
         // label is short (e.g. "Cases"), without capping how tall a
         // wrapped label is allowed to push the card.
-        className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:bg-secondary/40 hover:shadow-elev"
+        className="@container card-elev relative flex min-h-[9rem] flex-col sm:min-h-[11rem] overflow-hidden p-5"
         style={{ animationDelay: `${delayMs}ms` }}
       >
         {content}

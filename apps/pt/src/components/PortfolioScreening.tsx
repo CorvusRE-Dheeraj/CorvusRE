@@ -31,7 +31,7 @@ export function PortfolioScreening({
 
   return (
     <section aria-labelledby="screening-title" className="card-elev mt-6 p-5">
-      <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
+      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Free portfolio screening
       </div>
       <h2 id="screening-title" className="mt-1 font-serif text-xl font-semibold">

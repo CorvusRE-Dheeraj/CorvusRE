@@ -109,7 +109,7 @@ export function CasePreview({ preview, address }: { preview: Preview | null; add
   return (
     <div className="rounded-lg border border-border">
       <div className="border-b border-border p-4">
-        <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           What Corvus AI found — before you pay
         </div>
         <div className={`mt-1 font-serif text-lg font-semibold ${LEVEL_TONE[o.level]}`}>

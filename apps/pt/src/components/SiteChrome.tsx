@@ -560,7 +560,7 @@ const SERVED_COUNTIES = [...SUPPORTED_COUNTY_NAMES].sort();
 
 export function SiteFooter() {
   return (
-    <footer className="bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 text-white">
+    <footer className="border-t border-white/5 bg-[oklch(0.2_0.03_255)] text-white">
       {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
           bottom-right corner: extra bottom room on phones, right room above. */}
       <div className="container-page pt-4 pb-20 sm:pb-4 sm:pr-24">
