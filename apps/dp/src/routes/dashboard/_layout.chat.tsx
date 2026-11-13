@@ -94,15 +94,15 @@ function Chat() {
   return (
     <div className="grid gap-5 lg:grid-cols-[16rem_1fr]">
       <Section title="Your projects">
-        <ul className="grid gap-1">
+        <ul className="grid min-w-0 gap-1">
           {entries.map((e) => {
             const n = unread.data?.[e.id] ?? 0;
             const on = e.id === selected.id;
             return (
-              <li key={e.id}>
+              <li key={e.id} className="min-w-0">
                 <button
-                  className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm ${
-                    on ? "bg-nav-highlight text-nav-highlight-foreground" : "hover:bg-secondary"
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${
+                    on ? "bg-accent/10 text-foreground ring-1 ring-accent/30" : "hover:bg-secondary"
                   }`}
                   onClick={() =>
                     nav({ to: ".", search: { type: e.kind, id: e.id }, resetScroll: false })

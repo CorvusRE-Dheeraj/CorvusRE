@@ -394,7 +394,7 @@ export function AddressAutocomplete({
     <div
       ref={boxRef}
       className={cn(
-        "relative flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm",
+        "relative flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-accent)_20%,transparent)]",
         className,
       )}
     >
@@ -408,7 +408,7 @@ export function AddressAutocomplete({
         aria-autocomplete="list"
         aria-label={ariaLabel}
         autoComplete="off"
-        className="w-full min-w-0 bg-transparent outline-none"
+        className="w-full min-w-0 bg-transparent outline-none focus-visible:shadow-none"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}

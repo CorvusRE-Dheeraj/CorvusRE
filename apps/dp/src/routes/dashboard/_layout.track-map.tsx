@@ -920,7 +920,7 @@ function StationRow({
                     onClick={() => onOpen(n, false, permitId)}
                     aria-label={`Station ${n}: ${s.title}${isCurrent ? " — current stage" : ""}`}
                     className={cn(
-                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md xl:px-2.5 xl:hyphens-auto xl:[overflow-wrap:anywhere]",
+                      "relative flex min-h-[150px] w-full flex-col rounded-xl border-2 border-t-4 bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md xl:px-2.5 xl:hyphens-auto xl:break-words",
                       style.border,
                       isCurrent && "border-green-600 bg-green-50 ring-4 ring-green-500/20",
                     )}
@@ -936,14 +936,14 @@ function StationRow({
                       </span>
                       <small
                         className={cn(
-                          "text-[10px] font-semibold",
+                          "whitespace-nowrap text-[10px] font-semibold",
                           isCurrent ? "text-green-700" : "text-muted-foreground",
                         )}
                       >
-                        {isCurrent ? "CURRENT" : "Open details"}
+                        {isCurrent ? "CURRENT" : "Details ›"}
                       </small>
                     </span>
-                    <span className="text-[13px] font-semibold leading-snug">
+                    <span className="text-[13px] font-semibold leading-snug xl:text-[12px]">
                       {n === 22 ? "Engineer response + comment timeline" : s.title}
                     </span>
                     <span className="mt-1 line-clamp-3 text-[11px] text-muted-foreground">

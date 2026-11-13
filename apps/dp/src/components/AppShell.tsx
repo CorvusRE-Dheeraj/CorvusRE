@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PencilRuler,
@@ -57,49 +57,62 @@ const OVERVIEW: NavLink = { to: "/dashboard", label: "Overview", icon: LayoutDas
 // The Design track's own workspace — the same kinds of pages the permitting
 // side has (site data, checklist, fees, roadmap, timeline), scoped to the
 // active design request instead of the active permitting project.
+// Labels say which side they belong to ("Design fees" vs "Permit fees") — the
+// old menu listed "Site Data", "Checklist" and "Fees" twice, once per side,
+// and people couldn't tell the two apart.
 const DESIGN_ITEMS: NavLink[] = [
-  { to: "/dashboard/design", label: "Design Overview", icon: DraftingCompass },
-  { to: "/dashboard/design-site", label: "Site Data", icon: Layers },
-  { to: "/dashboard/design-survey", label: "Land Survey", icon: Map },
-  { to: "/dashboard/design-schematic", label: "Schematic Plan", icon: PencilRuler },
-  { to: "/dashboard/design-checklist", label: "Checklist", icon: ListChecks },
-  { to: "/dashboard/design-fees", label: "Fees", icon: Receipt },
-  { to: "/dashboard/design-roadmap", label: "Roadmap", icon: RouteIcon },
-  { to: "/dashboard/design-timeline", label: "Timeline", icon: CalendarClock },
+  { to: "/dashboard/design", label: "Design brief", icon: DraftingCompass },
+  { to: "/dashboard/design-site", label: "Site & program", icon: Layers },
+  { to: "/dashboard/design-survey", label: "Land survey", icon: Map },
+  { to: "/dashboard/design-schematic", label: "Schematic plan", icon: PencilRuler },
+  { to: "/dashboard/design-checklist", label: "Design checklist", icon: ListChecks },
+  { to: "/dashboard/design-fees", label: "Design fees", icon: Receipt },
+  { to: "/dashboard/design-roadmap", label: "Design roadmap", icon: RouteIcon },
+  { to: "/dashboard/design-timeline", label: "Design timeline", icon: CalendarClock },
 ];
 // The whole permitting lifecycle on one page, with the project's train on it —
 // sits above the two subgroups as the permitting section's overview.
-const TRACK_MAP: NavLink = { to: "/dashboard/track-map", label: "Track Map", icon: TrainTrack };
+const TRACK_MAP: NavLink = {
+  to: "/dashboard/track-map",
+  label: "Progress map",
+  icon: TrainTrack,
+};
 
 const PERMITTING_SUBGROUPS: NavSubgroup[] = [
   {
-    heading: "Plan & prepare",
+    heading: "1 · Plan & prepare",
     items: [
-      { to: "/dashboard/constraints", label: "Site Data", icon: Layers },
-      { to: "/dashboard/checklist", label: "Checklist", icon: ListChecks },
-      { to: "/dashboard/prepare", label: "Prepare", icon: ClipboardCheck },
-      { to: "/dashboard/compliance", label: "Compliance Check", icon: ShieldCheck },
-      { to: "/dashboard/fees", label: "Fees", icon: Receipt },
+      { to: "/dashboard/constraints", label: "Site constraints", icon: Layers },
+      { to: "/dashboard/checklist", label: "Submission checklist", icon: ListChecks },
+      { to: "/dashboard/prepare", label: "Package readiness", icon: ClipboardCheck },
+      { to: "/dashboard/compliance", label: "Code check", icon: ShieldCheck },
+      { to: "/dashboard/fees", label: "Permit fees", icon: Receipt },
     ],
   },
   {
-    heading: "File & track",
+    heading: "2 · Submit & track",
     items: [
       { to: "/dashboard/permits", label: "Permits", icon: FileStack },
-      { to: "/dashboard/roadmap", label: "Roadmap", icon: RouteIcon },
-      { to: "/dashboard/timeline", label: "Timeline", icon: CalendarClock },
-      { to: "/dashboard/reviews", label: "Reviews", icon: MessagesSquare },
-      { to: "/dashboard/city", label: "City", icon: Landmark },
-      { to: "/dashboard/portal", label: "City Portal Login", icon: KeyRound },
+      { to: "/dashboard/roadmap", label: "Permit roadmap", icon: RouteIcon },
+      { to: "/dashboard/timeline", label: "Permit timeline", icon: CalendarClock },
+      { to: "/dashboard/reviews", label: "Reviewer comments", icon: MessagesSquare },
+      { to: "/dashboard/city", label: "City conversations", icon: Landmark },
+      { to: "/dashboard/portal", label: "City portal login", icon: KeyRound },
       { to: "/dashboard/approvals", label: "Approvals", icon: BadgeCheck },
     ],
   },
 ];
 
 const ACCOUNT_ITEMS: NavLink[] = [
-  { to: "/dashboard/chat", label: "Project Chat", icon: MessageCircle },
+  { to: "/dashboard/chat", label: "Chat with our team", icon: MessageCircle },
   { to: "/dashboard/documents", label: "Documents", icon: FolderOpen },
   { to: "/dashboard/notifications", label: "Alerts", icon: Bell },
+];
+
+const DESIGN_PATHS = DESIGN_ITEMS.map((i) => i.to);
+const PERMITTING_PATHS = [
+  TRACK_MAP.to,
+  ...PERMITTING_SUBGROUPS.flatMap((g) => g.items.map((i) => i.to)),
 ];
 
 const NO_SHELL_PREFIXES = [
@@ -150,48 +163,95 @@ function SidebarLink({
   );
 }
 
-function SidebarSectionLabel({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof LayoutDashboard;
-  label: string;
-}) {
-  return (
-    <div className="mt-5 flex items-center gap-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
-      <Icon className="h-3.5 w-3.5" aria-hidden />
-      {label}
-    </div>
-  );
-}
-
 // The dashboard nav's full destination list, rendered identically in the
 // persistent desktop sidebar and the mobile slide-over — everything is
 // visible at once (no click-to-reveal dropdown), and the permitting
 // workflow is broken into "Plan & prepare" vs "File & track" so 10 pages
 // read as two short lists instead of one long undifferentiated one.
+// A collapsible section ("Design", "Permitting"): opens by itself for the page
+// you're on, so the menu stays short enough to see every section at once.
+function SidebarSection({
+  icon: Icon,
+  label,
+  hint,
+  defaultOpen,
+  children,
+}: {
+  icon: typeof LayoutDashboard;
+  label: string;
+  hint: string;
+  defaultOpen: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  // Arriving on one of this section's pages (from a link elsewhere) opens it.
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
+  return (
+    <div className="mt-3 flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-secondary"
+      >
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">{label}</span>
+          <span className="block truncate text-[11px] text-muted-foreground">{hint}</span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div className="ml-3 flex flex-col gap-1 border-l border-border pl-2">{children}</div>
+      )}
+    </div>
+  );
+}
+
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const inDesign = DESIGN_PATHS.includes(pathname);
+  const inPermitting = PERMITTING_PATHS.some((p) => pathname.startsWith(p));
   return (
     <nav aria-label="Dashboard" className="flex flex-col gap-1">
       <SidebarLink item={OVERVIEW} exact onNavigate={onNavigate} />
 
-      <SidebarSectionLabel icon={DraftingCompass} label="Design" />
-      {DESIGN_ITEMS.map((item) => (
-        <SidebarLink key={item.to} item={item} exact onNavigate={onNavigate} />
-      ))}
+      <SidebarSection
+        icon={DraftingCompass}
+        label="Design"
+        hint="Brief, survey, plan, fees"
+        defaultOpen={inDesign}
+      >
+        {DESIGN_ITEMS.map((item) => (
+          <SidebarLink key={item.to} item={item} exact onNavigate={onNavigate} />
+        ))}
+      </SidebarSection>
 
-      <SidebarSectionLabel icon={FileStack} label="Permitting" />
-      <SidebarLink item={TRACK_MAP} onNavigate={onNavigate} />
-      {PERMITTING_SUBGROUPS.map((group) => (
-        <div key={group.heading} className="flex flex-col gap-1">
-          <div className="px-3 pt-1.5 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {group.heading}
+      <SidebarSection
+        icon={FileStack}
+        label="Permitting"
+        hint="Prepare, submit, approve"
+        defaultOpen={inPermitting || !inDesign}
+      >
+        <SidebarLink item={TRACK_MAP} onNavigate={onNavigate} />
+        {PERMITTING_SUBGROUPS.map((group) => (
+          <div key={group.heading} className="flex flex-col gap-1">
+            <div className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-muted-foreground">
+              {group.heading}
+            </div>
+            {group.items.map((item) => (
+              <SidebarLink key={item.to} item={item} onNavigate={onNavigate} />
+            ))}
           </div>
-          {group.items.map((item) => (
-            <SidebarLink key={item.to} item={item} onNavigate={onNavigate} />
-          ))}
-        </div>
-      ))}
+        ))}
+      </SidebarSection>
 
       <div className="mt-5 flex flex-col gap-1 border-t border-border pt-3">
         {ACCOUNT_ITEMS.map((item) => (
@@ -385,7 +445,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label="Open dashboard navigation"
             >
               <Menu className="h-4 w-4" aria-hidden />
-              Menu
+              Project pages
             </SheetTrigger>
             <SheetContent
               side="left"

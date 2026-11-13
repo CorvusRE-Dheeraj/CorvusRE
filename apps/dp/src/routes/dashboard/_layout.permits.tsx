@@ -99,7 +99,7 @@ function Permits() {
                     {p.status !== "approved" && (
                       <button
                         onClick={() => advance(p.id, p.status)}
-                        className="text-xs text-accent underline underline-offset-2"
+                        className="btn-outline whitespace-nowrap px-3 py-1.5 text-xs"
                       >
                         Advance →
                       </button>

@@ -81,14 +81,19 @@ export function SiteAnalyses({
     f = floodplain(raw),
     a = access(raw, program);
   const card = (title: string, pill: React.ReactNode, body: React.ReactNode, err?: string) => (
-    <div className="rounded-lg border border-border p-4 text-sm">
+    <div className="min-w-0 rounded-lg border border-border p-4 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold">{title}</span>
         {pill}
       </div>
       {err ? (
-        <p className="mt-2 text-xs text-red-700">
-          Couldn&apos;t load this one ({err}). Try Refresh.
+        // The raw error (often a long service URL) used to be printed here and
+        // stretched the whole page sideways; it's kept on hover for support.
+        <p
+          className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 [overflow-wrap:anywhere]"
+          title={err}
+        >
+          The public data service didn&apos;t answer this time. Press Refresh to try again.
         </p>
       ) : (
         body
