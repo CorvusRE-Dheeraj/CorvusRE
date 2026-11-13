@@ -887,7 +887,7 @@ function Properties() {
         badges={
           <>
             {!propertiesLoading && (
-              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+              <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/15">
                 {properties.length} propert{properties.length === 1 ? "y" : "ies"}
               </span>
             )}

@@ -40,45 +40,54 @@ const NAV = [
   { to: "/dashboard/agreements", label: "Agreements", icon: FileSignature, locked: false },
 ] as const;
 
-// Each tab has its own colour: a tinted icon at rest, and a matching gradient pill when
-// it's the open page (the same colours as the page's banner). Full class strings so
+// Each tab has its own colour: a tinted icon at rest, and a soft pill in the same
+// colour when it is the open page (matching the page banner tint). Full class strings so
 // Tailwind can see them.
 const TAB_COLOR: Record<string, { icon: string; active: string }> = {
   "/dashboard": {
     icon: "text-emerald-700",
-    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-teal-700",
+    active:
+      "data-[status=active]:bg-emerald-100 data-[status=active]:text-emerald-900 dark:data-[status=active]:bg-emerald-900/40 dark:data-[status=active]:text-emerald-100",
   },
   "/dashboard/properties": {
     icon: "text-emerald-700",
-    active: "data-[status=active]:from-emerald-600 data-[status=active]:to-sky-700",
+    active:
+      "data-[status=active]:bg-emerald-100 data-[status=active]:text-emerald-900 dark:data-[status=active]:bg-emerald-900/40 dark:data-[status=active]:text-emerald-100",
   },
   "/dashboard/bpp-accounts": {
     icon: "text-sky-700",
-    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
+    active:
+      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
   },
   "/dashboard/documents": {
     icon: "text-sky-700",
-    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
+    active:
+      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
   },
   "/dashboard/calendar": {
     icon: "text-violet-700",
-    active: "data-[status=active]:from-violet-600 data-[status=active]:to-fuchsia-700",
+    active:
+      "data-[status=active]:bg-violet-100 data-[status=active]:text-violet-900 dark:data-[status=active]:bg-violet-900/40 dark:data-[status=active]:text-violet-100",
   },
   "/dashboard/pay-taxes": {
     icon: "text-teal-600",
-    active: "data-[status=active]:from-teal-600 data-[status=active]:to-blue-700",
+    active:
+      "data-[status=active]:bg-teal-100 data-[status=active]:text-teal-900 dark:data-[status=active]:bg-teal-900/40 dark:data-[status=active]:text-teal-100",
   },
   "/dashboard/issues": {
     icon: "text-rose-700",
-    active: "data-[status=active]:from-rose-600 data-[status=active]:to-pink-800",
+    active:
+      "data-[status=active]:bg-rose-100 data-[status=active]:text-rose-900 dark:data-[status=active]:bg-rose-900/40 dark:data-[status=active]:text-rose-100",
   },
   "/dashboard/acquisition": {
     icon: "text-sky-700",
-    active: "data-[status=active]:from-sky-600 data-[status=active]:to-indigo-700",
+    active:
+      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
   },
   "/dashboard/agreements": {
     icon: "text-indigo-700",
-    active: "data-[status=active]:from-indigo-600 data-[status=active]:to-blue-800",
+    active:
+      "data-[status=active]:bg-indigo-100 data-[status=active]:text-indigo-900 dark:data-[status=active]:bg-indigo-900/40 dark:data-[status=active]:text-indigo-100",
   },
 };
 
@@ -202,12 +211,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                   to={item.to}
                   // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
                   data-tour={`nav-${item.to.split("/").pop()}`}
-                  className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:bg-gradient-to-r data-[status=active]:text-white data-[status=active]:shadow-md ${color?.active ?? ""}`}
+                  className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:font-semibold data-[status=active]:shadow-sm ${color?.active ?? ""}`}
                   activeOptions={{ exact: item.to === "/dashboard" }}
                 >
-                  <Icon
-                    className={`h-4 w-4 transition-colors group-data-[status=active]:text-white ${color?.icon ?? ""}`}
-                  />
+                  <Icon className={`h-4 w-4 transition-colors ${color?.icon ?? ""}`} />
                   {item.label}
                 </Link>
               );

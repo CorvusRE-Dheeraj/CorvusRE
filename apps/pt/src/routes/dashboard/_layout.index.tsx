@@ -542,7 +542,7 @@ function Overview() {
             : undefined
         }
         badges={
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-white/30">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 dark:bg-white/10 dark:text-slate-200 dark:ring-white/15">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime-300" /> AI is watching
             your properties
           </span>

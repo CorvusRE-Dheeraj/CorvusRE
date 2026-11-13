@@ -68,12 +68,63 @@ export function accountForCounty(
   return /county/i.test(a) ? null : a;
 }
 
+// Texas's two-word county names — anything else before "County" in an
+// account note is read as one word ("- Bexar county" → Bexar).
+const TWO_WORD_COUNTIES = [
+  "Deaf Smith",
+  "El Paso",
+  "Fort Bend",
+  "Jeff Davis",
+  "Jim Hogg",
+  "Jim Wells",
+  "La Salle",
+  "Live Oak",
+  "Palo Pinto",
+  "Red River",
+  "San Augustine",
+  "San Jacinto",
+  "San Patricio",
+  "San Saba",
+  "Tom Green",
+  "Van Zandt",
+];
+
+// The counties named in an account field's notes: "1313473 (Bexar County)",
+// "447170 - Comal County". Only an account NUMBER next to the county counts,
+// so "Harris County MUD 5" or free text isn't read as a county.
+export function countiesInAccount(
+  account: string | null | undefined,
+): string[] {
+  const a = account ?? "";
+  const out: string[] = [];
+  const re = /([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+county\b/gi;
+  for (const m of a.matchAll(re)) {
+    const words = m[1].trim().split(/\s+/);
+    const two = words.length === 2 ? `${words[0]} ${words[1]}` : null;
+    const hit =
+      two &&
+      TWO_WORD_COUNTIES.find((c) => c.toLowerCase() === two.toLowerCase());
+    const raw = hit ?? words[words.length - 1];
+    const name = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    const proper = hit ?? name;
+    if (accountForCounty(a, proper) == null) continue;
+    if (!out.some((o) => o.toLowerCase() === proper.toLowerCase()))
+      out.push(proper);
+  }
+  return out;
+}
+
 // The county parts of a property, when it pays taxes in more than one.
 export function countyParts(
   cad: string | null | undefined,
   account: string | null | undefined,
 ): { county: string; accountNumber: string | null }[] {
   const counties = countiesIn(cad);
+  // the account notes can name a county the cad field leaves out
+  // ("447170 - Comal County 1334687 - Bexar county" with cad "Comal County")
+  for (const c of countiesInAccount(account))
+    if (!counties.some((o) => o.toLowerCase() === c.toLowerCase()))
+      counties.push(c);
   if (counties.length < 2) return [];
   return counties.map((county) => ({
     county,
