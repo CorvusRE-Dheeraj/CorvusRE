@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { CourtAppealData } from "./court-appeal";
+import type { ArbitrationData } from "./arbitration-case";
 import { notifyStaff } from "./staff-notification";
 
 export type ProtestStatus =
@@ -100,6 +101,8 @@ export type ProtestRecord = {
   arbitrationFiledAt?: string | null;
   // Court-appeal tracking (attorney, petition-filed confirmation, court updates).
   courtAppeal?: CourtAppealData | null;
+  // the arbitration workflow's state (lib/arbitration-case.ts)
+  arbitration?: ArbitrationData | null;
   arbDecision: ArbDecision | null;
   arbDecisionDate: string | null;
   finalValue: number | null;
@@ -163,6 +166,7 @@ export type ProtestRow = {
   hearing_completed_at?: string | null;
   arbitration_filed_at?: string | null;
   court_appeal?: CourtAppealData | null;
+  arbitration?: ArbitrationData | null;
   hearing_time: string | null;
   hearing_location: string | null;
   hearing_mode: "In Person" | "Phone" | "Videoconference" | "Affidavit" | "Unknown" | null;
@@ -197,7 +201,7 @@ export type ProtestRow = {
 };
 
 const SELECT_COLUMNS =
-  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, hearing_time, hearing_location, hearing_mode, hearing_link, hearing_phone, hearing_link_source, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_review_link, informal_review_phone, informal_review_location, informal_review_link_source, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
+  "id, property_id, bpp_account_id, status, notes, requested_at, updated_at, original_value, settlement_offer_value, settlement_offer_received_at, hearing_date, hearing_completed_at, arbitration_filed_at, court_appeal, arbitration, hearing_time, hearing_location, hearing_mode, hearing_link, hearing_phone, hearing_link_source, arb_decision, arb_decision_date, final_value, escalation_path, closed_at, tax_year, corvus_guidance_ack_at, informal_status, informal_review_date, informal_review_time, informal_review_mode, informal_review_link, informal_review_phone, informal_review_location, informal_review_link_source, informal_appraiser_category, attendance_type, filing_confirmation_number, filing_channel, certified_mail_tracking, evidence_submitted_confirmed_at, assigned_representative, assigned_rep_set_at, cad_evidence_requested_at, cad_evidence_received_at";
 
 function fromRow(row: ProtestRow): ProtestRecord {
   return protestFromRow(row);
@@ -220,6 +224,7 @@ export function protestFromRow(row: ProtestRow): ProtestRecord {
     hearingCompletedAt: row.hearing_completed_at,
     arbitrationFiledAt: row.arbitration_filed_at,
     courtAppeal: row.court_appeal,
+    arbitration: row.arbitration,
     hearingTime: row.hearing_time,
     hearingLocation: row.hearing_location,
     hearingMode: row.hearing_mode,

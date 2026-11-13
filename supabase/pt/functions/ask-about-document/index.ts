@@ -19,7 +19,26 @@ Deno.serve(async (req: Request) => {
   if (limited) return limited;
 
   try {
-    const { question, context, conversational, personaName } = await req.json();
+    const { question, context, conversational, personaName, file } = await req.json();
+    // Optional: one PDF or image the question is about (a data: URL), read
+    // directly — a signed rendition to check, a fixed-asset report, a tax bill.
+    let filePart: { inline_data: { mime_type: string; data: string } } | null = null;
+    if (file && typeof file.dataUrl === "string") {
+      const m = file.dataUrl.match(/^data:(application\/pdf|image\/(?:png|jpe?g|webp|heic|gif));base64,(.+)$/);
+      if (!m) {
+        return new Response(JSON.stringify({ error: "Only a PDF or an image can be attached." }), {
+          status: 400,
+          headers: corsHeaders,
+        });
+      }
+      if (m[2].length > 11_000_000) {
+        return new Response(JSON.stringify({ error: "That file is too large (8 MB max)." }), {
+          status: 413,
+          headers: corsHeaders,
+        });
+      }
+      filePart = { inline_data: { mime_type: m[1], data: m[2] } };
+    }
     if (!question) {
       return new Response(JSON.stringify({ error: "question is required" }), {
         status: 400,
@@ -71,6 +90,7 @@ Deno.serve(async (req: Request) => {
             {
               text: `Context:\n${context ?? "(none)"}\n\nQuestion: ${question}`,
             },
+            ...(filePart ? [filePart] : []),
           ],
         },
       ],

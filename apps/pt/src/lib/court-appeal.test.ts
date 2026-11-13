@@ -136,7 +136,7 @@ describe("courtTimeline", () => {
     expect(t.map((x) => x.title)).toEqual([
       "Petition filed",
       "Court notice: Citation",
-      "Order: Scheduling order",
+      "Court order: Scheduling order",
     ]);
   });
 });
@@ -169,5 +169,48 @@ describe("reviewCourtAppeal with malformed dates", () => {
       NOW,
     );
     expect(r.deadline).toBe("2026-11-09");
+  });
+});
+
+describe("court appeal — missing facts and upcoming deadlines", () => {
+  it("flags what isn't on file instead of assuming it", async () => {
+    const { courtMissing } = await import("./court-appeal");
+    const flags = courtMissing(
+      { arbDecision: "denied", arbDecisionDate: "2026-10-01" } as never,
+      {},
+      { arbOrderDocument: false, requestedValue: false },
+    );
+    expect(flags.join(" ")).toMatch(/received the ARB order/);
+    expect(flags.join(" ")).toMatch(/isn't uploaded/);
+    expect(flags.join(" ")).toMatch(/requested/);
+  });
+
+  it("lists the appeal deadline until filed, then dates read from court documents", async () => {
+    const { courtUpcoming } = await import("./court-appeal");
+    const review = { deadline: "2026-12-30" } as never;
+    const now = new Date("2026-11-12T12:00:00");
+    expect(courtUpcoming(review, {}, now)[0].label).toMatch(/court appeal/);
+    const after = courtUpcoming(
+      review,
+      {
+        petitionFiledAt: "2026-11-20T12:00:00Z",
+        updates: [
+          {
+            id: "u1",
+            date: "2026-11-25",
+            type: "hearing",
+            title: "Docket control order",
+            summary: "",
+            documentId: null,
+            deadlines: [
+              { date: "2027-02-01", label: "Expert designation" },
+              { date: "2026-01-01", label: "Already past" },
+            ],
+          },
+        ],
+      },
+      now,
+    );
+    expect(after.map((a) => a.date)).toEqual(["2027-02-01"]);
   });
 });

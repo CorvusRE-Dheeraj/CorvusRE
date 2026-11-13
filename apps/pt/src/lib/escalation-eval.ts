@@ -138,13 +138,31 @@ function buildMarketDisconnectEvidence(property: PropertyRecord): MarketDisconne
 // drawn from this; $50 is retained by the Comptroller; the balance is
 // refunded to the owner if the arbitrator's value is nearer the owner's
 // opinion than the ARB's value (Tax Code §41A.05, §41A.10).
+// Texas Comptroller, "Arbitration Deposit and Arbitrator Fee Schedule"
+// (effective Sept. 1, 2017) — checked against the published PDF 2026-11-12:
+// https://comptroller.texas.gov/taxes/property-tax/docs/arb-schedule.pdf
+export const ARBITRATION_SCHEDULE_URL =
+  "https://comptroller.texas.gov/taxes/property-tax/docs/arb-schedule.pdf";
+export function bindingArbitrationFees(
+  value: number,
+  homestead: boolean,
+): { deposit: number; arbitratorFee: number; retained: number } {
+  const row = homestead
+    ? value <= 500_000
+      ? [450, 400]
+      : [500, 450]
+    : value <= 1_000_000
+      ? [500, 450]
+      : value <= 2_000_000
+        ? [800, 750]
+        : value <= 3_000_000
+          ? [1_050, 1_000]
+          : [1_550, 1_500]; // > $3M and ≤ $5M (above $5M non-homestead is ineligible)
+  // §41A.05(b): the Comptroller may keep $50 of the deposit for administration
+  return { deposit: row[0], arbitratorFee: row[1], retained: 50 };
+}
 function bindingArbitrationDeposit(value: number, homestead: boolean): number {
-  if (homestead) return value <= 500_000 ? 450 : 500;
-  if (value <= 500_000) return 500;
-  if (value <= 1_000_000) return 800;
-  if (value <= 2_000_000) return 1_050;
-  if (value <= 3_000_000) return 1_550;
-  return 2_500; // > $3M and ≤ $5M (above $5M, non-homestead is ineligible)
+  return bindingArbitrationFees(value, homestead).deposit;
 }
 
 const BINDING_ARBITRATION_VALUE_CAP = 5_000_000; // §41A.01 — non-homestead

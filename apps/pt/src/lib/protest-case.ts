@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { CourtAppealData } from "./court-appeal";
+import type { ArbitrationData } from "./arbitration-case";
 import { getModuleAnalysis, type ModuleAnalysisInput } from "./ai-report-modules";
 import type { PropertyRecord } from "./properties";
 import type {
@@ -678,6 +679,31 @@ export async function closeCase(protestId: string, finalValue: number): Promise<
     `Case closed — final value ${currencyText(finalValue)}.`,
     { finalValue },
   );
+}
+
+// The arbitration workflow's state (lib/arbitration-case.ts).
+export async function saveArbitration(protestId: string, data: ArbitrationData): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({ arbitration: data })
+    .eq("id", protestId);
+  if (error) throw error;
+}
+
+// A court appeal (or arbitration) ended: close the case at the final value
+// and carry that value onto the property record, so monitoring and next
+// year's protest start from it.
+export async function recordFinalValueOnProperty(
+  protestId: string,
+  propertyId: string,
+  finalValue: number,
+): Promise<void> {
+  await closeCase(protestId, finalValue);
+  const { error } = await supabase
+    .from("properties")
+    .update({ total_value: finalValue })
+    .eq("id", propertyId);
+  if (error) throw error;
 }
 
 export type CaseResults = { valueReduction: number; actualSavings: number };

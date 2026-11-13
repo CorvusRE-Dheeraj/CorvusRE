@@ -21,15 +21,25 @@ import {
   groundedUrl,
   readOfficialSite,
 } from "../_shared/web-retrieval.ts";
+import { researchCounty } from "../_shared/county-research.ts";
+import {
+  RESEARCH_TOPICS,
+  type ResearchTopic,
+} from "../_shared/county-research-topics.ts";
+
+const RESEARCH_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+const RESEARCH_EMPTY_FRESH_MS = 24 * 60 * 60 * 1000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Content-Type": "application/json",
 };
 
 const FRESH_MS = 90 * 24 * 60 * 60 * 1000;
-const FOLLOW = /protest|appeal|online|e-?file|ifile|filing|informal|review board|\barb\b|hearing|forms?\b/i;
+const FOLLOW =
+  /protest|appeal|online|e-?file|ifile|filing|informal|review board|\barb\b|hearing|forms?\b/i;
 
 const SYSTEM = `You read a Texas appraisal district's own web pages (and any attached PDFs) and report how a property owner files a property tax protest THERE. Use ONLY what the provided pages state. If a page doesn't clearly say something, return null for it — never fill in what is "typical for Texas".
 
@@ -52,7 +62,8 @@ function str(v: unknown, max = 400): string | null {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: corsHeaders });
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
@@ -60,30 +71,107 @@ Deno.serve(async (req: Request) => {
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+      {
+        global: {
+          headers: { Authorization: req.headers.get("Authorization") ?? "" },
+        },
+      },
     );
     const {
       data: { user },
     } = await callerClient.auth.getUser();
     if (!user) return json({ error: "unauthenticated" }, 401);
 
-    const { countyCode } = (await req.json()) as { countyCode?: unknown };
+    const { countyCode, topic, refresh } = (await req.json()) as {
+      countyCode?: unknown;
+      topic?: unknown;
+      refresh?: unknown;
+    };
     const entry =
       typeof countyCode === "string"
-        ? (directory as { counties: Record<string, { appraisalDistrict: { name: string; website: string | null } | null }> })
-            .counties[countyCode]
+        ? (
+            directory as {
+              counties: Record<
+                string,
+                {
+                  county: string;
+                  appraisalDistrict: {
+                    name: string;
+                    website: string | null;
+                  } | null;
+                  taxOffice: { website: string | null } | null;
+                }
+              >;
+            }
+          ).counties[countyCode]
         : undefined;
-    if (!entry?.appraisalDistrict) return json({ error: "Unknown county." }, 400);
+    if (!entry?.appraisalDistrict)
+      return json({ error: "Unknown county." }, 400);
+
+    // {"topic": …} — the centralized county research engine
+    // (_shared/county-research.ts): arbitration, court_appeal, bpp_rendition …
+    if (typeof topic === "string" && topic !== "protest") {
+      if (!(topic in RESEARCH_TOPICS))
+        return json({ error: "Unknown topic." }, 400);
+      const t = topic as ResearchTopic;
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      if (refresh !== true) {
+        const { data: cached } = await admin
+          .from("county_research")
+          .select("research, retrieved_at")
+          .eq("county_code", countyCode)
+          .eq("topic", t)
+          .maybeSingle();
+        const found = !!(cached?.research as { sources?: unknown[] } | null)
+          ?.sources?.length;
+        const maxAge = found ? RESEARCH_FRESH_MS : RESEARCH_EMPTY_FRESH_MS;
+        if (
+          cached &&
+          Date.now() - new Date(cached.retrieved_at as string).getTime() <
+            maxAge
+        )
+          return json({ research: cached.research });
+      }
+      const apiKey = Deno.env.get("GEMINI_API_KEY");
+      if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+      const research = await researchCounty({
+        topic: t,
+        county: entry.county,
+        cadWebsite: entry.appraisalDistrict.website,
+        countyWebsite: entry.taxOffice?.website ?? null,
+        apiKey,
+      });
+      await admin.from("county_research").upsert(
+        {
+          county_code: countyCode,
+          topic: t,
+          county: entry.county,
+          research,
+          retrieved_at: research.retrievedAt,
+        },
+        { onConflict: "county_code,topic" },
+      );
+      return json({ research });
+    }
     const website = entry.appraisalDistrict.website;
     if (!website) return json({ procedures: null });
 
-    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
     const { data: cached } = await admin
       .from("county_procedures")
       .select("procedures, retrieved_at")
       .eq("county_code", countyCode)
       .maybeSingle();
-    if (cached && Date.now() - new Date(cached.retrieved_at as string).getTime() < FRESH_MS) {
+    if (
+      cached &&
+      Date.now() - new Date(cached.retrieved_at as string).getTime() < FRESH_MS
+    ) {
       return json({ procedures: cached.procedures ?? null });
     }
 
@@ -94,15 +182,25 @@ Deno.serve(async (req: Request) => {
       const apiKey = Deno.env.get("GEMINI_API_KEY");
       if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
       const pageText = pages
-        .map((p) => `=== PAGE ${p.url} ===\n${p.text}\n--- links on this page ---\n${p.links
-          .filter((l) => l.label)
-          .slice(0, 150)
-          .map((l) => `${l.label} -> ${l.url}`)
-          .join("\n")}`)
+        .map(
+          (p) =>
+            `=== PAGE ${p.url} ===\n${p.text}\n--- links on this page ---\n${p.links
+              .filter((l) => l.label)
+              .slice(0, 150)
+              .map((l) => `${l.label} -> ${l.url}`)
+              .join("\n")}`,
+        )
         .join("\n\n");
-      const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [
-        { text: `Appraisal district: ${entry.appraisalDistrict.name}\n\n${pageText}` },
-        ...pdfs.map((p) => ({ inline_data: { mime_type: "application/pdf", data: p.base64 } })),
+      const parts: Array<{
+        text?: string;
+        inline_data?: { mime_type: string; data: string };
+      }> = [
+        {
+          text: `Appraisal district: ${entry.appraisalDistrict.name}\n\n${pageText}`,
+        },
+        ...pdfs.map((p) => ({
+          inline_data: { mime_type: "application/pdf", data: p.base64 },
+        })),
       ];
       const res = await fetch(geminiUrl(GEMINI_MODEL_FAST, apiKey), {
         method: "POST",
@@ -110,11 +208,19 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM }] },
           contents: [{ role: "user", parts }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0 },
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0,
+          },
         }),
       });
-      if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      const out = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+      if (!res.ok)
+        throw new Error(
+          `Gemini API error ${res.status}: ${(await res.text()).slice(0, 200)}`,
+        );
+      const out = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
       const raw = out.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
       let parsed: Extracted = {};
       try {
@@ -128,19 +234,27 @@ Deno.serve(async (req: Request) => {
       const c = corpus(pages);
       for (const p of pdfs) c.urls.add(p.url);
       const sourceUrls = Array.isArray(parsed.sourceUrls)
-        ? parsed.sourceUrls.map((u) => groundedUrl(u, c)).filter((u): u is string => !!u)
+        ? parsed.sourceUrls
+            .map((u) => groundedUrl(u, c))
+            .filter((u): u is string => !!u)
         : [];
       procedures = {
         onlinePortalUrl: groundedUrl(parsed.onlinePortalUrl, c),
         onlineNotes: str(parsed.onlineNotes),
-        emailFilingAvailable: typeof parsed.emailFilingAvailable === "boolean" ? parsed.emailFilingAvailable : null,
+        emailFilingAvailable:
+          typeof parsed.emailFilingAvailable === "boolean"
+            ? parsed.emailFilingAvailable
+            : null,
         emailFilingAddress: groundedEmail(parsed.emailFilingAddress, c),
         emailNotes: str(parsed.emailNotes),
         informalReviewHowTo: str(parsed.informalReviewHowTo, 600),
         informalReviewNotes: str(parsed.informalReviewNotes),
         arbPhone: groundedPhone(parsed.arbPhone, c),
         arbEmail: groundedEmail(parsed.arbEmail, c),
-        sourceUrls: sourceUrls.length > 0 ? sourceUrls : pages.map((p) => p.url).slice(0, 3),
+        sourceUrls:
+          sourceUrls.length > 0
+            ? sourceUrls
+            : pages.map((p) => p.url).slice(0, 3),
         retrievedAt: new Date().toISOString(),
       };
     }
@@ -160,6 +274,9 @@ Deno.serve(async (req: Request) => {
     return json({ procedures });
   } catch (err) {
     console.error("retrieve-county-procedures failed:", err);
-    return json({ error: err instanceof Error ? err.message : "unknown error" }, 500);
+    return json(
+      { error: err instanceof Error ? err.message : "unknown error" },
+      500,
+    );
   }
 });

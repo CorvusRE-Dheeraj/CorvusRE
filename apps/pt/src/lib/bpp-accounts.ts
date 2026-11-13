@@ -47,6 +47,59 @@ export type BppAccountRecord = {
   taxAmountPaid: number | null;
   paymentDueDate: string | null;
   paidAt: string | null;
+  // Personal Property tab (supabase/pt/bpp-personal-property.sql)
+  propertyId?: string | null;
+  source?: BppSource | null;
+  podioItemId?: string | null;
+  renditionValues?: RenditionValues | null;
+  renditionSubmissionMethod?: string | null;
+  renditionSubmissionNote?: string | null;
+  renditionConfirmationPath?: string | null;
+  renditionVerification?: RenditionVerification | null;
+  extensionRequestedAt?: string | null;
+  extensionGrantedUntil?: string | null;
+  taxableValue?: number | null;
+  exemptions?: string | null;
+  taxingUnits?: TaxingUnit[] | null;
+  taxBillPath?: string | null;
+  paymentMethod?: string | null;
+  paymentConfirmationPath?: string | null;
+};
+
+export type BppSource = "existing" | "document" | "manual" | "podio" | "csv";
+export type TaxingUnit = { name: string; amount: number | null };
+
+// One line of the Form 50-144 asset schedule.
+export type RenditionAsset = {
+  id: string;
+  description: string;
+  category: string;
+  year: number | null;
+  cost: number | null;
+  marketValue: number | null;
+  // where it came from — "manual", "dictation" or the supporting file's name
+  source: string;
+  approved: boolean;
+};
+
+// What the owner has filled in on Form 50-144 so far — kept between visits.
+// `fields` uses Form 50-144's own field names (BPP_RENDITION_SCHEMA).
+export type RenditionValues = {
+  fields?: Record<string, string | boolean>;
+  assets?: RenditionAsset[];
+  // the owner ticked "the information above is true and correct"
+  certified?: boolean;
+  updatedAt?: string;
+};
+
+// Corvus AI's look at an uploaded hand-signed rendition.
+export type RenditionVerification = {
+  at: string;
+  signed: boolean | null;
+  dated: boolean | null;
+  matchesAccount: boolean | null;
+  issues: string[];
+  summary: string;
 };
 
 type BppAccountRow = {
@@ -81,10 +134,26 @@ type BppAccountRow = {
   tax_amount_paid: number | null;
   payment_due_date: string | null;
   paid_at: string | null;
+  property_id?: string | null;
+  source?: BppSource | null;
+  podio_item_id?: string | null;
+  rendition_values?: RenditionValues | null;
+  rendition_submission_method?: string | null;
+  rendition_submission_note?: string | null;
+  rendition_confirmation_path?: string | null;
+  rendition_verification?: RenditionVerification | null;
+  extension_requested_at?: string | null;
+  extension_granted_until?: string | null;
+  taxable_value?: number | null;
+  exemptions?: string | null;
+  taxing_units?: TaxingUnit[] | null;
+  tax_bill_path?: string | null;
+  payment_method?: string | null;
+  payment_confirmation_path?: string | null;
 };
 
 const SELECT_COLUMNS =
-  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_document_path, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at";
+  "id, business_name, account_number, cad, location_address, created_at, tax_year, rendered_value, prior_value, notice_value, rendition_deadline, protest_deadline, rendition_signature_type, rendition_signature_data, rendition_signed_at, rendition_document_path, rendition_filed_at, signing_tracking_id, estimated_savings, stripe_subscription_id, subscription_status, plan_tier, value_bracket, cancel_at_period_end, cancel_at, auto_refile, auto_refile_authorized_at, tax_amount_due, tax_amount_paid, payment_due_date, paid_at, property_id, source, podio_item_id, rendition_values, rendition_submission_method, rendition_submission_note, rendition_confirmation_path, rendition_verification, extension_requested_at, extension_granted_until, taxable_value, exemptions, taxing_units, tax_bill_path, payment_method, payment_confirmation_path";
 
 function fromRow(row: BppAccountRow): BppAccountRecord {
   return {
@@ -119,6 +188,22 @@ function fromRow(row: BppAccountRow): BppAccountRecord {
     taxAmountPaid: row.tax_amount_paid == null ? null : Number(row.tax_amount_paid),
     paymentDueDate: row.payment_due_date,
     paidAt: row.paid_at,
+    propertyId: row.property_id ?? null,
+    source: row.source ?? null,
+    podioItemId: row.podio_item_id ?? null,
+    renditionValues: row.rendition_values ?? null,
+    renditionSubmissionMethod: row.rendition_submission_method ?? null,
+    renditionSubmissionNote: row.rendition_submission_note ?? null,
+    renditionConfirmationPath: row.rendition_confirmation_path ?? null,
+    renditionVerification: row.rendition_verification ?? null,
+    extensionRequestedAt: row.extension_requested_at ?? null,
+    extensionGrantedUntil: row.extension_granted_until ?? null,
+    taxableValue: row.taxable_value == null ? null : Number(row.taxable_value),
+    exemptions: row.exemptions ?? null,
+    taxingUnits: row.taxing_units ?? null,
+    taxBillPath: row.tax_bill_path ?? null,
+    paymentMethod: row.payment_method ?? null,
+    paymentConfirmationPath: row.payment_confirmation_path ?? null,
   };
 }
 
@@ -171,11 +256,17 @@ export async function addBppAccount(
     taxAmountDue?: number;
     taxAmountPaid?: number;
     paymentDueDate?: string;
+    propertyId?: string | null;
+    source?: BppSource;
+    podioItemId?: string | null;
   },
 ): Promise<BppAccountRecord> {
   const { data, error } = await supabase
     .from("bpp_accounts")
     .insert({
+      property_id: account.propertyId ?? null,
+      source: account.source ?? null,
+      podio_item_id: account.podioItemId ?? null,
       tax_amount_due: account.taxAmountDue ?? null,
       tax_amount_paid: account.taxAmountPaid ?? null,
       payment_due_date: account.paymentDueDate ?? null,
@@ -240,6 +331,10 @@ export async function updateBppAccount(
 // the county actually has it.
 // Puts the signed copy in the documents bucket under the owner's folder
 // (BPP accounts aren't properties, so it's not a Documents row).
+export function storeBppFile(id: string, file: File): Promise<string> {
+  return storeSignedCopy(id, file);
+}
+
 async function storeSignedCopy(id: string, file: File): Promise<string> {
   const {
     data: { user },
@@ -377,4 +472,96 @@ export async function updateBppTaxBill(
     .single();
   if (error) throw error;
   return fromRow(data as BppAccountRow);
+}
+
+async function patchRow(id: string, update: Record<string, unknown>): Promise<BppAccountRecord> {
+  const { data, error } = await supabase
+    .from("bpp_accounts")
+    .update(update)
+    .eq("id", id)
+    .select(SELECT_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromRow(data as BppAccountRow);
+}
+
+// Form 50-144 progress, saved as the owner fills it in.
+export function saveRenditionValues(id: string, values: RenditionValues) {
+  return patchRow(id, { rendition_values: { ...values, updatedAt: new Date().toISOString() } });
+}
+
+export function saveRenditionVerification(id: string, v: RenditionVerification) {
+  return patchRow(id, { rendition_verification: v });
+}
+
+// Only ever called when the OWNER says they submitted it — CorvusPT never
+// submits a rendition or marks it submitted by itself.
+export async function recordRenditionSubmission(
+  id: string,
+  sub: { date: string; method: string; note?: string; confirmation?: File | null },
+): Promise<BppAccountRecord> {
+  const path = sub.confirmation ? await storeSignedCopy(id, sub.confirmation) : null;
+  return patchRow(id, {
+    rendition_filed_at: new Date(`${sub.date}T12:00:00`).toISOString(),
+    rendition_submission_method: sub.method,
+    rendition_submission_note: sub.note?.trim() || null,
+    ...(path ? { rendition_confirmation_path: path } : {}),
+  });
+}
+
+export async function uploadRenditionConfirmation(id: string, file: File) {
+  const path = await storeSignedCopy(id, file);
+  return patchRow(id, { rendition_confirmation_path: path });
+}
+
+// An extension request (Tax Code §22.02). Requested ≠ granted: grantedUntil
+// is only set when the owner records the appraisal district's approval.
+export function recordExtension(
+  id: string,
+  ext: { requested: boolean; grantedUntil?: string | null },
+) {
+  return patchRow(id, {
+    extension_requested_at: ext.requested ? new Date().toISOString() : null,
+    extension_granted_until: ext.grantedUntil || null,
+  });
+}
+
+// The BPP tax bill as read from the upload and confirmed by the owner.
+export async function saveBppTaxBill(
+  id: string,
+  bill: {
+    taxableValue?: number | null;
+    exemptions?: string | null;
+    taxingUnits?: TaxingUnit[] | null;
+    taxAmountDue?: number | null;
+    paymentDueDate?: string | null;
+    file?: File | null;
+  },
+): Promise<BppAccountRecord> {
+  const path = bill.file ? await storeSignedCopy(id, bill.file) : null;
+  const update: Record<string, unknown> = {};
+  if (bill.taxableValue !== undefined) update.taxable_value = bill.taxableValue;
+  if (bill.exemptions !== undefined) update.exemptions = bill.exemptions;
+  if (bill.taxingUnits !== undefined) update.taxing_units = bill.taxingUnits;
+  if (bill.taxAmountDue !== undefined) update.tax_amount_due = bill.taxAmountDue;
+  if (bill.paymentDueDate !== undefined) update.payment_due_date = bill.paymentDueDate;
+  if (path) update.tax_bill_path = path;
+  return patchRow(id, update);
+}
+
+export async function recordBppPayment(
+  id: string,
+  pay: { amount: number | null; method: string; confirmation?: File | null },
+): Promise<BppAccountRecord> {
+  const path = pay.confirmation ? await storeSignedCopy(id, pay.confirmation) : null;
+  return patchRow(id, {
+    tax_amount_paid: pay.amount,
+    paid_at: new Date().toISOString(),
+    payment_method: pay.method,
+    ...(path ? { payment_confirmation_path: path } : {}),
+  });
+}
+
+export function linkBppProperty(id: string, propertyId: string | null) {
+  return patchRow(id, { property_id: propertyId });
 }

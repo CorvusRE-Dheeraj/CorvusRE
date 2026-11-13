@@ -235,3 +235,23 @@ export function groundedPhone(v: unknown, c: { text: string }): string | null {
   const textDigits = c.text.replace(/\D/g, "");
   return textDigits.includes(digits) ? v.trim() : null;
 }
+
+// One official PDF (a form or published schedule), for an AI to read.
+export async function readPdf(url: string): Promise<FetchedPdf | null> {
+  const r = await get(url, MAX_PDF_BYTES);
+  return r && (r.type.includes("pdf") || /\.pdf(\?|$)/i.test(url))
+    ? { url, base64: toBase64(r.bytes) }
+    : null;
+}
+
+// One official page on its own (no link following).
+export async function readPage(url: string): Promise<FetchedPage | null> {
+  const r = await get(url, MAX_HTML_BYTES);
+  if (!r || !r.type.includes("html")) return null;
+  const html = new TextDecoder().decode(r.bytes);
+  return {
+    url,
+    text: htmlToText(html).slice(0, MAX_TEXT_PER_PAGE),
+    links: extractLinks(html, new URL(url)),
+  };
+}

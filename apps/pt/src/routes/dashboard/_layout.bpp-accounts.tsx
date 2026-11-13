@@ -1,470 +1,843 @@
 import { confirmDialog } from "@/components/ConfirmHost";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  Briefcase as HeroBppIcon,
+  CalendarClock,
+  ClipboardList,
+  Eye,
+  FileDown,
+  FilePen,
+  Receipt,
+  Send,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import {
-  listBppAccounts,
-  addBppAccount,
-  deleteBppAccount,
   bppNeedsProtest,
+  deleteBppAccount,
+  linkBppProperty,
+  listBppAccounts,
   setBppAutoRefile,
+  signedRenditionUrl,
+  updateBppAccount,
   type BppAccountRecord,
 } from "@/lib/bpp-accounts";
 import {
-  getMyBilling,
-  startBppCheckout,
-  cancelBppSubscription,
-  resumeBppSubscription,
-  bracketForBppValue,
+  RENDITION_STATUS_LABEL,
+  SUBMISSION_METHOD_LABEL,
+  TX_COUNTIES,
+  cadForCounty,
+  countyOf,
+  daysUntil,
+  effectiveRenditionDeadline,
+  renditionFieldValues,
+  renditionStatus,
+  type BppRenditionStatus,
+} from "@/lib/bpp-rendition";
+import {
   bppMonthlyPrice,
+  bracketForBppValue,
+  cancelBppSubscription,
+  getMyBilling,
+  resumeBppSubscription,
+  startBppCheckout,
   TIER_LABEL,
   type BillingInfo,
   type Tier,
 } from "@/lib/billing";
 import { stripeConfigured } from "@/lib/stripe";
 import { listProtests, type ProtestRecord } from "@/lib/protests";
+import { listProperties, type PropertyRecord } from "@/lib/properties";
+import {
+  PAY_STATUS_LABEL,
+  buildBppTaxRow,
+  listCountyTaxSettings,
+  type BppTaxRow,
+  type CountyTaxSettings,
+  type PayStatus,
+} from "@/lib/pay-taxes";
+import { BPP_RENDITION_SCHEMA, buildPdf, downloadPdf } from "@/lib/protest-documents";
+import { getErrorMessage } from "@/lib/error-message";
+import { currency } from "@/lib/intake-store";
+import { isPaidStatus } from "@/lib/subscription-status";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHero, heroButton } from "@/components/PageHero";
 import { BppRenditionEditor } from "@/components/BppRenditionEditor";
 import { BppProtestFlow } from "@/components/BppProtestFlow";
-import { ComingSoonLock } from "@/components/ComingSoonLock";
-import { PageHero, heroButton, heroButtonGhost } from "@/components/PageHero";
-import { Briefcase as HeroBppIcon } from "lucide-react";
-import { isPaidStatus } from "@/lib/subscription-status";
+import { BppSubmitDialog } from "@/components/BppSubmitDialog";
+import { BppTaxInfoDialog } from "@/components/BppTaxInfoDialog";
+import { AddBppDialog } from "@/components/AddBppDialog";
+import { WorkflowPopup } from "@/components/case/workflow-ui";
 
 export const Route = createFileRoute("/dashboard/_layout/bpp-accounts")({
-  component: BppAccounts,
+  component: PersonalPropertyPage,
 });
 
-// Still under active development — gray out (see AppShell.tsx's own
-// `locked: true` for this tab) and block direct access too, not just the
-// nav link, so there's no way to reach real BPP operations while this is
-// true. Flip back to false (and AppShell's matching flag) once it's ready.
-const LOCKED = true;
+const fmtDate = (iso: string | null | undefined) =>
+  iso
+    ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
+const money = (n: number | null | undefined) => (n == null ? "—" : currency(n));
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const RENDITION_TONE: Record<BppRenditionStatus, string> = {
+  not_started: "bg-secondary text-muted-foreground",
+  in_progress: "bg-amber-100 text-amber-900",
+  ready_to_sign: "bg-sky-100 text-sky-800",
+  signed: "bg-violet-100 text-violet-800",
+  submitted: "bg-success/15 text-success",
+};
+const PAY_TONE: Record<PayStatus, string> = {
+  unpaid: "bg-secondary text-foreground",
+  initiated: "bg-sky-100 text-sky-800",
+  partial: "bg-amber-100 text-amber-900",
+  paid: "bg-success/15 text-success",
+  overdue: "bg-destructive/15 text-destructive",
+  verifying: "bg-violet-100 text-violet-800",
+};
 
-function money(n: number | null): string {
-  return n != null ? `$${n.toLocaleString("en-US")}` : "—";
-}
+type Popup =
+  | { kind: "details" | "rendition" | "submit" | "instructions" | "tax" | "protest"; id: string }
+  | { kind: "add" }
+  | null;
 
-// The lock check lives in its own component so the page's hooks always run in
-// the same order (hooks after an early return break when LOCKED changes).
-function BppAccounts() {
-  if (LOCKED) {
-    return (
-      <ComingSoonLock
-        title="BPP Accounts"
-        description="Track your Business Personal Property renditions, deadlines, and protests."
-      />
-    );
-  }
-  return <BppAccountsPage />;
-}
-
-function BppAccountsPage() {
+// Personal Property: every business personal property (BPP) account — the
+// furniture, fixtures, equipment and inventory a business renders each year
+// on Form 50-144 — with its rendition, submission and tax bill. Separate from
+// the real estate (public.properties), though each can be linked to the
+// property it operates at.
+function PersonalPropertyPage() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<BppAccountRecord[]>([]);
   const [protests, setProtests] = useState<ProtestRecord[]>([]);
+  const [properties, setProperties] = useState<PropertyRecord[]>([]);
+  const [settings, setSettings] = useState<CountyTaxSettings[]>([]);
   const [billing, setBilling] = useState<BillingInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
-  const [businessName, setBusinessName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
-  const [cad, setCad] = useState("");
-  const [locationAddress, setLocationAddress] = useState("");
-
-  const [renditionAccount, setRenditionAccount] = useState<BppAccountRecord | null>(null);
-  const [protestAccount, setProtestAccount] = useState<BppAccountRecord | null>(null);
+  const [popup, setPopup] = useState<Popup>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([listBppAccounts(user.id), listProtests(user.id), getMyBilling(user.id)])
-      .then(([acc, pr, b]) => {
+    Promise.all([
+      listBppAccounts(user.id),
+      listProtests(user.id).catch(() => [] as ProtestRecord[]),
+      listProperties(user.id).catch(() => [] as PropertyRecord[]),
+      listCountyTaxSettings().catch(() => [] as CountyTaxSettings[]),
+      getMyBilling(user.id).catch(() => null),
+    ])
+      .then(([acc, pr, props, s, b]) => {
         setAccounts(acc);
         setProtests(pr);
+        setProperties(props);
+        setSettings(s);
         setBilling(b);
       })
       .catch((err) =>
-        toast.error(err instanceof Error ? err.message : "Could not load BPP accounts."),
+        toast.error(getErrorMessage(err, "Could not load your personal property accounts.")),
       )
       .finally(() => setLoading(false));
   }, [user]);
 
-  const isBeta = billing?.plan === "beta";
+  const today = new Date().toISOString().slice(0, 10);
+  const taxRows = useMemo(
+    () =>
+      new Map(
+        accounts.map((a) => [a.id, buildBppTaxRow({ account: a, settings, todayIso: today })]),
+      ),
+    [accounts, settings, today],
+  );
+  const update = (a: BppAccountRecord) =>
+    setAccounts((prev) => prev.map((x) => (x.id === a.id ? a : x)));
+  const current = popup && "id" in popup ? (accounts.find((a) => a.id === popup.id) ?? null) : null;
+  const propertyOf = (a: BppAccountRecord | null) =>
+    a?.propertyId ? (properties.find((p) => p.id === a.propertyId) ?? null) : null;
 
-  function isPaid(a: BppAccountRecord): boolean {
-    return isBeta || isPaidStatus(a.subscriptionStatus);
-  }
-
-  function updateAccount(updated: BppAccountRecord) {
-    setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-    setRenditionAccount((prev) => (prev && prev.id === updated.id ? updated : prev));
-  }
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user || !businessName.trim()) return;
-    setSaving(true);
+  async function downloadRendition(a: BppAccountRecord) {
+    setDownloading(a.id);
     try {
-      const created = await addBppAccount(user.id, {
-        businessName: businessName.trim(),
-        accountNumber: accountNumber.trim() || undefined,
-        cad: cad.trim() || undefined,
-        locationAddress: locationAddress.trim() || undefined,
-      });
-      setAccounts((prev) => [created, ...prev]);
-      setBusinessName("");
-      setAccountNumber("");
-      setCad("");
-      setLocationAddress("");
-      setShowForm(false);
-      toast.success("BPP account added.");
+      if (a.renditionDocumentPath) {
+        window.open(await signedRenditionUrl(a.renditionDocumentPath), "_blank", "noopener");
+      } else {
+        const bytes = await buildPdf(
+          "forms/50-144.pdf",
+          BPP_RENDITION_SCHEMA,
+          renditionFieldValues(a),
+        );
+        downloadPdf(bytes, `Form-50-144-${a.businessName || "BPP"}.pdf`);
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add this BPP account.");
+      toast.error(getErrorMessage(err, "Could not download the rendition."));
     } finally {
-      setSaving(false);
+      setDownloading(null);
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!(await confirmDialog("Remove this BPP account?"))) return;
-    setDeletingId(id);
-    try {
-      await deleteBppAccount(id);
-      setAccounts((prev) => prev.filter((a) => a.id !== id));
-      toast.success("BPP account removed.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not remove this BPP account.");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  async function handleSubscribe(account: BppAccountRecord, tier: Tier) {
-    setBusyId(account.id);
-    try {
-      await startBppCheckout(account.id, tier, { newTab: true });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not start checkout.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function handleCancel(account: BppAccountRecord) {
-    const ok = await confirmDialog(
-      `Cancel the subscription for ${account.businessName}? It ends immediately.`,
-    );
-    if (!ok) return;
-    setBusyId(account.id);
-    try {
-      await cancelBppSubscription(account.id);
-      updateAccount({
-        ...account,
-        subscriptionStatus: "canceled",
-        cancelAtPeriodEnd: false,
-        cancelAt: null,
-      });
-      toast.success("Subscription canceled.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not cancel this subscription.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function handleResume(account: BppAccountRecord) {
-    setBusyId(account.id);
-    try {
-      await resumeBppSubscription(account.id);
-      updateAccount({ ...account, cancelAtPeriodEnd: false, cancelAt: null });
-      toast.success("Subscription resumed.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not resume this subscription.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function handleToggleAutoRefile(account: BppAccountRecord, enabled: boolean) {
-    setBusyId(account.id);
-    try {
-      const updated = await setBppAutoRefile(account.id, enabled);
-      updateAccount(updated);
-      toast.success(enabled ? "Auto re-file turned on." : "Auto re-file turned off.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not update auto re-file.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  const protestByAccountId = new Map(
-    protests.filter((p) => p.bppAccountId).map((p) => [p.bppAccountId as string, p]),
+  // summary
+  const pending = accounts.filter((a) => !a.renditionFiledAt);
+  const nextDeadline = pending.map((a) => effectiveRenditionDeadline(a).date).sort()[0] ?? null;
+  const outstanding = [...taxRows.values()].reduce(
+    (s, r) => s + (r.status !== "paid" && !r.totalTaxIsEstimate ? (r.outstanding ?? 0) : 0),
+    0,
   );
 
   return (
     <div>
       <PageHero
         icon={HeroBppIcon}
-        title="BPP Accounts"
+        title="Personal Property"
         tone="sky"
-        subtitle="Tax accounts for business equipment and inventory (BPP). These are separate from the real estate you own."
+        subtitle="Business personal property (BPP) — furniture, fixtures, equipment and inventory — rendered each year on Form 50-144 and taxed separately from the real estate."
       >
-        <Link to="/dashboard/bpp-intake" className={heroButton}>
-          Guided Intake (AI reads a document)
-        </Link>
-        <button onClick={() => setShowForm((v) => !v)} className={heroButtonGhost}>
-          {showForm ? "Cancel" : "Add Manually"}
+        <button onClick={() => setPopup({ kind: "add" })} className={heroButton}>
+          Add Business Personal Property
         </button>
       </PageHero>
 
-      {showForm && (
-        <form onSubmit={handleAdd} className="card-elev mt-6 grid gap-3 p-6 sm:grid-cols-2">
-          <input
-            required
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            placeholder="Business name *"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm sm:col-span-2"
-          />
-          <input
-            value={accountNumber}
-            onChange={(e) => setAccountNumber(e.target.value)}
-            placeholder="CAD account number (optional)"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-          <input
-            value={cad}
-            onChange={(e) => setCad(e.target.value)}
-            placeholder="County / CAD (optional)"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-          <input
-            value={locationAddress}
-            onChange={(e) => setLocationAddress(e.target.value)}
-            placeholder="Business location address (optional)"
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm sm:col-span-2"
-          />
-          <button type="submit" disabled={saving} className="btn-accent w-fit disabled:opacity-60">
-            {saving ? "Saving…" : "Save BPP Account"}
-          </button>
-        </form>
+      {loading ? (
+        <div className="card-elev mt-6 grid gap-3 p-5">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
+        </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState onAdd={() => setPopup({ kind: "add" })} />
+      ) : (
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Tile label="BPP accounts" value={String(accounts.length)} />
+            <Tile
+              label="Renditions submitted"
+              value={`${accounts.length - pending.length} of ${accounts.length}`}
+            />
+            <Tile
+              label="Next rendition deadline"
+              value={nextDeadline ? fmtDate(nextDeadline) : "All submitted"}
+              hint={nextDeadline ? `${daysUntil(nextDeadline)} days` : undefined}
+            />
+            <Tile
+              label="BPP tax outstanding"
+              value={money(outstanding)}
+              hint="from bills you've added"
+            />
+          </div>
+
+          <div className="card-elev mt-4 overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-secondary/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2.5 font-semibold">Business Name</th>
+                  <th className="px-3 py-2.5 font-semibold">Property Address</th>
+                  <th className="px-3 py-2.5 font-semibold">County</th>
+                  <th className="px-3 py-2.5 font-semibold">CAD Account Number</th>
+                  <th className="px-3 py-2.5 font-semibold">Tax Year</th>
+                  <th className="px-3 py-2.5 font-semibold">Rendition Status</th>
+                  <th className="px-3 py-2.5 font-semibold">Tax Payment Status</th>
+                  <th className="px-3 py-2.5 font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((a) => {
+                  const rs = renditionStatus(a);
+                  const tr = taxRows.get(a.id)!;
+                  const dl = effectiveRenditionDeadline(a);
+                  const days = daysUntil(dl.date);
+                  return (
+                    <tr key={a.id} className="border-t border-border/60 align-top">
+                      <td className="max-w-[14rem] px-3 py-3 font-medium">
+                        <span className="line-clamp-2">{a.businessName}</span>
+                        {a.propertyId && (
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            Linked to a property
+                          </span>
+                        )}
+                      </td>
+                      <td className="max-w-[14rem] px-3 py-3">
+                        <span className="line-clamp-2">{a.locationAddress ?? "—"}</span>
+                      </td>
+                      <td className="px-3 py-3">{countyOf(a.cad) || "—"}</td>
+                      <td className="px-3 py-3">
+                        {a.accountNumber ?? <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-3 py-3">{a.taxYear ?? "—"}</td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${RENDITION_TONE[rs]}`}
+                        >
+                          {RENDITION_STATUS_LABEL[rs]}
+                        </span>
+                        {rs !== "submitted" && (
+                          <span
+                            className={`mt-1 block whitespace-nowrap text-[11px] ${days < 0 ? "text-destructive" : days <= 30 ? "text-warning-foreground" : "text-muted-foreground"}`}
+                          >
+                            Due {fmtDate(dl.date)}
+                            {dl.basis === "extension" ? " (extended)" : ""}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${PAY_TONE[tr.status]}`}
+                        >
+                          {a.taxAmountDue == null && !a.paidAt
+                            ? "No bill yet"
+                            : PAY_STATUS_LABEL[tr.status]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          <ActionBtn
+                            icon={Eye}
+                            label="View Details"
+                            onClick={() => setPopup({ kind: "details", id: a.id })}
+                          />
+                          <ActionBtn
+                            icon={FilePen}
+                            label="Fill Rendition"
+                            onClick={() => setPopup({ kind: "rendition", id: a.id })}
+                          />
+                          <ActionBtn
+                            icon={FileDown}
+                            label={downloading === a.id ? "Preparing…" : "Download Rendition"}
+                            onClick={() => void downloadRendition(a)}
+                          />
+                          <ActionBtn
+                            icon={a.renditionSignedAt && !a.renditionFiledAt ? Send : ClipboardList}
+                            label={
+                              a.renditionSignedAt && !a.renditionFiledAt
+                                ? "Submit Rendition"
+                                : "View Submission Instructions"
+                            }
+                            onClick={() =>
+                              setPopup({
+                                kind: a.renditionSignedAt ? "submit" : "instructions",
+                                id: a.id,
+                              })
+                            }
+                          />
+                          <ActionBtn
+                            icon={Receipt}
+                            label="View Tax Information"
+                            onClick={() => setPopup({ kind: "tax", id: a.id })}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <DeadlineInfo compact />
+        </>
       )}
 
-      <div className="mt-6">
-        {loading ? (
-          <div className="grid gap-4">
-            {[0, 1].map((i) => (
-              <div key={i} className="card-elev flex items-start justify-between gap-4 p-5">
-                <div className="grid gap-2">
-                  <Skeleton className="h-5 w-48" />
-                  <Skeleton className="h-4 w-64" />
-                </div>
-                <Skeleton className="h-8 w-20 shrink-0" />
-              </div>
-            ))}
-          </div>
-        ) : accounts.length > 0 ? (
-          <div className="grid gap-4">
-            {accounts.map((a) => {
-              const paid = isPaid(a);
-              const bracket = bracketForBppValue(a.renderedValue);
-              const needsProtest = bppNeedsProtest(a);
-              const existingProtest = protestByAccountId.get(a.id);
-              return (
-                <div key={a.id} className="card-elev row-hover grid gap-4 p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <h3 className="font-semibold">{a.businessName}</h3>
-                      <p className="text-muted-foreground text-sm">
-                        {[
-                          a.cad,
-                          a.accountNumber ? `Acct ${a.accountNumber}` : null,
-                          a.locationAddress,
-                        ]
-                          .filter(Boolean)
-                          .join(" • ") || "No additional details"}
-                      </p>
-                    </div>
-                    {!isBeta && (
-                      <span
-                        className={`badge-soft ${isPaidStatus(a.subscriptionStatus) ? "" : "bg-secondary text-muted-foreground"}`}
-                      >
-                        {isPaidStatus(a.subscriptionStatus)
-                          ? a.cancelAtPeriodEnd
-                            ? "Canceling"
-                            : "Active"
-                          : "Not subscribed"}
-                      </span>
-                    )}
-                  </div>
-
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-secondary/40 p-3 text-xs sm:grid-cols-4">
-                    <div>
-                      <dt className="text-muted-foreground">Rendered Value</dt>
-                      <dd className="font-medium">{money(a.renderedValue)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">County's Notice Value</dt>
-                      <dd className="font-medium">{money(a.noticeValue)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Rendition Deadline</dt>
-                      <dd className="font-medium">
-                        {fmtDate(a.renditionDeadline)}
-                        {a.renditionFiledAt && " (filed)"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Protest Deadline</dt>
-                      <dd className="font-medium">{fmtDate(a.protestDeadline)}</dd>
-                    </div>
-                  </dl>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => setRenditionAccount(a)}
-                      className="btn-outline py-1.5 text-sm"
-                    >
-                      {a.renditionSignedAt ? "View Rendition" : "File Rendition (Form 50-144)"}
-                    </button>
-
-                    {!isBeta && !isPaidStatus(a.subscriptionStatus) && stripeConfigured && (
-                      <>
-                        <button
-                          disabled={busyId === a.id}
-                          onClick={() => handleSubscribe(a, "owner_managed")}
-                          className="btn-primary btn-primary-hover py-1.5 text-sm disabled:opacity-60"
-                        >
-                          Subscribe — {TIER_LABEL.owner_managed} ($
-                          {bppMonthlyPrice("owner_managed", bracket)}/mo)
-                        </button>
-                        <button
-                          disabled={busyId === a.id}
-                          onClick={() => handleSubscribe(a, "corvusrf_managed")}
-                          className="btn-outline py-1.5 text-sm disabled:opacity-60"
-                        >
-                          Subscribe — {TIER_LABEL.corvusrf_managed} ($
-                          {bppMonthlyPrice("corvusrf_managed", bracket)}/mo)
-                        </button>
-                      </>
-                    )}
-
-                    {!isBeta && isPaidStatus(a.subscriptionStatus) && (
-                      <>
-                        {a.cancelAtPeriodEnd ? (
-                          <button
-                            disabled={busyId === a.id}
-                            onClick={() => handleResume(a)}
-                            className="btn-outline py-1.5 text-sm disabled:opacity-60"
-                          >
-                            {busyId === a.id ? "Resuming…" : "Resume Subscription"}
-                          </button>
-                        ) : (
-                          <button
-                            disabled={busyId === a.id}
-                            onClick={() => handleCancel(a)}
-                            className="btn-outline text-warning-foreground py-1.5 text-sm disabled:opacity-60"
-                          >
-                            {busyId === a.id ? "Canceling…" : "Cancel Subscription"}
-                          </button>
-                        )}
-                      </>
-                    )}
-
-                    {existingProtest ? (
-                      <span className="badge-soft">Protest requested</span>
-                    ) : (
-                      needsProtest && (
-                        <button
-                          disabled={!paid}
-                          title={
-                            paid ? undefined : "Subscribe to this BPP account to file a protest."
-                          }
-                          onClick={() => setProtestAccount(a)}
-                          className="btn-accent py-1.5 text-sm disabled:opacity-50"
-                        >
-                          File Protest
-                        </button>
-                      )
-                    )}
-
-                    <button
-                      disabled={deletingId === a.id}
-                      onClick={() => handleDelete(a.id)}
-                      className="btn-outline text-destructive ml-auto py-1.5 text-sm disabled:opacity-60"
-                    >
-                      {deletingId === a.id ? "Removing…" : "Delete"}
-                    </button>
-                  </div>
-
-                  {existingProtest?.status === "resolved" && (
-                    <div className="flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
-                      <input
-                        id={`auto-refile-${a.id}`}
-                        type="checkbox"
-                        className="mt-0.5"
-                        checked={!!a.autoRefile}
-                        disabled={busyId === a.id}
-                        onChange={(e) => handleToggleAutoRefile(a, e.target.checked)}
-                      />
-                      <label htmlFor={`auto-refile-${a.id}`}>
-                        <span className="font-medium">Auto re-file next year</span>
-                        <span className="block text-xs text-muted-foreground">
-                          When on, CorvusPT automatically starts next year&apos;s protest once a new
-                          notice value disagrees with what was rendered — no action needed beyond
-                          signing the actual protest when it's ready. Off by default.
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="card-elev p-8 text-center">
-            <h3 className="font-serif text-xl font-semibold">No BPP accounts yet.</h3>
-            <p className="text-muted-foreground mt-1">
-              Add a business personal property account to start tracking its rendition.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {renditionAccount && (
-        <BppRenditionEditor
-          account={renditionAccount}
-          open
-          onClose={() => setRenditionAccount(null)}
-          onUpdate={updateAccount}
+      {popup?.kind === "add" && user && (
+        <AddBppDialog
+          userId={user.id}
+          existing={accounts}
+          properties={properties}
+          onClose={() => setPopup(null)}
+          onAdded={(created) => setAccounts((prev) => [...created, ...prev])}
         />
       )}
-
-      {user && protestAccount && (
+      {current && popup?.kind === "rendition" && (
+        <BppRenditionEditor
+          account={current}
+          property={propertyOf(current)}
+          userEmail={user?.email}
+          open
+          onClose={() => setPopup(null)}
+          onUpdate={update}
+          onSubmit={() => setPopup({ kind: "submit", id: current.id })}
+        />
+      )}
+      {current && (popup?.kind === "submit" || popup?.kind === "instructions") && (
+        <BppSubmitDialog
+          account={current}
+          instructionsOnly={popup.kind === "instructions"}
+          onClose={() => setPopup(null)}
+          onUpdate={update}
+        />
+      )}
+      {current && popup?.kind === "tax" && (
+        <BppTaxInfoDialog
+          row={taxRows.get(current.id) as BppTaxRow}
+          onClose={() => setPopup(null)}
+          onUpdate={update}
+        />
+      )}
+      {current && popup?.kind === "details" && user && (
+        <DetailsDialog
+          account={current}
+          properties={properties}
+          protest={protests.find((p) => p.bppAccountId === current.id) ?? null}
+          billing={billing}
+          onClose={() => setPopup(null)}
+          onUpdate={update}
+          onDeleted={() => {
+            setAccounts((prev) => prev.filter((x) => x.id !== current.id));
+            setPopup(null);
+          }}
+          onOpen={(kind) => setPopup({ kind, id: current.id })}
+        />
+      )}
+      {current && popup?.kind === "protest" && user && (
         <BppProtestFlow
           userId={user.id}
-          account={protestAccount}
+          account={current}
           userEmail={user.email}
           open
-          isPaid={isPaid(protestAccount)}
-          onOpenChange={(o) => !o && setProtestAccount(null)}
+          isPaid={billing?.plan === "beta" || isPaidStatus(current.subscriptionStatus)}
+          onOpenChange={(o) => !o && setPopup(null)}
           onDone={(protest) => setProtests((prev) => [protest, ...prev])}
         />
       )}
     </div>
+  );
+}
+
+function ActionBtn({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: typeof Eye;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary"
+    >
+      <Icon className="h-3.5 w-3.5 text-accent" /> {label}
+    </button>
+  );
+}
+
+function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="card-elev p-3">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
+      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+// The typical Texas BPP calendar and what to prepare — counties vary.
+function DeadlineInfo({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`card-elev mt-6 grid gap-3 p-5 text-sm ${compact ? "" : "sm:grid-cols-2"}`}>
+      <div>
+        <h3 className="flex items-center gap-2 font-semibold">
+          <CalendarClock className="h-4 w-4 text-accent" /> When renditions are due
+        </h3>
+        <ul className="mt-2 grid gap-1 text-muted-foreground">
+          <li>
+            <span className="font-medium text-foreground">April 15</span> — the usual Texas deadline
+            to file Form 50-144 for property owned on January 1.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">May 15</span> — if you ask the appraisal
+            district in writing by April 15, it must extend to this date; it may grant 15 more days
+            for good cause.
+          </li>
+          <li>Late or missing renditions can carry a 10% penalty on the tax.</li>
+          <li>Tax bills usually go out in October and are due by January 31.</li>
+        </ul>
+      </div>
+      {!compact && (
+        <div>
+          <h3 className="flex items-center gap-2 font-semibold">
+            <ClipboardList className="h-4 w-4 text-accent" /> What to prepare
+          </h3>
+          <ul className="mt-2 list-disc grid gap-1 pl-5 text-muted-foreground">
+            <li>Business name, location address and the county it&apos;s in</li>
+            <li>
+              The appraisal district&apos;s BPP account number, if you have one (last year&apos;s
+              rendition or notice)
+            </li>
+            <li>
+              A fixed asset list or depreciation schedule — description, year acquired, original
+              cost
+            </li>
+            <li>Inventory on hand on January 1</li>
+            <li>Leased or consigned equipment, and any exemptions (e.g. freeport goods)</li>
+          </ul>
+        </div>
+      )}
+      <p className={`text-xs text-muted-foreground ${compact ? "" : "sm:col-span-2"}`}>
+        Deadlines, forms and submission methods vary by county — each account shows its own
+        appraisal district&apos;s instructions, researched from official sources.
+      </p>
+    </div>
+  );
+}
+
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <>
+      <div className="card-elev mt-6 p-8 text-center">
+        <h3 className="font-serif text-xl font-semibold">No business personal property yet</h3>
+        <p className="mt-1 text-muted-foreground">
+          Add a business from your properties, a document, a CSV, Podio, or by hand — then fill in
+          and track its rendition.
+        </p>
+        <button onClick={onAdd} className="btn-accent mt-4">
+          Add Business Personal Property
+        </button>
+      </div>
+      <DeadlineInfo />
+    </>
+  );
+}
+
+const field = "mt-1 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm";
+
+function DetailsDialog({
+  account: a,
+  properties,
+  protest,
+  billing,
+  onClose,
+  onUpdate,
+  onDeleted,
+  onOpen,
+}: {
+  account: BppAccountRecord;
+  properties: PropertyRecord[];
+  protest: ProtestRecord | null;
+  billing: BillingInfo | null;
+  onClose: () => void;
+  onUpdate: (a: BppAccountRecord) => void;
+  onDeleted: () => void;
+  onOpen: (kind: "rendition" | "submit" | "instructions" | "tax" | "protest") => void;
+}) {
+  const [form, setForm] = useState({
+    businessName: a.businessName,
+    locationAddress: a.locationAddress ?? "",
+    county: countyOf(a.cad),
+    accountNumber: a.accountNumber ?? "",
+    taxYear: a.taxYear ? String(a.taxYear) : "",
+    propertyId: a.propertyId ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const isBeta = billing?.plan === "beta";
+  const subscribed = isPaidStatus(a.subscriptionStatus);
+  const paid = isBeta || subscribed;
+  const bracket = bracketForBppValue(a.renderedValue);
+  const dl = effectiveRenditionDeadline(a);
+  const dirty =
+    form.businessName !== a.businessName ||
+    form.locationAddress !== (a.locationAddress ?? "") ||
+    form.county !== countyOf(a.cad) ||
+    form.accountNumber !== (a.accountNumber ?? "") ||
+    form.taxYear !== (a.taxYear ? String(a.taxYear) : "") ||
+    form.propertyId !== (a.propertyId ?? "");
+
+  async function run(fn: () => Promise<unknown>, ok?: string) {
+    setBusy(true);
+    try {
+      await fn();
+      if (ok) toast.success(ok);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Something went wrong."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const save = () =>
+    run(async () => {
+      if (!form.businessName.trim()) throw new Error("Business name is required.");
+      let u = await updateBppAccount(a.id, {
+        businessName: form.businessName.trim(),
+        locationAddress: form.locationAddress.trim(),
+        cad: form.county ? cadForCounty(form.county) : undefined,
+        accountNumber: form.accountNumber.trim(),
+        taxYear: Number(form.taxYear) || undefined,
+      });
+      if (form.propertyId !== (a.propertyId ?? ""))
+        u = await linkBppProperty(a.id, form.propertyId || null);
+      onUpdate(u);
+    }, "Saved.");
+
+  return (
+    <WorkflowPopup
+      open
+      onClose={onClose}
+      wide
+      title={a.businessName}
+      description={`Business personal property · added ${fmtDate(a.createdAt)}${a.source ? ` (${a.source})` : ""}`}
+    >
+      <div className="grid gap-4 text-sm">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs">
+            Business Name
+            <input
+              className={field}
+              value={form.businessName}
+              onChange={(e) => setForm({ ...form, businessName: e.target.value })}
+            />
+          </label>
+          <label className="text-xs">
+            Property / Business Address
+            <input
+              className={field}
+              value={form.locationAddress}
+              onChange={(e) => setForm({ ...form, locationAddress: e.target.value })}
+            />
+          </label>
+          <label className="text-xs">
+            County
+            <select
+              className={field}
+              value={form.county}
+              onChange={(e) => setForm({ ...form, county: e.target.value })}
+            >
+              <option value="">Select…</option>
+              {TX_COUNTIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs">
+            CAD Account Number
+            <input
+              className={field}
+              value={form.accountNumber}
+              onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+            />
+          </label>
+          <label className="text-xs">
+            Tax Year
+            <input
+              className={field}
+              inputMode="numeric"
+              value={form.taxYear}
+              onChange={(e) => setForm({ ...form, taxYear: e.target.value.replace(/\D/g, "") })}
+            />
+          </label>
+          <label className="text-xs">
+            Linked CorvusPT property
+            <select
+              className={field}
+              value={form.propertyId}
+              onChange={(e) => setForm({ ...form, propertyId: e.target.value })}
+            >
+              <option value="">— none —</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.address}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {dirty && (
+          <button
+            onClick={() => void save()}
+            disabled={busy}
+            className="btn-accent w-fit py-1 text-xs disabled:opacity-60"
+          >
+            {busy ? "Saving…" : "Save Changes"}
+          </button>
+        )}
+
+        <dl className="grid grid-cols-2 gap-3 rounded-md bg-secondary/40 p-3 text-xs sm:grid-cols-4">
+          <div>
+            <dt className="text-muted-foreground">Rendition</dt>
+            <dd className="font-medium">{RENDITION_STATUS_LABEL[renditionStatus(a)]}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Rendition deadline</dt>
+            <dd className="font-medium">
+              {fmtDate(dl.date)}
+              {dl.basis === "extension"
+                ? " (extended)"
+                : a.extensionRequestedAt
+                  ? " (extension requested)"
+                  : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Submitted</dt>
+            <dd className="font-medium">
+              {a.renditionFiledAt
+                ? `${fmtDate(a.renditionFiledAt)}${a.renditionSubmissionMethod ? ` · ${SUBMISSION_METHOD_LABEL[a.renditionSubmissionMethod] ?? a.renditionSubmissionMethod}` : ""}`
+                : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Rendered value</dt>
+            <dd className="font-medium">{money(a.renderedValue)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">County&apos;s notice value</dt>
+            <dd className="font-medium">{money(a.noticeValue)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Protest deadline</dt>
+            <dd className="font-medium">{fmtDate(a.protestDeadline)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">BPP tax due</dt>
+            <dd className="font-medium">{money(a.taxAmountDue)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Paid</dt>
+            <dd className="font-medium">{a.paidAt ? fmtDate(a.paidAt) : "—"}</dd>
+          </div>
+        </dl>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => onOpen("rendition")} className="btn-outline py-1 text-xs">
+            Fill Rendition
+          </button>
+          <button
+            onClick={() => onOpen(a.renditionSignedAt ? "submit" : "instructions")}
+            className="btn-outline py-1 text-xs"
+          >
+            {a.renditionSignedAt ? "Submit / Submission Record" : "Submission Instructions"}
+          </button>
+          <button onClick={() => onOpen("tax")} className="btn-outline py-1 text-xs">
+            Tax Information
+          </button>
+          {protest ? (
+            <span className="badge-soft self-center">Protest requested</span>
+          ) : (
+            bppNeedsProtest(a) && (
+              <button
+                disabled={!paid}
+                title={paid ? undefined : "Subscribe to this BPP account to file a protest."}
+                onClick={() => onOpen("protest")}
+                className="btn-accent py-1 text-xs disabled:opacity-50"
+              >
+                File Protest
+              </button>
+            )
+          )}
+        </div>
+
+        {!isBeta && (
+          <div className="grid gap-2 border-t border-border pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Subscription ·{" "}
+              {subscribed ? (a.cancelAtPeriodEnd ? "Canceling" : "Active") : "Not subscribed"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {!subscribed &&
+                stripeConfigured &&
+                (["owner_managed", "corvusrf_managed"] as Tier[]).map((t) => (
+                  <button
+                    key={t}
+                    disabled={busy}
+                    onClick={() => void run(() => startBppCheckout(a.id, t, { newTab: true }))}
+                    className="btn-outline py-1 text-xs disabled:opacity-60"
+                  >
+                    Subscribe — {TIER_LABEL[t]} (${bppMonthlyPrice(t, bracket)}/mo)
+                  </button>
+                ))}
+              {subscribed &&
+                (a.cancelAtPeriodEnd ? (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await resumeBppSubscription(a.id);
+                        onUpdate({ ...a, cancelAtPeriodEnd: false, cancelAt: null });
+                      }, "Subscription resumed.")
+                    }
+                    className="btn-outline py-1 text-xs"
+                  >
+                    Resume Subscription
+                  </button>
+                ) : (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void (async () => {
+                        if (
+                          !(await confirmDialog(
+                            `Cancel the subscription for ${a.businessName}? It ends immediately.`,
+                          ))
+                        )
+                          return;
+                        await run(async () => {
+                          await cancelBppSubscription(a.id);
+                          onUpdate({
+                            ...a,
+                            subscriptionStatus: "canceled",
+                            cancelAtPeriodEnd: false,
+                            cancelAt: null,
+                          });
+                        }, "Subscription canceled.");
+                      })()
+                    }
+                    className="btn-outline py-1 text-xs text-warning-foreground"
+                  >
+                    Cancel Subscription
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {protest?.status === "resolved" && (
+          <label
+            aria-label="Auto re-file next year"
+            className="flex items-start gap-2 rounded-md border border-border p-3"
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={!!a.autoRefile}
+              disabled={busy}
+              onChange={(e) =>
+                void run(async () => onUpdate(await setBppAutoRefile(a.id, e.target.checked)))
+              }
+            />
+            <span>
+              <span className="font-medium">Auto re-file next year</span>
+              <span className="block text-xs text-muted-foreground">
+                CorvusPT starts next year&apos;s protest once a new notice value disagrees with what
+                was rendered — you still sign it. Off by default.
+              </span>
+            </span>
+          </label>
+        )}
+
+        <div className="flex justify-end border-t border-border pt-3">
+          <button
+            disabled={busy || subscribed}
+            title={subscribed ? "This account has a subscription — cancel it first" : undefined}
+            onClick={() =>
+              void (async () => {
+                if (
+                  !(await confirmDialog(
+                    `Remove ${a.businessName} from your personal property accounts?`,
+                  ))
+                )
+                  return;
+                await run(async () => {
+                  await deleteBppAccount(a.id);
+                  onDeleted();
+                }, "Removed.");
+              })()
+            }
+            className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+          >
+            Remove account
+          </button>
+        </div>
+      </div>
+    </WorkflowPopup>
   );
 }

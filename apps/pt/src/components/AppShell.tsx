@@ -25,12 +25,13 @@ import { useAuth } from "@/lib/auth";
 // a "Coming soon" toast on click) — the matching route file's own LOCKED
 // flag (ComingSoonLock) is the real gate against reaching it any other way
 // (a direct URL, a link from elsewhere in the app), so the two must be kept
-// in sync by hand. BPP Accounts re-locked 2026-09-20 (still under active
-// development); Tax Bills became Pay Taxes 2026-11-05.
+// in sync by hand. BPP Accounts re-locked 2026-09-20, reopened as Personal
+// Property 2026-11-12 (the rebuilt BPP workflow);
+// Tax Bills became Pay Taxes 2026-11-05.
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, locked: false },
   { to: "/dashboard/properties", label: "Properties", icon: Building2, locked: false },
-  { to: "/dashboard/bpp-accounts", label: "BPP Accounts", icon: Briefcase, locked: true },
+  { to: "/dashboard/bpp-accounts", label: "Personal Property", icon: Briefcase, locked: false },
   { to: "/dashboard/documents", label: "Documents", icon: FileText, locked: false },
   { to: "/dashboard/calendar", label: "Calendar", icon: CalendarDays, locked: false },
   { to: "/dashboard/pay-taxes", label: "Pay Taxes", icon: Receipt, locked: false },
