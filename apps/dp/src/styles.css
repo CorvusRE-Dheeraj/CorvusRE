@@ -180,6 +180,37 @@
   textarea {
     min-width: 0;
   }
+  /* One modern field look everywhere (soft corners, calm border, accent focus
+     ring) — the base layer only fills in what a field's own utilities don't
+     set, so a call site's explicit sizing still wins. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+      [type="color"]
+    ),
+  select,
+  textarea {
+    border-radius: 0.5rem;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+      [type="color"]
+    ):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 20%, transparent);
+  }
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"] {
+    accent-color: var(--color-accent);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in oklch, var(--color-muted-foreground) 75%, transparent);
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

@@ -280,7 +280,7 @@ function PropertyStep({
             required
             hint="Start typing and pick a suggestion — city, county and state fill in automatically."
           >
-            <div className={inputCls}>
+            <div>
               <AddressAutocomplete
                 ariaLabel="Property address"
                 placeholder="123 Lone Star Trail, Celina, TX 75009"

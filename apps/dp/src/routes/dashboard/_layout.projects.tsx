@@ -157,7 +157,9 @@ function ChatLink({ kind, id }: { kind: "permitting" | "design"; id: string }) {
 }
 
 const linkBtn =
-  "text-xs font-semibold text-accent underline underline-offset-2 disabled:opacity-50";
+  "inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50";
+const quietBtn =
+  "inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground";
 
 /** A project row: name (renamable), one line of detail, then actions. */
 function ProjectItem({
@@ -193,7 +195,7 @@ function ProjectItem({
   }
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
+    <li className="flex flex-col gap-3 rounded-xl sm:flex-row sm:flex-wrap sm:items-center sm:justify-between border border-border bg-card p-4 text-sm shadow-[var(--shadow-card)]">
       <div className="min-w-0 flex-1">
         {editing ? (
           <form
@@ -215,7 +217,7 @@ function ProjectItem({
             </button>
             <button
               type="button"
-              className="text-xs text-muted-foreground underline underline-offset-2"
+              className={quietBtn}
               onClick={() => {
                 setDraft(name);
                 setEditing(false);
@@ -225,7 +227,7 @@ function ProjectItem({
             </button>
           </form>
         ) : (
-          <div className="flex flex-wrap items-center gap-2 font-medium">
+          <div className="flex flex-wrap items-center gap-2 font-semibold">
             {name}
             {onRename && (
               <button
@@ -267,9 +269,7 @@ function Confirm({
     return (
       <button
         className={
-          danger
-            ? "text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
-            : linkBtn
+          danger ? `${quietBtn} hover:!bg-destructive/10 hover:!text-destructive` : linkBtn
         }
         onClick={() => setConfirming(true)}
       >
@@ -279,16 +279,17 @@ function Confirm({
   return (
     <>
       <button
-        className={`text-xs font-semibold underline underline-offset-2 disabled:opacity-50 ${danger ? "text-destructive" : "text-accent"}`}
+        className={
+          danger
+            ? "inline-flex items-center rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-50"
+            : linkBtn
+        }
         disabled={busy}
         onClick={onConfirm}
       >
         {busy ? busyLabel : confirmLabel}
       </button>
-      <button
-        className="text-xs text-muted-foreground underline underline-offset-2"
-        onClick={() => setConfirming(false)}
-      >
+      <button className={quietBtn} onClick={() => setConfirming(false)}>
         Cancel
       </button>
     </>

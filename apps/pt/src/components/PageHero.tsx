@@ -106,7 +106,7 @@ export function PageHero({
 // Banner actions: white buttons with a thin border (green on hover), and a
 // quieter outline one.
 export const heroButton =
-  "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-60 dark:border-white/15 dark:bg-white/10 dark:text-slate-100";
+  "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-semibold sm:gap-2 sm:px-4 sm:py-2 sm:text-sm text-slate-800 shadow-sm transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-60 dark:border-white/15 dark:bg-white/10 dark:text-slate-100";
 export const heroButtonGhost =
   "inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-white dark:border-white/20 dark:bg-transparent dark:text-slate-200 dark:hover:bg-white/10";
 // A small chip next to the banner title.

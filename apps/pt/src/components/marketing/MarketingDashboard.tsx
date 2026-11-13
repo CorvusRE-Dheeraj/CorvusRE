@@ -361,7 +361,7 @@ export function MarketingDashboard({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <section className="card-elev p-4">
+        <section className="card-elev min-w-0 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Where it&apos;s working (30 days)</h2>
             <div className="flex gap-1" role="tablist">
@@ -382,36 +382,38 @@ export function MarketingDashboard({
           {dimRows.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">No activity in the last 30 days.</p>
           ) : (
-            <table className="mt-2 w-full text-left text-xs">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th className="py-1 font-medium">{DIM_LABEL[dim]}</th>
-                  <th className="py-1 text-right font-medium">
-                    {"leads" in dimRows[0] ? "Leads" : "Sent"}
-                  </th>
-                  <th className="py-1 text-right font-medium">Engaged</th>
-                  <th className="py-1 text-right font-medium">Paying</th>
-                  {"leads" in dimRows[0] && (
-                    <th className="py-1 text-right font-medium">Revenue</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {dimRows.slice(0, 8).map((r) => (
-                  <tr key={r.key} className="border-t border-border/60">
-                    <td className="max-w-[12rem] truncate py-1">{r.key}</td>
-                    <td className="py-1 text-right tabular-nums">
-                      {"leads" in r ? r.leads : r.sent}
-                    </td>
-                    <td className="py-1 text-right tabular-nums">{r.engaged}</td>
-                    <td className="py-1 text-right tabular-nums">{r.customers}</td>
-                    {"leads" in r && (
-                      <td className="py-1 text-right tabular-nums">{money(r.revenue)}</td>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[22rem] text-left text-xs">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="py-1 font-medium">{DIM_LABEL[dim]}</th>
+                    <th className="py-1 text-right font-medium">
+                      {"leads" in dimRows[0] ? "Leads" : "Sent"}
+                    </th>
+                    <th className="py-1 text-right font-medium">Engaged</th>
+                    <th className="py-1 text-right font-medium">Paying</th>
+                    {"leads" in dimRows[0] && (
+                      <th className="py-1 text-right font-medium">Revenue</th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {dimRows.slice(0, 8).map((r) => (
+                    <tr key={r.key} className="border-t border-border/60">
+                      <td className="max-w-[12rem] truncate py-1">{r.key}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {"leads" in r ? r.leads : r.sent}
+                      </td>
+                      <td className="py-1 text-right tabular-nums">{r.engaged}</td>
+                      <td className="py-1 text-right tabular-nums">{r.customers}</td>
+                      {"leads" in r && (
+                        <td className="py-1 text-right tabular-nums">{money(r.revenue)}</td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
         <AiBox

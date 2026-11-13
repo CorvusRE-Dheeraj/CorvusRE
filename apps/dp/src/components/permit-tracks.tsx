@@ -1000,7 +1000,7 @@ function CommentsPanel({ track, r }: { track: PermitTrack; r: Round }) {
                     <input
                       type="date"
                       aria-label={`Due date for comment ${i + 1}`}
-                      className="rounded border border-input bg-background px-1 py-0.5 text-[11px]"
+                      className="rounded-md border border-input bg-card px-2 py-1 text-xs"
                       defaultValue={c.due_at ? c.due_at.slice(0, 10) : ""}
                       onChange={async (e) => {
                         await setCommentDue(

@@ -110,9 +110,12 @@ function Reviews() {
       >
         <div className="grid gap-2">
           {permits.map((p) => (
-            <div key={p.id} className="rounded-lg border border-border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{p.name}</span>
+            <div
+              key={p.id}
+              className="rounded-xl border border-border bg-card p-4 text-sm shadow-[var(--shadow-card)]"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">{p.name}</span>
                 <div className="flex items-center gap-2">
                   <Pill tone={permitStatusTone(p.status)}>{humanize(p.status)}</Pill>
                   {p.review_round > 0 && (
@@ -122,23 +125,27 @@ function Reviews() {
                   )}
                 </div>
               </div>
-              <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                <label className="flex items-center gap-1">
-                  Current reviewer:
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Current reviewer
+                  </span>
                   <input
                     defaultValue={p.current_reviewer ?? ""}
-                    placeholder="add"
+                    placeholder="Reviewer's name"
                     onBlur={async (e) => {
                       if (e.target.value !== (p.current_reviewer ?? "")) {
                         await updatePermit(p.id, { current_reviewer: e.target.value });
                         refetch();
                       }
                     }}
-                    className="min-w-0 flex-1 rounded border border-input bg-background px-1"
+                    className={inputCls}
                   />
                 </label>
-                <label className="flex items-center gap-1">
-                  Est. next update:
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Expected next update
+                  </span>
                   <input
                     type="date"
                     defaultValue={p.est_next_update ?? ""}
@@ -148,7 +155,7 @@ function Reviews() {
                         refetch();
                       }
                     }}
-                    className="rounded border border-input bg-background px-1"
+                    className={inputCls}
                   />
                 </label>
               </div>
@@ -198,7 +205,7 @@ function Reviews() {
                   )}
                   {c.status !== "closed" && (
                     <button
-                      className="text-accent underline underline-offset-2"
+                      className="btn-outline px-3 py-1.5 text-xs"
                       onClick={async () => {
                         await setReviewCommentStatus(
                           c.id,

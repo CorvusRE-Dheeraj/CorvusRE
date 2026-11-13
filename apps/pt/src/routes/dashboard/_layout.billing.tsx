@@ -235,7 +235,7 @@ function Billing() {
     // each branch below used to carry its own independent max-w-2xl with no
     // mx-auto, which pinned a form-width column to the left edge and left a
     // large dead zone of empty space on wider screens.
-    <div className="mx-auto max-w-2xl">
+    <div>
       <PageHero
         icon={HeroBillingIcon}
         title="Billing"

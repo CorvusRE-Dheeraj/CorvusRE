@@ -19,20 +19,26 @@ function Item({
   onToggle: (id: string, done: boolean) => void;
 }) {
   return (
-    <li className="flex items-start gap-2">
-      <input
-        type="checkbox"
-        checked={item.done}
-        onChange={(e) => onToggle(item.id, e.target.checked)}
-        className="mt-0.5"
-      />
-      <span className={item.done ? "text-muted-foreground line-through" : ""}>
-        {item.label}
-        <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-          {item.grp}
+    <li>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg px-2.5 py-2 transition-colors hover:bg-secondary/70">
+        <input
+          type="checkbox"
+          checked={item.done}
+          onChange={(e) => onToggle(item.id, e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-[var(--color-accent)]"
+        />
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={item.done ? "text-muted-foreground line-through" : ""}>
+            {item.label}
+          </span>
+          {item.grp && (
+            <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium capitalize text-muted-foreground">
+              {item.grp.replace(/_/g, " ").toLowerCase()}
+            </span>
+          )}
+          {!item.required && <span className="text-[11px] text-muted-foreground">Optional</span>}
         </span>
-        {!item.required && <span className="ml-1 text-xs text-muted-foreground">(optional)</span>}
-      </span>
+      </label>
     </li>
   );
 }
@@ -80,7 +86,7 @@ function Checklist() {
         {preApp.length === 0 ? (
           <p className="text-sm text-muted-foreground">No pre-application items.</p>
         ) : (
-          <ul className="grid gap-1.5 text-sm">
+          <ul className="-mx-2.5 grid gap-0.5 text-sm">
             {preApp.map((item) => (
               <Item key={item.id} item={item} onToggle={toggle} />
             ))}
@@ -96,12 +102,23 @@ function Checklist() {
           {Object.entries(byPermit).map(([key, items]) => {
             const pct = checklistCompletion(items);
             return (
-              <div key={key} className="rounded-lg border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{permitName(key)}</div>
-                  <span className="text-xs text-muted-foreground">{pct}%</span>
+              <div
+                key={key}
+                className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold">{permitName(key)}</div>
+                  <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                    {pct}% done
+                  </span>
                 </div>
-                <ul className="mt-2 grid gap-1.5 text-sm">
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="progress-fill h-full rounded-full bg-accent"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <ul className="-mx-2.5 mt-2 grid gap-0.5 text-sm">
                   {items.map((item) => (
                     <Item key={item.id} item={item} onToggle={toggle} />
                   ))}

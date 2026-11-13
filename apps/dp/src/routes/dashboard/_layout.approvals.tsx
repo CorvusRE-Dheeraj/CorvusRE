@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useActiveProjectBundle } from "@/hooks/use-project";
 import { updatePermit } from "@/lib/projects";
-import { Section, Pill, EmptyProject, Loading } from "@/components/dp-ui";
+import { CheckCircle2, Circle, FileCheck2 } from "lucide-react";
+import { Section, Pill, EmptyProject, Loading, inputCls } from "@/components/dp-ui";
 import { dateShort } from "@/lib/format";
 
 export const Route = createFileRoute("/dashboard/_layout/approvals")({
@@ -35,17 +36,29 @@ function Approvals() {
         {approved.length === 0 ? (
           <p className="text-sm text-muted-foreground">No approved permits yet.</p>
         ) : (
-          <div className="grid gap-2">
+          <div className="grid gap-3">
             {approved.map((p) => (
-              <div key={p.id} className="rounded-lg border border-border p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{p.name}</span>
+              <div
+                key={p.id}
+                className="rounded-xl border border-border bg-card p-4 text-sm shadow-[var(--shadow-card)]"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent">
+                      <FileCheck2 className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div>
+                      <div className="font-semibold">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Approved {dateShort(p.approved_at)}
+                      </div>
+                    </div>
+                  </div>
                   <Pill tone="green">Approved</Pill>
                 </div>
-                <div className="mt-1 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                  <span>Approved: {dateShort(p.approved_at)}</span>
-                  <span>
-                    Permit #:{" "}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Permit number</span>
                     <input
                       defaultValue={p.permit_number ?? ""}
                       onBlur={async (e) => {
@@ -54,12 +67,12 @@ function Approvals() {
                           refetch();
                         }
                       }}
-                      placeholder="add"
-                      className="rounded border border-input bg-background px-1"
+                      placeholder="e.g. BP-2026-01234"
+                      className={inputCls}
                     />
-                  </span>
-                  <span>
-                    Expiry:{" "}
+                  </label>
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Expiry date</span>
                     <input
                       type="date"
                       defaultValue={p.expiry_date ?? ""}
@@ -73,33 +86,41 @@ function Approvals() {
                           refetch();
                         }
                       }}
-                      className="rounded border border-input bg-background px-1"
+                      className={inputCls}
                     />
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Approval document URL:{" "}
-                  <input
-                    defaultValue={p.approval_doc_url ?? ""}
-                    placeholder="paste a link, or upload on the Documents tab"
-                    onBlur={async (e) => {
-                      if (e.target.value !== (p.approval_doc_url ?? "")) {
-                        await updatePermit(p.id, { approval_doc_url: e.target.value });
-                        refetch();
-                      }
-                    }}
-                    className="w-full rounded border border-input bg-background px-1"
-                  />
-                  {p.approval_doc_url && (
-                    <a
-                      href={p.approval_doc_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-1 text-accent underline underline-offset-2"
+                  </label>
+                  <div className="grid gap-1.5 sm:col-span-2">
+                    <label
+                      htmlFor={`approval-doc-${p.id}`}
+                      className="text-xs font-medium text-muted-foreground"
                     >
-                      open
-                    </a>
-                  )}
+                      Approval document link
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`approval-doc-${p.id}`}
+                        defaultValue={p.approval_doc_url ?? ""}
+                        placeholder="Paste a link, or upload on the Documents tab"
+                        onBlur={async (e) => {
+                          if (e.target.value !== (p.approval_doc_url ?? "")) {
+                            await updatePermit(p.id, { approval_doc_url: e.target.value });
+                            refetch();
+                          }
+                        }}
+                        className={inputCls}
+                      />
+                      {p.approval_doc_url && (
+                        <a
+                          href={p.approval_doc_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-outline shrink-0 px-3 py-2 text-sm"
+                        >
+                          Open
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -118,17 +139,28 @@ function Approvals() {
             style={{ width: `${readiness}%` }}
           />
         </div>
-        <ul className="mt-3 grid gap-1.5 text-sm">
+        <ul className="mt-4 grid min-w-0 gap-2 text-sm sm:grid-cols-2">
           {permits.map((p) => (
-            <li key={p.id} className="flex items-center gap-2">
-              <span
-                className={`inline-block h-4 w-4 rounded-full ${p.status === "approved" ? "bg-accent" : "border border-border"}`}
-              />
-              {p.name} — {p.status === "approved" ? "cleared" : "pending"}
+            <li
+              key={p.id}
+              className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2"
+            >
+              {p.status === "approved" ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" aria-hidden />
+              ) : (
+                <Circle className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+              )}
+              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {p.status === "approved" ? "Cleared" : "Pending"}
+              </span>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-sm font-semibold">Ready for construction: {ready ? "Yes" : "No"}</p>
+        <div className="mt-4 flex items-center gap-2 text-sm">
+          <span className="font-semibold">Ready for construction</span>
+          <Pill tone={ready ? "green" : "amber"}>{ready ? "Yes" : "Not yet"}</Pill>
+        </div>
       </Section>
 
       <Section title="Permit expiry tracker">

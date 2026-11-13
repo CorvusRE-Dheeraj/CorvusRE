@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Circle } from "lucide-react";
 import { useActiveProjectBundle } from "@/hooks/use-project";
 import { useAuth } from "@/lib/auth";
 import { checklistCompletion } from "@/lib/checklist";
@@ -84,15 +85,46 @@ function Prepare() {
           <Stat label="Missing (required)" value={missing.length} />
         </div>
         {missing.length > 0 && (
-          <div className="mt-4">
-            <div className="text-sm font-semibold">⚠ Outstanding required items</div>
-            <ul className="mt-2 grid gap-1 text-sm">
-              {missing.map((c) => (
-                <li key={c.id} className="text-muted-foreground">
-                  • {c.label} <span className="text-[10px] uppercase">({c.grp})</span>
-                </li>
+          <div className="mt-5">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
+              Outstanding required items
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {Object.entries(
+                missing.reduce<Record<string, typeof missing>>((acc, c) => {
+                  (acc[c.permit_key ?? "general"] ??= []).push(c);
+                  return acc;
+                }, {}),
+              ).map(([key, items]) => (
+                <div key={key} className="rounded-xl border border-border bg-card p-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">
+                      {(bundle?.permits ?? []).find((p) => p.permit_key === key)?.name ?? "General"}
+                    </span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                      {items.length} missing
+                    </span>
+                  </div>
+                  <ul className="mt-2 grid gap-1 text-sm">
+                    {items.map((c) => (
+                      <li key={c.id} className="flex items-start gap-2 text-muted-foreground">
+                        <Circle
+                          className="mt-1 h-3 w-3 shrink-0 text-muted-foreground/50"
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1">{c.label}</span>
+                        {c.grp && (
+                          <span className="shrink-0 text-[11px] capitalize text-muted-foreground/80">
+                            {c.grp.replace(/_/g, " ").toLowerCase()}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </Section>

@@ -630,7 +630,7 @@ function Consultants({
       )}
       <form
         onSubmit={submit}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[160px_1fr_1fr_1fr_140px_auto] lg:items-end"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:items-end 2xl:grid-cols-[150px_repeat(4,minmax(0,1fr))_auto]"
       >
         <Field label="Discipline">
           <select

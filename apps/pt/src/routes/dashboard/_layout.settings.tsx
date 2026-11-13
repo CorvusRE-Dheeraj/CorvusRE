@@ -274,7 +274,7 @@ function Settings() {
     // pinned to the left edge and a large dead zone of empty space on wider
     // screens. One shared max-w here, centered once, makes every card line
     // up to the same width and the whole page read as one balanced column.
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-3xl">
       <PageHero
         icon={HeroSettingsIcon}
         title="Settings"

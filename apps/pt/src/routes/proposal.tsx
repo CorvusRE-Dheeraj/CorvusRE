@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { LinkIcon } from "lucide-react";
 import { MarkdownLite } from "@/components/MarkdownLite";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 
@@ -68,7 +69,18 @@ function ProposalPage() {
   return (
     <div className="container-page max-w-3xl py-10">
       {error ? (
-        <p className="card-elev p-6 text-sm">{error}</p>
+        <div className="card-elev flex flex-col items-center gap-3 p-8 text-center">
+          <span className="grid h-11 w-11 place-items-center rounded-xl bg-secondary text-muted-foreground">
+            <LinkIcon className="h-5 w-5" aria-hidden />
+          </span>
+          <h1 className="font-serif text-lg font-semibold">
+            This proposal link can&apos;t be opened
+          </h1>
+          <p className="max-w-md text-sm text-muted-foreground">{error}</p>
+          <Link to="/dashboard" className="btn-accent mt-1 px-4 py-2 text-sm">
+            Go to your dashboard
+          </Link>
+        </div>
       ) : !p ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (

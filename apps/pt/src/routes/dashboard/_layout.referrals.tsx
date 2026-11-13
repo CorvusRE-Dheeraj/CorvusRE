@@ -135,29 +135,29 @@ function Referrals() {
       ) : (
         <>
           {/* Focal band — the referral link itself, front and centre. */}
-          <div className="brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-elev sm:p-8">
+          <div className="relative overflow-hidden rounded-2xl border border-accent/20 bg-accent/5 p-6 shadow-[var(--shadow-card)] sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="max-w-lg">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
                   <Gift className="h-3.5 w-3.5" />
                   Referral rewards
                 </span>
                 <h2 className="mt-3 font-serif text-2xl font-bold sm:text-3xl">
                   Give a month, get a month
                 </h2>
-                <p className="mt-2 text-sm text-white/80">
+                <p className="mt-2 text-sm text-muted-foreground">
                   Every friend who signs up through your link and starts a paid CorvusPT plan earns
                   you one month free — credited straight to your next bill, automatically.
                 </p>
               </div>
 
               <div className="hidden shrink-0 sm:block">
-                <div className="grid h-24 w-24 place-items-center rounded-2xl bg-white/10 text-center ring-1 ring-white/20">
+                <div className="grid h-24 w-24 place-items-center rounded-2xl bg-card text-center ring-1 ring-border">
                   <div>
                     <div className="font-serif text-3xl font-bold leading-none tabular-nums">
                       {rewardedCount}
                     </div>
-                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-white/70">
+                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       months earned
                     </div>
                   </div>
@@ -166,15 +166,15 @@ function Referrals() {
             </div>
 
             {link ? (
-              <div className="mt-5 flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2.5 ring-1 ring-white/20 backdrop-blur">
-                <Link2 className="h-4 w-4 shrink-0 text-white/70" />
-                <code className="min-w-0 flex-1 truncate text-xs text-white sm:text-sm">
+              <div className="mt-5 flex items-center gap-2 rounded-xl bg-card px-3 py-2.5 ring-1 ring-border">
+                <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <code className="min-w-0 flex-1 truncate text-xs text-foreground sm:text-sm">
                   {link}
                 </code>
                 <CopyButton value={link} label="Referral link copied" />
               </div>
             ) : (
-              <p className="mt-5 text-sm text-white/90">
+              <p className="mt-5 text-sm text-muted-foreground">
                 Could not load your referral link — please refresh in a moment.
               </p>
             )}

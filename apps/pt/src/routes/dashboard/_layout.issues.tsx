@@ -136,7 +136,7 @@ function PropertyIssues() {
     setIssues((cur) => cur.map((i) => (i.id === next.id ? next : i)));
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <PageHero
         icon={ShieldAlert}
         title="Property Issues"

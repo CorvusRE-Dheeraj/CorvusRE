@@ -114,7 +114,7 @@ export function EngagementPacketForm({
   return (
     <div className="grid gap-4">
       <div className="overflow-hidden rounded-lg border border-border">
-        <div className="bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground">
+        <div className="border-b border-border bg-card px-4 py-3 text-sm font-semibold text-foreground">
           Below are brief summaries of the documents in the CorvusPT Engagement Packet
         </div>
         <ul className="divide-y divide-border bg-secondary/30">
