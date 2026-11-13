@@ -7,15 +7,18 @@ import { daysBetween } from "@/lib/case-pipeline";
 
 const URGENCY_STYLE: Record<Urgency, { box: string; chip: string }> = {
   overdue: {
-    box: "border-destructive bg-destructive/10",
+    box: "border-destructive/30 border-l-destructive bg-destructive/[0.04]",
     chip: "bg-destructive text-destructive-foreground",
   },
   urgent: {
-    box: "border-destructive/70 bg-destructive/5",
+    box: "border-border border-l-destructive/80 bg-card",
     chip: "bg-destructive/15 text-destructive",
   },
-  soon: { box: "border-warning bg-warning/10", chip: "bg-warning/20 text-warning-foreground" },
-  normal: { box: "border-accent bg-accent/5", chip: "bg-accent/15 text-accent" },
+  soon: {
+    box: "border-border border-l-warning bg-card",
+    chip: "bg-warning/20 text-warning-foreground",
+  },
+  normal: { box: "border-border border-l-accent bg-card", chip: "bg-accent/12 text-accent" },
 };
 
 function dueText(next: NextAction, today: string): string | null {
@@ -101,10 +104,10 @@ export function NextRequiredAction({
   return (
     <section
       aria-label="Next required action"
-      className={`rounded-xl border-2 ${style.box} ${compact ? "p-4" : "p-5 md:p-6"}`}
+      className={`rounded-xl border border-l-4 shadow-[var(--shadow-card)] ${style.box} ${compact ? "p-4" : "p-5 md:p-6"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-black uppercase tracking-[0.18em] text-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Next required action
         </span>
         {next.owner === "corvus" && (
@@ -296,7 +299,7 @@ export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; t
 
   return (
     <section aria-label="Most urgent next actions" className="grid gap-2" data-tour="next-actions">
-      <span className="text-xs font-black uppercase tracking-[0.18em] text-foreground">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Next required actions
       </span>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -309,9 +312,9 @@ export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; t
               key={i.key}
               type="button"
               onClick={i.onOpen}
-              className={`flex min-w-0 flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition-colors hover:bg-secondary/40 ${URGENCY_STYLE[i.urgency].box}`}
+              className={`flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-l-4 p-4 text-left shadow-[var(--shadow-card)] transition-colors hover:bg-secondary/40 ${URGENCY_STYLE[i.urgency].box}`}
             >
-              <span className="text-base font-bold leading-snug">{i.title}</span>
+              <span className="text-base font-semibold leading-snug">{i.title}</span>
               <span className="flex w-full min-w-0 items-start gap-1.5" title={i.address}>
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
                 <span className="min-w-0">
@@ -337,7 +340,7 @@ export function UrgentActionTiles({ items, today }: { items: UrgentTileItem[]; t
           <button
             type="button"
             onClick={() => setShowAll(true)}
-            className="grid place-items-center rounded-xl border-2 border-dashed border-border p-4 text-2xl font-bold text-foreground hover:bg-secondary/40"
+            className="grid place-items-center rounded-xl border border-dashed border-border p-4 text-2xl font-semibold text-foreground hover:bg-secondary/40"
             aria-label={`Show ${pool.length - 2} more actions`}
           >
             +{pool.length - 2}

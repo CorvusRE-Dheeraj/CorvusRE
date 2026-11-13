@@ -79,7 +79,7 @@ export function ProfileGate() {
         </p>
         <form onSubmit={submit} className="mt-5 grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1 text-sm">
+            <label className="grid min-w-0 gap-1 text-sm">
               <span className="font-medium">
                 First Name<span className="text-destructive"> *</span>
               </span>
@@ -89,10 +89,10 @@ export function ProfileGate() {
                 autoComplete="given-name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2"
+                className="w-full min-w-0 rounded-md border border-input bg-background px-3 py-2"
               />
             </label>
-            <label className="grid gap-1 text-sm">
+            <label className="grid min-w-0 gap-1 text-sm">
               <span className="font-medium">
                 Last Name<span className="text-destructive"> *</span>
               </span>
@@ -102,7 +102,7 @@ export function ProfileGate() {
                 autoComplete="family-name"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2"
+                className="w-full min-w-0 rounded-md border border-input bg-background px-3 py-2"
               />
             </label>
           </div>

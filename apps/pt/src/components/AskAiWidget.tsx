@@ -463,9 +463,9 @@ export function AskAiWidget() {
             onClick={() => setOpen((v) => !v)}
             aria-label={open ? "Close Ask AI" : "Open Ask AI"}
             data-tour="ask-ai"
-            className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-violet-600 via-purple-700 to-indigo-700 text-white shadow-lg shadow-violet-700/25 transition-all hover:opacity-95 hover:scale-105 active:scale-95"
+            className="grid h-12 w-12 place-items-center rounded-full bg-accent text-accent-foreground shadow-lg shadow-emerald-900/20 ring-2 ring-white/70 transition-all hover:bg-[oklch(0.44_0.13_163)] active:scale-95 dark:ring-white/10"
           >
-            {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
+            {open ? <X className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
           </button>
         </TooltipTrigger>
         {!open && <TooltipContent side="left">Ask AI anything</TooltipContent>}

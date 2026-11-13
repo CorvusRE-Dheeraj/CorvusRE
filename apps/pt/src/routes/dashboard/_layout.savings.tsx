@@ -74,7 +74,7 @@ function SavingsPage() {
               <div className="text-muted-foreground text-xs uppercase tracking-wide">
                 Lifetime savings
               </div>
-              <div className="mt-1 font-serif text-3xl font-black">
+              <div className="mt-1 font-serif text-3xl font-bold">
                 {currency(savings.lifetimeSavings)}
               </div>
               <div className="text-muted-foreground text-xs">
@@ -86,7 +86,7 @@ function SavingsPage() {
               <div className="text-muted-foreground text-xs uppercase tracking-wide">
                 Average per case
               </div>
-              <div className="mt-1 font-serif text-3xl font-black">
+              <div className="mt-1 font-serif text-3xl font-bold">
                 {currency(Math.round(savings.lifetimeSavings / savings.resolvedCaseCount))}
               </div>
               <div className="text-muted-foreground text-xs">real estate and BPP combined</div>

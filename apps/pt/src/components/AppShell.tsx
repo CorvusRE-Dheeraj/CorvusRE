@@ -40,56 +40,8 @@ const NAV = [
   { to: "/dashboard/agreements", label: "Agreements", icon: FileSignature, locked: false },
 ] as const;
 
-// Each tab has its own colour: a tinted icon at rest, and a soft pill in the same
-// colour when it is the open page (matching the page banner tint). Full class strings so
-// Tailwind can see them.
-const TAB_COLOR: Record<string, { icon: string; active: string }> = {
-  "/dashboard": {
-    icon: "text-emerald-700",
-    active:
-      "data-[status=active]:bg-emerald-100 data-[status=active]:text-emerald-900 dark:data-[status=active]:bg-emerald-900/40 dark:data-[status=active]:text-emerald-100",
-  },
-  "/dashboard/properties": {
-    icon: "text-emerald-700",
-    active:
-      "data-[status=active]:bg-emerald-100 data-[status=active]:text-emerald-900 dark:data-[status=active]:bg-emerald-900/40 dark:data-[status=active]:text-emerald-100",
-  },
-  "/dashboard/bpp-accounts": {
-    icon: "text-sky-700",
-    active:
-      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
-  },
-  "/dashboard/documents": {
-    icon: "text-sky-700",
-    active:
-      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
-  },
-  "/dashboard/calendar": {
-    icon: "text-violet-700",
-    active:
-      "data-[status=active]:bg-violet-100 data-[status=active]:text-violet-900 dark:data-[status=active]:bg-violet-900/40 dark:data-[status=active]:text-violet-100",
-  },
-  "/dashboard/pay-taxes": {
-    icon: "text-teal-600",
-    active:
-      "data-[status=active]:bg-teal-100 data-[status=active]:text-teal-900 dark:data-[status=active]:bg-teal-900/40 dark:data-[status=active]:text-teal-100",
-  },
-  "/dashboard/issues": {
-    icon: "text-rose-700",
-    active:
-      "data-[status=active]:bg-rose-100 data-[status=active]:text-rose-900 dark:data-[status=active]:bg-rose-900/40 dark:data-[status=active]:text-rose-100",
-  },
-  "/dashboard/acquisition": {
-    icon: "text-sky-700",
-    active:
-      "data-[status=active]:bg-sky-100 data-[status=active]:text-sky-900 dark:data-[status=active]:bg-sky-900/40 dark:data-[status=active]:text-sky-100",
-  },
-  "/dashboard/agreements": {
-    icon: "text-indigo-700",
-    active:
-      "data-[status=active]:bg-indigo-100 data-[status=active]:text-indigo-900 dark:data-[status=active]:bg-indigo-900/40 dark:data-[status=active]:text-indigo-100",
-  },
-};
+// One quiet style for every tab: grey icon and label at rest, and the open
+// page as a white pill with a hairline border and the brand-green icon.
 
 // Pages that keep their own full-width marketing/tooling layout instead of the
 // account sidebar: the home page (explicitly excluded), the admin workspace
@@ -204,17 +156,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </button>
                 );
               }
-              const color = TAB_COLOR[item.to];
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   // WelcomeTour spotlights tabs by this (nav-properties, nav-documents, …).
                   data-tour={`nav-${item.to.split("/").pop()}`}
-                  className={`group flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-muted-foreground transition-all hover:-translate-y-0.5 lg:w-full lg:hover:translate-x-0.5 lg:hover:translate-y-0 hover:bg-nav-highlight hover:text-nav-highlight-foreground data-[status=active]:font-semibold data-[status=active]:shadow-sm ${color?.active ?? ""}`}
+                  className="group flex items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:w-full data-[status=active]:bg-card data-[status=active]:font-semibold data-[status=active]:text-foreground data-[status=active]:shadow-sm data-[status=active]:ring-1 data-[status=active]:ring-border"
                   activeOptions={{ exact: item.to === "/dashboard" }}
                 >
-                  <Icon className={`h-4 w-4 transition-colors ${color?.icon ?? ""}`} />
+                  <Icon className="h-4 w-4 text-muted-foreground/80 transition-colors group-hover:text-foreground group-data-[status=active]:text-accent" />
                   {item.label}
                 </Link>
               );

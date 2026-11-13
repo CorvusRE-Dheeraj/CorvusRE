@@ -239,26 +239,8 @@ function Home() {
 
   return (
     <>
-      <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)] flex flex-col justify-center">
+      <section className="relative isolate overflow-hidden min-h-[calc(100dvh-4rem)] flex flex-col justify-center">
         <HeroBackground />
-        {!user && (
-          <div className="beta-flyby-plane" aria-label="Beta signup announcement">
-            <Plane className="h-6 w-6 shrink-0 text-accent -rotate-[135deg]" aria-hidden="true" />
-            <span className="beta-flyby-rope" aria-hidden="true" />
-            <div className="beta-flyby-banner">
-              <span className="text-sm font-medium">
-                🎉 Sign up as a beta user and get a free property protest evaluation.
-              </span>
-              <span className="text-sm font-bold">Free to start. No card required.</span>
-              <Link
-                to="/sign-in"
-                className="text-sm font-semibold text-warning underline underline-offset-2"
-              >
-                Join the beta →
-              </Link>
-            </div>
-          </div>
-        )}
         {/* pt-16 (not pt-8) below md — the flyby banner above is absolutely
             positioned at top: 1.5rem and stands ~40px tall, so on a mobile
             viewport (where the heading wraps to more, larger-relative-size
@@ -268,10 +250,27 @@ function Home() {
             reserves real layout space rather than guessing a coordinate. */}
         <div className="container-page pt-16 pb-0 md:pt-12 md:pb-2">
           <div className="mx-auto max-w-3xl text-center">
-            <h1 className="font-serif text-3xl sm:text-4xl md:text-6xl font-semibold leading-[1.15] md:leading-[1.1]">
+            {/* Beta announcement — a quiet pill above the headline (was a
+                plane towing a banner across the hero). */}
+            {!user && (
+              <Link
+                to="/sign-in"
+                aria-label="Beta signup announcement — join the beta"
+                className="mb-6 inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-full border border-accent/25 bg-card/80 px-3.5 py-1.5 text-xs text-foreground/80 shadow-sm backdrop-blur transition-colors hover:border-accent/50 sm:text-sm"
+              >
+                <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">
+                  Beta
+                </span>
+                <span>Free property protest evaluation — no card required.</span>
+                <span className="font-semibold text-accent">Join the beta →</span>
+              </Link>
+            )}
+            <h1 className="font-serif text-3xl sm:text-4xl md:text-6xl font-semibold leading-[1.15] md:leading-[1.08] tracking-tight">
               AI Property Tax Management
               <br className="hidden md:block" />{" "}
-              <span className="text-emerald-700 dark:text-emerald-400">Protest and Save</span>
+              <span className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-400 dark:to-teal-300">
+                Protest and Save
+              </span>
             </h1>
             <p className="mt-3 text-lg sm:text-xl font-medium text-foreground/80">
               From Notice to Savings.

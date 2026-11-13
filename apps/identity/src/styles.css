@@ -356,3 +356,81 @@ input:focus-visible {
   color: inherit;
   text-decoration: underline;
 }
+
+/* ── 2026-11 refresh (look only): same calm system as the CorvusPT/CorvusDP
+   apps — Inter, a quieter backdrop, the navy logo tile the apps use, plain
+   heading text and the solid green primary button. ── */
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(160deg, #f3faf7 0%, #f5f8fc 55%, #f7f6fd 100%);
+}
+.wrap::before,
+.wrap::after {
+  opacity: 0.22;
+  filter: blur(100px);
+}
+.wrap::after {
+  background: #93c5fd;
+}
+.card {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 16px 40px -20px rgba(15, 23, 42, 0.22);
+}
+.logo .mark {
+  background: #0a2b52;
+  box-shadow: none;
+}
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: none;
+  color: var(--fg);
+}
+input {
+  border-color: #dfe2e7;
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus-visible {
+  outline: none;
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.18);
+}
+.google-btn {
+  border-radius: 10px;
+  font-weight: 500;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.google-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #cfd4dc;
+}
+button:not(.google-btn):not(.password-toggle):not(.toggle button) {
+  background: #059669;
+  border-radius: 10px;
+  padding: 11px 14px;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.25);
+}
+button:not(.google-btn):not(.password-toggle):not(.toggle button):hover:not(:disabled) {
+  background: #047857;
+  transform: none;
+  filter: none;
+}
+button:not(.google-btn):not(.password-toggle):not(.toggle button):active:not(:disabled) {
+  transform: scale(0.98);
+}
+.door-link {
+  border-radius: 10px;
+}
+.door-link:hover {
+  border-color: #059669;
+  background: #f6fbf9;
+}

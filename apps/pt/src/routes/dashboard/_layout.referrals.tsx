@@ -154,7 +154,7 @@ function Referrals() {
               <div className="hidden shrink-0 sm:block">
                 <div className="grid h-24 w-24 place-items-center rounded-2xl bg-white/10 text-center ring-1 ring-white/20">
                   <div>
-                    <div className="font-serif text-3xl font-black leading-none tabular-nums">
+                    <div className="font-serif text-3xl font-bold leading-none tabular-nums">
                       {rewardedCount}
                     </div>
                     <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-white/70">

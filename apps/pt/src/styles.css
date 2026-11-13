@@ -13,12 +13,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  /* Single-font system (Figtree) for both body and headings, matching the Ownwell
-     reference — --font-serif is kept as the variable name since h1/h2/h3/.font-serif
-     already reference it throughout the app, but it no longer points to an actual
-     serif typeface. */
-  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  /* Single-font system (Inter, the modern product UI face) for body and headings —
+     --font-serif is kept as the variable name since h1/h2/h3/.font-serif already
+     reference it throughout the app; it is not a serif typeface. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -51,8 +50,8 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-nav-highlight: var(--nav-highlight);
   --color-nav-highlight-foreground: var(--nav-highlight-foreground);
-  --shadow-elev: 0 10px 30px -12px oklch(0.18 0.06 250 / 0.25);
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.04), 0 8px 24px -12px oklch(0.18 0.06 250 / 0.12);
+  --shadow-elev: 0 1px 2px oklch(0.2 0.03 250 / 0.06), 0 4px 12px -4px oklch(0.2 0.03 250 / 0.1);
+  --shadow-card: 0 1px 2px oklch(0.2 0.03 250 / 0.04), 0 1px 3px oklch(0.2 0.03 250 / 0.03);
   /* Thin bright band on a wide transparent field — accent-foreground is the
      same near-white in both light and dark mode, so one gradient works for
      both without a dark-mode override. */
@@ -72,7 +71,9 @@
      green rather than neutral gray, while staying light enough that white
      cards/popovers (still oklch(1 0 0) below) clearly pop against it and
      text contrast is unaffected. */
-  --background: oklch(0.98 0.01 155);
+  /* Neutral near-white canvas (was a green tint) — white cards sit on it with a
+     hairline border, the calm look of current product UIs. */
+  --background: oklch(0.985 0.003 247);
   --foreground: oklch(0.2 0.04 250);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.2 0.04 250);
@@ -80,10 +81,10 @@
   --popover-foreground: oklch(0.2 0.04 250);
   --primary: oklch(0.29 0.08 255); /* deep navy */
   --primary-foreground: oklch(0.985 0.005 90);
-  --secondary: oklch(0.955 0.012 250);
+  --secondary: oklch(0.965 0.006 250);
   --secondary-foreground: oklch(0.25 0.05 255);
   --muted: oklch(0.96 0.008 250);
-  --muted-foreground: oklch(0.48 0.02 255);
+  --muted-foreground: oklch(0.5 0.018 255);
   /* Bumped from 0.145 chroma (2026-09) per explicit "more colorful/bolder"
      feedback — same hue (163) and lightness, just richer, so every existing
      accent/badge/ring usage sitewide reads more vivid without a redesign. */
@@ -95,8 +96,8 @@
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.78 0.19 75);
   --warning-foreground: oklch(0.22 0.05 60);
-  --border: oklch(0.9 0.012 250);
-  --input: oklch(0.92 0.012 250);
+  --border: oklch(0.922 0.007 250);
+  --input: oklch(0.9 0.009 250);
   --ring: oklch(0.55 0.15 163);
   /* Brand diagonal (navy → emerald) — one shared gradient for hero/banner/
      featured-card treatments, so "make it bolder" reads as one consistent
@@ -216,6 +217,14 @@
     font-family: var(--font-sans);
     font-size: 112.5%;
   }
+  /* Form fields shrink to their grid/flex column instead of keeping the
+     browser's default minimum width (which pushed two side-by-side fields
+     past the edge of a narrow popup). */
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
@@ -226,7 +235,10 @@
   h3,
   .font-serif {
     font-family: var(--font-serif);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+  }
+  body {
+    font-feature-settings: "cv11", "ss01";
   }
   /* A consistent, on-brand keyboard-focus ring everywhere — the shadcn
      <Button> component already rings itself (focus-visible:ring-ring in
@@ -276,56 +288,37 @@ footer .container-page {
   margin-inline: 0;
 }
 
+/* Buttons — crisp and quiet: a solid fill or a hairline outline, a small
+   shadow, a colour change on hover and a slight press. No glow or sheen. Every
+   primary CTA uses the brand emerald (--color-accent). */
 @utility btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  position: relative;
-  overflow: hidden;
-  /* Uses the accent blue rather than --color-primary (navy) so every primary CTA
-     across the site reads as the same blue, not a mix of navy and blue buttons. */
   background-color: var(--color-accent);
   color: var(--color-accent-foreground);
-  padding: 0.75rem 1.25rem;
-  border-radius: 0.6rem;
+  padding: 0.625rem 1.125rem;
+  border-radius: 0.625rem;
   font-weight: 600;
+  letter-spacing: -0.005em;
+  box-shadow:
+    0 1px 2px oklch(0.2 0.05 163 / 0.18),
+    inset 0 1px 0 oklch(1 0 0 / 0.12);
   transition:
-    transform 0.15s ease,
     background-color 0.15s ease,
-    box-shadow 0.15s ease;
-  box-shadow: var(--shadow-elev);
-  /* Baseline press/lift feedback lives on the base class (not the opt-in
-     -hover modifiers below) so every button gets it regardless of whether a
-     call site also opted into the extra color-darken modifier. */
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
   &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 34px -14px oklch(0.18 0.06 250 / 0.32);
+    background-color: oklch(0.44 0.13 163);
   }
   &:active {
-    transform: translateY(0) scale(0.97);
-  }
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: var(--btn-sheen-gradient);
-    background-size: 250% 100%;
-    background-position: 150% 0;
-    pointer-events: none;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    &::after {
-      transition: background-position 0.6s ease;
-    }
-    &:hover::after {
-      background-position: -50% 0;
-    }
+    transform: scale(0.98);
   }
 }
 @utility btn-primary-hover {
   &:hover {
-    background-color: oklch(0.5 0.145 163);
+    background-color: oklch(0.44 0.13 163);
   }
 }
 
@@ -334,45 +327,24 @@ footer .container-page {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  position: relative;
-  overflow: hidden;
   background-color: var(--color-accent);
   color: var(--color-accent-foreground);
-  padding: 0.75rem 1.25rem;
-  border-radius: 0.6rem;
-  font-weight: 700;
-  box-shadow: var(--shadow-elev);
+  padding: 0.625rem 1.125rem;
+  border-radius: 0.625rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  box-shadow:
+    0 1px 2px oklch(0.2 0.05 163 / 0.18),
+    inset 0 1px 0 oklch(1 0 0 / 0.12);
   transition:
-    transform 0.15s ease,
     background-color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
   &:hover {
-    background-color: oklch(0.5 0.145 163);
-    transform: translateY(-1px);
-    box-shadow: 0 14px 34px -14px oklch(0.18 0.06 250 / 0.32);
+    background-color: oklch(0.44 0.13 163);
   }
   &:active {
-    transform: translateY(0) scale(0.97);
-  }
-  /* Diagonal light sheen that sweeps across on hover — a thin bright band
-     riding a wide transparent gradient, slid via background-position rather
-     than a second animated element, so it never affects layout/hit-testing. */
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: var(--btn-sheen-gradient);
-    background-size: 250% 100%;
-    background-position: 150% 0;
-    pointer-events: none;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    &::after {
-      transition: background-position 0.6s ease;
-    }
-    &:hover::after {
-      background-position: -50% 0;
-    }
+    transform: scale(0.98);
   }
 }
 
@@ -381,23 +353,26 @@ footer .container-page {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: transparent;
+  background-color: var(--color-card);
   color: var(--color-foreground);
   border: 1px solid var(--color-border);
-  padding: 0.7rem 1.15rem;
-  border-radius: 0.6rem;
-  font-weight: 600;
-  /* Transform-only — no color/background hover here, since a few call sites
-     (e.g. the destructive delete button) already set their own hover:bg-*
-     via inline Tailwind classes and a base color rule would fight them. */
+  padding: 0.6rem 1.05rem;
+  border-radius: 0.625rem;
+  font-weight: 500;
+  box-shadow: 0 1px 2px oklch(0.2 0.03 250 / 0.05);
+  /* Border/shadow-only hover — a few call sites (the destructive delete
+     button) set their own hover:bg-* and a base background rule would fight
+     them. */
   transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
   &:hover {
-    transform: translateY(-1px);
+    border-color: oklch(0.82 0.012 250);
+    box-shadow: 0 1px 3px oklch(0.2 0.03 250 / 0.09);
   }
   &:active {
-    transform: translateY(0) scale(0.97);
+    transform: scale(0.98);
   }
 }
 
@@ -416,7 +391,7 @@ footer .container-page {
   background-color: var(--color-card);
   color: var(--color-card-foreground);
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
+  border-radius: 0.875rem;
   box-shadow: var(--shadow-card);
   /* No forced hover effect here — plenty of card-elev usages are static info
      cards, and a lift/tint would falsely imply they're clickable. This just
@@ -464,9 +439,8 @@ footer .container-page {
    overridden to here, no per-card edits needed) rather than risking a
    site-wide visual regression. */
 .dashboard-contrast {
-  --border: oklch(0.8 0.02 255);
-  --muted-foreground: oklch(0.4 0.02 255);
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.05), 0 10px 26px -10px oklch(0.18 0.06 250 / 0.18);
+  --border: oklch(0.9 0.01 255);
+  --muted-foreground: oklch(0.45 0.02 255);
   /* AppShell's own content wrapper (src/components/AppShell.tsx) is fully
      transparent — this is genuinely the first background painted below the
      page's own near-white base, so pure-white cards (--card is oklch(1 0 0)
@@ -475,9 +449,9 @@ footer .container-page {
      separation without a border/shadow of its own (which would read as a
      second, redundant box one level out) — just a quiet "zone" the actual
      content sits on, same idea as Notion/Linear-style dashboards. */
-  background: oklch(0.965 0.008 255);
-  border-radius: 1.25rem;
-  padding: 1.5rem;
+  /* No canvas box of its own any more — the cards sit straight on the page
+     background, which is already a neutral off-white (no box inside a box). */
+  background: transparent;
 }
 
 /* One shared "featured" treatment (see --gradient-brand above) — a soft
@@ -1001,8 +975,8 @@ footer .container-page {
 .dark .dashboard-contrast {
   --border: oklch(0.34 0.03 255);
   --muted-foreground: oklch(0.72 0.02 250);
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 26px -10px oklch(0 0 0 / 0.5);
-  background: oklch(0.2 0.03 255);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4);
+  background: transparent;
 }
 
 /* Typography and polish pass */
@@ -1027,8 +1001,8 @@ button.card-elev {
 }
 a.card-elev:hover,
 button.card-elev:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 28px -14px oklch(0.18 0.06 250 / 0.35);
+  border-color: oklch(0.85 0.03 163);
+  box-shadow: 0 4px 14px -6px oklch(0.2 0.03 250 / 0.14);
 }
 /* Numbers line up in columns and read as figures, not prose. */
 .tabular-nums,

@@ -152,14 +152,19 @@ export function ModuleCard({
   )?.strengthScore;
   return (
     // A square tile with highlights only — the full analysis opens with
-    // View Details.
-    <div className="card-elev relative flex aspect-square flex-col overflow-hidden transition-all hover:-translate-y-1 hover:shadow-elev">
+    // View Details. A locked card has nothing to show yet, so it's only as
+    // tall as its header, lock line and Subscribe button (no empty square).
+    <div
+      className={`card-elev relative flex flex-col self-start overflow-hidden transition-all hover:shadow-elev ${unlocked ? "aspect-square self-auto" : ""}`}
+    >
       {/* A strip in the module's own colour along the top. */}
       <div aria-hidden className={`h-1.5 bg-current ${m.color.text}`} />
-      <m.icon
-        aria-hidden
-        className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
-      />
+      {unlocked && (
+        <m.icon
+          aria-hidden
+          className={`pointer-events-none absolute -bottom-3 right-3 h-24 w-24 opacity-[0.06] ${m.color.text}`}
+        />
+      )}
       <div className="flex min-h-0 flex-1 flex-col p-5 pb-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -221,7 +226,9 @@ export function ModuleCard({
               )}
           </div>
         </div>
-        <div className="relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          className={`relative mt-3 flex min-h-0 flex-col overflow-hidden ${unlocked ? "flex-1" : ""}`}
+        >
           <ModuleVisual
             m={m}
             unlocked={unlocked}
@@ -245,10 +252,12 @@ export function ModuleCard({
             hasFullAccess={hasFullAccess}
             onOpen={onOpen}
           />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent"
-          />
+          {unlocked && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent"
+            />
+          )}
         </div>
       </div>
       {insight && <InsightBanner text={insight} color={m.color} onClick={onOpen} />}

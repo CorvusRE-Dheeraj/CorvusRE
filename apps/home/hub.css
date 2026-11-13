@@ -946,3 +946,152 @@ footer {
     --border: oklch(0.32 0.02 260);
   }
 }
+
+/* ── 2026-11 refresh (look only): Inter like the CorvusPT/CorvusDP apps,
+   doors as rounded cards on the light page instead of a full-bleed black
+   band, one clean caption style, a header that doesn't crush the tagline
+   on phones, and the fifth door full width on phones. ── */
+:root {
+  --background: oklch(0.985 0.003 247);
+  --border: oklch(0.922 0.007 250);
+  --muted-foreground: oklch(0.5 0.02 255);
+}
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+header {
+  background: oklch(1 0 0 / 0.7);
+  backdrop-filter: blur(8px);
+}
+header .bar {
+  height: 4rem;
+}
+.logo-mark {
+  height: 2.25rem;
+  width: 2.25rem;
+  border-radius: 0.625rem;
+}
+.wordmark {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.header-tagline {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@media (min-width: 640px) {
+  .header-tagline {
+    font-size: 1.375rem;
+  }
+}
+.doors-hint {
+  font-size: 0.875rem;
+}
+.btn-outline {
+  background: var(--card);
+  font-weight: 600;
+  border-radius: 0.625rem;
+  box-shadow: 0 1px 2px oklch(0.2 0.03 250 / 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-outline:hover {
+  border-color: oklch(0.8 0.01 250);
+  box-shadow: 0 2px 6px oklch(0.2 0.03 250 / 0.1);
+}
+
+/* Doors: rounded dark cards with breathing room, not one black strip. */
+.doors-stage {
+  padding: 0.875rem;
+}
+.doors {
+  gap: 0.875rem;
+}
+.door {
+  border-radius: 1rem;
+  background: transparent;
+  box-shadow: 0 12px 30px -14px oklch(0.2 0.03 258 / 0.5);
+}
+.door-panel {
+  inset: 0;
+  border-radius: 1rem;
+}
+.door-label {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: oklch(0.14 0.02 260 / 0.72);
+  backdrop-filter: blur(6px);
+}
+.door-subtitle {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  gap: 0.125rem;
+  color: oklch(1 0 0 / 0.86);
+  background: oklch(0.14 0.02 260 / 0.6);
+  backdrop-filter: blur(6px);
+  border-color: oklch(1 0 0 / 0.12);
+}
+.door-subtitle-letter {
+  font-size: inherit;
+  font-weight: 700;
+}
+body.doors-page footer {
+  font-size: 0.8125rem;
+  background: oklch(1 0 0 / 0.6);
+}
+body.doors-page footer .container-page {
+  max-width: none;
+  width: 100%;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  /* Logo + Sign In on one row, the tagline on its own line under them. */
+  header .bar {
+    height: auto;
+    padding-block: 0.625rem;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "brand actions" "tag tag";
+    row-gap: 0.25rem;
+  }
+  header .brand {
+    grid-area: brand;
+  }
+  .header-actions {
+    grid-area: actions;
+  }
+  .header-tagline {
+    grid-area: tag;
+    font-size: 0.9375rem;
+    text-align: left;
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+  .doors-stage {
+    padding: 0.625rem;
+  }
+  .doors {
+    gap: 0.625rem;
+  }
+  .door:last-child {
+    max-width: none;
+  }
+  .door-subtitle {
+    font-size: 0.8125rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.17 0.02 260);
+    --border: oklch(0.32 0.02 260);
+    --muted-foreground: oklch(0.68 0.02 255);
+  }
+  header,
+  body.doors-page footer {
+    background: oklch(0.2 0.02 260 / 0.7);
+  }
+}

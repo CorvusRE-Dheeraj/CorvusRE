@@ -11,7 +11,14 @@ import {
   FilePen,
   Receipt,
   Send,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
 import {
   bppNeedsProtest,
@@ -226,7 +233,7 @@ function PersonalPropertyPage() {
             />
           </div>
 
-          <div className="card-elev mt-4 overflow-x-auto">
+          <div className="card-elev mt-4 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-secondary/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -289,48 +296,69 @@ function PersonalPropertyPage() {
                         </span>
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          <ActionBtn
-                            icon={Eye}
-                            label="View Details"
-                            onClick={() => setPopup({ kind: "details", id: a.id })}
-                          />
-                          <ActionBtn
-                            icon={FilePen}
-                            label="Fill Rendition"
-                            onClick={() => setPopup({ kind: "rendition", id: a.id })}
-                          />
-                          <ActionBtn
-                            icon={FileDown}
-                            label={downloading === a.id ? "Preparing…" : "Download Rendition"}
-                            onClick={() => void downloadRendition(a)}
-                          />
-                          <ActionBtn
-                            icon={a.renditionSignedAt && !a.renditionFiledAt ? Send : ClipboardList}
-                            label={
-                              a.renditionSignedAt && !a.renditionFiledAt
-                                ? "Submit Rendition"
-                                : "View Submission Instructions"
-                            }
-                            onClick={() =>
-                              setPopup({
-                                kind: a.renditionSignedAt ? "submit" : "instructions",
-                                id: a.id,
-                              })
-                            }
-                          />
-                          <ActionBtn
-                            icon={Receipt}
-                            label="View Tax Information"
-                            onClick={() => setPopup({ kind: "tax", id: a.id })}
-                          />
-                        </div>
+                        {/* One clear next step per row; every action in the ⋯ menu. */}
+                        <RowActions
+                          account={a}
+                          paid={tr.status === "paid"}
+                          downloading={downloading === a.id}
+                          onOpen={(kind) => setPopup({ kind, id: a.id })}
+                          onDownload={() => void downloadRendition(a)}
+                        />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+          {/* Phones: one card per account instead of a wide table. */}
+          <div className="mt-4 grid gap-3 md:hidden">
+            {accounts.map((a) => {
+              const rs = renditionStatus(a);
+              const tr = taxRows.get(a.id)!;
+              const dl = effectiveRenditionDeadline(a);
+              return (
+                <div key={a.id} className="card-elev grid gap-3 p-4 text-sm">
+                  <div>
+                    <div className="font-semibold">{a.businessName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[
+                        a.locationAddress,
+                        countyOf(a.cad),
+                        a.accountNumber ? `Acct ${a.accountNumber}` : null,
+                        a.taxYear,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${RENDITION_TONE[rs]}`}
+                    >
+                      {RENDITION_STATUS_LABEL[rs]}
+                    </span>
+                    {rs !== "submitted" && (
+                      <span className="text-muted-foreground">Due {fmtDate(dl.date)}</span>
+                    )}
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${PAY_TONE[tr.status]}`}
+                    >
+                      {a.taxAmountDue == null && !a.paidAt
+                        ? "No bill yet"
+                        : PAY_STATUS_LABEL[tr.status]}
+                    </span>
+                  </div>
+                  <RowActions
+                    account={a}
+                    paid={tr.status === "paid"}
+                    downloading={downloading === a.id}
+                    onOpen={(kind) => setPopup({ kind, id: a.id })}
+                    onDownload={() => void downloadRendition(a)}
+                  />
+                </div>
+              );
+            })}
           </div>
           <DeadlineInfo compact />
         </>
@@ -397,6 +425,80 @@ function PersonalPropertyPage() {
           onDone={(protest) => setProtests((prev) => [protest, ...prev])}
         />
       )}
+    </div>
+  );
+}
+
+function RowActions({
+  account: a,
+  paid,
+  downloading,
+  onOpen,
+  onDownload,
+}: {
+  account: BppAccountRecord;
+  paid: boolean;
+  downloading: boolean;
+  onOpen: (kind: "details" | "rendition" | "submit" | "instructions" | "tax") => void;
+  onDownload: () => void;
+}) {
+  const next: {
+    label: string;
+    icon: typeof Eye;
+    kind: "details" | "rendition" | "submit" | "tax";
+  } =
+    !a.renditionSignedAt && !a.renditionFiledAt
+      ? { label: "Fill Rendition", icon: FilePen, kind: "rendition" }
+      : a.renditionSignedAt && !a.renditionFiledAt
+        ? { label: "Submit Rendition", icon: Send, kind: "submit" }
+        : !paid
+          ? { label: "Tax Information", icon: Receipt, kind: "tax" }
+          : { label: "View Details", icon: Eye, kind: "details" };
+  const NextIcon = next.icon;
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onOpen(next.kind)}
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors hover:border-accent/40 hover:text-accent"
+      >
+        <NextIcon className="h-3.5 w-3.5 text-accent" /> {next.label}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`More actions for ${a.businessName}`}
+          className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem onSelect={() => onOpen("details")}>
+            <Eye className="h-4 w-4" /> View Details
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpen("rendition")}>
+            <FilePen className="h-4 w-4" /> Fill Rendition
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onDownload}>
+            <FileDown className="h-4 w-4" /> {downloading ? "Preparing…" : "Download Rendition"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => onOpen(a.renditionSignedAt ? "submit" : "instructions")}
+          >
+            {a.renditionSignedAt && !a.renditionFiledAt ? (
+              <>
+                <Send className="h-4 w-4" /> Submit Rendition
+              </>
+            ) : (
+              <>
+                <ClipboardList className="h-4 w-4" /> View Submission Instructions
+              </>
+            )}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onOpen("tax")}>
+            <Receipt className="h-4 w-4" /> View Tax Information
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

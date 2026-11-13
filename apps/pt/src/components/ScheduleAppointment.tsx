@@ -152,7 +152,7 @@ export function ScheduleAppointment({
   const input = "rounded-md border border-input bg-background px-3 py-2 text-sm";
 
   const headerBtn =
-    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-emerald-600 to-teal-700 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-md transition-transform hover:scale-[1.04] max-[359px]:hidden md:px-5 md:py-2 md:text-base";
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-[oklch(0.44_0.13_163)] max-[359px]:hidden md:px-4 md:py-2 md:text-sm";
 
   return (
     <>
@@ -160,7 +160,7 @@ export function ScheduleAppointment({
         // Already booked: the same button opens that booking instead of a second one.
         mine ? (
           <Link to="/appointment" search={{ token: mine.manageToken }} className={headerBtn}>
-            <Video className="h-4 w-4 md:h-5 md:w-5" />
+            <Video className="h-4 w-4" />
             {/* icon-only on phones — the label ran under the header icons */}
             <span className="sr-only md:not-sr-only">{buttonLabel}</span>
           </Link>
@@ -173,21 +173,21 @@ export function ScheduleAppointment({
             }}
             className={headerBtn}
           >
-            <Video className="h-4 w-4 md:h-5 md:w-5" />
+            <Video className="h-4 w-4" />
             {/* icon-only on phones — the label ran under the header icons */}
             <span className="sr-only md:not-sr-only">{buttonLabel}</span>
           </button>
         )
       ) : mine ? (
         trigger === "button" ? (
-          <div className="flex flex-wrap items-center gap-3 text-sm text-white">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-foreground">
             <span>
               Your appointment: <strong>{formatAppointment(mine.startAt)}</strong>
             </span>
             <Link
               to="/appointment"
               search={{ token: mine.manageToken }}
-              className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-800"
+              className="btn-outline text-sm"
             >
               Reschedule or cancel
             </Link>
@@ -222,7 +222,7 @@ export function ScheduleAppointment({
             reset();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-emerald-800 shadow-sm transition-transform hover:scale-[1.03]"
+          className="btn-accent text-sm"
         >
           <Video className="h-4 w-4" />
           {buttonLabel}

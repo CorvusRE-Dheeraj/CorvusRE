@@ -119,9 +119,12 @@ export function shouldShowShell(pathname: string): boolean {
 
 // Focus-visible ring comes for free from the sitewide a/button rule in
 // styles.css — no need to redeclare it per component.
-const activeCls = "bg-nav-highlight text-nav-highlight-foreground";
+// The open page: a white pill with a hairline ring and the brand icon colour (same quiet
+// style as CorvusPT's side menu).
+const activeCls =
+  "bg-card font-semibold text-foreground shadow-sm ring-1 ring-border [&_svg]:text-accent";
 const sidebarLinkCls =
-  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-nav-highlight hover:text-nav-highlight-foreground";
+  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground";
 
 function SidebarLink({
   item,
