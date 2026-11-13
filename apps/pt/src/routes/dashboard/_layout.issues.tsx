@@ -151,7 +151,7 @@ function PropertyIssues() {
           type="button"
           onClick={() => setAdding((v) => !v)}
           disabled={properties.length === 0}
-          className="btn-outline border-white/40 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+          className="btn-outline text-sm disabled:opacity-60"
         >
           {adding ? "Cancel" : "Add an issue"}
         </button>
@@ -159,7 +159,7 @@ function PropertyIssues() {
           type="button"
           onClick={() => void checkCity()}
           disabled={properties.length === 0 || checking}
-          className="btn-outline border-white/40 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+          className="btn-outline text-sm disabled:opacity-60"
         >
           {checking ? "Checking…" : "Check city records"}
         </button>
