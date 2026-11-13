@@ -217,6 +217,14 @@
     font-family: var(--font-sans);
     font-size: 112.5%;
   }
+  /* Form fields shrink to their grid/flex column instead of keeping the
+     browser's default minimum width (which pushed two side-by-side fields
+     past the edge of a narrow popup). */
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
