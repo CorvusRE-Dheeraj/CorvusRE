@@ -558,80 +558,57 @@ export function SiteNav() {
 // the chips are the counties with full, county-integrated detail.
 const SERVED_COUNTIES = [...SUPPORTED_COUNTY_NAMES].sort();
 
+// A thin, single-row footer (two short rows on phones): copyright, coverage
+// and the legal / LinkedIn links as plain text links. The county list sits
+// behind "Full detail in N counties" (tooltip + screen-reader list) instead of
+// a block of pills.
 export function SiteFooter() {
+  const served = SERVED_COUNTIES.join(", ");
   return (
-    <footer className="border-t border-white/5 bg-[oklch(0.2_0.03_255)] text-white">
+    <footer className="border-t border-border bg-card/60 text-muted-foreground">
       {/* Keeps the text clear of the fixed Ask AI / feedback buttons in the
           bottom-right corner: extra bottom room on phones, right room above. */}
-      <div className="container-page pt-4 pb-20 sm:pb-4 sm:pr-24">
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white/15 ring-1 ring-white/25">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden
-              >
-                <path d="M4 20c3-6 5-9 8-9s5 3 8 9" strokeLinecap="round" />
-                <circle cx="16" cy="7" r="2" fill="currentColor" />
-              </svg>
-            </span>
-            <span className="leading-tight">
-              <span className="block text-sm font-semibold">CorvusPT</span>
-              <span className="block text-xs text-white/75">Texas Property Tax AI</span>
-            </span>
+      <div className="container-page flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5 py-3 pb-20 text-xs sm:pb-3 sm:pr-24">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <Link to="/" className="font-semibold text-foreground hover:text-accent">
+            © {new Date().getFullYear()} CorvusPT
           </Link>
-          <nav aria-label="Legal" className="flex items-center gap-2 text-xs font-medium">
-            <Link
-              to="/terms"
-              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
-            >
-              Terms of Service
-            </Link>
-            <Link
-              to="/privacy"
-              className="rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
-            >
-              Privacy Policy
-            </Link>
-            <a
-              href={LINKEDIN_PAGE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 ring-1 ring-white/20 transition-colors hover:bg-white/20"
-            >
-              <LinkedInIcon className="h-3.5 w-3.5" />
-              Follow us
-            </a>
-          </nav>
-        </div>
-
-        <div className="mt-3 border-t border-white/15 pt-3">
-          <p className="flex items-center gap-2 text-xs font-semibold text-white">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
             Serving all {TEXAS_COUNTY_NAMES.length} Texas counties
-            <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+            <span className="rounded-full bg-accent/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-accent">
               Beta
             </span>
-          </p>
-          <p className="mt-1.5 text-[11px] text-white/75">Full detail in:</p>
-          <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Counties with full detail">
+          </span>
+          <span
+            title={`Full detail in: ${served}`}
+            className="cursor-help underline decoration-dotted underline-offset-2"
+          >
+            Full detail in {SERVED_COUNTIES.length} counties
+          </span>
+          <ul className="sr-only" aria-label="Counties with full detail">
             {SERVED_COUNTIES.map((county) => (
-              <li
-                key={county}
-                className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/90 ring-1 ring-white/15"
-              >
-                {county}
-              </li>
+              <li key={county}>{county}</li>
             ))}
           </ul>
-          <p className="mt-2.5 text-xs text-white/70">
-            © {new Date().getFullYear()} CorvusPT — Texas Property Tax AI. All rights reserved.
-          </p>
         </div>
+        <nav aria-label="Legal" className="flex items-center gap-4 font-medium">
+          <Link to="/terms" className="hover:text-foreground">
+            Terms of Service
+          </Link>
+          <Link to="/privacy" className="hover:text-foreground">
+            Privacy Policy
+          </Link>
+          <a
+            href={LINKEDIN_PAGE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground"
+          >
+            <LinkedInIcon className="h-3.5 w-3.5" />
+            Follow us
+          </a>
+        </nav>
       </div>
     </footer>
   );
