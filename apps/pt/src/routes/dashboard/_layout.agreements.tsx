@@ -45,7 +45,7 @@ function Agreements() {
   const current = isPacketCurrent(packet);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <PageHero
         icon={FileSignature}
         title="Agreements"

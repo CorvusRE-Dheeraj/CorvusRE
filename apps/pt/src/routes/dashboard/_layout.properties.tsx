@@ -1285,7 +1285,7 @@ function Properties() {
           // (search/sort toolbar above stays put; this is the only part
           // that scrolls). pr-1 keeps the scrollbar from sitting flush
           // against each card's own right edge.
-          <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1">
+          <div className="grid max-h-[70vh] gap-4 overflow-y-auto rounded-2xl border border-border bg-secondary/40 p-3 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)] pb-10">
             {displayProperties.map((p, i) => {
               const { existingProtest, canReFile, cad, recordUrl, isPaid } = rowInfo(p);
               return (

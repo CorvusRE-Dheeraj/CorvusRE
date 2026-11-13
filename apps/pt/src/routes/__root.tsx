@@ -242,7 +242,7 @@ function RootComponent() {
               bottom edge and scroll away with the page). print:hidden moved
               onto the header element itself instead (see SiteChrome.tsx). */}
           <SiteNav />
-          <main id="main-content" className="min-h-[70vh]">
+          <main id="main-content" className="min-h-[calc(100dvh-7.5rem)]">
             <AppShell>
               <Outlet />
             </AppShell>
@@ -300,7 +300,7 @@ function SignedInJourney() {
     <div
       className={
         shouldShowShell(pathname)
-          ? "w-full px-6 sm:px-10 lg:px-16 pt-10 pb-24 sm:pb-10"
+          ? "w-full px-6 sm:px-10 lg:px-16 lg:pl-[19rem] pt-10 pb-24 sm:pb-10"
           : "container-page pt-10 pb-24 sm:pb-10"
       }
     >
