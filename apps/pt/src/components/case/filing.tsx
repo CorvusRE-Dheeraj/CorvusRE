@@ -1,6 +1,7 @@
 // Prepare & File: the filing popup — notice, forms, evidence package and delivery (split out of CaseDetailModal.tsx).
 import { CadEvidenceRequest } from "@/components/CadEvidenceRequest";
 import { VerificationNotice } from "@/components/VerificationNotice";
+import { propertyHoldReason } from "@/lib/property-verification";
 import { PortalCopySheet } from "@/components/PortalCopySheet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -1820,6 +1821,15 @@ export function DocumentsSection({
     if (!formType || !signature) return;
     setSubmitting(true);
     try {
+      // The database refuses a signature while the property is still being
+      // checked (enforce_property_hold) — but only at the very end, after the
+      // signed PDF had already been uploaded to Documents, which left a
+      // "Signed Notice of Protest" behind that never counted. Ask first.
+      const hold = await propertyHoldReason(property.id);
+      if (hold) {
+        toast.error(`${hold} You can sign once the check is done.`);
+        return;
+      }
       // Last-chance correction — catches a date field that was never blurred
       // (e.g. filled by clicking a suggestion chip last) before it's baked
       // into the signed PDF and the saved record.
@@ -1905,6 +1915,12 @@ export function DocumentsSection({
     if (!formType) return;
     setSubmitting(true);
     try {
+      // Same hold as an e-signature — check before the scan is uploaded.
+      const hold = await propertyHoldReason(property.id);
+      if (hold) {
+        toast.error(`${hold} You can upload the signed copy once the check is done.`);
+        return;
+      }
       const resolvedValues = resolveDateFields(schema, values);
       setValues(resolvedValues);
       const doc = await uploadDocument(

@@ -145,7 +145,7 @@ export function analyzeFeasibility(input: {
       : status === "conditional"
         ? knownZoning
           ? `The proposed ${labelIntent(intent)} may be achievable in the property's ${zoning.label} zoning but likely needs a discretionary approval or additional review before permitting.`
-          : `Zoning could not be confirmed from public data. A CorvusDP specialist will verify the classification; treat this feasibility as preliminary.`
+          : unconfirmedZoningSummary(zoning.code)
         : `The proposed ${labelIntent(intent)} is not permitted under the property's ${zoning.label} zoning as entered. A rezoning would be required before a building permit.`;
 
   return {
@@ -154,6 +154,19 @@ export function analyzeFeasibility(input: {
     summary,
     risks,
   };
+}
+
+// Said when the zoning can't be matched to a use category. Before, every such
+// case read "Zoning could not be confirmed from public data" — even right
+// after the previous step showed the code it found on the city's map (seen:
+// 2100 Ross Ave, Dallas → PD-708). Say what is actually missing.
+export function unconfirmedZoningSummary(code: string): string {
+  const c = code.trim();
+  if (!c)
+    return "Zoning could not be confirmed from public data. A CorvusDP specialist will verify the classification; treat this feasibility as preliminary.";
+  if (/^p\.?\s?d\b|^pd-?\d|planned/i.test(c))
+    return `${c.toUpperCase()} is a Planned Development district — its allowed uses are set by its own city ordinance rather than a standard zone, so they can't be read automatically. A CorvusDP specialist will check the ordinance; treat this feasibility as preliminary.`;
+  return `Zoning ${c.toUpperCase()} was found, but its allowed uses aren't in our zoning rules yet. A CorvusDP specialist will verify them; treat this feasibility as preliminary.`;
 }
 
 function labelIntent(intent?: ProjectIntent): string {

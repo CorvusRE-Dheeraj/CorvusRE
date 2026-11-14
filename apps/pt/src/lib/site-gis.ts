@@ -18,6 +18,57 @@ export type SiteGisResult = {
 // from the browser. Only ever called once a real lat/lng exists (see
 // loadSiteGis() in ai-report.tsx) — there is no fallback geocoding here,
 // matching getComps()'s same honest-gap posture.
+//
+// Speed: these are facts about a fixed point that don't change week to week,
+// but the lookup takes ~15-20 s (USGS elevation alone answers in 12-15 s, and
+// public Overpass servers are often at capacity) and the AI Report's Site
+// module waits for it on every visit. So each answer is kept in this browser
+// per location: a full answer for 90 days, a partial one (a source timed out)
+// for a day, so a missing fact is retried soon rather than locked in.
+const CACHE_PREFIX = "corvuspt.siteGis.v1.";
+const FULL_MS = 90 * 24 * 60 * 60 * 1000;
+const PARTIAL_MS = 24 * 60 * 60 * 1000;
+
+export function isCompleteSiteGis(r: SiteGisResult): boolean {
+  return (
+    r.floodZone != null &&
+    r.elevationFt != null &&
+    (r.nearestHighwayMi != null || r.nearestRailMi != null)
+  );
+}
+
+function cacheKey(lat: number, lng: number) {
+  return `${CACHE_PREFIX}${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+export function readCachedSiteGis(
+  lat: number,
+  lng: number,
+  now = Date.now(),
+): SiteGisResult | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(lat, lng));
+    if (!raw) return null;
+    const { at, data } = JSON.parse(raw) as { at: number; data: SiteGisResult };
+    const ttl = isCompleteSiteGis(data) ? FULL_MS : PARTIAL_MS;
+    return now - at < ttl ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSiteGis(lat: number, lng: number, data: SiteGisResult) {
+  try {
+    localStorage.setItem(cacheKey(lat, lng), JSON.stringify({ at: Date.now(), data }));
+  } catch {
+    // storage blocked or full — next visit simply looks it up again
+  }
+}
+
 export async function getSiteGis(input: { lat: number; lng: number }): Promise<SiteGisResult> {
-  return invokeEdgeFunction<SiteGisResult>("site-gis", input);
+  const cached = readCachedSiteGis(input.lat, input.lng);
+  if (cached) return cached;
+  const data = await invokeEdgeFunction<SiteGisResult>("site-gis", input);
+  writeCachedSiteGis(input.lat, input.lng, data);
+  return data;
 }

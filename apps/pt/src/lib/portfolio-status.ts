@@ -1,5 +1,6 @@
 import type { PropertyRecord } from "./properties";
 import type { ProtestRecord } from "./protests";
+import { parseDateOnly } from "./date-only";
 
 // Shared "does this property need action" signal, used by both the dashboard
 // home nudge banner and the Properties page's per-property badges — a single
@@ -29,7 +30,7 @@ export function getPropertyProtestStatus(
   }
 
   const daysLeft = Math.ceil(
-    (new Date(property.protestDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    (parseDateOnly(property.protestDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
   );
 
   if (daysLeft <= NEEDS_ACTION_WINDOW_DAYS) {

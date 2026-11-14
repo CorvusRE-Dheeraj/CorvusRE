@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { classifyZoning, analyzeFeasibility, statusLabel } from "./zoning";
+import {
+  classifyZoning,
+  analyzeFeasibility,
+  statusLabel,
+  unconfirmedZoningSummary,
+} from "./zoning";
 
 describe("classifyZoning", () => {
   it("maps common residential codes", () => {
@@ -81,5 +86,27 @@ describe("statusLabel", () => {
     expect(statusLabel("allowed")).toBe("Allowed");
     expect(statusLabel("conditional")).toBe("Conditional");
     expect(statusLabel("not_allowed")).toBe("Not Allowed");
+  });
+});
+
+describe("unconfirmedZoningSummary", () => {
+  it("says a found Planned Development code is set by its ordinance, not 'not confirmed'", () => {
+    const s = unconfirmedZoningSummary("PD-708");
+    expect(s).toContain("PD-708 is a Planned Development");
+    expect(s).not.toContain("could not be confirmed");
+  });
+  it("names any other found-but-unknown code", () => {
+    expect(unconfirmedZoningSummary("XYZ-3")).toContain("Zoning XYZ-3 was found");
+  });
+  it("keeps 'could not be confirmed' only when nothing was found", () => {
+    expect(unconfirmedZoningSummary("")).toContain("could not be confirmed");
+  });
+  it("feasibility for PD-708 uses the ordinance wording", () => {
+    const r = analyzeFeasibility({
+      intent: "remodeling",
+      sector: "commercial",
+      zoning: classifyZoning("PD-708"),
+    });
+    expect(r.summary).toContain("Planned Development");
   });
 });

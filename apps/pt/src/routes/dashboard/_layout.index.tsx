@@ -1,5 +1,6 @@
 import { maybeStartTour } from "@/components/WelcomeTour";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { isDatePast, parseDateOnly } from "@/lib/date-only";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -346,10 +347,10 @@ function Overview() {
     .filter((p) => !!p.protestDeadline)
     .map((p) => {
       const settled = propertiesWithResolvedCurrentProtest.has(p.id);
-      const past = new Date(p.protestDeadline as string) < new Date();
+      const past = isDatePast(p.protestDeadline as string);
       return {
         property: p,
-        when: new Date(p.protestDeadline as string),
+        when: parseDateOnly(p.protestDeadline as string),
         label: settled
           ? "Protest settled"
           : past
@@ -362,10 +363,10 @@ function Overview() {
   const bills = properties
     .filter((p) => !!p.paymentDueDate && !p.paidAt)
     .map((p) => {
-      const past = new Date(p.paymentDueDate as string) < new Date();
+      const past = isDatePast(p.paymentDueDate as string);
       return {
         property: p,
-        when: new Date(p.paymentDueDate as string),
+        when: parseDateOnly(p.paymentDueDate as string),
         label: past ? "Tax bill overdue" : "Tax bill due",
         resolved: false,
         missed: past,
@@ -374,8 +375,8 @@ function Overview() {
   const hearingDates = protests
     .filter((pr) => pr.status === "hearing_scheduled" && !!pr.hearingDate)
     .map((pr) => {
-      const when = new Date(pr.hearingDate as string);
-      const past = when < new Date();
+      const when = parseDateOnly(pr.hearingDate as string);
+      const past = isDatePast(pr.hearingDate as string);
       return {
         property: properties.find((p) => p.id === pr.propertyId),
         when,
@@ -408,7 +409,7 @@ function Overview() {
     .map((pr) => {
       const property = properties.find((p) => p.id === pr.propertyId);
       const daysLeft = Math.ceil(
-        (new Date(pr.hearingDate as string).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        (parseDateOnly(pr.hearingDate as string).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
       );
       return { protest: pr, property, daysLeft };
     })

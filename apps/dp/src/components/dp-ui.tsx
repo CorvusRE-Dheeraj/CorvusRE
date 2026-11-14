@@ -142,7 +142,10 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-1 text-sm">
+    // content-start: in a row of fields where only one has a hint, the row is
+    // taller and a plain grid stretched the others' inputs to fill it — the
+    // boxes in one row came out different heights.
+    <label className="grid content-start gap-1 text-sm">
       <span className="font-medium">
         {label}
         {required && <span className="text-destructive"> *</span>}

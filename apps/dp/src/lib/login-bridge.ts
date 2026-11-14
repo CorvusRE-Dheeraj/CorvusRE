@@ -29,7 +29,23 @@ function clearPendingRef() {
   }
 }
 
-export async function tryBridgeFromIdentity(): Promise<"new" | "existing" | null> {
+// One bridge at a time. Two overlapping calls (the auth effect running twice,
+// a remount) each minted a one-time link, the second invalidated the first,
+// and the first verify failed with 403 "otp_expired" — bouncing the visitor
+// to /sign-in for a moment before the second one signed them in. Overlapping
+// callers now share the first call's result.
+let inFlight: Promise<"new" | "existing" | null> | null = null;
+
+export function tryBridgeFromIdentity(): Promise<"new" | "existing" | null> {
+  if (!inFlight) {
+    inFlight = bridgeOnce().finally(() => {
+      inFlight = null;
+    });
+  }
+  return inFlight;
+}
+
+async function bridgeOnce(): Promise<"new" | "existing" | null> {
   try {
     const {
       data: { session: identitySession },

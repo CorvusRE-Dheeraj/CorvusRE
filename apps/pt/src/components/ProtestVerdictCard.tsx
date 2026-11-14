@@ -1,3 +1,4 @@
+import { parseDateOnly } from "@/lib/date-only";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleHelp, Clock, Info, ThumbsDown, TriangleAlert } from "lucide-react";
 import type { PropertyRecord } from "@/lib/properties";
@@ -34,7 +35,7 @@ export function verdictFor(
   return protestVerdict({
     score: score ? score.score : null,
     daysLeft: property.protestDeadline
-      ? Math.ceil((new Date(property.protestDeadline).getTime() - Date.now()) / 86_400_000)
+      ? Math.ceil((parseDateOnly(property.protestDeadline).getTime() - Date.now()) / 86_400_000)
       : null,
     usualDeadlinePassed: !property.protestDeadline && usualDeadlinePassed(),
     estimatedSavings: property.estimatedSavings,

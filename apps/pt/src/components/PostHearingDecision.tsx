@@ -124,7 +124,7 @@ export function PostHearingDecision({
         <div className="text-sm text-muted-foreground">{ph.verdict.detail}</div>
       </div>
 
-      <div className="mt-4 grid gap-5 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-2">
         {/* Outcome */}
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

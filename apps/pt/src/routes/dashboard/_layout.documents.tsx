@@ -257,7 +257,7 @@ function Documents() {
   }
 
   function onEditorSaved(newDoc: DocumentRecord) {
-    setDocuments((prev) => [newDoc, ...prev]);
+    setDocuments((prev) => withDocFirst(prev, newDoc));
     setEditDoc(null);
     void handleAnalyze(newDoc);
     toast.success("Saved as a new document.");
@@ -352,7 +352,7 @@ function Documents() {
       const result = await classifyAndUpload(user.id, properties, file);
       setUploads((prev) => prev.map((u) => (u.id === result.id ? result : u)));
       if (result.status === "done" && result.document) {
-        setDocuments((prev) => [result.document!, ...prev]);
+        setDocuments((prev) => withDocFirst(prev, result.document!));
         void handleAnalyze(result.document); // auto AI-check every new upload
         void maybeAttachHearingNotice(result);
       }
@@ -367,7 +367,7 @@ function Documents() {
     const result = await assignAndUpload(user.id, property, upload);
     setUploads((prev) => prev.map((u) => (u.id === result.id ? result : u)));
     if (result.status === "done" && result.document) {
-      setDocuments((prev) => [result.document!, ...prev]);
+      setDocuments((prev) => withDocFirst(prev, result.document!));
       void handleAnalyze(result.document);
       void maybeAttachHearingNotice(result);
     }
@@ -425,7 +425,7 @@ function Documents() {
     for (const file of files) {
       const result = await classifyAndUploadToProperty(user.id, property, file);
       if (result.status === "done" && result.document) {
-        setDocuments((prev) => [result.document!, ...prev]);
+        setDocuments((prev) => withDocFirst(prev, result.document!));
         void handleAnalyze(result.document);
         void maybeAttachHearingNotice(result);
         succeeded++;
@@ -1481,4 +1481,11 @@ function RecentlyDeletedSection({
       )}
     </div>
   );
+}
+
+// A new upload goes to the top of the list — once. The same upload can also
+// arrive through a list reload (e.g. the property-changed refresh), which put
+// the document in the list twice (React: "two children with the same key").
+function withDocFirst(prev: DocumentRecord[], doc: DocumentRecord): DocumentRecord[] {
+  return [doc, ...prev.filter((d) => d.id !== doc.id)];
 }

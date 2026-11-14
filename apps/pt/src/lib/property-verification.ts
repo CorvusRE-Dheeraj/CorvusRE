@@ -67,6 +67,20 @@ export const VERIFICATION_CUSTOMER_TEXT: Record<PropertyVerificationStatus, stri
   test: "Test property — dummy documents are allowed on admin accounts only.",
 };
 
+/**
+ * The database's own answer to "is signing/filing held for this property?"
+ * (property_hold_reason) — the same rule its enforce_property_hold trigger
+ * applies, read fresh rather than from a property row that may be stale.
+ * Null = not held. A failed lookup returns null and lets the trigger decide.
+ */
+export async function propertyHoldReason(propertyId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("property_hold_reason", {
+    p_property_id: propertyId,
+  });
+  if (error) return null;
+  return (data as string | null) ?? null;
+}
+
 /** Filing waits for the check (the database enforces this too). */
 export function filingHold(status: PropertyVerificationStatus | null | undefined): string | null {
   if (!status || status === "verified" || status === "test") return null;

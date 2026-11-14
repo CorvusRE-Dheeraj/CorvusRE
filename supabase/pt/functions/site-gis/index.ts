@@ -129,7 +129,15 @@ function haversineMiles(a: { lat: number; lon: number }, b: { lat: number; lon: 
 // non-Floodplain/Grade factor already shows) well within a bounded, safe
 // window — never a fabricated distance, and never a stall.
 const OVERPASS_RADIUS_METERS = 1609; // ~1 mile
-const OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter";
+// Public Overpass servers are often at capacity (checked 2026-11-14: kumi
+// timed out, overpass-api.de answered "all query workers busy", mail.ru 504).
+// So the query goes to all three at once and the first real answer wins —
+// still inside the same 10 s ceiling.
+const OVERPASS_URLS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 const OVERPASS_TIMEOUT_MS = 10000;
 
 async function fetchNearestWayDistanceMi(
@@ -145,9 +153,8 @@ async function fetchNearestWayDistanceMi(
   const query = `[out:json][timeout:9];way[${tagFilterExpr}](around:${OVERPASS_RADIUS_METERS},${lat},${lng});out center;`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(OVERPASS_URL, {
+  const ask = (url: string) =>
+    fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -163,17 +170,22 @@ async function fetchNearestWayDistanceMi(
       },
       body: `data=${encodeURIComponent(query)}`,
       signal: controller.signal,
+    }).then(async (r) => {
+      // Only a real JSON answer counts — a busy server returns an HTML/text
+      // error page, which must not win the race.
+      if (!r.ok) throw new Error(`Overpass ${r.status} at ${url}`);
+      return (await r.json()) as { elements?: Array<{ center?: { lat: number; lon: number } }> };
     });
+  let json: { elements?: Array<{ center?: { lat: number; lon: number } }> };
+  try {
+    json = await Promise.any(OVERPASS_URLS.map(ask));
+  } catch (err) {
+    console.error("Overpass: no mirror answered", err instanceof AggregateError ? err.errors.map(String) : err);
+    return null;
   } finally {
     clearTimeout(timeout);
+    controller.abort(); // stop the slower mirrors once one has answered
   }
-  if (!res.ok) {
-    console.error(`Overpass request failed: ${res.status} ${await res.text().catch(() => "")}`);
-    return null;
-  }
-  const json = (await res.json()) as {
-    elements?: Array<{ center?: { lat: number; lon: number } }>;
-  };
   const elements = json.elements ?? [];
   let nearest: number | null = null;
   for (const el of elements) {

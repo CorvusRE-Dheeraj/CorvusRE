@@ -1,5 +1,6 @@
 import { listProperties, type PropertyRecord } from "./properties";
 import { listProtests, type ProtestRecord } from "./protests";
+import { isDatePast } from "./date-only";
 import { listTaxBills, type TaxBillRecord } from "./tax-bills";
 import {
   listBppAccounts,
@@ -123,7 +124,7 @@ export function fromProperty(
       amount: null,
       propertyId: p.id,
       linkTo: "/dashboard/properties",
-      resolved: settled || new Date(p.protestDeadline) < new Date(),
+      resolved: settled || isDatePast(p.protestDeadline),
       resolvedLabel: settled ? "Settled" : undefined,
       resolvedNote: settled ? "Case closed — no further action needed." : undefined,
       propertyLabel: p.address,
@@ -219,7 +220,7 @@ function fromProtest(
       amount: null,
       propertyId: pr.propertyId,
       linkTo: "/dashboard/properties",
-      resolved: new Date(pr.hearingDate) < new Date(),
+      resolved: isDatePast(pr.hearingDate),
       propertyLabel: address,
       time: pr.hearingTime ?? null,
     });
@@ -351,7 +352,7 @@ function fromBppAccount(account: BppAccountRecord, now: Date): CalendarEvent[] {
       amount: null,
       propertyId: null,
       linkTo: "/dashboard/bpp-accounts",
-      resolved: new Date(account.protestDeadline) < now,
+      resolved: isDatePast(account.protestDeadline, now),
       propertyLabel: account.businessName,
     });
   }

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { withReadDedupe } from "./read-dedupe";
+import { withClockSkewRetry } from "./clock-skew-retry";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -34,6 +35,7 @@ export const supabase =
   (globalThis.__corvusdpSupabase__ = createClient(
     url || "https://placeholder.supabase.co",
     anonKey || "placeholder-anon-key",
-    // Identical reads already in flight share one request (read-dedupe.ts).
-    { global: { fetch: withReadDedupe() } },
+    // Identical reads already in flight share one request (read-dedupe.ts); a
+    // token rejected as "issued at future" right after sign-in is retried once.
+    { global: { fetch: withReadDedupe(withClockSkewRetry()) } },
   ));
