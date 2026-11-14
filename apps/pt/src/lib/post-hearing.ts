@@ -195,7 +195,12 @@ export function postHearing(i: PostHearingInput): PostHearing | null {
   } else if (atStake < APPEAL_FLOOR) {
     verdict = {
       headline: "Further appeal looks less likely to pay",
-      detail: `Corvus AI estimates the final value is within ~${usd(atStake)} a year of what the evidence supports — less than an appeal usually costs.`,
+      // atStake is 0 when the final value is already at or below what the
+      // evidence supports — "within ~$0 a year" read like a glitch there.
+      detail:
+        atStake <= 0
+          ? "Corvus AI estimates the final value is already at or below what the evidence supports, so there's little left for an appeal to gain."
+          : `Corvus AI estimates the final value is within ~${usd(atStake)} a year of what the evidence supports — less than an appeal usually costs.`,
     };
   } else {
     const best = open.find((r) => r.recommended) ?? open[0];

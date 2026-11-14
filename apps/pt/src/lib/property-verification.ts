@@ -68,17 +68,21 @@ export const VERIFICATION_CUSTOMER_TEXT: Record<PropertyVerificationStatus, stri
 };
 
 /**
- * The database's own answer to "is signing/filing held for this property?"
- * (property_hold_reason) — the same rule its enforce_property_hold trigger
- * applies, read fresh rather than from a property row that may be stale.
- * Null = not held. A failed lookup returns null and lets the trigger decide.
+ * "Is signing/filing held for this property?" — the property's verification
+ * status read fresh (the row in hand may be stale: staff can approve it while
+ * the page is open), then the same rule as filingHold(). Reads the caller's
+ * own row through RLS; the property_hold_reason RPC itself is service-only
+ * since security-hardening-2026-11. Null = not held. A failed lookup returns
+ * null and leaves it to the database trigger, which enforces this anyway.
  */
 export async function propertyHoldReason(propertyId: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc("property_hold_reason", {
-    p_property_id: propertyId,
-  });
-  if (error) return null;
-  return (data as string | null) ?? null;
+  const { data, error } = await supabase
+    .from("properties")
+    .select("verification_status")
+    .eq("id", propertyId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return filingHold(data.verification_status as PropertyVerificationStatus);
 }
 
 /** Filing waits for the check (the database enforces this too). */

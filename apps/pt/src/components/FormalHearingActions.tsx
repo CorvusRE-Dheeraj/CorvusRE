@@ -10,6 +10,7 @@ import {
   ARB_DECISION_CATEGORIES,
 } from "@/lib/decision-notice";
 import { DECISION_DOCUMENT_TYPE, uploadDocument } from "@/lib/documents";
+import { parseDateOnly } from "@/lib/date-only";
 import {
   closeCase,
   markHearingCompleted,
@@ -78,6 +79,15 @@ export function FormalHearingActions({
     );
   }
   if (resolved) return null;
+
+  // A hearing can't be "completed" before its day — this used to accept it
+  // months early (seen: marked done on Nov 14 for a Jun 10 hearing), which
+  // then asked for the ARB decision and showed the hearing as held.
+  const hearingAhead =
+    !!protest.hearingDate && parseDateOnly(protest.hearingDate).getTime() > Date.now();
+  const hearingAheadNote = protest.hearingDate
+    ? `Available on your hearing day (${parseDateOnly(protest.hearingDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}). If the date changed, upload the updated hearing notice.`
+    : "";
 
   async function handleCompleted() {
     setBusy(true);
@@ -185,7 +195,8 @@ export function FormalHearingActions({
           <button
             type="button"
             onClick={() => void handleCompleted()}
-            disabled={busy}
+            disabled={busy || hearingAhead}
+            title={hearingAhead ? hearingAheadNote : undefined}
             className="btn-outline text-xs py-1.5 disabled:opacity-60"
           >
             Formal hearing completed
@@ -216,6 +227,9 @@ export function FormalHearingActions({
           Unsatisfied
         </button>
       </div>
+      {hearingAhead && !protest.hearingCompletedAt && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{hearingAheadNote}</p>
+      )}
       {protest.hearingCompletedAt && (
         <UndoButton
           className="mt-1.5 block"

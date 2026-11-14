@@ -497,7 +497,7 @@ export function App() {
             <>
               <h1>Password updated</h1>
               <p className="notice">
-                You're all set -- your password has been changed.
+                You're all set — your password has been changed.
               </p>
               <div className="toggle">
                 <button type="button" onClick={() => void proceed()}>

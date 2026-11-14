@@ -125,7 +125,13 @@ export function caseStageLabel(protest: ProtestRecord): string {
     case "filed":
     case "under_review":
     case "offer_received":
-      return "Informal review";
+      // Past the informal step (turned down, or the county has none) the
+      // case is waiting on the ARB hearing — the badge said "Informal
+      // review" while the tracker already showed the formal hearing.
+      return protest.informalStatus === "rejected" ||
+        protest.informalStatus === "no_informal_available"
+        ? "Formal hearing"
+        : "Informal review";
     case "hearing_scheduled":
       return "Formal hearing";
     case "decision_received":
