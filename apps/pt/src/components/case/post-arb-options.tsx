@@ -42,6 +42,27 @@ const fmtDate = (iso: string) =>
     day: "numeric",
     year: "numeric",
   });
+// Small, stable hash of the AI context (djb2) — only used as a storage key.
+function hashText(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+function readSaved(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeSaved(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage full or blocked — the assessment still shows, just isn't kept.
+  }
+}
+
 const cost = (o: EscalationOption) =>
   o.estimatedCost
     ? o.estimatedCost.min === o.estimatedCost.max
@@ -145,7 +166,7 @@ export function PostArbOptions({
   const [assessment, setAssessment] = useState<string | null>(null);
   const [assessing, setAssessing] = useState(false);
   const assessedFor = useRef<string | null>(null);
-  async function assess() {
+  async function assess(useSaved = false) {
     if (assessing) return;
     setAssessing(true);
     try {
@@ -156,19 +177,31 @@ export function PostArbOptions({
           `est. cost ${cost(o)}; added savings/yr ${o.potentialAdditionalSavings.amount != null ? usd(o.potentialAdditionalSavings.amount) : "n/a"}; ` +
           `ROI ${o.estimatedRoi.ratio != null ? `${o.estimatedRoi.ratio}x` : "n/a"}; evidence ${o.evidenceStrength}; risk ${o.risk.band}. ${o.practicalBenefit}`,
       );
+      const context =
+        `CASE: ${property.address}; county ${property.cad ?? "n/a"}; ARB decision ${protest.arbDecision ?? "not recorded"}` +
+        `${protest.arbDecisionDate ? ` on ${protest.arbDecisionDate}` : ""}; original value ${protest.originalValue ?? "n/a"}; ` +
+        `ARB/final value ${protest.finalValue ?? "n/a"}; owner's opinion of value ${opinion ?? "not given"}; ` +
+        `evidence documents on file ${evidenceDocumentCount}; effective tax rate ${(getEffectiveTaxRate(property.cad) * 100).toFixed(2)}%.\n` +
+        `MARKET EVIDENCE: ${evalr.marketDisconnectEvidence.narrative}\nOPTIONS:\n${lines.join("\n")}`;
+      // Speed: the automatic assessment used to call the AI (~10 s) on every
+      // visit. The same case figures give the same inputs, so the answer is
+      // kept in this browser per exact context and shown instantly next time;
+      // any changed figure (or the Refresh button) asks the AI again.
+      const savedKey = `corvuspt.arbAssessment.${protest.id}.${hashText(context)}`;
+      const saved = useSaved ? readSaved(savedKey) : null;
+      if (saved) {
+        setAssessment(saved);
+        return;
+      }
       const { answer } = await askAboutDocument({
         question:
           "Assess my options after the appraisal review board's decision and say which one may be worth considering, and why. " +
           "Reply as short bullets under these labels: Assessment; Worth considering; Why; Main risks; Before you decide. " +
           "Weigh the potential additional savings against the cost, deadline, risk and evidence strength. Only consider options marked available. " +
           "Use only the data below — no other numbers. Don't give legal advice or predict outcomes; remind me to confirm deadlines with the appraisal district.",
-        context:
-          `CASE: ${property.address}; county ${property.cad ?? "n/a"}; ARB decision ${protest.arbDecision ?? "not recorded"}` +
-          `${protest.arbDecisionDate ? ` on ${protest.arbDecisionDate}` : ""}; original value ${protest.originalValue ?? "n/a"}; ` +
-          `ARB/final value ${protest.finalValue ?? "n/a"}; owner's opinion of value ${opinion ?? "not given"}; ` +
-          `evidence documents on file ${evidenceDocumentCount}; effective tax rate ${(getEffectiveTaxRate(property.cad) * 100).toFixed(2)}%.\n` +
-          `MARKET EVIDENCE: ${evalr.marketDisconnectEvidence.narrative}\nOPTIONS:\n${lines.join("\n")}`,
+        context,
       });
+      writeSaved(savedKey, answer);
       setAssessment(answer);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Corvus AI couldn't assess the options.");
@@ -182,7 +215,7 @@ export function PostArbOptions({
   useEffect(() => {
     if (!arbAgainst || assessedFor.current === key) return;
     assessedFor.current = key;
-    void assess();
+    void assess(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, arbAgainst]);
 

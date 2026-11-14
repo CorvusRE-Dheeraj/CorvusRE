@@ -604,6 +604,12 @@ async function spatialComps(
 const EXEMPT_OWNER =
   /\b(CITY OF|COUNTY|STATE OF|ISD|INDEPENDENT SCHOOL|SCHOOL DIST|UNITED STATES|USA|CHURCH|CEMETERY|DRAINAGE|UTILITY DIST|MUD\b|WATER DIST|RAILROAD|RAILWAY|TXDOT)\b/i;
 const STATEWIDE_RADII_MILES = [1, 2.5, COMPS_RADIUS_MILES];
+// Counties whose statewide parcels carry no market value at all (checked live
+// 2026-11-14: 2,000 of 2,000 parcels around downtown Dallas and Houston read
+// MKT_VALUE 0). No comparable can ever be built from them, so answering
+// "none" at once saves the ~7 s of geocoding and county-wide searching that
+// used to end in the same empty result on every Dallas/Harris lookup.
+const NO_STATEWIDE_VALUES = new Set(["DALLAS", "HARRIS"]);
 // how far from the address point the subject parcel is looked for (the Census
 // geocoder can land miles off on a highway address — seen live: "1001 HWY 66,
 // Royse City" geocoded ~4 mi from the parcel, on the other side of a county line)
@@ -738,7 +744,7 @@ async function statewideComps(
 ): Promise<CompsResult & { source?: string; taxYear?: number | null }> {
   const empty = { subject: null, comps: [] };
   const county = countyOf(input.cad);
-  if (!county) return empty;
+  if (!county || NO_STATEWIDE_VALUES.has(county)) return empty;
   const located =
     typeof input.latitude === "number" && typeof input.longitude === "number"
       ? { lat: input.latitude, lon: input.longitude }

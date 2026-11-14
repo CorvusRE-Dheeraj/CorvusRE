@@ -41,8 +41,12 @@ function SignIn() {
   // Already signed in (e.g. landed back here with a session in the URL, or an
   // open tab) — don't sit here, go where they were headed.
   useEffect(() => {
-    if (authedUser) nav({ to: returnTo, replace: true });
-  }, [authedUser, nav, returnTo]);
+    if (!authedUser) return;
+    // A destination with a query string (track-station?n=3) can't go through
+    // nav({ to }) — the router treats `to` as a bare path — so load it.
+    if (returnTo.includes("?")) window.location.replace(`${base}${returnTo}`);
+    else nav({ to: returnTo, replace: true });
+  }, [authedUser, nav, returnTo, base]);
 
   // The actual hand-off — a full page navigation (not router nav()) since
   // /auth/ is a separate built app, not a route in this one. Gated on

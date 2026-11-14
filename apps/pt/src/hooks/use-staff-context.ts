@@ -18,10 +18,23 @@ export function useStaffContext(): StaffContext {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   useEffect(() => {
     if (!user) return;
-    void getStaffRole(user.id).then(setRole);
-    staffDirectory()
-      .then(setStaff)
-      .catch(() => setStaff([]));
+    // The directory is staff-only (staff_directory raises "not authorized"
+    // otherwise), so ask for it only once the role says this is staff — a
+    // customer who opened a staff page got a 403 in the console before the
+    // page sent them away.
+    void getStaffRole(user.id).then((r) => {
+      setRole(r);
+      const isStaff =
+        r.isSuperAdmin ||
+        r.isMarketingAdmin ||
+        r.isSupportAdmin ||
+        r.isOperationsAdmin ||
+        r.isBdAdmin;
+      if (!isStaff) return;
+      staffDirectory()
+        .then(setStaff)
+        .catch(() => setStaff([]));
+    });
   }, [user]);
   const departments = useMemo<Department[]>(() => {
     if (!role) return [];

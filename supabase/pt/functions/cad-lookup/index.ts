@@ -3335,6 +3335,20 @@ async function enrichDallas(
         }
       }
       const { buildingSqft, yearBuilt, buildingClass } = imp;
+      const totalValue = parseDallasDollar(
+        extractSpan(html, "ValueSummary1_pnlValue_lblTotalVal"),
+      );
+      // The values on this page are the year DCAD names above them ("2026
+      // Certified Values"). Dallas's map layer still says 2023, so without
+      // this the current values were labelled as 2023's and the app showed
+      // "2023 value: upcoming" in 2026.
+      const valuesYear = Number(
+        extractSpan(html, "ValueSummary1_lblApprYr")?.match(/\b(20\d{2})\b/)?.[1],
+      );
+      const yearFields =
+        totalValue != null && Number.isFinite(valuesYear) && valuesYear > 2000
+          ? { valueYear: valuesYear, taxYear: valuesYear }
+          : {};
 
       return {
         legalDescription: legalLines.join(" ").trim() || null,
@@ -3345,9 +3359,8 @@ async function enrichDallas(
         improvementValue: parseDallasDollar(
           extractSpan(html, "ValueSummary1_lblImpVal"),
         ),
-        totalValue: parseDallasDollar(
-          extractSpan(html, "ValueSummary1_pnlValue_lblTotalVal"),
-        ),
+        totalValue,
+        ...yearFields,
         ...(buildingSqft != null ? { buildingSqft } : {}),
         ...(yearBuilt != null ? { yearBuilt } : {}),
         ...(buildingClass ? { buildingClass } : {}),

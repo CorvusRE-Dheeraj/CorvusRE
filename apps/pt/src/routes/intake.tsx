@@ -277,7 +277,24 @@ function Intake() {
     setError(null);
     setAlreadySaved(null);
     try {
-      await applyCadRecord(record, requestId, address.trim());
+      // The dropdown row is the quick "preview" lookup, which skips the
+      // county detail fetch — for Dallas (and others whose values come from
+      // that second source) it has no land/improvement/total value, so the
+      // Confirm step said "Value data is not published" for a property whose
+      // county does publish it. Fetch the full record for that same account
+      // first; keep the preview row if that fails or finds a different one.
+      let full = record;
+      if (record.totalValue == null && record.propertyAddress.trim()) {
+        const res = await cadLookup(record.propertyAddress).catch(() => null);
+        if (requestIdRef.current !== requestId) return;
+        if (
+          res?.matched === true &&
+          res.record.accountNumber === record.accountNumber &&
+          res.record.cad === record.cad
+        )
+          full = res.record;
+      }
+      await applyCadRecord(full, requestId, address.trim());
     } catch (err) {
       console.error(err);
       const message =
