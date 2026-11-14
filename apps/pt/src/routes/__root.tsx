@@ -188,7 +188,11 @@ const FRAME_GUARD =
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the inline script below sets the saved dark
+    // mode class and text size on <html> before first paint, so it always
+    // differs from the server HTML — React warned on every page for anyone
+    // using dark mode or larger text.
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Baseline policy that cannot break third-party scripts (Maps, Stripe,
             Supabase): no plug-ins, no <base> hijack, HTTPS only. A full CSP

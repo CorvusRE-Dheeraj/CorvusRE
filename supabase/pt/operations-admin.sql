@@ -100,6 +100,14 @@ drop policy if exists "Operations: upload case documents" on storage.objects;
 create policy "Operations: upload case documents" on storage.objects for insert to authenticated
   with check (bucket_id = 'documents' and public.is_operations_admin());
 
+-- ...and can open them. Staff could upload into a customer's folder but had
+-- no read rule, so opening a document from Operations → Verification (or
+-- Document Review) failed with a storage 400 — the queue's whole purpose is
+-- checking those files. Read only, Super Admin + Operations only.
+drop policy if exists "Staff can view case documents" on storage.objects;
+create policy "Staff can view case documents" on storage.objects for select to authenticated
+  using (bucket_id = 'documents' and (public.is_admin() or public.is_operations_admin()));
+
 -- support escalations move to the Customer Support dashboard
 drop policy if exists "Support staff manage support escalations" on public.support_escalations;
 create policy "Support staff manage support escalations" on public.support_escalations for all to authenticated

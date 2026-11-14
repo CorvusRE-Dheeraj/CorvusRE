@@ -562,6 +562,32 @@ export async function recordArbDecision(
   );
 }
 
+// The ARB order recorded on a case that has already moved on to arbitration
+// or a court appeal — the order's decision, date and final value are saved
+// (the escalation workflow counts its deadlines from them), but the case
+// stays on the route the owner picked instead of falling back to
+// "decision received".
+export async function recordArbOrderForEscalatedCase(
+  protestId: string,
+  decision: { type: ArbDecision; date: string; finalValue: number },
+): Promise<void> {
+  const { error } = await supabase
+    .from("protests")
+    .update({
+      arb_decision: decision.type,
+      arb_decision_date: decision.date,
+      final_value: decision.finalValue,
+    })
+    .eq("id", protestId);
+  if (error) throw error;
+  void logCaseEvent(
+    protestId,
+    "status_change",
+    `ARB order recorded: ${decision.type} — final value ${currencyText(decision.finalValue)}.`,
+    { arbDecision: decision.type, arbDecisionDate: decision.date, finalValue: decision.finalValue },
+  );
+}
+
 export async function recordEscalation(
   protestId: string,
   path: "appeal" | "arbitration",

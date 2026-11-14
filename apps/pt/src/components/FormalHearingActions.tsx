@@ -15,6 +15,7 @@ import {
   closeCase,
   markHearingCompleted,
   recordArbDecision,
+  recordArbOrderForEscalatedCase,
   recordEscalation,
   undoFormalOutcome,
   undoHearingCompleted,
@@ -55,12 +56,117 @@ export function FormalHearingActions({
   // A recorded decision is shown (with its Undo) by the outcome card at the top of the tab.
   if (protest.arbDecision && (resolved || escalated)) return null;
   if (escalated && (protest.status === "appealing" || protest.status === "arbitrating")) {
+    // Choosing arbitration / a court appeal before uploading the ARB order
+    // used to be a dead end: both workflows say "record the ARB decision
+    // first", but the only upload (below, for open cases) is hidden once the
+    // case has moved on. Record the order here without closing the case.
+    const saveOrder = async (f: File, ex: DecisionExtraction | null, finalValue: number) => {
+      setBusy(true);
+      try {
+        const doc = await uploadDocument(userId, property.id, f, DECISION_DOCUMENT_TYPE);
+        if (ex) await saveDecisionNotice(userId, protest.id, doc.id, ex);
+        const original = protest.originalValue ?? property.totalValue ?? null;
+        const type: "partial" | "denied" =
+          original != null && finalValue < original ? "partial" : "denied";
+        const date = ex?.decisionDate ?? new Date().toISOString().slice(0, 10);
+        await recordArbOrderForEscalatedCase(protest.id, { type, date, finalValue });
+        onUpdate({ arbDecision: type, arbDecisionDate: date, finalValue });
+        setFile(null);
+        setExtraction(null);
+        setNeedsValue(false);
+        toast.success(`ARB order recorded — final value ${currency(finalValue)}.`);
+      } catch (err) {
+        toast.error(getErrorMessage(err, "Could not record the ARB order."));
+      } finally {
+        setBusy(false);
+      }
+    };
+    const onOrderFile = async (f: File) => {
+      setBusy(true);
+      let ex: DecisionExtraction | null = null;
+      try {
+        ex = await extractDecisionDocument(property, protest, f);
+      } catch {
+        // Unreadable by AI — ask for the final value instead.
+      }
+      setBusy(false);
+      const wrong = ex
+        ? documentMismatch(
+            ex,
+            property,
+            ARB_DECISION_CATEGORIES,
+            "an ARB order or hearing decision",
+          )
+        : null;
+      if (wrong) {
+        toast.error(wrong);
+        return;
+      }
+      if (ex?.finalValue != null && ex.finalValue > 0) {
+        await saveOrder(f, ex, ex.finalValue);
+        return;
+      }
+      setFile(f);
+      setExtraction(ex);
+      setValueInput("");
+      setNeedsValue(true);
+    };
     return (
       <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
         <p className="font-medium">
           Formal hearing result was unsatisfactory, so the case moved to{" "}
           {protest.escalationPath === "appeal" ? "a court appeal" : "arbitration"}.
         </p>
+        {!protest.arbDecision && (
+          <div className="mt-2 grid gap-2">
+            <p className="text-xs text-muted-foreground">
+              Upload the ARB&apos;s written order (Order Determining Protest) — the{" "}
+              {protest.escalationPath === "appeal" ? "appeal" : "arbitration"} deadline counts from
+              it.
+            </p>
+            <label
+              className={`btn-accent inline-flex w-fit cursor-pointer text-xs py-1.5 ${busy ? "pointer-events-none opacity-60" : ""}`}
+            >
+              {busy ? "Reading the order…" : "Upload the ARB order"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void onOrderFile(f);
+                }}
+              />
+            </label>
+            {needsValue && file && (
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={valueInput}
+                  onChange={(e) => setValueInput(e.target.value)}
+                  placeholder="Final value on the order, e.g. 1,350,000"
+                  className="rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="btn-outline text-xs py-1.5"
+                  onClick={() => {
+                    const v = Number(valueInput.replace(/[^0-9.]/g, ""));
+                    if (!Number.isFinite(v) || v <= 0) {
+                      toast.error("Enter the final value from the decision document.");
+                      return;
+                    }
+                    void saveOrder(file, extraction, v);
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={onOpenAppeal}

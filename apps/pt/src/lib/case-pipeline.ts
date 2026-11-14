@@ -430,7 +430,7 @@ export function casePipeline(input: PipelineInput): Pipeline {
             ? `Due within ${APPEAL_WINDOW_DAYS} days of receiving the ARB's order.`
             : `Accept it, request binding arbitration, or appeal to district court — you have ${APPEAL_WINDOW_DAYS} days from receiving the order.`,
         dueDate: due,
-        dueLabel: "Appeal deadline",
+        dueLabel: path === "arbitration" ? "Arbitration request deadline" : "Appeal deadline",
         target: { kind: "anchor", anchor: "case-escalation" },
       });
       break;

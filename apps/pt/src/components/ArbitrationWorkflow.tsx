@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useAuth } from "@/lib/auth";
+import { getMyProfile } from "@/lib/profile";
 import { toast } from "sonner";
 import {
   CalendarClock,
@@ -1410,6 +1412,27 @@ function ApplicationPopup({
     agent: saved.agent ?? "",
   }));
   const set = (k: string, v: string) => setF((x) => ({ ...x, [k]: v }));
+  // "Pre-filled from your case" left phone and email blank although they're
+  // on the account — fill them from the profile, only where still empty, so
+  // nothing the owner typed or saved is overwritten.
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!open || !user) return;
+    let live = true;
+    getMyProfile(user.id)
+      .then((me) => {
+        if (!live) return;
+        setF((x) => ({
+          ...x,
+          ownerPhone: x.ownerPhone || me.phone || "",
+          ownerEmail: x.ownerEmail || me.email || user.email || "",
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, user]);
   const steps = ["Owner & property", "ARB order & values", "Documents checklist", "Review & file"];
   const missing = [
     "owner",
